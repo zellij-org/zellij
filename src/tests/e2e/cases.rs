@@ -120,7 +120,6 @@ pub fn split_terminals_vertically() {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
-                    remote_terminal.send_key(&ENTER);
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -164,7 +163,6 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
-                    remote_terminal.send_key(&ENTER);
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -213,8 +211,6 @@ pub fn scrolling_inside_a_pane() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -312,8 +308,6 @@ pub fn toggle_pane_fullscreen() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -327,8 +321,6 @@ pub fn toggle_pane_fullscreen() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE);
-                        // back to normal mode after toggling fullscreen
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -376,8 +368,6 @@ pub fn open_new_tab() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -391,8 +381,6 @@ pub fn open_new_tab() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -444,8 +432,6 @@ pub fn close_tab() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -459,8 +445,6 @@ pub fn close_tab() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
-                        // back to normal mode
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -527,8 +511,6 @@ pub fn close_pane() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -542,8 +524,6 @@ pub fn close_pane() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&CLOSE_PANE_IN_PANE_MODE);
-                        // back to normal mode after close
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -672,8 +652,6 @@ pub fn typing_exit_closes_pane() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -737,8 +715,6 @@ pub fn resize_pane() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -752,7 +728,7 @@ pub fn resize_pane() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&RESIZE_MODE);
                         remote_terminal.send_key(&RESIZE_LEFT_IN_RESIZE_MODE);
-                        // back to normal mode after resizing
+                        // back to normal mode
                         remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
@@ -861,8 +837,6 @@ pub fn resize_terminal_window() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -922,8 +896,6 @@ pub fn detach_and_attach_session() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1044,8 +1016,6 @@ fn focus_pane_with_mouse() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1105,8 +1075,6 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1198,8 +1166,6 @@ pub fn start_without_pane_frames() {
                 {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                    // back to normal mode after split
-                    remote_terminal.send_key(&ENTER);
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1268,8 +1234,6 @@ pub fn mirrored_sessions() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1283,8 +1247,6 @@ pub fn mirrored_sessions() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1505,8 +1467,6 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
                     {
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1596,8 +1556,6 @@ pub fn multiple_users_in_different_tabs() {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key(&TAB_MODE);
                         remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
-                        // back to normal mode after split
-                        remote_terminal.send_key(&ENTER);
                         step_is_complete = true;
                     }
                     step_is_complete
