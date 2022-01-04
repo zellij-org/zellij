@@ -5,6 +5,7 @@ use crate::shared::set_permissions;
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
 use nix::unistd::Uid;
+use once_cell::sync::OnceCell;
 use std::path::PathBuf;
 use std::{env, fs};
 
@@ -12,6 +13,8 @@ pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
 pub const ZELLIJ_CONFIG_DIR_ENV: &str = "ZELLIJ_CONFIG_DIR";
 pub const ZELLIJ_LAYOUT_DIR_ENV: &str = "ZELLIJ_LAYOUT_DIR";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const DEFAULT_SCROLL_BUFFER_SIZE: usize = 10_000;
+pub static SCROLL_BUFFER_SIZE: OnceCell<usize> = OnceCell::new();
 
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
