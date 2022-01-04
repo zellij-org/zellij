@@ -1,0 +1,230 @@
+###########################################################
+####  ###  Alt-centered configuration for Zellij  ###  ####
+###########################################################
+# - 1 prefix key (Alt) for most common actions in normal mode
+# - less common actions require switching mode or are removed
+# - switching back to normal mode with escape and enter
+# - Alt-q for quitting and Alt-d for detaching
+
+# To access other modes from normal mode press
+# 1. Alt-r for resize, 2. Alt-p for pane,
+# 4. .. move, 5. .. tab, 6. .. scroll
+# Press Enter or Escape to switch back to normal mode
+
+# Run `zellij setup --check` for troubleshooting and inspecting
+# current config locations and features that are enabled.
+# NOTE: Modes must have a binding, if they are reachable.
+keybinds:
+    normal:
+        # unbinds the current scope.
+        - unbind: true
+        - action: [Quit,]
+          key: [ Alt: 'q',]
+        - action: [Detach,]
+          key: [ Alt: 'd',]
+        - action: [SwitchToMode: Pane,]
+          key: [ Alt: 'p',]
+        - action: [SwitchToMode: Resize,]
+          key: [ Alt: 'r',]
+        - action: [SwitchToMode: Tab,]
+          key: [ Alt: 't',]
+        - action: [SwitchToMode: Scroll,]
+          key: [ Alt: 's',]
+        - action: [SwitchToMode: Session,]
+          key: [ Alt: 'e',]
+        - action: [SwitchToMode: Move,]
+          key: [ Alt: 'm',]
+        - action: [NewPane: ]
+          key: [ Alt: 'n',]
+        - action: [MoveFocusOrTab: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocusOrTab: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+        - action: [Resize: Increase,]
+          key: [ Alt: '+']
+        - action: [Resize: Decrease,]
+          key: [ Alt: '-']
+    resize:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [ Char: "\n", Esc]
+        - action: [Resize: Left,]
+          key: [Char: 'h', Left,]
+        - action: [Resize: Down,]
+          key: [Char: 'j', Down,]
+        - action: [Resize: Up,]
+          key: [Char: 'k', Up, ]
+        - action: [Resize: Right,]
+          key: [Char: 'l', Right,]
+        - action: [Resize: Increase,]
+          key: [Char: '=']
+        - action: [Resize: Increase,]
+          key: [ Alt: '+']
+        - action: [Resize: Decrease,]
+          key: [Char: '-']
+        - action: [NewPane: ,]
+          key: [ Alt: 'n',]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+    pane:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [Char: "\n", Esc]
+        - action: [MoveFocus: Left,]
+          key: [ Char: 'h', Left,]
+        - action: [MoveFocus: Right,]
+          key: [ Char: 'l', Right,]
+        - action: [MoveFocus: Down,]
+          key: [ Char: 'j', Down,]
+        - action: [MoveFocus: Up,]
+          key: [ Char: 'k', Up,]
+        - action: [SwitchFocus,]
+          key: [Char: 'p']
+        - action: [NewPane: ,]
+          key: [Char: 'n', Alt: 'n',]
+        - action: [NewPane: Down,]
+          key: [Char: 'd',]
+        - action: [NewPane: Right,]
+          key: [Char: 'r',]
+        - action: [CloseFocus,]
+          key: [Char: 'x',]
+        - action: [ToggleFocusFullscreen,]
+          key: [Char: 'f',]
+        - action: [TogglePaneFrames,]
+          key: [Char: 'z',]
+    move:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [Char: "\n", Esc]
+        - action: [MovePane: Left,]
+          key: [Char: 'h', Left,]
+        - action: [MovePane: Down,]
+          key: [Char: 'j', Down,]
+        - action: [MovePane: Up,]
+          key: [Char: 'k', Up, ]
+        - action: [MovePane: Right,]
+          key: [Char: 'l', Right,]
+        - action: [NewPane: ,]
+          key: [ Alt: 'n',]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+    tab:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [Char: "\n", Esc]
+        - action: [GoToPreviousTab,]
+          key: [ Char: 'h', Left, ]
+        - action: [GoToNextTab,]
+          key: [ Char: 'l', Right,]
+        - action: [NewTab: ,]
+          key: [ Char: 'n',]
+        - action: [CloseTab,]
+          key: [ Char: 'x',]
+        - action: [ToggleActiveSyncTab]
+          key: [Char: 's']
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+        - action: [GoToTab: 1,]
+          key: [ Char: '1',]
+        - action: [GoToTab: 2,]
+          key: [ Char: '2',]
+        - action: [GoToTab: 3,]
+          key: [ Char: '3',]
+        - action: [GoToTab: 4,]
+          key: [ Char: '4',]
+        - action: [GoToTab: 5,]
+          key: [ Char: '5',]
+        - action: [GoToTab: 6,]
+          key: [ Char: '6',]
+        - action: [GoToTab: 7,]
+          key: [ Char: '7',]
+        - action: [GoToTab: 8,]
+          key: [ Char: '8',]
+        - action: [GoToTab: 9,]
+          key: [ Char: '9',]
+        - action: [ToggleTab]
+          key: [ Char: "\t" ]
+    scroll:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [Char: "\n", Esc]
+        - action: [ScrollDown,]
+          key: [Char: 'j', Down,]
+        - action: [ScrollUp,]
+          key: [Char: 'k', Up,]
+        - action: [PageScrollDown,]
+          key: [ Alt: 'f', PageDown, Right, Char: 'l',]
+        - action: [PageScrollUp,]
+          key: [ Alt: 'b', PageUp, Left, Char: 'h',]
+        - action: [HalfPageScrollDown,]
+          key: [Char: 'd',]
+        - action: [HalfPageScrollUp,]
+          key: [Char: 'u',]
+        - action: [MoveFocus: Left,]
+          key: [ Alt: 'h',]
+        - action: [MoveFocus: Right,]
+          key: [ Alt: 'l',]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j',]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k',]
+    renametab:
+        - unbind: true
+    renamepane:
+        - unbind: true
+    session:
+        - unbind: true
+    locked:
+        - unbind: true
+plugins:
+    - path: tab-bar
+      tag: tab-bar
+    - path: status-bar
+      tag: status-bar
+    - path: strider
+      tag: strider
+
+# Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
+# eg. when terminal window with an active zellij session is closed
+# Options:
+#   - detach (Default)
+#   - quit
+on_force_close: quit
+# request simpler ui (without arrow fonts) of plugins
+simplified_ui: true
+# Choose the path to the default shell that zellij will use for opening new panes
+# Default: $SHELL
+#default_shell: fish
+# remove pane frame (also removes space between panes and highlighting of current pane)
+pane_frames: false
+# Choose the mode that zellij uses when starting up.
+# Default: normal
+#default_mode: locked
+theme: default
+# Choose the theme that is specified in the themes section.
+# Default: default
+#theme: default
+# Note: Mouse mode can interfere with copying text.
+mouse_mode: true
