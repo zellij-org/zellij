@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: Properly move users out of closed tab in a multiuser session (https://github.com/zellij-org/zellij/pull/990)
 * Feature: Pass active pane title to terminal emulator (https://github.com/zellij-org/zellij/pull/980)
 * Feature: Improve default keybindings (https://github.com/zellij-org/zellij/pull/991)
+* Feature: Configurable scroll buffer size (https://github.com/zellij-org/zellij/pull/936)
 
 ## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
