@@ -33,6 +33,8 @@ jobs:
       run: rustup target add wasm32-wasi
     - name: Install musl-tools
       run: sudo apt-get install -y --no-install-recommends musl-tools
+    - name: Install required xcb dependencies
+      run: sudo apt-get install -y --no-install-recommends libxcb-xfixes0-dev libxcb-shape0-dev
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
     - name: Install cargo-make

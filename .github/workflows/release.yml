@@ -65,6 +65,10 @@ jobs:
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
+      
+      - name: Install required xcb dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get install -y --no-install-recommends libxcb-xfixes0-dev libxcb-shape0-dev
 
       - name: Install wasm-opt
         run: brew install binaryen
