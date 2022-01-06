@@ -39,6 +39,8 @@ use zellij_utils::{
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
 
+use copypasta_ext::display::DisplayServer;
+
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 const MIN_TERMINAL_HEIGHT: usize = 5;
 const MIN_TERMINAL_WIDTH: usize = 5;
@@ -119,6 +121,7 @@ pub(crate) struct Tab {
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
     selecting_with_mouse: bool,
+    use_system_clipboard: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -299,6 +302,7 @@ impl Tab {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
+        use_system_clipboard: bool,
     ) -> Self {
         let panes = BTreeMap::new();
 
@@ -335,6 +339,7 @@ impl Tab {
             connected_clients_in_app,
             connected_clients,
             selecting_with_mouse: false,
+            use_system_clipboard,
         }
     }
 
@@ -1913,11 +1918,23 @@ impl Tab {
 
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
+        let mut system_clipboard_failure = false;
         output.add_clients(&self.connected_clients);
-        output.push_str_to_multiple_clients(
-            &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
-            self.connected_clients.iter().copied(),
-        );
+        if self.use_system_clipboard {
+            let res = DisplayServer::select()
+                .try_context()
+                .ok_or_else(|| "could not get clipboard provider".into())
+                .and_then(|mut ctx| ctx.set_contents(selection.to_owned()));
+
+            if res.is_err() {
+                system_clipboard_failure = true
+            }
+        } else {
+            output.push_str_to_multiple_clients(
+                &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
+                self.connected_clients.iter().copied(),
+            );
+        }
 
         // TODO: ideally we should be sending the Render instruction from the screen
         self.senders
@@ -1927,7 +1944,11 @@ impl Tab {
             .send_to_plugin(PluginInstruction::Update(
                 None,
                 None,
-                Event::CopyToClipboard,
+                if system_clipboard_failure {
+                    Event::SystemClipboardFailure
+                } else {
+                    Event::CopyToClipboard
+                },
             ))
             .unwrap();
     }

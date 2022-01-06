@@ -10,7 +10,8 @@ use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
 use second_line::{
-    fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, text_copied_hint,
+    fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, system_clipboard_error,
+    text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
 
@@ -24,6 +25,7 @@ struct State {
     tip_name: String,
     mode_info: ModeInfo,
     diplay_text_copied_hint: bool,
+    display_system_clipboard_failure: bool,
 }
 
 register_plugin!(State);
@@ -142,6 +144,7 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::CopyToClipboard,
             EventType::InputReceived,
+            EventType::SystemClipboardFailure,
         ]);
     }
 
@@ -156,8 +159,12 @@ impl ZellijPlugin for State {
             Event::CopyToClipboard => {
                 self.diplay_text_copied_hint = true;
             }
+            Event::SystemClipboardFailure => {
+                self.display_system_clipboard_failure = true;
+            }
             Event::InputReceived => {
                 self.diplay_text_copied_hint = false;
+                self.display_system_clipboard_failure = false;
             }
             _ => {}
         }
@@ -188,12 +195,16 @@ impl ZellijPlugin for State {
                         if t.is_fullscreen_active {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
+                            } else if self.display_system_clipboard_failure {
+                                system_clipboard_error(&self.mode_info.palette)
                             } else {
                                 fullscreen_panes_to_hide(&self.mode_info.palette, t.panes_to_hide)
                             }
                         } else {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
+                            } else if self.display_system_clipboard_failure {
+                                system_clipboard_error(&self.mode_info.palette)
                             } else {
                                 keybinds(&self.mode_info, &self.tip_name, cols)
                             }
@@ -203,6 +214,8 @@ impl ZellijPlugin for State {
                         if t.is_fullscreen_active {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
+                            } else if self.display_system_clipboard_failure {
+                                system_clipboard_error(&self.mode_info.palette)
                             } else {
                                 locked_fullscreen_panes_to_hide(
                                     &self.mode_info.palette,
@@ -212,6 +225,8 @@ impl ZellijPlugin for State {
                         } else {
                             second_line = if self.diplay_text_copied_hint {
                                 text_copied_hint(&self.mode_info.palette)
+                            } else if self.display_system_clipboard_failure {
+                                system_clipboard_error(&self.mode_info.palette)
                             } else {
                                 keybinds(&self.mode_info, &self.tip_name, cols)
                             }
@@ -220,6 +235,8 @@ impl ZellijPlugin for State {
                     _ => {
                         second_line = if self.diplay_text_copied_hint {
                             text_copied_hint(&self.mode_info.palette)
+                        } else if self.display_system_clipboard_failure {
+                            system_clipboard_error(&self.mode_info.palette)
                         } else {
                             keybinds(&self.mode_info, &self.tip_name, cols)
                         }

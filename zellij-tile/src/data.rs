@@ -76,6 +76,7 @@ pub enum Event {
     Mouse(Mouse),
     Timer(f64),
     CopyToClipboard,
+    SystemClipboardFailure,
     InputReceived,
     Visible(bool),
 }
