@@ -193,6 +193,7 @@ pub(crate) struct Screen {
     colors: Palette,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
+    copy_command: Option<String>,
 }
 
 impl Screen {
@@ -204,6 +205,7 @@ impl Screen {
         mode_info: ModeInfo,
         draw_pane_frames: bool,
         session_is_mirrored: bool,
+        copy_command: Option<String>,
     ) -> Self {
         Screen {
             bus,
@@ -219,6 +221,7 @@ impl Screen {
             default_mode_info: mode_info,
             draw_pane_frames,
             session_is_mirrored,
+            copy_command,
         }
     }
 
@@ -491,6 +494,7 @@ impl Screen {
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
+            self.copy_command.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -692,6 +696,7 @@ pub(crate) fn screen_thread_main(
         ),
         draw_pane_frames,
         session_is_mirrored,
+        config_options.copy_command,
     );
     loop {
         let (event, mut err_ctx) = screen
