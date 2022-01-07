@@ -43,3 +43,4 @@ For the removal of doubt: changing this rule itself requires a two thirds majori
 * Kyle Sutherland-Cash <kyle.sutherlandcash@gmail.com>
 * Dante Pippi <dante.dpf@gmail.com>
 * Thomas Linford <linford.t@gmail.com>
+* Jaeheon Ji <atx6419@gmail.com>
