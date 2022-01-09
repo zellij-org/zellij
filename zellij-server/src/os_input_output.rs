@@ -113,7 +113,9 @@ fn handle_openpty(
     let mut child = unsafe {
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
-            command.current_dir(current_dir);
+            if current_dir.exists() {
+                command.current_dir(current_dir);
+            }
         }
         command
             .args(&cmd.args)
