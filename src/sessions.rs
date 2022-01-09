@@ -1,6 +1,7 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
+use std::path::Path;
 use suggestion::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
@@ -51,6 +52,23 @@ pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<Strin
         Err(_) => Ok(Vec::with_capacity(0)),
     }
 }
+
+pub(crate) fn rename_session(old_session_name: String, new_session_name: String) {
+    match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
+        Ok(files) => {
+            if let Some(session) = files.filter(|f| f.is_ok()).map(|f| f.unwrap()).find(|f| {
+                f.file_name().into_string().unwrap() == old_session_name
+            }) {
+                match fs::rename(session.path(), Path::new(&*ZELLIJ_SOCK_DIR).join(new_session_name)) {
+                    Ok(_) => (),
+                    Err(err) => eprintln!("Rename failed with err: {}", err),
+                };
+            }
+        },
+        _ => eprintln!("Session not found"),
+    }
+}
+
 
 fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);

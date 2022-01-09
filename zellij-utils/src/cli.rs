@@ -110,4 +110,11 @@ pub enum Sessions {
         #[structopt(short, long)]
         yes: bool,
     },
+
+    /// Rename session
+    #[structopt(alias="rename")]
+    RenameSession {
+        old_session_name: String,
+        new_session_name: String,
+    }
 }
