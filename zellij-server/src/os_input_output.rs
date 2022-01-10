@@ -2,12 +2,6 @@ use std::collections::HashMap;
 
 use crate::panes::PaneId;
 
-#[cfg(target_os = "macos")]
-use darwin_libproc;
-
-#[cfg(target_os = "linux")]
-use std::fs;
-
 use std::env;
 use std::os::unix::io::RawFd;
 use std::os::unix::process::CommandExt;
@@ -20,6 +14,8 @@ use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile}
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
 use interprocess::local_socket::LocalSocketStream;
+
+use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 
 use nix::pty::{openpty, OpenptyResult, Winsize};
 use nix::sys::signal::{kill, Signal};
@@ -338,16 +334,15 @@ impl ServerOsApi for ServerOsInputOutput {
     fn load_palette(&self) -> Palette {
         default_palette()
     }
-    #[cfg(target_os = "macos")]
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
-        darwin_libproc::pid_cwd(pid.as_raw()).ok()
-    }
-    #[cfg(target_os = "linux")]
-    fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
-        fs::read_link(format!("/proc/{}/cwd", pid)).ok()
-    }
-    #[cfg(all(not(target_os = "linux"), not(target_os = "macos")))]
-    fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+        let mut system_info = System::new();
+        // Update by minimizing information.
+        // See https://docs.rs/sysinfo/0.22.5/sysinfo/struct.ProcessRefreshKind.html#
+        system_info.refresh_processes_specifics(ProcessRefreshKind::default());
+
+        if let Some(process) = system_info.process(pid.into()) {
+            return Some(process.cwd().to_path_buf());
+        }
         None
     }
 }
