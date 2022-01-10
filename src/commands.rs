@@ -3,7 +3,7 @@ use crate::sessions::kill_session as kill_session_impl;
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
     get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession
+    session_exists, ActiveSession,
 };
 use dialoguer::Confirm;
 use std::path::PathBuf;
