@@ -371,3 +371,7 @@ pub struct ChildId {
     /// field is it's parent process id.
     pub shell: Option<Pid>,
 }
+
+#[cfg(test)]
+#[path = "./unit/os_input_output_tests.rs"]
+mod os_input_output_tests;
