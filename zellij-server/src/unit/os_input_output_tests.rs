@@ -1,35 +1,42 @@
 use super::*;
 
-use std::fs::{File, OpenOptions};
-use std::os::unix::io::AsRawFd;
+use nix::{pty::openpty, unistd::close};
 
-pub struct Vt {
-    f: File,
+struct TestTerminal {
+    openpty: OpenptyResult,
 }
 
-impl Vt {
-    pub fn new() -> Result<Vt, std::io::Error> {
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/tty")
-            .map(|f| Vt { f })
+impl TestTerminal {
+    pub fn new() -> TestTerminal {
+        let openpty = openpty(None, None).expect("Could not create openpty");
+        TestTerminal { openpty }
     }
 
-    pub fn get_raw_fd(&self) -> RawFd {
-        self.f.as_raw_fd()
+    #[allow(dead_code)]
+    pub fn master(&self) -> RawFd {
+        self.openpty.master
+    }
+
+    pub fn slave(&self) -> RawFd {
+        self.openpty.slave
+    }
+}
+
+impl Drop for TestTerminal {
+    fn drop(&mut self) {
+        close(self.openpty.master).expect("Failed to close the master");
+        close(self.openpty.slave).expect("Failed to close the slave");
     }
 }
 
 #[test]
 fn get_cwd() {
-    let vt = match Vt::new() {
-        Ok(vt) => vt,
-        Err(e) => panic!("Failed to open /dev/tty: {}", e),
-    };
+    let test_terminal = TestTerminal::new();
+    let test_termios =
+        termios::tcgetattr(test_terminal.slave()).expect("Could not configure the termios");
 
     let server = ServerOsInputOutput {
-        orig_termios: Arc::new(Mutex::new(termios::tcgetattr(vt.get_raw_fd()).unwrap())),
+        orig_termios: Arc::new(Mutex::new(test_termios)),
         client_senders: Arc::default(),
     };
 
@@ -38,5 +45,5 @@ fn get_cwd() {
         server.get_cwd(pid).is_some(),
         "Get current working directory from PID {}",
         pid
-    )
+    );
 }
