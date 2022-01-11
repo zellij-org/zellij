@@ -34,9 +34,8 @@ fn get_cwd() {
     };
 
     let pid = nix::unistd::getpid();
-    assert_eq!(
+    assert!(
         server.get_cwd(pid).is_some(),
-        true,
         "Get current working directory from PID {}",
         pid
     )
