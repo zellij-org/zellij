@@ -1092,7 +1092,6 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
-        println!("tab resize_left active_panes: {:?}", self.active_panes);
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
             pane_grid.resize_pane_left(&active_pane_id);
