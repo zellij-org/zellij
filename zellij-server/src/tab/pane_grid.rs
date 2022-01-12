@@ -61,10 +61,6 @@ impl<'a> PaneGrid<'a> {
         // TODO: find out by how much we actually reduced and only reduce by that much
         if self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
             self.increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            // TODO: CONTINUE HERE - fix these to self.panes.clone() - then fix the rest of the
-            // functions to match, those functions that break out of the RC (eg. return panes) make
-            // return pane ids and handle them in function, a little work, but eh - we'll get
-            // through it!
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
             let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
         } else if self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
