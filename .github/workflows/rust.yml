@@ -32,6 +32,9 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Add WASM target
       run: rustup target add wasm32-wasi
+    - name: Install xcb dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get install -y --no-install-recommends libxcb-xfixes0-dev libxcb-shape0-dev
     - name: Install cargo-make
       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Build
