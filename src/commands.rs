@@ -3,7 +3,7 @@ use crate::sessions::kill_session as kill_session_impl;
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
     get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession,
+    session_exists, ActiveSession, rename_session
 };
 use dialoguer::Confirm;
 use std::path::PathBuf;
@@ -21,7 +21,6 @@ use zellij_utils::{
 };
 
 pub(crate) use crate::sessions::list_sessions;
-pub(crate) use crate::sessions::rename_session;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
@@ -63,6 +62,24 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
         None => {
             println!("Please specify the session name to kill.");
             process::exit(1);
+        }
+    }
+}
+
+pub(crate) fn rename_current_or_target_session(target_session: Option<String>, new_session_name: String) {
+    match target_session {
+        Some(target_session) => {
+            assert_session(&target_session);
+            rename_session(target_session, new_session_name);
+            process::exit(0);
+        }
+        None => {
+            if let Ok(curr_session) = envs::get_session_name() {
+                rename_session(curr_session, new_session_name);
+            } else {
+                eprintln!("there is no attached session, you need to specify the target session.");
+                process::exit(1);
+            }
         }
     }
 }
