@@ -22,6 +22,20 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
+pub mod double_boundary_type {
+    pub const TOP_RIGHT: &str = "╗";
+    pub const VERTICAL: &str = "║";
+    pub const HORIZONTAL: &str = "═";
+    pub const TOP_LEFT: &str = "╔";
+    pub const BOTTOM_RIGHT: &str = "╝";
+    pub const BOTTOM_LEFT: &str = "╚";
+    pub const VERTICAL_LEFT: &str = "╣";
+    pub const VERTICAL_RIGHT: &str = "╠";
+    pub const HORIZONTAL_DOWN: &str = "╦";
+    pub const HORIZONTAL_UP: &str = "╩";
+    pub const CROSS: &str = "╬";
+}
+
 pub(crate) type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
 #[derive(Clone, Copy, Debug)]

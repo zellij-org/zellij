@@ -26,6 +26,8 @@ keybinds:
           key: [Ctrl: 'q',]
         - action: [NewPane: ]
           key: [ Alt: 'n',]
+        - action: [ToggleFloatingPanes: ]
+          key: [ Alt: 's',]
         - action: [MoveFocusOrTab: Left,]
           key: [ Alt: 'h',]
         - action: [MoveFocusOrTab: Right,]
@@ -438,7 +440,7 @@ plugins:
 
 # Choose the path to the default shell that zellij will use for opening new panes
 # Default: $SHELL
-#default_shell: fish
+default_shell: fish
 
 # Toggle between having pane frames around the panes
 # Options:

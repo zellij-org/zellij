@@ -31,6 +31,7 @@ pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
+    ToggleFloatingPanes(ClientId),
     HorizontalSplit(PaneId, ClientId),
     VerticalSplit(PaneId, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
@@ -100,6 +101,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
+            ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
@@ -731,6 +733,15 @@ pub(crate) fn screen_thread_main(
                     .unwrap();
                 screen.update_tabs();
 
+                screen.render();
+            }
+            ScreenInstruction::ToggleFloatingPanes(client_id) => {
+                screen.get_active_tab_mut(client_id).unwrap().toggle_floating_panes(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
                 screen.render();
             }
             ScreenInstruction::HorizontalSplit(pid, client_id) => {

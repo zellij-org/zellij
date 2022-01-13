@@ -81,6 +81,8 @@ pub enum Action {
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>),
+    /// Toggle the visibility of all floating panes (if any) in the current Tab
+    ToggleFloatingPanes,
     /// Close the focus pane.
     CloseFocus,
     PaneNameInput(Vec<u8>),
