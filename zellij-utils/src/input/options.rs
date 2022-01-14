@@ -75,10 +75,10 @@ pub struct Options {
     #[structopt(long)]
     pub scroll_buffer_size: Option<usize>,
 
-    /// Switch to using xclip for clipboard instead of OSC52
+    /// Switch to using a user supplied command for clipboard instead of OSC52
     #[structopt(long)]
     #[serde(default)]
-    pub use_system_clipboard: Option<bool>,
+    pub copy_command: Option<String>,
 }
 
 impl Options {
@@ -104,7 +104,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
-        let use_system_clipboard = other.use_system_clipboard.or(self.use_system_clipboard);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -117,7 +117,7 @@ impl Options {
             mirror_session,
             on_force_close,
             scroll_buffer_size,
-            use_system_clipboard,
+            copy_command,
         }
     }
 
@@ -140,8 +140,6 @@ impl Options {
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
-        let use_system_clipboard =
-            merge_bool(other.use_system_clipboard, self.use_system_clipboard);
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
@@ -149,6 +147,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -161,7 +160,7 @@ impl Options {
             mirror_session,
             on_force_close,
             scroll_buffer_size,
-            use_system_clipboard,
+            copy_command,
         }
     }
 
@@ -210,7 +209,7 @@ impl From<CliOptions> for Options {
             mirror_session: opts.mirror_session,
             on_force_close: opts.on_force_close,
             scroll_buffer_size: opts.scroll_buffer_size,
-            use_system_clipboard: opts.use_system_clipboard,
+            copy_command: opts.copy_command,
         }
     }
 }
