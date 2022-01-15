@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
 * Fix: crash when opening pane in non-existent cwd (https://github.com/zellij-org/zellij/pull/995)
+* Feature: add `copy-command` option (https://github.com/zellij-org/zellij/pull/996)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
