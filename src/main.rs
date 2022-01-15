@@ -23,11 +23,11 @@ fn main() {
     {
         commands::kill_session(target_session);
     } else if let Some(Command::Sessions(Sessions::RenameSession {
-        target_session,
+        target_session_name,
         new_session_name,
     })) = opts.command
     {
-        commands::rename_current_or_target_session(target_session, new_session_name);
+        commands::rename_current_or_target_session(target_session_name, new_session_name);
     } else if let Some(path) = opts.server {
         commands::start_server(path);
     } else {
