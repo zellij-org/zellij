@@ -96,6 +96,7 @@ fn create_new_tab(size: Size) -> Tab {
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let copy_command = None;
     let mut tab = Tab::new(
         index,
         position,
@@ -110,6 +111,7 @@ fn create_new_tab(size: Size) -> Tab {
         connected_clients,
         session_is_mirrored,
         client_id,
+        copy_command,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),

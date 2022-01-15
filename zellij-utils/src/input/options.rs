@@ -74,6 +74,11 @@ pub struct Options {
     pub on_force_close: Option<OnForceClose>,
     #[structopt(long)]
     pub scroll_buffer_size: Option<usize>,
+
+    /// Switch to using a user supplied command for clipboard instead of OSC52
+    #[structopt(long)]
+    #[serde(default)]
+    pub copy_command: Option<String>,
 }
 
 impl Options {
@@ -99,6 +104,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -111,6 +117,7 @@ impl Options {
             mirror_session,
             on_force_close,
             scroll_buffer_size,
+            copy_command,
         }
     }
 
@@ -140,6 +147,7 @@ impl Options {
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -152,6 +160,7 @@ impl Options {
             mirror_session,
             on_force_close,
             scroll_buffer_size,
+            copy_command,
         }
     }
 
@@ -200,6 +209,7 @@ impl From<CliOptions> for Options {
             mirror_session: opts.mirror_session,
             on_force_close: opts.on_force_close,
             scroll_buffer_size: opts.scroll_buffer_size,
+            copy_command: opts.copy_command,
         }
     }
 }
