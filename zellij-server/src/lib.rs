@@ -21,6 +21,7 @@ use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
+use zellij_utils::sessions;
 
 use wasmer::Store;
 use zellij_tile::data::{Event, Palette, PluginCapabilities};
@@ -71,20 +72,22 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
+    RenameSession(String, String),
 }
 
 impl From<&ServerInstruction> for ServerContext {
     fn from(server_instruction: &ServerInstruction) -> Self {
         match *server_instruction {
-            ServerInstruction::NewClient(..) => ServerContext::NewClient,
             ServerInstruction::Render(_) => ServerContext::Render,
             ServerInstruction::UnblockInputThread => ServerContext::UnblockInputThread,
             ServerInstruction::ClientExit(..) => ServerContext::ClientExit,
-            ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
             ServerInstruction::Error(_) => ServerContext::Error,
+            ServerInstruction::NewClient(..) => ServerContext::NewClient,
+            ServerInstruction::RemoveClient(..) => ServerContext::RemoveClient,
+            ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
-            ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
+            ServerInstruction::RenameSession(..) => ServerContext::KillSession,
         }
     }
 }
@@ -475,6 +478,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
+            }
+            ServerInstruction::RenameSession(target_session_name, new_session_name) => {
+                let rename_res = sessions::rename_session(target_session_name, new_session_name.clone());
+                // TODO: only rename client env when it's successful
+                let client_ids = session_state.read().unwrap().client_ids();
+                for client_id in client_ids {
+                    os_input.send_to_client(client_id, ServerToClientMsg::RenameSession(new_session_name.clone()));
+                }
             }
             ServerInstruction::Render(mut output) => {
                 let client_ids = session_state.read().unwrap().client_ids();

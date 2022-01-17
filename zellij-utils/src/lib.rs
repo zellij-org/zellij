@@ -10,6 +10,7 @@ pub mod pane_size;
 pub mod position;
 pub mod setup;
 pub mod shared;
+pub mod sessions;
 
 pub use async_std;
 pub use interprocess;

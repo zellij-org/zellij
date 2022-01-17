@@ -82,6 +82,7 @@ pub enum ServerToClientMsg {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    RenameSession(String),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

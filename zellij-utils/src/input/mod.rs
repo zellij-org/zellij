@@ -57,7 +57,8 @@ pub fn get_mode_info(
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],
-        InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
+        InputMode::RenameSession => vec![("Enter".to_string(), "when done".to_string())],
+        InputMode::Session => vec![("d".to_string(), "Detach".to_string()), ("r".to_string(), "Rename".to_string())],
     };
 
     let session_name = envs::get_session_name().ok();

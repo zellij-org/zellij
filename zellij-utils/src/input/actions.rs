@@ -112,6 +112,7 @@ pub enum Action {
     Deny,
     /// Confirm an action that invokes a prompt automatically
     SkipConfirm(Box<Action>),
+    SessionNameInput(Vec<u8>),
 }
 
 impl From<OnForceClose> for Action {

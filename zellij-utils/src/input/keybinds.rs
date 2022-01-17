@@ -210,6 +210,7 @@ impl Keybinds {
             }
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
             InputMode::RenamePane => mode_keybind_or_action(Action::PaneNameInput(raw_bytes)),
+            InputMode::RenameSession => mode_keybind_or_action(Action::SessionNameInput(raw_bytes)),
             _ => mode_keybind_or_action(Action::NoOp),
         }
     }

@@ -118,6 +118,9 @@ pub enum InputMode {
     /// `Prompt` mode allows interacting with active prompts.
     #[serde(alias = "prompt")]
     Prompt,
+    /// `RenameSession` mode allows assigning a new name to a tab.
+    #[serde(alias = "renamesession")]
+    RenameSession,
 }
 
 impl Default for InputMode {
@@ -164,6 +167,7 @@ impl FromStr for InputMode {
             "move" => Ok(InputMode::Move),
             "prompt" => Ok(InputMode::Prompt),
             "renamepane" => Ok(InputMode::RenamePane),
+            "renamesession" => Ok(InputMode::RenameSession),
             e => Err(e.to_string().into()),
         }
     }

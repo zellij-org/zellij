@@ -20,9 +20,11 @@ use crate::{
 };
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
 use zellij_utils::{
+    envs,
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::ClientAttributes,
+    sessions,
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -92,6 +94,7 @@ pub enum ScreenInstruction {
     RemoveOverlay(ClientId),
     ConfirmPrompt(ClientId),
     DenyPrompt(ClientId),
+    RenameSession(Vec<u8>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -167,6 +170,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
             ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
             ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
+            ScreenInstruction::RenameSession(..) => ScreenContext::RenameSession,
         }
     }
 }
@@ -597,6 +601,26 @@ impl Screen {
                 ))
                 .unwrap();
         }
+    }
+
+    pub fn update_active_session_name(&mut self, buf: Vec<u8>) {
+        let s = str::from_utf8(&buf).unwrap();
+        let mut session_name = envs::get_session_name().unwrap();
+        let old_session_name = session_name.clone();
+        match s {
+            "\0" => {
+                session_name = String::new();
+            }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                session_name.pop();
+            }
+            c => {
+                session_name.push_str(c);
+            }
+        };
+
+        self.bus.senders.send_to_server(ServerInstruction::RenameSession(old_session_name, session_name)).unwrap();
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
@@ -1253,6 +1277,10 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+            }
+            ScreenInstruction::RenameSession(c) => {
+                screen.update_active_session_name(c);
+                screen.render();
             }
         }
     }

@@ -35,6 +35,7 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    RenameSession(String),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -43,10 +44,10 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::SwitchToMode(input_mode) => {
-                ClientInstruction::SwitchToMode(input_mode)
+            ServerToClientMsg::SwitchToMode(input_mode) => ClientInstruction::SwitchToMode(input_mode),
+            ServerToClientMsg::RenameSession(s) => ClientInstruction::RenameSession(s),
             }
-        }
+        
     }
 }
 
@@ -58,6 +59,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
+            ClientInstruction::RenameSession(_) => ClientContext::RenameSession
         }
     }
 }
@@ -322,6 +324,9 @@ pub fn start_client(
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
+            }
+            ClientInstruction::RenameSession(session_name) => {
+                envs::set_session_name(session_name);
             }
         }
     }

@@ -1,6 +1,5 @@
 mod commands;
 mod install;
-mod sessions;
 #[cfg(test)]
 mod tests;
 

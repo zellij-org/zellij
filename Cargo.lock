@@ -2928,6 +2928,7 @@ dependencies = [
  "strip-ansi-escapes",
  "structopt",
  "strum",
+ "suggestion",
  "tempfile",
  "termion",
  "thiserror",

@@ -354,7 +354,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             colored_elements,
             separator,
         ),
-        InputMode::Session => key_indicators(
+        InputMode::Session | InputMode::RenameSession => key_indicators(
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),

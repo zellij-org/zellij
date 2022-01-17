@@ -272,6 +272,7 @@ pub enum ScreenContext {
     RemoveOverlay,
     ConfirmPrompt,
     DenyPrompt,
+    RenameSession,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -308,6 +309,7 @@ pub enum ClientContext {
     Render,
     ServerError,
     SwitchToMode,
+    RenameSession,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.

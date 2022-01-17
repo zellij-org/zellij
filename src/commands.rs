@@ -1,6 +1,5 @@
 use crate::install::populate_data_dir;
-use crate::sessions::kill_session as kill_session_impl;
-use crate::sessions::{
+use zellij_utils::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
     get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
     session_exists, ActiveSession, rename_session
@@ -14,13 +13,14 @@ use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
+use zellij_utils::sessions::kill_session as kill_session_impl;
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
     setup::{get_default_data_dir, Setup},
 };
 
-pub(crate) use crate::sessions::list_sessions;
+pub(crate) use zellij_utils::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
@@ -70,12 +70,23 @@ pub(crate) fn rename_current_or_target_session(target_session: Option<String>, n
     match target_session {
         Some(target_session) => {
             assert_session(&target_session);
-            rename_session(target_session, new_session_name);
-            process::exit(0);
+            match rename_session(target_session, new_session_name) {
+                Ok(_) => process::exit(0),
+                Err(e) => {
+                    eprintln!("{}", e);
+                    process::exit(1);
+                }
+            }
         }
         None => {
             if let Ok(curr_session) = envs::get_session_name() {
-                rename_session(curr_session, new_session_name);
+                match rename_session(curr_session, new_session_name) {
+                    Ok(_) => process::exit(0),
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    }
+                }
             } else {
                 eprintln!("there is no attached session, you need to specify the target session.");
                 process::exit(1);

@@ -3,14 +3,14 @@ use std::path::Path;
 use std::time::SystemTime;
 use std::{fs, io, process};
 use suggestion::Suggest;
-use zellij_utils::{
+use crate::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
 
-pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
+pub fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions = Vec::new();
@@ -28,7 +28,7 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<String>> {
+pub fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             let mut sessions_with_creation_date: Vec<(String, SystemTime)> = Vec::new();
@@ -53,7 +53,7 @@ pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<Strin
     }
 }
 
-pub(crate) fn rename_session(target_session: String, new_session_name: String) {
+pub fn rename_session(target_session: String, new_session_name: String) -> anyhow::Result<()> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
             if let Some(session) = files
@@ -63,14 +63,20 @@ pub(crate) fn rename_session(target_session: String, new_session_name: String) {
             {
                 match fs::rename(
                     session.path(),
-                    Path::new(&*ZELLIJ_SOCK_DIR).join(new_session_name),
+                    Path::new(&*ZELLIJ_SOCK_DIR).join(new_session_name.clone()),
                 ) {
-                    Ok(_) => (),
-                    Err(err) => eprintln!("Rename failed with err: {}", err),
-                };
+                    Ok(_) => {
+                        envs::set_session_name(new_session_name);
+                        Ok(())
+                    },
+                    Err(err) => Err(anyhow::Error::msg(format!("Rename failed with err: {}", err))),
+                }
+            }
+            else {
+                Err(anyhow::Error::msg("Failed reading zellij socket directory"))
             }
         }
-        _ => eprintln!("Session not found"),
+        _ => Err(anyhow::Error::msg("Session not found")),
     }
 }
 
@@ -89,7 +95,7 @@ fn assert_socket(name: &str) -> bool {
     }
 }
 
-pub(crate) fn print_sessions(sessions: Vec<String>) {
+pub fn print_sessions(sessions: Vec<String>) {
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     sessions.iter().for_each(|session| {
         let suffix = if curr_session == *session {
@@ -101,7 +107,7 @@ pub(crate) fn print_sessions(sessions: Vec<String>) {
     })
 }
 
-pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
+pub fn print_sessions_with_index(sessions: Vec<String>) {
     let curr_session = envs::get_session_name().unwrap_or_else(|_| "".into());
     for (i, session) in sessions.iter().enumerate() {
         let suffix = if curr_session == *session {
@@ -113,13 +119,13 @@ pub(crate) fn print_sessions_with_index(sessions: Vec<String>) {
     }
 }
 
-pub(crate) enum ActiveSession {
+pub enum ActiveSession {
     None,
     One(String),
     Many,
 }
 
-pub(crate) fn get_active_session() -> ActiveSession {
+pub fn get_active_session() -> ActiveSession {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => ActiveSession::None,
         Ok(mut sessions) if sessions.len() == 1 => ActiveSession::One(sessions.pop().unwrap()),
@@ -131,7 +137,7 @@ pub(crate) fn get_active_session() -> ActiveSession {
     }
 }
 
-pub(crate) fn kill_session(name: &str) {
+pub fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
@@ -144,7 +150,7 @@ pub(crate) fn kill_session(name: &str) {
     };
 }
 
-pub(crate) fn list_sessions() {
+pub fn list_sessions() {
     let exit_code = match get_sessions() {
         Ok(sessions) if !sessions.is_empty() => {
             print_sessions(sessions);
@@ -162,7 +168,7 @@ pub(crate) fn list_sessions() {
     process::exit(exit_code);
 }
 
-pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+pub fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     return match get_sessions() {
         Ok(sessions) if sessions.iter().any(|s| s == name) => Ok(true),
         Ok(_) => Ok(false),
@@ -170,7 +176,7 @@ pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
     };
 }
 
-pub(crate) fn assert_session(name: &str) {
+pub fn assert_session(name: &str) {
     match session_exists(name) {
         Ok(result) => {
             if result {
@@ -189,7 +195,7 @@ pub(crate) fn assert_session(name: &str) {
     process::exit(1);
 }
 
-pub(crate) fn assert_session_ne(name: &str) {
+pub fn assert_session_ne(name: &str) {
     match session_exists(name) {
         Ok(result) if !result => return,
         Ok(_) => println!("Session with name {:?} already exists. Use attach command to connect to it or specify a different name.", name),
