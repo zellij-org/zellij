@@ -15,7 +15,7 @@ pub fn get_session_name() -> Result<String> {
     Ok(var(SESSION_NAME_ENV_KEY)?)
 }
 pub fn set_session_name(v: String) {
-    set_var(SESSION_NAME_ENV_KEY, v); 
+    set_var(SESSION_NAME_ENV_KEY, v);
 }
 
 pub const SOCKET_DIR_ENV_KEY: &str = "ZELLIJ_SOCKET_DIR";

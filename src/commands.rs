@@ -1,9 +1,4 @@
 use crate::install::populate_data_dir;
-use zellij_utils::sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions,
-    get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession, rename_session
-};
 use dialoguer::Confirm;
 use std::path::PathBuf;
 use std::process;
@@ -14,6 +9,11 @@ use zellij_server::start_server as start_server_impl;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::sessions::kill_session as kill_session_impl;
+use zellij_utils::sessions::{
+    assert_session, assert_session_ne, get_active_session, get_sessions,
+    get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
+    rename_session, session_exists, ActiveSession,
+};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
@@ -66,7 +66,10 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
     }
 }
 
-pub(crate) fn rename_current_or_target_session(target_session: Option<String>, new_session_name: String) {
+pub(crate) fn rename_current_or_target_session(
+    target_session: Option<String>,
+    new_session_name: String,
+) {
     match target_session {
         Some(target_session) => {
             assert_session(&target_session);

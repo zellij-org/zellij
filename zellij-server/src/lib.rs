@@ -20,8 +20,8 @@ use std::{
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
-use zellij_utils::zellij_tile;
 use zellij_utils::sessions;
+use zellij_utils::zellij_tile;
 
 use wasmer::Store;
 use zellij_tile::data::{Event, Palette, PluginCapabilities};
@@ -480,11 +480,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
             }
             ServerInstruction::RenameSession(target_session_name, new_session_name) => {
-                let rename_res = sessions::rename_session(target_session_name, new_session_name.clone());
+                let rename_res =
+                    sessions::rename_session(target_session_name, new_session_name.clone());
                 // TODO: only rename client env when it's successful
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
-                    os_input.send_to_client(client_id, ServerToClientMsg::RenameSession(new_session_name.clone()));
+                    os_input.send_to_client(
+                        client_id,
+                        ServerToClientMsg::RenameSession(new_session_name.clone()),
+                    );
                 }
             }
             ServerInstruction::Render(mut output) => {

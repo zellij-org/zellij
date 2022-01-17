@@ -44,10 +44,11 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::Exit(e) => ClientInstruction::Exit(e),
             ServerToClientMsg::Render(buffer) => ClientInstruction::Render(buffer),
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
-            ServerToClientMsg::SwitchToMode(input_mode) => ClientInstruction::SwitchToMode(input_mode),
-            ServerToClientMsg::RenameSession(s) => ClientInstruction::RenameSession(s),
+            ServerToClientMsg::SwitchToMode(input_mode) => {
+                ClientInstruction::SwitchToMode(input_mode)
             }
-        
+            ServerToClientMsg::RenameSession(s) => ClientInstruction::RenameSession(s),
+        }
     }
 }
 
@@ -59,7 +60,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
-            ClientInstruction::RenameSession(_) => ClientContext::RenameSession
+            ClientInstruction::RenameSession(_) => ClientContext::RenameSession,
         }
     }
 }

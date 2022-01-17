@@ -620,7 +620,13 @@ impl Screen {
             }
         };
 
-        self.bus.senders.send_to_server(ServerInstruction::RenameSession(old_session_name, session_name)).unwrap();
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::RenameSession(
+                old_session_name,
+                session_name,
+            ))
+            .unwrap();
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) {

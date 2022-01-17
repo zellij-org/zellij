@@ -8,9 +8,9 @@ pub mod ipc;
 pub mod logging;
 pub mod pane_size;
 pub mod position;
+pub mod sessions;
 pub mod setup;
 pub mod shared;
-pub mod sessions;
 
 pub use async_std;
 pub use interprocess;

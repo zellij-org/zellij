@@ -1,14 +1,14 @@
-use std::os::unix::fs::FileTypeExt;
-use std::path::Path;
-use std::time::SystemTime;
-use std::{fs, io, process};
-use suggestion::Suggest;
 use crate::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, IpcSenderWithContext},
 };
+use std::os::unix::fs::FileTypeExt;
+use std::path::Path;
+use std::time::SystemTime;
+use std::{fs, io, process};
+use suggestion::Suggest;
 
 pub fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
@@ -68,11 +68,13 @@ pub fn rename_session(target_session: String, new_session_name: String) -> anyho
                     Ok(_) => {
                         envs::set_session_name(new_session_name);
                         Ok(())
-                    },
-                    Err(err) => Err(anyhow::Error::msg(format!("Rename failed with err: {}", err))),
+                    }
+                    Err(err) => Err(anyhow::Error::msg(format!(
+                        "Rename failed with err: {}",
+                        err
+                    ))),
                 }
-            }
-            else {
+            } else {
                 Err(anyhow::Error::msg("Failed reading zellij socket directory"))
             }
         }
