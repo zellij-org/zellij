@@ -47,10 +47,7 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         clients: impl Iterator<Item = ClientId>,
     ) {
-        log::info!("render_pane_contents_to_multiple_clients function: {:?}", self.pane.pid());
         if let Some(vte_output) = self.pane.render(None) {
-            log::info!("can has vte: {:?}, x/y: {:?}/{:?}", self.pane.pid(), self.pane.x(), self.pane.y());
-            log::info!("");
             // FIXME: Use Termion for cursor and style clearing?
             self.output.push_str_to_multiple_clients(
                 &format!(

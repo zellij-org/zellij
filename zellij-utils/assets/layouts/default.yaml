@@ -2,7 +2,7 @@
 template:
   direction: Horizontal
   floating_pane:
-    pane_name: "scratch terminal"
+    sticky: true
   parts:
     - direction: Vertical
       borderless: true

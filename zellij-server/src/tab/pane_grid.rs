@@ -1647,7 +1647,6 @@ impl<'a> PaneGrid<'a> {
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
         // true => successfully filled space over pane
         // false => didn't succeed, so didn't do anything
-        log::info!("fill_space_over_pane");
         let (freed_width, freed_height) = {
             let panes = self.panes.borrow_mut();
             let pane_to_close = panes.get(&id).unwrap();
@@ -3586,7 +3585,6 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
         // true => successfully filled space over pane
         // false => didn't succeed, so didn't do anything
-        log::info!("fill_space_over_pane");
         let (freed_width, freed_height) = {
             let panes = self.panes.borrow_mut();
             let pane_to_close = panes.get(&id).unwrap();

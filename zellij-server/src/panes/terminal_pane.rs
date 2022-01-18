@@ -98,8 +98,6 @@ impl Pane for TerminalPane {
             self.vte_parser.advance(&mut self.grid, byte);
         }
         self.set_should_render(true);
-        log::info!("handle_pty_bytes grid after {:?}: {:?}", self.pid(), self.grid);
-        log::info!("");
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)

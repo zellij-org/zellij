@@ -134,6 +134,8 @@ pub struct FloatingPane {
     pub pane_name: Option<String>,
     #[serde(default)]
     pub run: Option<Run>,
+    #[serde(default)]
+    pub sticky: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

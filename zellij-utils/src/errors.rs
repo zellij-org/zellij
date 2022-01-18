@@ -207,6 +207,7 @@ pub enum ScreenContext {
     HandlePtyBytes,
     Render,
     NewPane,
+    ReopenPane,
     ToggleFloatingPanes,
     HorizontalSplit,
     VerticalSplit,
@@ -284,6 +285,7 @@ pub enum PtyContext {
     UpdateActivePane,
     NewTab,
     ClosePane,
+    ReopenPane,
     CloseTab,
     Exit,
 }

@@ -328,7 +328,6 @@ impl Pane for PluginPane {
         unimplemented!();
     }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
-        log::info!("plugin pane send left click plugin instruction");
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),

@@ -24,6 +24,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
+        options::Options,
     },
     logging::debug_to_file,
 };
@@ -45,6 +46,7 @@ pub(crate) enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
+    ReopenPane(PaneId, Option<TerminalAction>, ClientOrTabIndex),
     CloseTab(Vec<PaneId>),
     Exit,
 }
@@ -57,6 +59,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
+            PtyInstruction::ReopenPane(..) => PtyContext::ReopenPane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
@@ -74,7 +77,12 @@ pub(crate) struct Pty {
 
 use std::convert::TryFrom;
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
+pub(crate) fn pty_thread_main(
+    mut pty: Pty,
+    layout: Box<LayoutFromYaml>,
+    config_options: Box<Options>,
+) {
+    let default_shell = config_options.default_shell;
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -149,6 +157,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+            }
+            PtyInstruction::ReopenPane(previous_id, terminal_action, client_or_tab_index) => {
+                pty.close_pane(previous_id);
+                let terminal_action = terminal_action.or_else(|| {
+                    default_shell.clone().map(|shell| {
+                        TerminalAction::RunCommand(RunCommand {
+                            command: shell,
+                            ..Default::default()
+                        })
+                    })
+                });
+                let new_pid = pty.spawn_terminal(terminal_action, client_or_tab_index);
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::ReopenPane(
+                        previous_id,
+                        PaneId::Terminal(new_pid),
+                        client_or_tab_index,
+                    ))
                     .unwrap();
             }
             PtyInstruction::CloseTab(ids) => {
