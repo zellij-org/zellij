@@ -1,0 +1,17 @@
+# not super color accurate but its my hack of tokyonight from https://github.com/enkia/tokyo-night-vscode-theme
+# changes are welcomed
+
+themes:
+  tokyonights:
+    gray: [86,95,137] #565f89
+    fg: [169,177,214]
+    bg: [26,27,38]
+    black: [65,72,104]
+    red: [247,118,142]
+    green: [158,206,106]
+    yellow: [242,191,0]
+    blue: [122,162,247]
+    magenta:  [187,154,247]
+    cyan: [42,195,222]
+    white: [213,214,219]
+    orange: [255,158,100]
