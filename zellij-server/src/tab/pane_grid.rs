@@ -3424,10 +3424,10 @@ impl<'a> FloatingPaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_left_of(Box::as_ref(current_pane))
+                c.is_left_of(Box::as_ref(current_pane))
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.active_at())
+            .max_by_key(|(_, (_, c))| c.x())
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3444,10 +3444,10 @@ impl<'a> FloatingPaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_below(Box::as_ref(current_pane))
+                c.is_below(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.active_at())
+            .min_by_key(|(_, (_, c))| c.y())
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3464,10 +3464,10 @@ impl<'a> FloatingPaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_above(Box::as_ref(current_pane))
+                c.is_above(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.active_at())
+            .max_by_key(|(_, (_, c))| c.y())
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3484,10 +3484,10 @@ impl<'a> FloatingPaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_right_of(Box::as_ref(current_pane))
+                c.is_right_of(Box::as_ref(current_pane))
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.active_at())
+            .min_by_key(|(_, (_, c))| c.x())
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index

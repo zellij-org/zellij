@@ -213,14 +213,26 @@ pub trait Pane {
     fn bottom_boundary_y_coords(&self) -> usize {
         self.y() + self.rows()
     }
+    fn is_right_of(&self, other: &dyn Pane) -> bool {
+        self.x() > other.x()
+    }
     fn is_directly_right_of(&self, other: &dyn Pane) -> bool {
         self.x() == other.x() + other.cols()
+    }
+    fn is_left_of(&self, other: &dyn Pane) -> bool {
+        self.x() < other.x()
     }
     fn is_directly_left_of(&self, other: &dyn Pane) -> bool {
         self.x() + self.cols() == other.x()
     }
+    fn is_below(&self, other: &dyn Pane) -> bool {
+        self.y() > other.y()
+    }
     fn is_directly_below(&self, other: &dyn Pane) -> bool {
         self.y() == other.y() + other.rows()
+    }
+    fn is_above(&self, other: &dyn Pane) -> bool {
+        self.y() < other.y()
     }
     fn is_directly_above(&self, other: &dyn Pane) -> bool {
         self.y() + self.rows() == other.y()
@@ -1561,246 +1573,456 @@ impl Tab {
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
-        if !self.has_selectable_panes() {
-            return false;
+        if self.show_floating_panes {
+            let active_pane_id = self.active_floating_panes.get(&client_id).copied();
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+                let next_index = floating_pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .floating_panes
+                            .get_mut(self.active_floating_panes.get(&client_id).unwrap())
+                            .unwrap();
+
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+
+                        let next_active_pane = self.floating_panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
+
+                        if self.session_is_mirrored {
+                            // move all clients
+                            let connected_clients: Vec<ClientId> =
+                                self.connected_clients.iter().copied().collect();
+                            for client_id in connected_clients {
+                                self.active_floating_panes.insert(client_id, p);
+                            }
+                        } else {
+                            self.active_floating_panes.insert(client_id, p);
+                        }
+
+                        return true;
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                    }
+                }
+                None => {
+                    // TODO: can this happen?
+                    self.active_floating_panes.clear();
+                }
+            }
+            false
+        } else {
+            if !self.has_selectable_panes() {
+                return false;
+            }
+            if self.fullscreen_is_active {
+                return false;
+            }
+            let active_pane_id = self.get_active_pane_id(client_id);
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+                let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .panes
+                            .get_mut(self.active_panes.get(&client_id).unwrap())
+                            .unwrap();
+
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+
+                        let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
+
+                        if self.session_is_mirrored {
+                            // move all clients
+                            let connected_clients: Vec<ClientId> =
+                                self.connected_clients.iter().copied().collect();
+                            for client_id in connected_clients {
+                                self.active_panes.insert(client_id, p);
+                            }
+                        } else {
+                            self.active_panes.insert(client_id, p);
+                        }
+
+                        return true;
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_panes.insert(client_id, updated_active_pane);
+                    }
+                }
+                None => {
+                    // TODO: can this happen?
+                    self.active_panes.clear();
+                }
+            }
+
+            false
         }
-        if self.fullscreen_is_active {
-            return false;
-        }
-        let active_pane_id = self.get_active_pane_id(client_id);
-        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
-            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
-            let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
-            match next_index {
-                Some(p) => {
-                    // render previously active pane so that its frame does not remain actively
-                    // colored
-                    let previously_active_pane = self
-                        .panes
-                        .get_mut(self.active_panes.get(&client_id).unwrap())
-                        .unwrap();
+    }
+    pub fn move_focus_down(&mut self, client_id: ClientId) {
+        if self.show_floating_panes {
+            let active_pane_id = self.active_floating_panes.get(&client_id).copied();
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+                let next_index = floating_pane_grid.next_selectable_pane_id_below(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .floating_panes
+                            .get_mut(self.active_floating_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.floating_panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
 
-                    previously_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    previously_active_pane.render_full_viewport();
-
-                    let next_active_pane = self.panes.get_mut(&p).unwrap();
-                    next_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    next_active_pane.render_full_viewport();
-
+                        Some(p)
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
                     if self.session_is_mirrored {
                         // move all clients
                         let connected_clients: Vec<ClientId> =
                             self.connected_clients.iter().copied().collect();
                         for client_id in connected_clients {
-                            self.active_panes.insert(client_id, p);
+                            self.active_floating_panes.insert(client_id, updated_active_pane);
                         }
                     } else {
-                        self.active_panes.insert(client_id, p);
+                        self.active_floating_panes.insert(client_id, updated_active_pane);
                     }
-
-                    return true;
                 }
-                None => Some(active_pane_id),
+                None => {
+                    // TODO: can this happen?
+                    self.active_floating_panes.clear();
+                }
             }
         } else {
-            active_pane_id
-        };
-        match updated_active_pane {
-            Some(updated_active_pane) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
-                    self.active_panes.insert(client_id, updated_active_pane);
-                }
+            if !self.has_selectable_panes() {
+                return;
             }
-            None => {
-                // TODO: can this happen?
-                self.active_panes.clear();
+            if self.fullscreen_is_active {
+                return;
             }
-        }
+            let active_pane_id = self.get_active_pane_id(client_id);
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+                let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .panes
+                            .get_mut(self.active_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
 
-        false
-    }
-    pub fn move_focus_down(&mut self, client_id: ClientId) {
-        if !self.has_selectable_panes() {
-            return;
-        }
-        if self.fullscreen_is_active {
-            return;
-        }
-        let active_pane_id = self.get_active_pane_id(client_id);
-        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
-            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
-            let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
-            match next_index {
-                Some(p) => {
-                    // render previously active pane so that its frame does not remain actively
-                    // colored
-                    let previously_active_pane = self
-                        .panes
-                        .get_mut(self.active_panes.get(&client_id).unwrap())
-                        .unwrap();
-                    previously_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    previously_active_pane.render_full_viewport();
-                    let next_active_pane = self.panes.get_mut(&p).unwrap();
-                    next_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    next_active_pane.render_full_viewport();
-
-                    Some(p)
+                        Some(p)
+                    }
+                    None => Some(active_pane_id),
                 }
-                None => Some(active_pane_id),
-            }
-        } else {
-            active_pane_id
-        };
-        match updated_active_pane {
-            Some(updated_active_pane) => {
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, updated_active_pane);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, updated_active_pane);
                     }
-                } else {
-                    self.active_panes.insert(client_id, updated_active_pane);
                 }
-            }
-            None => {
-                // TODO: can this happen?
-                self.active_panes.clear();
+                None => {
+                    // TODO: can this happen?
+                    self.active_panes.clear();
+                }
             }
         }
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) {
-        if !self.has_selectable_panes() {
-            return;
-        }
-        if self.fullscreen_is_active {
-            return;
-        }
-        let active_pane_id = self.get_active_pane_id(client_id);
-        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
-            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
-            let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
-            match next_index {
-                Some(p) => {
-                    // render previously active pane so that its frame does not remain actively
-                    // colored
-                    let previously_active_pane = self
-                        .panes
-                        .get_mut(self.active_panes.get(&client_id).unwrap())
-                        .unwrap();
-                    previously_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    previously_active_pane.render_full_viewport();
-                    let next_active_pane = self.panes.get_mut(&p).unwrap();
-                    next_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    next_active_pane.render_full_viewport();
+        if self.show_floating_panes {
+            let active_pane_id = self.active_floating_panes.get(&client_id).copied();
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+                let next_index = floating_pane_grid.next_selectable_pane_id_above(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .floating_panes
+                            .get_mut(self.active_floating_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.floating_panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
 
-                    Some(p)
+                        Some(p)
+                    }
+                    None => Some(active_pane_id),
                 }
-                None => Some(active_pane_id),
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_floating_panes.insert(client_id, updated_active_pane);
+                        }
+                    } else {
+                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                    }
+                }
+                None => {
+                    // TODO: can this happen?
+                    self.active_floating_panes.clear();
+                }
             }
         } else {
-            active_pane_id
-        };
-        match updated_active_pane {
-            Some(updated_active_pane) => {
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+            if !self.has_selectable_panes() {
+                return;
+            }
+            if self.fullscreen_is_active {
+                return;
+            }
+            let active_pane_id = self.get_active_pane_id(client_id);
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+                let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .panes
+                            .get_mut(self.active_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
+
+                        Some(p)
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, updated_active_pane);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, updated_active_pane);
                     }
-                } else {
-                    self.active_panes.insert(client_id, updated_active_pane);
                 }
-            }
-            None => {
-                // TODO: can this happen?
-                self.active_panes.clear();
+                None => {
+                    // TODO: can this happen?
+                    self.active_panes.clear();
+                }
             }
         }
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
-        if !self.has_selectable_panes() {
-            return false;
-        }
-        if self.fullscreen_is_active {
-            return false;
-        }
-        let active_pane_id = self.get_active_pane_id(client_id);
-        let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
-            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
-            let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
-            match next_index {
-                Some(p) => {
-                    // render previously active pane so that its frame does not remain actively
-                    // colored
-                    let previously_active_pane = self
-                        .panes
-                        .get_mut(self.active_panes.get(&client_id).unwrap())
-                        .unwrap();
-                    previously_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    previously_active_pane.render_full_viewport();
-                    let next_active_pane = self.panes.get_mut(&p).unwrap();
-                    next_active_pane.set_should_render(true);
-                    // we render the full viewport to remove any ui elements that might have been
-                    // there before (eg. another user's cursor)
-                    next_active_pane.render_full_viewport();
+        if self.show_floating_panes {
+            let active_pane_id = self.active_floating_panes.get(&client_id).copied();
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+                let next_index = floating_pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .floating_panes
+                            .get_mut(self.active_floating_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.floating_panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
 
+                        Some(p)
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
                     if self.session_is_mirrored {
                         // move all clients
                         let connected_clients: Vec<ClientId> =
                             self.connected_clients.iter().copied().collect();
                         for client_id in connected_clients {
-                            self.active_panes.insert(client_id, p);
+                            self.active_floating_panes.insert(client_id, updated_active_pane);
                         }
                     } else {
-                        self.active_panes.insert(client_id, p);
+                        self.active_floating_panes.insert(client_id, updated_active_pane);
                     }
-                    return true;
                 }
-                None => Some(active_pane_id),
+                None => {
+                    // TODO: can this happen?
+                    self.active_floating_panes.clear();
+                }
             }
+            false
         } else {
-            active_pane_id
-        };
-        match updated_active_pane {
-            Some(updated_active_pane) => {
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+            if !self.has_selectable_panes() {
+                return false;
+            }
+            if self.fullscreen_is_active {
+                return false;
+            }
+            let active_pane_id = self.get_active_pane_id(client_id);
+            let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
+                let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+                let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+                match next_index {
+                    Some(p) => {
+                        // render previously active pane so that its frame does not remain actively
+                        // colored
+                        let previously_active_pane = self
+                            .panes
+                            .get_mut(self.active_panes.get(&client_id).unwrap())
+                            .unwrap();
+                        previously_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        previously_active_pane.render_full_viewport();
+                        let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        next_active_pane.set_should_render(true);
+                        // we render the full viewport to remove any ui elements that might have been
+                        // there before (eg. another user's cursor)
+                        next_active_pane.render_full_viewport();
+
+                        if self.session_is_mirrored {
+                            // move all clients
+                            let connected_clients: Vec<ClientId> =
+                                self.connected_clients.iter().copied().collect();
+                            for client_id in connected_clients {
+                                self.active_panes.insert(client_id, p);
+                            }
+                        } else {
+                            self.active_panes.insert(client_id, p);
+                        }
+                        return true;
+                    }
+                    None => Some(active_pane_id),
+                }
+            } else {
+                active_pane_id
+            };
+            match updated_active_pane {
+                Some(updated_active_pane) => {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, updated_active_pane);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, updated_active_pane);
                     }
-                } else {
-                    self.active_panes.insert(client_id, updated_active_pane);
+                }
+                None => {
+                    // TODO: can this happen?
+                    self.active_panes.clear();
                 }
             }
-            None => {
-                // TODO: can this happen?
-                self.active_panes.clear();
-            }
+            false
         }
-        false
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
