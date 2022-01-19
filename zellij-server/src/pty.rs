@@ -46,7 +46,7 @@ pub(crate) enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
-    ReopenPane(PaneId, Option<TerminalAction>, ClientOrTabIndex),
+    ReopenPane(PaneId, Option<TerminalAction>, bool, ClientOrTabIndex), // bool => should_close_previous_pane
     CloseTab(Vec<PaneId>),
     Exit,
 }
@@ -159,8 +159,10 @@ pub(crate) fn pty_thread_main(
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
             }
-            PtyInstruction::ReopenPane(previous_id, terminal_action, client_or_tab_index) => {
-                pty.close_pane(previous_id);
+            PtyInstruction::ReopenPane(previous_id, terminal_action, should_close_previous_pane, client_or_tab_index) => {
+                if should_close_previous_pane {
+                    pty.close_pane(previous_id);
+                }
                 let terminal_action = terminal_action.or_else(|| {
                     default_shell.clone().map(|shell| {
                         TerminalAction::RunCommand(RunCommand {

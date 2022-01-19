@@ -226,6 +226,12 @@ fn route_action(
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
+        Action::TogglePaneEmbedOrFloating => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(client_id))
+                .unwrap();
+        }
         Action::ToggleFloatingPanes => {
             session
                 .senders

@@ -1,4 +1,4 @@
-use crate::ui::boundaries::{boundary_type, double_boundary_type};
+use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
@@ -36,7 +36,6 @@ pub struct FrameParams {
     pub colors: Palette,
     pub color: Option<PaletteColor>,
     pub other_cursors_exist_in_session: bool,
-    pub render_double_frame: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -50,7 +49,6 @@ pub struct PaneFrame {
     pub is_main_client: bool,
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
-    pub render_double_frame: bool,
 }
 
 impl PaneFrame {
@@ -70,7 +68,6 @@ impl PaneFrame {
             is_main_client: frame_params.is_main_client,
             other_focused_clients: frame_params.other_focused_clients,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
-            render_double_frame: frame_params.render_double_frame,
         }
     }
     fn client_cursor(&self, client_id: ClientId) -> String {
@@ -110,16 +107,8 @@ impl PaneFrame {
         }
     }
     fn render_my_focus(&self, max_length: usize) -> Option<(String, usize)> {
-        let left_separator = if self.render_double_frame {
-            color_string(double_boundary_type::VERTICAL_LEFT, self.color )
-        } else {
-            color_string(boundary_type::VERTICAL_LEFT, self.color)
-        };
-        let right_separator = if self.render_double_frame {
-            color_string(double_boundary_type::VERTICAL_RIGHT, self.color )
-        } else {
-            color_string(boundary_type::VERTICAL_RIGHT, self.color)
-        };
+        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
+        let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS";
         let full_indication = format!(
             "{} {} {}",
@@ -145,18 +134,8 @@ impl PaneFrame {
         }
     }
     fn render_my_and_others_focus(&self, max_length: usize) -> Option<(String, usize)> {
-//         let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
-//         let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
-        let left_separator = if self.render_double_frame {
-            color_string(double_boundary_type::VERTICAL_LEFT, self.color)
-        } else {
-            color_string(boundary_type::VERTICAL_LEFT, self.color)
-        };
-        let right_separator = if self.render_double_frame {
-            color_string(double_boundary_type::VERTICAL_RIGHT, self.color)
-        } else {
-            color_string(boundary_type::VERTICAL_RIGHT, self.color)
-        };
+        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
+        let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS AND:";
         let short_indication_text = "+";
         let mut full_indication = color_string(full_indication_text, self.color);
@@ -190,13 +169,7 @@ impl PaneFrame {
         }
     }
     fn render_other_focused_users(&self, max_length: usize) -> Option<(String, usize)> {
-//         let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
-//         let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
-        let left_separator = if self.render_double_frame {
-            color_string(double_boundary_type::VERTICAL_LEFT, self.color)
-        } else {
-            color_string(boundary_type::VERTICAL_LEFT, self.color)
-        };
+        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
         let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = if self.other_focused_clients.len() == 1 {
             "FOCUSED USER:"
@@ -333,19 +306,9 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                // title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::TOP_LEFT, self.color))
-                } else {
-                    title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color))
-                };
+                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                // title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::TOP_RIGHT, self.color))
-                } else {
-                    title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color))
-                };
+                title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
             } else if col == left_side_start_position {
                 title_line.push_str(left_side);
                 col += left_side_len;
@@ -359,13 +322,7 @@ impl PaneFrame {
                 col += right_side_len;
                 continue;
             } else {
-                // title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::HORIZONTAL, self.color))
-                } else {
-                    title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color))
-                };
-                // TODO: BETTER
+                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -389,19 +346,9 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                // title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::TOP_LEFT, self.color))
-                } else {
-                    title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color))
-                };
+                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                // title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::TOP_RIGHT, self.color));
-                } else {
-                    title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
-                }
+                title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
             } else if col == left_side_start_position {
                 title_line.push_str(left_side);
                 col += *left_side_len;
@@ -411,13 +358,7 @@ impl PaneFrame {
                 col += *middle_len;
                 continue;
             } else {
-                // title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::HORIZONTAL, self.color));
-                } else {
-                    title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
-                }
-                // TODO: BETTER
+                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -434,12 +375,7 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                // title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::TOP_LEFT, self.color));
-                } else {
-                    title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
-                }
+                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
                 title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
             } else if col == middle_start_position {
@@ -447,13 +383,7 @@ impl PaneFrame {
                 col += *middle_len;
                 continue;
             } else {
-                // title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
-                if self.render_double_frame {
-                    title_line.push_str(&color_string(double_boundary_type::HORIZONTAL, self.color));
-                } else {
-                    title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
-                }
-                // TODO: BETTER
+                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -469,27 +399,12 @@ impl PaneFrame {
         right_side: &str,
         right_side_len: &usize,
     ) -> String {
-//         let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-//         let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
-        let left_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_LEFT, self.color)
-        } else {
-            color_string(boundary_type::TOP_LEFT, self.color)
-        };
-        let right_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_RIGHT, self.color)
-        } else {
-            color_string(boundary_type::TOP_RIGHT, self.color)
-        };
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle = String::new();
         for _ in (left_side_len + right_side_len)..total_title_length {
-            // middle.push_str(boundary_type::HORIZONTAL);
-            if self.render_double_frame {
-                middle.push_str(double_boundary_type::HORIZONTAL);
-            } else {
-                middle.push_str(boundary_type::HORIZONTAL);
-            }
+            middle.push_str(boundary_type::HORIZONTAL);
         }
         format!(
             "{}{}{}{}{}",
@@ -501,28 +416,12 @@ impl PaneFrame {
         )
     }
     fn left_only_title_line(&self, left_side: &str, left_side_len: &usize) -> String {
-//         let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-//         let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
-        let left_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_LEFT, self.color)
-        } else {
-            color_string(boundary_type::TOP_LEFT, self.color)
-        };
-        // let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
-        let right_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_RIGHT, self.color)
-        } else {
-            color_string(boundary_type::TOP_RIGHT, self.color)
-        };
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in *left_side_len..total_title_length {
-            // middle_padding.push_str(boundary_type::HORIZONTAL);
-            if self.render_double_frame {
-                middle_padding.push_str(double_boundary_type::HORIZONTAL);
-            } else {
-                middle_padding.push_str(boundary_type::HORIZONTAL);
-            }
+            middle_padding.push_str(boundary_type::HORIZONTAL);
         }
         format!(
             "{}{}{}{}",
@@ -533,27 +432,12 @@ impl PaneFrame {
         )
     }
     fn empty_title_line(&self) -> String {
-//         let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-//         let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
-        let left_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_LEFT, self.color)
-        } else {
-            color_string(boundary_type::TOP_LEFT, self.color)
-        };
-        let right_boundary = if self.render_double_frame {
-            color_string(double_boundary_type::TOP_RIGHT, self.color)
-        } else {
-            color_string(boundary_type::TOP_RIGHT, self.color)
-        };
+        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
+        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in 0..total_title_length {
-            // middle_padding.push_str(boundary_type::HORIZONTAL);
-            if self.render_double_frame {
-                middle_padding.push_str(double_boundary_type::HORIZONTAL)
-            } else {
-                middle_padding.push_str(boundary_type::HORIZONTAL)
-            };
+            middle_padding.push_str(boundary_type::HORIZONTAL);
         }
         format!(
             "{}{}{}",
@@ -637,24 +521,12 @@ impl PaneFrame {
                 for col in self.geom.x..(self.geom.x + self.geom.cols) {
                     let boundary = if col == self.geom.x {
                         // bottom left corner
-                        if self.render_double_frame {
-                            double_boundary_type::BOTTOM_LEFT
-                        } else {
-                            boundary_type::BOTTOM_LEFT
-                        }
+                        boundary_type::BOTTOM_LEFT
                     } else if col == self.geom.x + self.geom.cols - 1 {
                         // bottom right corner
-                        if self.render_double_frame {
-                            double_boundary_type::BOTTOM_RIGHT
-                        } else {
-                            boundary_type::BOTTOM_RIGHT
-                        }
+                        boundary_type::BOTTOM_RIGHT
                     } else {
-                        if self.render_double_frame {
-                            double_boundary_type::HORIZONTAL
-                        } else {
-                            boundary_type::HORIZONTAL
-                        }
+                        boundary_type::HORIZONTAL
                     };
 
                     let boundary_rendered = color_string(boundary, self.color);
@@ -668,41 +540,22 @@ impl PaneFrame {
                     .unwrap();
                 }
             } else {
-                if self.render_double_frame {
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        row + 1, // +1 because goto is 1 indexed
-                        self.geom.x + 1,
-                        color_string(double_boundary_type::VERTICAL, self.color),
-                    )
-                    .unwrap(); // goto row/col + boundary character
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        row + 1, // +1 because goto is 1 indexed
-                        self.geom.x + self.geom.cols,
-                        color_string(double_boundary_type::VERTICAL, self.color),
-                    )
-                    .unwrap(); // goto row/col + boundary character
-                } else {
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        row + 1, // +1 because goto is 1 indexed
-                        self.geom.x + 1,
-                        color_string(boundary_type::VERTICAL, self.color),
-                    )
-                    .unwrap(); // goto row/col + boundary character
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        row + 1, // +1 because goto is 1 indexed
-                        self.geom.x + self.geom.cols,
-                        color_string(boundary_type::VERTICAL, self.color),
-                    )
-                    .unwrap(); // goto row/col + boundary character
-                }
+                write!(
+                    &mut vte_output,
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    row + 1, // +1 because goto is 1 indexed
+                    self.geom.x + 1,
+                    color_string(boundary_type::VERTICAL, self.color),
+                )
+                .unwrap(); // goto row/col + boundary character
+                write!(
+                    &mut vte_output,
+                    "\u{1b}[{};{}H\u{1b}[m{}",
+                    row + 1, // +1 because goto is 1 indexed
+                    self.geom.x + self.geom.cols,
+                    color_string(boundary_type::VERTICAL, self.color),
+                )
+                .unwrap(); // goto row/col + boundary character
             }
         }
         if self.is_main_client {

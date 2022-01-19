@@ -209,6 +209,7 @@ pub enum ScreenContext {
     NewPane,
     ReopenPane,
     ToggleFloatingPanes,
+    TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
     WriteCharacter,

@@ -26,7 +26,9 @@ keybinds:
           key: [Ctrl: 'q',]
         - action: [NewPane: ]
           key: [ Alt: 'n',]
-        - action: [ToggleFloatingPanes: ]
+        - action: [TogglePaneEmbedOrFloating: ] # TODO: in other modes too
+          key: [ Alt: 'b',]
+        - action: [ToggleFloatingPanes: ] # TODO: in other modes too
           key: [ Alt: 's',]
         - action: [MoveFocusOrTab: Left,]
           key: [ Alt: 'h',]

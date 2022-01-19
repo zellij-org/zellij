@@ -1771,6 +1771,78 @@ impl<'a> FloatingPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
+    pub fn resize_single_geom(&self, geom: &mut PaneGeom, space: Size) {
+        // TODO: combine with resize method somehow - this is almost identical
+        if space.cols > self.display_area.cols {
+            // expand
+            let width_difference = space.cols - self.display_area.cols;
+            geom.cols.set_inner(std::cmp::min(geom.cols.as_usize() + width_difference, self.viewport.cols - self.viewport.x));
+        } else if space.cols < self.display_area.cols {
+            // shrink
+            let width_difference = self.display_area.cols - space.cols;
+            if geom.cols.as_usize() - width_difference < MIN_TERMINAL_WIDTH {
+                geom.cols.set_inner(MIN_TERMINAL_WIDTH);
+                let move_left_by = width_difference.saturating_sub(geom.cols.as_usize().saturating_sub(MIN_TERMINAL_WIDTH));
+                geom.x = geom.x.saturating_sub(move_left_by);
+            } else {
+                geom.cols.set_inner(geom.cols.as_usize() - width_difference);
+            }
+        }
+        if space.rows > self.display_area.rows {
+            // expand
+            let height_difference = space.rows - self.display_area.rows;
+            geom.rows.set_inner(std::cmp::min(geom.rows.as_usize() + height_difference, self.viewport.rows - self.viewport.y));
+        } else if space.rows < self.display_area.rows {
+            // shrink
+            let height_difference = self.display_area.rows - space.rows;
+            if geom.rows.as_usize() - height_difference < MIN_TERMINAL_HEIGHT {
+                geom.rows.set_inner(MIN_TERMINAL_HEIGHT);
+                let move_up_by = height_difference.saturating_sub(geom.cols.as_usize().saturating_sub(MIN_TERMINAL_HEIGHT));
+                geom.y = geom.y.saturating_sub(move_up_by);
+            } else {
+                geom.rows.set_inner(geom.rows.as_usize() - height_difference);
+            }
+        }
+    }
+    pub fn resize(&mut self, space: Size) {
+        let mut panes = self.panes.borrow_mut();
+        for (_pane_id, pane) in panes.iter_mut() {
+            let mut new_geom = pane.current_geom();
+
+            if space.cols > self.display_area.cols {
+                // expand
+                let width_difference = space.cols - self.display_area.cols;
+                new_geom.cols.set_inner(std::cmp::min(pane.cols() + width_difference, self.viewport.cols - self.viewport.x));
+            } else if space.cols < self.display_area.cols {
+                // shrink
+                let width_difference = self.display_area.cols - space.cols;
+                if pane.cols() - width_difference < MIN_TERMINAL_WIDTH {
+                    new_geom.cols.set_inner(MIN_TERMINAL_WIDTH);
+                    let move_left_by = width_difference.saturating_sub(pane.cols().saturating_sub(MIN_TERMINAL_WIDTH));
+                    new_geom.x = new_geom.x.saturating_sub(move_left_by);
+                } else {
+                    new_geom.cols.set_inner(pane.cols() - width_difference);
+                }
+            }
+            if space.rows > self.display_area.rows {
+                // expand
+                let height_difference = space.rows - self.display_area.rows;
+                new_geom.rows.set_inner(std::cmp::min(pane.rows() + height_difference, self.viewport.rows - self.viewport.y));
+            } else if space.rows < self.display_area.rows {
+                // shrink
+                let height_difference = self.display_area.rows - space.rows;
+                if pane.rows() - height_difference < MIN_TERMINAL_HEIGHT {
+                    new_geom.rows.set_inner(MIN_TERMINAL_HEIGHT);
+                    let move_up_by = height_difference.saturating_sub(pane.cols().saturating_sub(MIN_TERMINAL_HEIGHT));
+                    new_geom.y = new_geom.y.saturating_sub(move_up_by);
+                } else {
+                    new_geom.rows.set_inner(pane.rows() - height_difference);
+                }
+            }
+            pane.set_geom(new_geom);
+        }
+
+    }
     pub fn move_pane_left(&mut self, pane_id: &PaneId) {
         if let Some(move_by) = self.can_move_pane_left(pane_id, MOVE_INCREMENT_HORIZONTAL) {
             self.move_pane_position_left(pane_id, move_by);
@@ -2031,7 +2103,6 @@ impl<'a> FloatingPaneGrid<'a> {
         }
     }
     fn can_decrease_pane_size_up(&self, pane_id: &PaneId, max_decrease_by: usize) -> Option<usize> {
-        // TODO: CONTINUE HERE - fix this
         let panes = self.panes.borrow();
         let pane = panes.get(pane_id).unwrap();
         let space_left_to_decrease = pane.rows().saturating_sub(MIN_TERMINAL_HEIGHT);
@@ -3611,41 +3682,83 @@ impl<'a> FloatingPaneGrid<'a> {
         }
         false
     }
-    pub fn find_room_for_new_pane(&self) -> Option<(PaneId, Direction)> {
+    pub fn find_room_for_new_pane(&self) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
-        let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
-            panes.iter().filter(|(_, p)| p.selectable()).collect();
-        let (_largest_pane_size, pane_id_to_split) = pane_sequence.iter().fold(
-            (0, None),
-            |(current_largest_pane_size, current_pane_id_to_split), id_and_pane_to_check| {
-                let (id_of_pane_to_check, pane_to_check) = id_and_pane_to_check;
-                let pane_size =
-                    (pane_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO) * pane_to_check.cols();
-                let pane_can_be_split = pane_to_check.cols() >= MIN_TERMINAL_WIDTH
-                    && pane_to_check.rows() >= MIN_TERMINAL_HEIGHT
-                    && ((pane_to_check.cols() > pane_to_check.min_width() * 2)
-                        || (pane_to_check.rows() > pane_to_check.min_height() * 2));
-                if pane_can_be_split && pane_size > current_largest_pane_size {
-                    (pane_size, Some(*id_of_pane_to_check))
-                } else {
-                    (current_largest_pane_size, current_pane_id_to_split)
-                }
-            },
-        );
-        pane_id_to_split.and_then(|t_id_to_split| {
-            let pane_to_split = panes.get(t_id_to_split).unwrap();
-            let direction = if pane_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO
-                > pane_to_split.cols()
-                && pane_to_split.rows() > pane_to_split.min_height() * 2
-            {
-                Some(Direction::Horizontal)
-            } else if pane_to_split.cols() > pane_to_split.min_width() * 2 {
-                Some(Direction::Vertical)
-            } else {
-                None
-            };
-
-            direction.map(|direction| (*t_id_to_split, direction))
-        })
+        let pane_count = panes.len();
+        if pane_count == 0 {
+            Some(half_size_middle(&self.viewport))
+        } else if pane_count == 1 {
+            Some(half_size_top_left_with_1_offset(&self.viewport))
+        } else if pane_count == 2 {
+            Some(half_size_bottom_left_with_1_offset(&self.viewport))
+        } else if pane_count == 3 {
+            Some(half_size_top_right_with_1_offset(&self.viewport))
+        } else if pane_count == 4 {
+            Some(half_size_bottom_right_with_1_offset(&self.viewport))
+        } else {
+            // TODO - place under existing panes with 1 offset left and down
+            None
+        }
     }
+}
+
+// TODO: move this to PaneGeom? It's (mostly) duplicated in layout.rs
+fn half_size_middle(space: &Viewport) -> PaneGeom {
+    let mut geom = PaneGeom {
+        x: space.x + (space.cols as f64 / 4.0).round() as usize,
+        y: space.y + (space.rows as f64 / 4.0).round() as usize,
+        cols: Dimension::fixed(space.cols / 2),
+        rows: Dimension::fixed(space.rows / 2),
+    };
+    geom.cols.set_inner(space.cols / 4);
+    geom.rows.set_inner(space.rows / 4);
+    geom
+}
+
+fn half_size_top_left_with_1_offset(space: &Viewport) -> PaneGeom {
+    let mut geom = PaneGeom {
+        x: space.x + 2,
+        y: space.y + 2,
+        cols: Dimension::fixed(space.cols / 3),
+        rows: Dimension::fixed(space.rows / 3),
+    };
+    geom.cols.set_inner(space.cols / 3);
+    geom.rows.set_inner(space.rows / 3);
+    geom
+}
+
+fn half_size_bottom_left_with_1_offset(space: &Viewport) -> PaneGeom {
+    let mut geom = PaneGeom {
+        x: space.x + 2,
+        y: (space.y + space.rows) - (space.rows / 3) - 2,
+        cols: Dimension::fixed(space.cols / 3),
+        rows: Dimension::fixed(space.rows / 3),
+    };
+    geom.cols.set_inner(space.cols / 3);
+    geom.rows.set_inner(space.rows / 3);
+    geom
+}
+
+fn half_size_top_right_with_1_offset(space: &Viewport) -> PaneGeom {
+    let mut geom = PaneGeom {
+        x: (space.x + space.cols) - (space.cols / 3) - 2,
+        y: space.y + 2,
+        cols: Dimension::fixed(space.cols / 3),
+        rows: Dimension::fixed(space.rows / 3),
+    };
+    geom.cols.set_inner(space.cols / 3);
+    geom.rows.set_inner(space.rows / 3);
+    geom
+}
+
+fn half_size_bottom_right_with_1_offset(space: &Viewport) -> PaneGeom {
+    let mut geom = PaneGeom {
+        x: (space.x + space.cols) - (space.cols / 3) - 2,
+        y: (space.y + space.rows) - (space.rows / 3) - 2,
+        cols: Dimension::fixed(space.cols / 3),
+        rows: Dimension::fixed(space.rows / 3),
+    };
+    geom.cols.set_inner(space.cols / 3);
+    geom.rows.set_inner(space.rows / 3);
+    geom
 }

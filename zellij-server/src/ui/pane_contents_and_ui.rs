@@ -14,7 +14,6 @@ pub struct PaneContentsAndUi<'a> {
     colors: Palette,
     focused_clients: Vec<ClientId>,
     multiple_users_exist_in_session: bool,
-    render_double_frame: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -36,12 +35,7 @@ impl<'a> PaneContentsAndUi<'a> {
             colors,
             focused_clients,
             multiple_users_exist_in_session,
-            render_double_frame: false,
         }
-    }
-    pub fn render_double_frame(mut self, should_render_double_frame: bool) -> Self {
-        self.render_double_frame = should_render_double_frame;
-        self
     }
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
@@ -134,7 +128,6 @@ impl<'a> PaneContentsAndUi<'a> {
                 colors: self.colors,
                 color: frame_color,
                 other_cursors_exist_in_session: false,
-                render_double_frame: self.render_double_frame,
             }
         } else {
             FrameParams {
@@ -144,7 +137,6 @@ impl<'a> PaneContentsAndUi<'a> {
                 colors: self.colors,
                 color: frame_color,
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
-                render_double_frame: self.render_double_frame,
             }
         };
         if let Some(vte_output) = self.pane.render_frame(client_id, frame_params, client_mode) {

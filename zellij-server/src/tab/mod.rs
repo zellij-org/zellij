@@ -593,6 +593,65 @@ impl Tab {
     pub fn has_no_connected_clients(&self) -> bool {
         self.connected_clients.is_empty()
     }
+    pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) {
+        if self.show_floating_panes {
+            if let Some(focused_floating_pane_id) = self.active_floating_panes.get(&client_id).copied() {
+                let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+                let terminal_id_and_split_direction = pane_grid.find_room_for_new_pane();
+                if let Some((terminal_id_to_split, split_direction)) = terminal_id_and_split_direction {
+                    let mut floating_pane_to_embed = self.close_pane(focused_floating_pane_id).unwrap(); // TODO: is this unwrap safe?
+                    let pane_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
+                    let size_of_both_panes = pane_to_split.position_and_size();
+                    if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes) {
+                        pane_to_split.set_geom(first_geom);
+                        floating_pane_to_embed.set_geom(second_geom);
+                        self.panes.insert(focused_floating_pane_id, floating_pane_to_embed);
+                        // ¯\_(ツ)_/¯
+                        let relayout_direction = match split_direction {
+                            Direction::Vertical => Direction::Horizontal,
+                            Direction::Horizontal => Direction::Vertical,
+                        };
+                        self.relayout_tab(relayout_direction);
+                    }
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, focused_floating_pane_id);
+                        }
+                    } else {
+                        self.active_panes.insert(client_id, focused_floating_pane_id);
+                    }
+                    self.show_floating_panes = false;
+                    if self.static_floating_pane_positions.contains_key(&focused_floating_pane_id) {
+                        let should_close_previous_pane = false;
+                        self.reopen_static_floating_pane(focused_floating_pane_id, should_close_previous_pane, client_id);
+                    }
+                }
+            }
+        } else if let Some(focused_pane_id) = self.active_panes.get(&client_id).copied() {
+            let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+            if let Some(new_pane_geom) = floating_pane_grid.find_room_for_new_pane() {
+                let mut embedded_pane_to_float = self.close_pane(focused_pane_id).unwrap(); // TODO: is this unwrap safe?
+                embedded_pane_to_float.set_geom(new_pane_geom);
+                embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
+                self.floating_panes.insert(focused_pane_id, embedded_pane_to_float);
+                self.show_floating_panes = true;
+                if self.session_is_mirrored {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.active_floating_panes.insert(client_id, focused_pane_id);
+                    }
+                } else {
+                    self.active_floating_panes.insert(client_id, focused_pane_id);
+                }
+            }
+        }
+
+    }
     pub fn toggle_floating_panes(&mut self, client_id: ClientId) {
         if self.show_floating_panes {
             self.show_floating_panes = false;
@@ -610,45 +669,74 @@ impl Tab {
     }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
-        if self.fullscreen_is_active {
-            self.unset_fullscreen();
-        }
-        let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
-        let terminal_id_and_split_direction = pane_grid.find_room_for_new_pane();
-        if let Some((terminal_id_to_split, split_direction)) = terminal_id_and_split_direction {
-            let next_terminal_position = self.get_next_terminal_position();
-            let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
-            let terminal_ws = terminal_to_split.position_and_size();
-            if let PaneId::Terminal(term_pid) = pid {
-                if let Some((first_winsize, second_winsize)) = split(split_direction, &terminal_ws)
-                {
-                    let new_terminal = TerminalPane::new(
+        if self.show_floating_panes {
+            let floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+            if let Some(new_pane_geom) = floating_pane_grid.find_room_for_new_pane() {
+                let next_terminal_position = self.get_next_terminal_position();
+                if let PaneId::Terminal(term_pid) = pid {
+                    let new_pane = TerminalPane::new(
                         term_pid,
-                        second_winsize,
+                        new_pane_geom,
                         self.colors,
                         next_terminal_position,
                         String::new(),
                     );
-                    terminal_to_split.set_geom(first_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
-                    // ¯\_(ツ)_/¯
-                    let relayout_direction = match split_direction {
-                        Direction::Vertical => Direction::Horizontal,
-                        Direction::Horizontal => Direction::Vertical,
-                    };
-                    self.relayout_tab(relayout_direction);
+                    self.floating_panes.insert(pid, Box::new(new_pane));
+                    if let Some(client_id) = client_id {
+                        if self.session_is_mirrored {
+                            // move all clients
+                            let connected_clients: Vec<ClientId> =
+                                self.connected_clients.iter().copied().collect();
+                            for client_id in connected_clients {
+                                self.active_floating_panes.insert(client_id, pid);
+                            }
+                        } else {
+                            self.active_floating_panes.insert(client_id, pid);
+                        }
+                    }
                 }
             }
-            if let Some(client_id) = client_id {
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+        } else {
+            if self.fullscreen_is_active {
+                self.unset_fullscreen();
+            }
+            let pane_grid = PaneGrid::new(&mut self.panes, self.display_area, self.viewport);
+            let terminal_id_and_split_direction = pane_grid.find_room_for_new_pane();
+            if let Some((terminal_id_to_split, split_direction)) = terminal_id_and_split_direction {
+                let next_terminal_position = self.get_next_terminal_position();
+                let terminal_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
+                let terminal_ws = terminal_to_split.position_and_size();
+                if let PaneId::Terminal(term_pid) = pid {
+                    if let Some((first_winsize, second_winsize)) = split(split_direction, &terminal_ws)
+                    {
+                        let new_terminal = TerminalPane::new(
+                            term_pid,
+                            second_winsize,
+                            self.colors,
+                            next_terminal_position,
+                            String::new(),
+                        );
+                        terminal_to_split.set_geom(first_winsize);
+                        self.panes.insert(pid, Box::new(new_terminal));
+                        // ¯\_(ツ)_/¯
+                        let relayout_direction = match split_direction {
+                            Direction::Vertical => Direction::Horizontal,
+                            Direction::Horizontal => Direction::Vertical,
+                        };
+                        self.relayout_tab(relayout_direction);
+                    }
+                }
+                if let Some(client_id) = client_id {
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.active_panes.insert(client_id, pid);
+                        }
+                    } else {
                         self.active_panes.insert(client_id, pid);
                     }
-                } else {
-                    self.active_panes.insert(client_id, pid);
                 }
             }
         }
@@ -1126,7 +1214,12 @@ impl Tab {
             }
         }
         if self.show_floating_panes && !self.active_floating_panes.is_empty() {
-            for (kind, pane) in self.floating_panes.iter_mut() {
+            let mut floating_panes: Vec<_> = self.floating_panes.iter_mut().collect();
+            floating_panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+                a_pane.active_at().cmp(&b_pane.active_at())
+            });
+            // for (kind, pane) in self.floating_panes.iter_mut() {
+            for (kind, pane) in floating_panes {
 
                 // this is a bit of a hack and harms performance of floating panes a little bit. In
                 // order to prevent it, we should consider not rendering content that is under
@@ -1145,8 +1238,7 @@ impl Tab {
                     self.colors,
                     &active_panes,
                     multiple_users_exist_in_session,
-                // ).render_double_frame(true);
-                ).render_double_frame(false);
+                );
                 if let PaneId::Terminal(..) = kind {
                     pane_contents_and_ui.render_pane_contents_to_multiple_clients(
                         self.connected_clients.iter().copied(),
@@ -1266,6 +1358,15 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
+
+        // TODO: also change the size of the static floating pane thingy
+        let mut floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+        floating_pane_grid.resize(new_screen_size);
+        for (_floating_window, geom) in self.static_floating_pane_positions.values_mut() {
+            floating_pane_grid.resize_single_geom(geom, new_screen_size);
+        }
+        self.set_force_render_for_floating_panes();
+
         let panes = self
             .panes
             .iter_mut()
@@ -1287,6 +1388,8 @@ impl Tab {
         } else {
             log::error!("Failed to vertically resize the tab!!!");
         }
+
+
         self.should_clear_display_before_rendering = true;
         self.set_pane_frames(self.draw_pane_frames);
     }
@@ -2002,25 +2105,37 @@ impl Tab {
             }
         }
     }
+    fn reopen_static_floating_pane(&mut self, pane_id: PaneId, should_close_previous_pane: bool, client_id: ClientId) {
+        let floating_pane = self.static_floating_pane_positions.get(&pane_id).unwrap();
+        let terminal_action = floating_pane.0.run.clone().and_then(|run| match run { // TODO: nicer, maybe as a method on FloatingPane?
+            Run::Command(command) => {
+                Some(TerminalAction::RunCommand(command))
+            },
+            _ => None
+        });
+        let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
+        self.senders
+            .send_to_pty(PtyInstruction::ReopenPane(pane_id, terminal_action, should_close_previous_pane, client_or_tab_index))
+            .unwrap();
+    }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
         if let Some(active_floating_pane_id) = self.active_floating_panes.get(&client_id).copied() {
             let is_static_pane = self.static_floating_pane_positions.contains_key(&active_floating_pane_id);
             self.close_pane(active_floating_pane_id);
             if is_static_pane {
-                let floating_pane = self.static_floating_pane_positions.get(&active_floating_pane_id).unwrap();
-                let terminal_action = floating_pane.0.run.clone().and_then(|run| match run { // TODO: nicer, maybe as a method on FloatingPane?
-                    Run::Command(command) => {
-                        Some(TerminalAction::RunCommand(command))
-                    },
-                    _ => None
-                });
-                let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
-                self.senders
-                    .send_to_pty(PtyInstruction::ReopenPane(active_floating_pane_id, terminal_action, client_or_tab_index))
-                    .unwrap();
-                // TODO: if pane is in static_floating_pane_positions, send
-                // PtyInstruction::CloseAndReopenPane - this would start a new terminal and send us
-                // back its pid with ScreenInstruction::ReopenPane
+                let should_close_previous_pane = true;
+                self.reopen_static_floating_pane(active_floating_pane_id, should_close_previous_pane, client_id);
+//                 let floating_pane = self.static_floating_pane_positions.get(&active_floating_pane_id).unwrap();
+//                 let terminal_action = floating_pane.0.run.clone().and_then(|run| match run { // TODO: nicer, maybe as a method on FloatingPane?
+//                     Run::Command(command) => {
+//                         Some(TerminalAction::RunCommand(command))
+//                     },
+//                     _ => None
+//                 });
+//                 let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
+//                 self.senders
+//                     .send_to_pty(PtyInstruction::ReopenPane(active_floating_pane_id, terminal_action, client_or_tab_index))
+//                     .unwrap();
             } else {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))

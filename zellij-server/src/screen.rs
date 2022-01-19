@@ -32,6 +32,7 @@ pub enum ScreenInstruction {
     Render,
     NewPane(PaneId, ClientOrTabIndex),
     ReopenPane(PaneId, PaneId, ClientOrTabIndex), // previous_id, current_id, client_or_tab_index
+    TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId),
     HorizontalSplit(PaneId, ClientId),
     VerticalSplit(PaneId, ClientId),
@@ -103,6 +104,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::ReopenPane(..) => ScreenContext::ReopenPane,
+            ScreenInstruction::TogglePaneEmbedOrFloating(..) => ScreenContext::TogglePaneEmbedOrFloating,
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
@@ -756,6 +758,15 @@ pub(crate) fn screen_thread_main(
                     .unwrap();
                 screen.update_tabs();
 
+                screen.render();
+            }
+            ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
+                screen.get_active_tab_mut(client_id).unwrap().toggle_pane_embed_or_floating(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
                 screen.render();
             }
             ScreenInstruction::ToggleFloatingPanes(client_id) => {
