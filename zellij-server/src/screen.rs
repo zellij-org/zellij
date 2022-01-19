@@ -611,11 +611,12 @@ impl Screen {
                 active_tab.name = String::new();
             }
             "\u{007F}" | "\u{0008}" => {
-                //delete and backspace keys
                 active_tab.name.pop();
             }
             c => {
-                active_tab.name.push_str(c);
+                if buf.iter().all(|u| matches!(u, 0x20..=0x7E)) {
+                    active_tab.name.push_str(c);
+                }
             }
         }
         self.update_tabs();

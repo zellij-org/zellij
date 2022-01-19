@@ -1998,12 +1998,17 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let s = str::from_utf8(&buf).unwrap();
             let active_terminal = self
                 .panes
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
-            active_terminal.update_name(s);
+
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_terminal.update_name(s);
+            }
         }
     }
 
