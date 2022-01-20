@@ -1,7 +1,7 @@
 use super::pane_resizer::PaneResizer;
 use crate::tab::is_inside_viewport;
 use crate::{panes::PaneId, tab::Pane};
-use std::cmp::Reverse;
+use std::cmp::{Reverse, Ordering};
 use std::collections::{HashMap, HashSet};
 use zellij_utils::{
     input::layout::Direction,
@@ -3427,7 +3427,15 @@ impl<'a> FloatingPaneGrid<'a> {
                 c.is_left_of(Box::as_ref(current_pane))
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.x())
+            .max_by(|(_, (_, a)), (_, (_, b))| {
+                let x_comparison = a.x().cmp(&b.x());
+                match x_comparison {
+                    Ordering::Equal => {
+                        a.y().cmp(&b.y())
+                    },
+                    _ => x_comparison
+                }
+            })
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3447,7 +3455,15 @@ impl<'a> FloatingPaneGrid<'a> {
                 c.is_below(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
             })
-            .min_by_key(|(_, (_, c))| c.y())
+            .min_by(|(_, (_, a)), (_, (_, b))| {
+                let y_comparison = a.y().cmp(&b.y());
+                match y_comparison {
+                    Ordering::Equal => {
+                        b.x().cmp(&a.x())
+                    },
+                    _ => y_comparison
+                }
+            })
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3467,7 +3483,15 @@ impl<'a> FloatingPaneGrid<'a> {
                 c.is_above(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
             })
-            .max_by_key(|(_, (_, c))| c.y())
+            .max_by(|(_, (_, a)), (_, (_, b))| {
+                let y_comparison = a.y().cmp(&b.y());
+                match y_comparison {
+                    Ordering::Equal => {
+                        b.x().cmp(&a.x())
+                    },
+                    _ => y_comparison
+                }
+            })
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
@@ -3487,7 +3511,15 @@ impl<'a> FloatingPaneGrid<'a> {
                 c.is_right_of(Box::as_ref(current_pane))
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
-            .min_by_key(|(_, (_, c))| c.x())
+            .min_by(|(_, (_, a)), (_, (_, b))| {
+                let x_comparison = a.x().cmp(&b.x());
+                match x_comparison {
+                    Ordering::Equal => {
+                        a.y().cmp(&b.y())
+                    },
+                    _ => x_comparison
+                }
+            })
             .map(|(_, (pid, _))| pid)
             .copied();
         next_index
