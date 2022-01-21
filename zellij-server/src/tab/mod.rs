@@ -124,6 +124,7 @@ pub(crate) struct Tab {
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
     selecting_with_mouse: bool,
+    pane_being_moved_with_mouse: Option<(PaneId, Position)>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -280,6 +281,13 @@ pub trait Pane {
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
+    fn position_is_on_frame(&self, position_on_screen: &Position) -> bool {
+        // TODO: handle cases where we have no frame (content_X is not different from x, etc.)
+        position_on_screen.line() == self.y() as isize ||
+            position_on_screen.line() == (self.y() as isize + self.rows() as isize).saturating_sub(1) ||
+            position_on_screen.column() == self.x() ||
+            position_on_screen.column() == (self.x() + self.cols()).saturating_sub(1)
+    }
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
@@ -357,6 +365,7 @@ impl Tab {
             connected_clients_in_app,
             connected_clients,
             selecting_with_mouse: false,
+            pane_being_moved_with_mouse: None,
         }
     }
 
@@ -2667,7 +2676,13 @@ impl Tab {
     pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) {
         self.focus_pane_at(position, client_id);
 
+        let show_floating_panes = self.show_floating_panes;
         if let Some(pane) = self.get_pane_at(position, false) {
+            let clicked_on_frame = pane.position_is_on_frame(position);
+            if show_floating_panes && clicked_on_frame { // TODO && pane is floating pane
+                self.pane_being_moved_with_mouse = Some((pane.pid(), position.clone()));
+                return;
+            }
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position, client_id);
             self.selecting_with_mouse = true;
@@ -2716,6 +2731,10 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        if self.pane_being_moved_with_mouse.is_some() {
+            self.pane_being_moved_with_mouse = None;
+            return;
+        }
         if !self.selecting_with_mouse {
             return;
         }
@@ -2766,7 +2785,11 @@ impl Tab {
         self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
-        if self.show_floating_panes {
+        if self.show_floating_panes && self.pane_being_moved_with_mouse.is_some() {
+            match self.mode_info.get(&client_id).unwrap_or_else(|| &self.default_mode_info) {
+                _ => self.move_floating_pane_to_position(position_on_screen),
+            };
+        } else if self.show_floating_panes {
             let active_pane = self.active_floating_panes
                 .get(&client_id)
                 .and_then(|pane_id| self.floating_panes.get_mut(pane_id))
@@ -2783,6 +2806,19 @@ impl Tab {
                 }
             }
         }
+    }
+    fn move_floating_pane_to_position(&mut self, click_position: &Position) {
+        let (pane_id, previous_position) = self.pane_being_moved_with_mouse.unwrap();
+        if click_position == &previous_position {
+            return;
+        }
+        let move_x_by = click_position.column() as isize - previous_position.column() as isize;
+        let move_y_by = click_position.line() as isize - previous_position.line() as isize;
+        let mut floating_pane_grid = FloatingPaneGrid::new(&mut self.floating_panes, self.display_area, self.viewport);
+        floating_pane_grid.move_pane_by(pane_id, move_x_by, move_y_by);
+        self.set_force_render_for_floating_panes();
+        self.set_force_render();
+        self.pane_being_moved_with_mouse = Some((pane_id, click_position.clone()));
     }
 
     pub fn copy_selection(&self, client_id: ClientId) {
@@ -2900,6 +2936,15 @@ pub fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
     pane_position_and_size.y >= viewport.y
         && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
             <= viewport.y + viewport.rows
+}
+
+pub fn pane_geom_is_inside_viewport(viewport: &Viewport, geom: &PaneGeom) -> bool {
+    geom.y >= viewport.y
+        && geom.y + geom.rows.as_usize()
+            <= viewport.y + viewport.rows
+        && geom.x >= viewport.x
+        && geom.x + geom.cols.as_usize()
+            <= viewport.x + viewport.cols
 }
 
 #[cfg(test)]

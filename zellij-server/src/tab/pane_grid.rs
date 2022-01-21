@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use zellij_utils::{
     input::layout::Direction,
     pane_size::{Dimension, PaneGeom, Size, Viewport},
+    position::Position,
 };
 
 use std::cell::RefCell;
@@ -1770,6 +1771,23 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn layout(&mut self, direction: Direction, space: usize) -> Result<(), String> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
+    }
+    pub fn move_pane_by(&mut self, pane_id: PaneId, x: isize, y: isize) {
+        // true => succeeded to move, false => failed to move
+        let mut panes = self.panes.borrow_mut();
+        let pane = panes.iter_mut().find(|(p_id, _p)| **p_id == pane_id).unwrap().1;
+        let mut new_pane_position = pane.position_and_size();
+        let min_x = self.viewport.x as isize;
+        let min_y = self.viewport.y as isize;
+        let max_x = (self.viewport.cols + self.viewport.x).saturating_sub(new_pane_position.cols.as_usize());
+        let max_y = (self.viewport.rows + self.viewport.y).saturating_sub(new_pane_position.rows.as_usize());
+        let new_x = std::cmp::max(min_x, new_pane_position.x as isize + x);
+        let new_x = std::cmp::min(new_x, max_x as isize);
+        let new_y = std::cmp::max(min_y, new_pane_position.y as isize + y);
+        let new_y = std::cmp::min(new_y, max_y as isize);
+        new_pane_position.x = new_x as usize;
+        new_pane_position.y = new_y as usize;
+        pane.set_geom(new_pane_position);
     }
     pub fn resize_single_geom(&self, geom: &mut PaneGeom, space: Size) {
         // TODO: combine with resize method somehow - this is almost identical
@@ -3793,4 +3811,13 @@ fn half_size_bottom_right_with_1_offset(space: &Viewport) -> PaneGeom {
     geom.cols.set_inner(space.cols / 3);
     geom.rows.set_inner(space.rows / 3);
     geom
+}
+
+fn pane_geom_is_inside_viewport(viewport: &Viewport, geom: &PaneGeom) -> bool {
+    geom.y >= viewport.y
+        && geom.y + geom.rows.as_usize()
+            <= viewport.y + viewport.rows
+        && geom.x >= viewport.x
+        && geom.x + geom.cols.as_usize()
+            <= viewport.x + viewport.cols
 }

@@ -4,7 +4,7 @@ use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize, Eq)]
 pub struct PaneGeom {
     pub x: usize,
     pub y: usize,
@@ -34,7 +34,7 @@ pub struct Size {
     pub cols: usize,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct Dimension {
     pub constraint: Constraint,
     inner: usize,
@@ -89,6 +89,16 @@ pub enum Constraint {
     /// Constrains the dimension to a flexible percent size of the total screen
     Percent(f64),
 }
+
+// impl PartialEq for Constraint {
+//     fn eq(&self, other: &Self) -> bool {
+//         match (self, other) {
+//             (Constraint::Fixed(self_size), Constraint::Fixed(other_size)) => self_size == other_size,
+//             _ => false
+//         }
+//     }
+// }
+impl Eq for Constraint {}
 
 impl PaneGeom {
     pub fn contains(&self, point: &Position) -> bool {
