@@ -1,11 +1,13 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+mod clipboard;
 mod copy_command;
 mod pane_grid;
 mod pane_resizer;
 
 use copy_command::CopyCommand;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
@@ -40,6 +42,8 @@ use zellij_utils::{
     },
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
+
+use self::clipboard::ClipboardProvider;
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 const MIN_TERMINAL_HEIGHT: usize = 5;
@@ -121,7 +125,7 @@ pub(crate) struct Tab {
     session_is_mirrored: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
     selecting_with_mouse: bool,
-    copy_command: Option<String>,
+    clipboard_provider: ClipboardProvider,
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
@@ -306,6 +310,7 @@ impl Tab {
         session_is_mirrored: bool,
         client_id: ClientId,
         copy_command: Option<String>,
+        copy_clipboard: Clipboard,
     ) -> Self {
         let panes = BTreeMap::new();
 
@@ -317,6 +322,11 @@ impl Tab {
 
         let mut connected_clients = HashSet::new();
         connected_clients.insert(client_id);
+
+        let clipboard_provider = match copy_command {
+            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+            None => ClipboardProvider::Osc52(copy_clipboard),
+        };
 
         Tab {
             index,
@@ -342,7 +352,7 @@ impl Tab {
             connected_clients_in_app,
             connected_clients,
             selecting_with_mouse: false,
-            copy_command,
+            clipboard_provider,
             focus_pane_id: None,
         }
     }
@@ -1944,35 +1954,27 @@ impl Tab {
 
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
-        let mut system_clipboard_failure = false;
         output.add_clients(&self.connected_clients);
-        match self.copy_command.clone() {
-            Some(copy_command) => {
-                let system_clipboard = CopyCommand::new(copy_command);
-                system_clipboard_failure = !system_clipboard.set(selection.to_owned());
-            }
-            None => {
-                output.push_str_to_multiple_clients(
-                    &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
-                    self.connected_clients.iter().copied(),
-                );
-            }
-        }
+        let client_ids = self.connected_clients.iter().copied();
 
-        // TODO: ideally we should be sending the Render instruction from the screen
-        self.senders
-            .send_to_server(ServerInstruction::Render(Some(output)))
-            .unwrap();
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(
-                None,
-                None,
-                if system_clipboard_failure {
-                    Event::SystemClipboardFailure
-                } else {
+        let clipboard_event =
+            match self
+                .clipboard_provider
+                .set_content(selection, &mut output, client_ids)
+            {
+                Ok(_) => {
+                    self.senders
+                        .send_to_server(ServerInstruction::Render(Some(output)))
+                        .unwrap();
                     Event::CopyToClipboard
-                },
-            ))
+                }
+                Err(err) => {
+                    log::error!("could not write selection to clipboard: {}", err);
+                    Event::SystemClipboardFailure
+                }
+            };
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {

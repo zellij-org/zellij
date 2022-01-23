@@ -1,6 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
-use clap::{ArgEnum, Args};
+use clap::{arg_enum, ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -79,6 +79,23 @@ pub struct Options {
     #[clap(long)]
     #[serde(default)]
     pub copy_command: Option<String>,
+
+    /// OSC52 destination clipboard
+    #[clap(long, arg_enum, ignore_case = true, conflicts_with = "copy-command")]
+    #[serde(default)]
+    pub copy_clipboard: Option<Clipboard>,
+}
+
+#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub enum Clipboard {
+    System,
+    Primary,
+}
+
+impl Default for Clipboard {
+    fn default() -> Self {
+        Self::System
+    }
 }
 
 impl Options {
@@ -105,6 +122,7 @@ impl Options {
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
+        let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
 
         Options {
             simplified_ui,
@@ -118,6 +136,7 @@ impl Options {
             on_force_close,
             scroll_buffer_size,
             copy_command,
+            copy_clipboard,
         }
     }
 
@@ -148,6 +167,7 @@ impl Options {
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
+        let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
 
         Options {
             simplified_ui,
@@ -161,6 +181,7 @@ impl Options {
             on_force_close,
             scroll_buffer_size,
             copy_command,
+            copy_clipboard,
         }
     }
 
@@ -210,6 +231,7 @@ impl From<CliOptions> for Options {
             on_force_close: opts.on_force_close,
             scroll_buffer_size: opts.scroll_buffer_size,
             copy_command: opts.copy_command,
+            copy_clipboard: opts.copy_clipboard,
         }
     }
 }
