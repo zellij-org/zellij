@@ -102,6 +102,7 @@ pub(crate) struct Tab {
     pub name: String,
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     floating_panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    floating_z_indices: Vec<PaneId>,
     static_floating_pane_positions: HashMap<PaneId, (FloatingPane, PaneGeom)>,
     pub panes_to_hide: HashSet<PaneId>,
     pub active_panes: HashMap<ClientId, PaneId>,
@@ -342,6 +343,7 @@ impl Tab {
             position,
             panes,
             floating_panes,
+            floating_z_indices: vec![],
             static_floating_pane_positions: HashMap::new(),
             show_floating_panes: false,
             name,
@@ -456,7 +458,7 @@ impl Tab {
                             pane_title,
                             floating_pane.pane_name.clone().unwrap_or_default(),
                         );
-                        self.floating_panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+                        self.insert_floating_pane(PaneId::Plugin(pid), Box::new(new_plugin));
                         if floating_pane.sticky {
                             self.static_floating_pane_positions.insert(PaneId::Plugin(pid), (floating_pane.clone(), *position_and_size));
                         }
@@ -657,17 +659,17 @@ impl Tab {
                 let mut embedded_pane_to_float = self.close_pane(focused_pane_id).unwrap(); // TODO: is this unwrap safe?
                 embedded_pane_to_float.set_geom(new_pane_geom);
                 embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
-                self.floating_panes.insert(focused_pane_id, embedded_pane_to_float);
+                self.insert_floating_pane(focused_pane_id, embedded_pane_to_float);
                 self.show_floating_panes = true;
                 if self.session_is_mirrored {
                     // move all clients
                     let connected_clients: Vec<ClientId> =
                         self.connected_clients.iter().copied().collect();
                     for client_id in connected_clients {
-                        self.active_floating_panes.insert(client_id, focused_pane_id);
+                        self.focus_floating_pane(focused_pane_id, client_id);
                     }
                 } else {
-                    self.active_floating_panes.insert(client_id, focused_pane_id);
+                    self.focus_floating_pane(focused_pane_id, client_id);
                 }
             }
         }
@@ -679,8 +681,8 @@ impl Tab {
         } else {
             self.show_floating_panes = true;
             if !self.active_floating_panes.contains_key(&client_id) {
-                if let Some(first_floating_pane_id) = self.floating_panes.keys().next() {
-                    self.active_floating_panes.insert(client_id, *first_floating_pane_id);
+                if let Some(first_floating_pane_id) = self.floating_panes.keys().next().copied() {
+                    self.focus_floating_pane(first_floating_pane_id, client_id);
                     self.set_force_render_for_floating_panes();
                 }
             }
@@ -702,17 +704,17 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                     );
-                    self.floating_panes.insert(pid, Box::new(new_pane));
+                    self.insert_floating_pane(pid, Box::new(new_pane));
                     if let Some(client_id) = client_id {
                         if self.session_is_mirrored {
                             // move all clients
                             let connected_clients: Vec<ClientId> =
                                 self.connected_clients.iter().copied().collect();
                             for client_id in connected_clients {
-                                self.active_floating_panes.insert(client_id, pid);
+                                self.focus_floating_pane(pid, client_id);
                             }
                         } else {
-                            self.active_floating_panes.insert(client_id, pid);
+                            self.focus_floating_pane(pid, client_id);
                         }
                     }
                 }
@@ -1184,8 +1186,6 @@ impl Tab {
         // render panes and their frames
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
-                // let mut active_panes = self.active_panes.clone();
-                // let mut active_panes = active_non_floating_panes.clone();
                 let mut active_panes = if self.show_floating_panes { active_non_floating_panes.clone() } else { self.active_panes.clone() };
                 let multiple_users_exist_in_session =
                     { self.connected_clients_in_app.borrow().len() > 1 };
@@ -1236,8 +1236,11 @@ impl Tab {
         }
         if self.show_floating_panes && !self.active_floating_panes.is_empty() {
             let mut floating_panes: Vec<_> = self.floating_panes.iter_mut().collect();
-            floating_panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
-                a_pane.active_at().cmp(&b_pane.active_at())
+            // let z_indices = self.floating_z_indices.clone();
+            floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
+                // TODO: fix a bug here: open a few floating panes, focus non-floating pane with
+                // mouse and do alt-s again
+                self.floating_z_indices.iter().position(|id| id == *a_id).unwrap().cmp(&self.floating_z_indices.iter().position(|id| id == *b_id).unwrap())
             });
             // for (kind, pane) in self.floating_panes.iter_mut() {
             for (kind, pane) in floating_panes {
@@ -1612,10 +1615,10 @@ impl Tab {
                             let connected_clients: Vec<ClientId> =
                                 self.connected_clients.iter().copied().collect();
                             for client_id in connected_clients {
-                                self.active_floating_panes.insert(client_id, p);
+                                self.focus_floating_pane(p, client_id);
                             }
                         } else {
-                            self.active_floating_panes.insert(client_id, p);
+                            self.focus_floating_pane(p, client_id);
                         }
 
                         return true;
@@ -1630,12 +1633,13 @@ impl Tab {
                     let connected_clients: Vec<ClientId> =
                         self.connected_clients.iter().copied().collect();
                     for client_id in connected_clients {
-                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                        self.focus_floating_pane(updated_active_pane, client_id);
                     }
                 }
                 None => {
                     // TODO: can this happen?
                     self.active_floating_panes.clear();
+                    self.floating_z_indices.clear();
                 }
             }
             false
@@ -1743,10 +1747,10 @@ impl Tab {
                         let connected_clients: Vec<ClientId> =
                             self.connected_clients.iter().copied().collect();
                         for client_id in connected_clients {
-                            self.active_floating_panes.insert(client_id, updated_active_pane);
+                            self.focus_floating_pane(updated_active_pane, client_id);
                         }
                     } else {
-                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                        self.focus_floating_pane(updated_active_pane, client_id);
                     }
                 }
                 None => {
@@ -1848,15 +1852,16 @@ impl Tab {
                         let connected_clients: Vec<ClientId> =
                             self.connected_clients.iter().copied().collect();
                         for client_id in connected_clients {
-                            self.active_floating_panes.insert(client_id, updated_active_pane);
+                            self.focus_floating_pane(updated_active_pane, client_id);
                         }
                     } else {
-                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                        self.focus_floating_pane(updated_active_pane, client_id);
                     }
                 }
                 None => {
                     // TODO: can this happen?
                     self.active_floating_panes.clear();
+                    self.floating_z_indices.clear();
                 }
             }
         } else {
@@ -1954,15 +1959,16 @@ impl Tab {
                         let connected_clients: Vec<ClientId> =
                             self.connected_clients.iter().copied().collect();
                         for client_id in connected_clients {
-                            self.active_floating_panes.insert(client_id, updated_active_pane);
+                            self.focus_floating_pane(updated_active_pane, client_id);
                         }
                     } else {
-                        self.active_floating_panes.insert(client_id, updated_active_pane);
+                        self.focus_floating_pane(updated_active_pane, client_id);
                     }
                 }
                 None => {
                     // TODO: can this happen?
                     self.active_floating_panes.clear();
+                    self.floating_z_indices.clear();
                 }
             }
             false
@@ -2287,18 +2293,18 @@ impl Tab {
             .iter()
             .map(|(cid, pid)| (*cid, *pid))
             .collect();
-        let next_active_floating_pane = self.floating_panes.keys().next();
+        let next_active_floating_pane = self.floating_panes.keys().next().copied();
         for (client_id, active_pane_id) in active_floating_panes {
             if active_pane_id == pane_id {
                 match next_active_floating_pane {
                     Some(next_active_floating_pane) => {
                         self.active_panes.insert(
                             client_id,
-                            *next_active_floating_pane,
+                            next_active_floating_pane,
                         );
                     },
                     None => {
-                        self.active_floating_panes.remove(&client_id);
+                        self.defocus_floating_pane(pane_id, client_id);
                     }
                 }
             }
@@ -2306,7 +2312,7 @@ impl Tab {
     }
     pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
         if self.floating_panes.contains_key(&id) {
-            let closed_pane = self.floating_panes.remove(&id);
+            let closed_pane = self.remove_floating_pane(id);
             self.move_clients_out_of_floating_pane(id);
             if self.floating_panes.is_empty() {
                 self.show_floating_panes = false;
@@ -2356,17 +2362,6 @@ impl Tab {
             if is_static_pane {
                 let should_close_previous_pane = true;
                 self.reopen_static_floating_pane(active_floating_pane_id, should_close_previous_pane, client_id);
-//                 let floating_pane = self.static_floating_pane_positions.get(&active_floating_pane_id).unwrap();
-//                 let terminal_action = floating_pane.0.run.clone().and_then(|run| match run { // TODO: nicer, maybe as a method on FloatingPane?
-//                     Run::Command(command) => {
-//                         Some(TerminalAction::RunCommand(command))
-//                     },
-//                     _ => None
-//                 });
-//                 let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
-//                 self.senders
-//                     .send_to_pty(PtyInstruction::ReopenPane(active_floating_pane_id, terminal_action, client_or_tab_index))
-//                     .unwrap();
             } else {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
@@ -2528,18 +2523,6 @@ impl Tab {
             })
             .map(|raw_fd| self.process_pending_vte_events(raw_fd));
 
-//         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-//             let active_terminal = self
-//                 .panes
-//                 .get_mut(&PaneId::Terminal(active_terminal_id))
-//                 .unwrap();
-//             // prevent overflow when row == 0
-//             let scroll_rows = (active_terminal.rows().max(1) - 1) / 2;
-//             active_terminal.scroll_down(scroll_rows, client_id);
-//             if !active_terminal.is_scrolled() {
-//                 self.process_pending_vte_events(active_terminal_id);
-//             }
-//         }
     }
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) {
         self.active_floating_panes.get(&client_id)
@@ -2564,16 +2547,6 @@ impl Tab {
 
 
 
-//         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-//             let active_terminal = self
-//                 .panes
-//                 .get_mut(&PaneId::Terminal(active_terminal_id))
-//                 .unwrap();
-//             active_terminal.clear_scroll();
-//             if !active_terminal.is_scrolled() {
-//                 self.process_pending_vte_events(active_terminal_id);
-//             }
-//         }
     }
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) {
         // TODO: is this a thing?
@@ -2664,16 +2637,32 @@ impl Tab {
     }
     fn get_floating_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if search_selectable {
-            self.get_selectable_floating_panes()
+            // TODO: better - loop through z-indices and check each one if it contains the point
+            let mut selectable_panes: Vec<_> = self.get_selectable_floating_panes().collect();
+            selectable_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
+                self.floating_z_indices.iter().position(|id| id == *b_id).unwrap().cmp(&self.floating_z_indices.iter().position(|id| id == *a_id).unwrap())
+            });
+            selectable_panes.iter()
                 .find(|(_, p)| p.contains(point))
                 .map(|(&id, _)| id)
+//             self.get_selectable_floating_panes()
+//                 .find(|(_, p)| p.contains(point))
+//                 .map(|(&id, _)| id)
         } else {
-            self.floating_panes.iter()
+            let mut floating_panes: Vec<_> = self.floating_panes.iter().collect();
+            floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
+                self.floating_z_indices.iter().position(|id| id == *b_id).unwrap().cmp(&self.floating_z_indices.iter().position(|id| id == *a_id).unwrap())
+            });
+            floating_panes.iter()
                 .find(|(_, p)| p.contains(point))
                 .map(|(&id, _)| id)
+//             self.floating_panes.iter()
+//                 .find(|(_, p)| p.contains(point))
+//                 .map(|(&id, _)| id)
         }
     }
     pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) {
+        // TODO: CONTINUE HERE (21/01) - make this and friends work with z-index
         self.focus_pane_at(position, client_id);
 
         let show_floating_panes = self.show_floating_panes;
@@ -2704,16 +2693,17 @@ impl Tab {
                     let connected_clients: Vec<ClientId> =
                         self.connected_clients.iter().copied().collect();
                     for client_id in connected_clients {
-                        self.active_floating_panes.insert(client_id, clicked_pane);
+                        self.focus_floating_pane(clicked_pane, client_id);
                     }
                 } else {
-                    self.active_floating_panes.insert(client_id, clicked_pane);
+                    self.focus_floating_pane(clicked_pane, client_id);
                 }
                 return;
             }
         }
         if let Some(clicked_pane) = self.get_pane_id_at(point, true) {
             self.active_floating_panes.clear();
+            self.floating_z_indices.clear();
             if self.session_is_mirrored {
                 // move all clients
                 let connected_clients: Vec<ClientId> =
@@ -2786,9 +2776,7 @@ impl Tab {
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
         if self.show_floating_panes && self.pane_being_moved_with_mouse.is_some() {
-            match self.mode_info.get(&client_id).unwrap_or_else(|| &self.default_mode_info) {
-                _ => self.move_floating_pane_to_position(position_on_screen),
-            };
+            self.move_floating_pane_to_position(position_on_screen);
         } else if self.show_floating_panes {
             let active_pane = self.active_floating_panes
                 .get(&client_id)
@@ -2927,6 +2915,23 @@ impl Tab {
             && column >= self.viewport.x
             && line <= self.viewport.y + self.viewport.rows
             && column <= self.viewport.x + self.viewport.cols
+    }
+    fn insert_floating_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+        self.floating_panes.insert(pane_id, pane);
+        self.floating_z_indices.push(pane_id);
+    }
+    fn remove_floating_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        self.floating_z_indices.retain(|p_id| *p_id != pane_id);
+        self.floating_panes.remove(&pane_id)
+    }
+    fn focus_floating_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        self.active_floating_panes.insert(client_id, pane_id);
+        self.floating_z_indices.retain(|p_id| *p_id != pane_id);
+        self.floating_z_indices.push(pane_id);
+    }
+    fn defocus_floating_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        self.floating_z_indices.retain(|p_id| *p_id != pane_id);
+        self.active_floating_panes.remove(&client_id);
     }
 }
 
