@@ -12,7 +12,7 @@ use pane_grid::{split, PaneGrid};
 
 use crate::{
     os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane},
+    panes::{PaneId, PluginPane, TerminalPane, PaneStruct},
     pty::{PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
@@ -99,7 +99,8 @@ pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
     pub name: String,
-    panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    panes: BTreeMap<PaneId, PaneStruct>,
+    // panes: BTreeMap<PaneId, Box<dyn Pane>>,
     pub panes_to_hide: HashSet<PaneId>,
     pub active_panes: HashMap<ClientId, PaneId>,
     max_panes: Option<usize>,
