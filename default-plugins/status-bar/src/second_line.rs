@@ -241,6 +241,18 @@ pub fn text_copied_hint(palette: &Palette) -> LinePart {
     }
 }
 
+pub fn system_clipboard_error(palette: &Palette) -> LinePart {
+    let hint = " Error using the system clipboard.";
+    let red_color = match palette.red {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    LinePart {
+        part: Style::new().fg(red_color).bold().paint(hint).to_string(),
+        len: hint.len(),
+    }
+}
+
 pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),

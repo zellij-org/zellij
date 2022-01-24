@@ -141,7 +141,8 @@ pub(crate) fn wasm_thread_main(
                     if subs.contains(&event_type)
                         && ((pid.is_none() && cid.is_none())
                             || (pid.is_none() && cid == Some(client_id))
-                            || (cid.is_none() && pid == Some(plugin_id)))
+                            || (cid.is_none() && pid == Some(plugin_id))
+                            || (cid == Some(client_id) && pid == Some(plugin_id)))
                     {
                         let update = instance.exports.get_function("update").unwrap();
                         wasi_write_object(&plugin_env.wasi_env, &event);
@@ -176,14 +177,16 @@ pub(crate) fn wasm_thread_main(
             }
             PluginInstruction::AddClient(client_id) => {
                 connected_clients.push(client_id);
+
                 let mut seen = HashSet::new();
                 let mut new_plugins = HashMap::new();
-                for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
+                for (&(plugin_id, _), (instance, plugin_env)) in &plugin_map {
                     if seen.contains(&plugin_id) {
                         continue;
                     } else {
                         seen.insert(plugin_id);
                         let mut new_plugin_env = plugin_env.clone();
+
                         new_plugin_env.client_id = client_id;
                         new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
                     }
@@ -398,7 +401,10 @@ fn host_open_file(plugin_env: &PluginEnv) {
 fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
     plugin_env
         .senders
-        .send_to_screen(ScreenInstruction::GoToTab(tab_idx, None)) // this is a hack, we should be able to return the client id here
+        .send_to_screen(ScreenInstruction::GoToTab(
+            tab_idx,
+            Some(plugin_env.client_id),
+        ))
         .unwrap();
 }
 

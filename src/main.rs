@@ -5,14 +5,14 @@ mod sessions;
 mod tests;
 
 use zellij_utils::{
+    clap::Parser,
     cli::{CliArgs, Command, Sessions},
     logging::*,
-    structopt::StructOpt,
 };
 
 fn main() {
     configure_logger();
-    let opts = CliArgs::from_args();
+    let opts = CliArgs::parse();
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
         commands::list_sessions();

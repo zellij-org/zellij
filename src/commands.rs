@@ -87,6 +87,12 @@ fn create_new_client() -> ClientInfo {
     ClientInfo::New(names::Generator::default().next().unwrap())
 }
 
+fn install_default_assets(opts: &CliArgs) {
+    let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+    #[cfg(not(disable_automatic_asset_installation))]
+    populate_data_dir(&data_dir);
+}
+
 fn find_indexed_session(
     sessions: Vec<String>,
     config_options: Options,
@@ -199,6 +205,10 @@ pub(crate) fn start_client(opts: CliArgs) {
             ClientInfo::New(_) => layout,
         };
 
+        if create {
+            install_default_assets(&opts);
+        }
+
         start_client_impl(
             Box::new(os_input),
             opts,
@@ -210,10 +220,7 @@ pub(crate) fn start_client(opts: CliArgs) {
     } else {
         let start_client_plan = |session_name: std::string::String| {
             assert_session_ne(&session_name);
-
-            let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-            #[cfg(not(disable_automatic_asset_installation))]
-            populate_data_dir(&data_dir);
+            install_default_assets(&opts);
         };
 
         if let Some(session_name) = opts.session.clone() {

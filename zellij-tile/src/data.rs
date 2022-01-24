@@ -1,3 +1,4 @@
+use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -76,12 +77,13 @@ pub enum Event {
     Mouse(Mouse),
     Timer(f64),
     CopyToClipboard,
+    SystemClipboardFailure,
     InputReceived,
     Visible(bool),
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum)]
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes

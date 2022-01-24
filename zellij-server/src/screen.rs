@@ -193,6 +193,7 @@ pub(crate) struct Screen {
     colors: Palette,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
+    copy_command: Option<String>,
 }
 
 impl Screen {
@@ -204,6 +205,7 @@ impl Screen {
         mode_info: ModeInfo,
         draw_pane_frames: bool,
         session_is_mirrored: bool,
+        copy_command: Option<String>,
     ) -> Self {
         Screen {
             bus,
@@ -219,6 +221,7 @@ impl Screen {
             default_mode_info: mode_info,
             draw_pane_frames,
             session_is_mirrored,
+            copy_command,
         }
     }
 
@@ -237,14 +240,27 @@ impl Screen {
         &mut self,
         client_ids_and_mode_infos: Vec<(ClientId, ModeInfo)>,
     ) {
+        // this will panic if there are no more tabs (ie. if self.tabs.is_empty() == true)
         for (client_id, client_mode_info) in client_ids_and_mode_infos {
-            let client_previous_tab = self.tab_history.get_mut(&client_id).unwrap().pop().unwrap();
-            self.active_tab_indices
-                .insert(client_id, client_previous_tab);
-            self.tabs
-                .get_mut(&client_previous_tab)
-                .unwrap()
-                .add_client(client_id, Some(client_mode_info));
+            let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
+            match client_tab_history.pop() {
+                Some(client_previous_tab) => {
+                    self.active_tab_indices
+                        .insert(client_id, client_previous_tab);
+                    self.tabs
+                        .get_mut(&client_previous_tab)
+                        .unwrap()
+                        .add_client(client_id, Some(client_mode_info));
+                }
+                None => {
+                    let next_tab_index = *self.tabs.keys().next().unwrap();
+                    self.active_tab_indices.insert(client_id, next_tab_index);
+                    self.tabs
+                        .get_mut(&next_tab_index)
+                        .unwrap()
+                        .add_client(client_id, Some(client_mode_info));
+                }
+            }
         }
     }
     fn move_clients_between_tabs(
@@ -478,6 +494,7 @@ impl Screen {
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
+            self.copy_command.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -679,6 +696,7 @@ pub(crate) fn screen_thread_main(
         ),
         draw_pane_frames,
         session_is_mirrored,
+        config_options.copy_command,
     );
     loop {
         let (event, mut err_ctx) = screen
@@ -931,7 +949,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_terminal_up(&point, 3);
+                    .scroll_terminal_up(&point, 3, client_id);
 
                 screen.render();
             }
@@ -947,7 +965,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .scroll_terminal_down(&point, 3);
+                    .scroll_terminal_down(&point, 3, client_id);
 
                 screen.render();
             }

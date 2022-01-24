@@ -1,12 +1,12 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
+use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use structopt::StructOpt;
 use zellij_tile::data::InputMode;
 
-#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
 pub enum OnForceClose {
     #[serde(alias = "quit")]
     Quit,
@@ -32,7 +32,7 @@ impl FromStr for OnForceClose {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, StructOpt)]
+#[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize, Args)]
 /// Options that can be set either through the config file,
 /// or cli flags - cli flags should take precedence over the config file
 /// TODO: In order to correctly parse boolean flags, this is currently split
@@ -40,38 +40,45 @@ impl FromStr for OnForceClose {
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts (true or false)
-    #[structopt(long)]
+    #[clap(long)]
     #[serde(default)]
     pub simplified_ui: Option<bool>,
     /// Set the default theme
-    #[structopt(long)]
+    #[clap(long)]
     pub theme: Option<String>,
     /// Set the default mode
-    #[structopt(long)]
+    #[clap(long, arg_enum, hide_possible_values = true)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
-    #[structopt(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str))]
     pub default_shell: Option<PathBuf>,
     /// Set the layout_dir, defaults to
     /// subdirectory of config dir
-    #[structopt(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str))]
     pub layout_dir: Option<PathBuf>,
-    #[structopt(long)]
+    #[clap(long)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
     /// Can be temporarily bypassed by the [SHIFT] key
     pub mouse_mode: Option<bool>,
-    #[structopt(long)]
+    #[clap(long)]
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
-    #[structopt(long)]
+    #[clap(long)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[structopt(long)]
+    #[clap(long, arg_enum, hide_possible_values = true)]
     pub on_force_close: Option<OnForceClose>,
+    #[clap(long)]
+    pub scroll_buffer_size: Option<usize>,
+
+    /// Switch to using a user supplied command for clipboard instead of OSC52
+    #[clap(long)]
+    #[serde(default)]
+    pub copy_command: Option<String>,
 }
 
 impl Options {
@@ -96,6 +103,8 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
+        let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -107,6 +116,8 @@ impl Options {
             pane_frames,
             mirror_session,
             on_force_close,
+            scroll_buffer_size,
+            copy_command,
         }
     }
 
@@ -135,6 +146,8 @@ impl Options {
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
+        let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
+        let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
 
         Options {
             simplified_ui,
@@ -146,6 +159,8 @@ impl Options {
             pane_frames,
             mirror_session,
             on_force_close,
+            scroll_buffer_size,
+            copy_command,
         }
     }
 
@@ -158,17 +173,17 @@ impl Options {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, StructOpt, Serialize, Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, Args, Serialize, Deserialize)]
 /// Options that can be set through cli flags
 /// boolean flags end up toggling boolean options in `Options`
 pub struct CliOptions {
     /// Disable handling of mouse events
-    #[structopt(long, conflicts_with("mouse-mode"))]
+    #[clap(long, conflicts_with("mouse-mode"))]
     pub disable_mouse_mode: bool,
     /// Disable display of pane frames
-    #[structopt(long, conflicts_with("pane-frames"))]
+    #[clap(long, conflicts_with("pane-frames"))]
     pub no_pane_frames: bool,
-    #[structopt(flatten)]
+    #[clap(flatten)]
     options: Options,
 }
 
@@ -193,6 +208,8 @@ impl From<CliOptions> for Options {
             pane_frames: opts.pane_frames,
             mirror_session: opts.mirror_session,
             on_force_close: opts.on_force_close,
+            scroll_buffer_size: opts.scroll_buffer_size,
+            copy_command: opts.copy_command,
         }
     }
 }

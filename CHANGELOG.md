@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Feature: update parsing crate to `clap v3.0` (https://github.com/zellij-org/zellij/pull/1017)
+* Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
+* Fix: crash when opening pane in non-existent cwd (https://github.com/zellij-org/zellij/pull/995)
+* Feature: add `copy-command` option (https://github.com/zellij-org/zellij/pull/996)
+
+## [0.24.0] - 2022-01-05
+* Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
+* Terminal compatibility: properly handle deletion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/965)
+* Fix: properly remove clients when detaching from a session (https://github.com/zellij-org/zellij/pull/966)
+* Fix: plugin theme coloring (https://github.com/zellij-org/zellij/pull/975)
+* Fix: prevent unhandled mouse events escape to terminal (https://github.com/zellij-org/zellij/pull/976)
+* Fix: ensure clippy runs on all targets (https://github.com/zellij-org/zellij/pull/972)
+* Fix: atomically create default assets every time a session starts (https://github.com/zellij-org/zellij/pull/961)
+* Fix: Allow multiple users to switch tabs with the mouse (https://github.com/zellij-org/zellij/pull/959)
+* Fix: Allow switching tabs with the mouse when pane is in fullscreen (https://github.com/zellij-org/zellij/pull/977)
+* Fix: pass bell (helpful for eg. desktop notifications) from terminal to desktop (https://github.com/zellij-org/zellij/pull/981)
+* Fix: tab click crash on mouse click with multiple users (https://github.com/zellij-org/zellij/pull/984)
+* Fix: accidental tab synchronization bug between multiple users when clicking with mouse (https://github.com/zellij-org/zellij/pull/986)
+* Fix: Properly move users out of closed tab in a multiuser session (https://github.com/zellij-org/zellij/pull/990)
+* Feature: Pass active pane title to terminal emulator (https://github.com/zellij-org/zellij/pull/980)
+* Feature: Improve default keybindings (https://github.com/zellij-org/zellij/pull/991)
+* Feature: Configurable scroll buffer size (https://github.com/zellij-org/zellij/pull/936)
+
+## [0.23.0] - 2021-12-20
 * Feature: add collaboration support - multiple users using multiple cursors (https://github.com/zellij-org/zellij/pull/957)
 
 ## [0.22.1] - 2021-12-14

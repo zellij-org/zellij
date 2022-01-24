@@ -1,0 +1,7 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+expression: "format!(\"{:?}\", grid)"
+
+---
+00 (C): [aram@green zellij]$ 🏠 xdef abc                                                                        
+
