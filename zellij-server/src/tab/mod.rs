@@ -153,7 +153,6 @@ pub trait Pane {
     fn geom_override(&self) -> Option<PaneGeom>;
     fn should_render(&self) -> bool;
     fn set_should_render(&mut self, should_render: bool);
-    fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
     fn render(&mut self, client_id: Option<ClientId>) -> Option<String>;
@@ -387,7 +386,7 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                 );
                 new_plugin.set_borderless(layout.borderless);
-                self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+                self.panes.insert(PaneId::Plugin(pid), PaneStruct::new_from_plugin(new_plugin));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
@@ -401,7 +400,7 @@ impl Tab {
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.panes
-                    .insert(PaneId::Terminal(*pid), Box::new(new_pane));
+                    .insert(PaneId::Terminal(*pid), PaneStruct::new_from_terminal(new_pane)); // TODO: implement new_from_terminal
             }
         }
         for unused_pid in new_pids {
@@ -560,7 +559,7 @@ impl Tab {
                         String::new(),
                     );
                     terminal_to_split.set_geom(first_winsize);
-                    self.panes.insert(pid, Box::new(new_terminal));
+                    self.panes.insert(pid, PaneStruct::new_from_terminal(new_terminal));
                     // ¯\_(ツ)_/¯
                     let relayout_direction = match split_direction {
                         Direction::Vertical => Direction::Horizontal,
@@ -609,7 +608,7 @@ impl Tab {
                     String::new(),
                 );
                 active_pane.set_geom(top_winsize);
-                self.panes.insert(pid, Box::new(new_terminal));
+                self.panes.insert(pid, PaneStruct::new_from_terminal(new_terminal));
 
                 if self.session_is_mirrored {
                     // move all clients
@@ -652,7 +651,7 @@ impl Tab {
                     String::new(),
                 );
                 active_pane.set_geom(left_winsize);
-                self.panes.insert(pid, Box::new(new_terminal));
+                self.panes.insert(pid, PaneStruct::new_from_terminal(new_terminal));
             }
             if self.session_is_mirrored {
                 // move all clients
@@ -674,9 +673,10 @@ impl Tab {
         // we remember that pane for one the client focuses the tab next
         !self.active_panes.is_empty()
     }
-    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
+    pub fn get_active_pane(&self, client_id: ClientId) -> Option<&PaneStruct> {
         self.get_active_pane_id(client_id)
-            .and_then(|ap| self.panes.get(&ap).map(Box::as_ref))
+            // .and_then(|ap| self.panes.get(&ap).map(Box::as_ref))
+            .and_then(|ap| self.panes.get(&ap))
     }
     fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         // TODO: why do we need this?
@@ -783,7 +783,6 @@ impl Tab {
             for terminal_id in &self.panes_to_hide {
                 let pane = self.panes.get_mut(terminal_id).unwrap();
                 pane.set_should_render(true);
-                pane.set_should_render_boundaries(true);
             }
             let viewport_pane_ids: Vec<_> = self
                 .get_pane_ids()
@@ -859,7 +858,6 @@ impl Tab {
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
-            pane.set_should_render_boundaries(true);
             pane.render_full_viewport();
         }
     }
@@ -1029,10 +1027,10 @@ impl Tab {
             }
         }
     }
-    fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &PaneStruct)> {
         self.panes.iter()
     }
-    fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+    fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &PaneStruct)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
     }
     fn get_next_terminal_position(&self) -> usize {
@@ -1662,7 +1660,7 @@ impl Tab {
             }
         }
     }
-    pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn close_pane(&mut self, id: PaneId) -> Option<PaneStruct> {
         if self.fullscreen_is_active {
             self.unset_fullscreen();
         }
@@ -1805,7 +1803,7 @@ impl Tab {
         &mut self,
         point: &Position,
         search_selectable: bool,
-    ) -> Option<&mut Box<dyn Pane>> {
+    ) -> Option<&mut PaneStruct> {
         if let Some(pane_id) = self.get_pane_id_at(point, search_selectable) {
             self.panes.get_mut(&pane_id)
         } else {
@@ -2006,7 +2004,7 @@ impl Tab {
 }
 
 #[allow(clippy::borrowed_box)]
-pub fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
+pub fn is_inside_viewport(viewport: &Viewport, pane: &PaneStruct) -> bool {
     let pane_position_and_size = pane.current_geom();
     pane_position_and_size.y >= viewport.y
         && pane_position_and_size.y + pane_position_and_size.rows.as_usize()

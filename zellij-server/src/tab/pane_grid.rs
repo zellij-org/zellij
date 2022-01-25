@@ -1,6 +1,9 @@
 use super::pane_resizer::PaneResizer;
 use crate::tab::is_inside_viewport;
-use crate::{panes::PaneId, tab::Pane};
+use crate::{
+    panes::{PaneId, PaneStruct},
+    tab::Pane
+};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::{
@@ -21,14 +24,14 @@ type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 pub struct PaneGrid<'a> {
     // panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
-    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut PaneStruct>>>,
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
     viewport: Viewport, // includes all non-UI panes
 }
 
 impl<'a> PaneGrid<'a> {
     pub fn new(
-        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut PaneStruct)>,
         display_area: Size,
         viewport: Viewport,
     ) -> Self {
@@ -1358,7 +1361,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
+        let mut panes: Vec<(&PaneId, &&mut PaneStruct)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
         panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
             if a_pane.y() == b_pane.y() {
@@ -1381,7 +1384,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
-        let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
+        let mut panes: Vec<(&PaneId, &&mut PaneStruct)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
         panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
             if a_pane.y() == b_pane.y() {
@@ -1406,7 +1409,7 @@ impl<'a> PaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut PaneStruct)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1415,8 +1418,8 @@ impl<'a> PaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_left_of(Box::as_ref(current_pane))
-                    && c.horizontally_overlaps_with(Box::as_ref(current_pane))
+                c.is_directly_left_of(current_pane)
+                    && c.horizontally_overlaps_with(current_pane)
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1426,7 +1429,7 @@ impl<'a> PaneGrid<'a> {
     pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut PaneStruct)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1435,8 +1438,8 @@ impl<'a> PaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_below(Box::as_ref(current_pane))
-                    && c.vertically_overlaps_with(Box::as_ref(current_pane))
+                c.is_directly_below(current_pane)
+                    && c.vertically_overlaps_with(current_pane)
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1446,7 +1449,7 @@ impl<'a> PaneGrid<'a> {
     pub fn next_selectable_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut PaneStruct)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1455,8 +1458,8 @@ impl<'a> PaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_above(Box::as_ref(current_pane))
-                    && c.vertically_overlaps_with(Box::as_ref(current_pane))
+                c.is_directly_above(current_pane)
+                    && c.vertically_overlaps_with(current_pane)
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1466,7 +1469,7 @@ impl<'a> PaneGrid<'a> {
     pub fn next_selectable_pane_id_to_the_right(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
-        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+        let panes: Vec<(PaneId, &&mut PaneStruct)> = panes
             .iter()
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
@@ -1475,8 +1478,8 @@ impl<'a> PaneGrid<'a> {
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
-                c.is_directly_right_of(Box::as_ref(current_pane))
-                    && c.horizontally_overlaps_with(Box::as_ref(current_pane))
+                c.is_directly_right_of(current_pane)
+                    && c.horizontally_overlaps_with(current_pane)
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1676,7 +1679,7 @@ impl<'a> PaneGrid<'a> {
     }
     pub fn find_room_for_new_pane(&self) -> Option<(PaneId, Direction)> {
         let panes = self.panes.borrow();
-        let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
+        let pane_sequence: Vec<(&PaneId, &&mut PaneStruct)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
         let (_largest_pane_size, pane_id_to_split) = pane_sequence.iter().fold(
             (0, None),

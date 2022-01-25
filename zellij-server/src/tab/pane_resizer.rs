@@ -1,4 +1,4 @@
-use crate::{panes::PaneId, tab::Pane};
+use crate::{panes::PaneId, tab::{Pane, PaneStruct}};
 use cassowary::{
     strength::{REQUIRED, STRONG},
     Expression, Solver, Variable,
@@ -13,7 +13,7 @@ use zellij_utils::{
 };
 
 pub struct PaneResizer<'a> {
-    panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
+    panes: Rc<RefCell<HashMap<PaneId, &'a mut PaneStruct>>>,
     vars: HashMap<PaneId, Variable>,
     solver: Solver,
 }
@@ -32,7 +32,7 @@ struct Span {
 type Grid = Vec<Vec<Span>>;
 
 impl<'a> PaneResizer<'a> {
-    pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>) -> Self {
+    pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut PaneStruct>>>) -> Self {
         let mut vars = HashMap::new();
         for &k in panes.borrow().keys() {
             vars.insert(k, Variable::new());
@@ -188,7 +188,7 @@ impl<'a> PaneResizer<'a> {
         spans
     }
 
-    fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
+    fn get_span(&self, direction: Direction, pane: &PaneStruct) -> Span {
         let pas = pane.current_geom();
         // let size_var = self.vars[&pane.pid()];
         let size_var = *self.vars.get(&pane.pid()).unwrap();
