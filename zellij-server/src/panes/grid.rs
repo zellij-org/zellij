@@ -1145,6 +1145,11 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    fn clear_lines_above(&mut self) {
+        self.lines_above.clear();
+        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+    }
+
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in current_row.len()..position {
@@ -1765,6 +1770,8 @@ impl Perform for Grid {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
                     self.fill_viewport(char_to_replace);
+                } else if clear_type == 3 {
+                    self.clear_lines_above();
                 }
             };
         } else if c == 'H' || c == 'f' {

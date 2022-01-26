@@ -1722,7 +1722,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_rows = active_terminal.rows().max(1) - 1;
+            let scroll_rows = active_terminal.get_content_rows();
             active_terminal.scroll_up(scroll_rows, client_id);
         }
     }
@@ -1733,7 +1733,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_rows = active_terminal.rows().max(1) - 1;
+            let scroll_rows = active_terminal.get_content_rows();
             active_terminal.scroll_down(scroll_rows, client_id);
             if !active_terminal.is_scrolled() {
                 self.process_pending_vte_events(active_terminal_id);
@@ -1998,12 +1998,17 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let s = str::from_utf8(&buf).unwrap();
             let active_terminal = self
                 .panes
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
-            active_terminal.update_name(s);
+
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_terminal.update_name(s);
+            }
         }
     }
 
