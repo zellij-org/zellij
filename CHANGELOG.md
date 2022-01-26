@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: add `copy-command` option (https://github.com/zellij-org/zellij/pull/996)
 * Feature: update parsing crate to `clap v3.0` (https://github.com/zellij-org/zellij/pull/1017)
 * Feature: accept only printable unicode char when rename pane or tab name (https://github.com/zellij-org/zellij/pull/1016)
+* Fix: scroll page up/down by actual amount of rows (https://github.com/zellij-org/zellij/pull/1025)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
