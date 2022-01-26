@@ -1722,7 +1722,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_rows = active_terminal.rows().max(1) - 1;
+            let scroll_rows = active_terminal.get_content_rows();
             active_terminal.scroll_up(scroll_rows, client_id);
         }
     }
@@ -1733,7 +1733,7 @@ impl Tab {
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
             // prevent overflow when row == 0
-            let scroll_rows = active_terminal.rows().max(1) - 1;
+            let scroll_rows = active_terminal.get_content_rows();
             active_terminal.scroll_down(scroll_rows, client_id);
             if !active_terminal.is_scrolled() {
                 self.process_pending_vte_events(active_terminal_id);
