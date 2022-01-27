@@ -1,6 +1,7 @@
 use pretty_bytes::converter as pb;
 use std::{
     collections::{HashMap, VecDeque},
+    fmt::Display,
     fs::read_dir,
     path::{Path, PathBuf},
     time::Instant,
@@ -63,14 +64,36 @@ impl State {
     }
 }
 
+/// Newtype for Number of Children in a Directory
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NumChildren(usize);
+
+impl Display for NumChildren {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Newtype for Size of File in Bytes
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FileSize(u64);
+
+impl Display for FileSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", pb::convert(self.0 as f64))
+    }
+}
+
+/// Enum for File System Entry with various types of entries
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum FsEntry {
-    OpenableDir(PathBuf, usize),
-    File(PathBuf, u64),
+    OpenableDir(PathBuf, NumChildren),
+    File(PathBuf, FileSize),
     DisplayDir(PathBuf),
 }
 
 impl FsEntry {
+    /// Get the name of the FsEntry
     pub fn name(&self) -> String {
         let path = match self {
             FsEntry::OpenableDir(p, _) => p,
@@ -90,27 +113,99 @@ impl FsEntry {
         }
     }
 
+    /// Convert FsEntry to String which perfectly fits in the given width.
+    ///
+    /// If the content is too long to fit in the width, it is shortened accorrding to the type of
+    /// FsEntry, see
+    /// `display_with_shortened_name_end`
+    /// and
+    /// `display_with_shortened_name_start`
+    ///
     pub fn as_line(&self, width: usize) -> String {
-        let info = match self {
-            FsEntry::OpenableDir(_, s) => s.to_string(),
-            FsEntry::File(_, s) => pb::convert(*s as f64),
-            FsEntry::DisplayDir(_) => "".to_string(),
-        };
-        let space = width.saturating_sub(info.len());
+        let info = self.get_info();
         let name = self.name();
-        if space.saturating_sub(1) < name.len() {
+
+        // + 1 since we want to have a space between name and info
+        let content_width = name.len() + info.len() + 1;
+        if width < content_width {
+            // The content doesn't fit on the screen
             match self {
                 FsEntry::File(..) | FsEntry::OpenableDir(..) => {
-                    [&name[..space.saturating_sub(2)], &info].join("~ ")
+                    FsEntry::display_with_shortened_name_end(name, info, width)
                 }
                 FsEntry::DisplayDir(..) => {
-                    let valid_range_start = name.len().saturating_sub(space.saturating_sub(8));
-                    "./.../".to_string() + &name[valid_range_start..] + "  "
+                    let current_path = name;
+                    FsEntry::display_with_shortened_name_start(current_path, width)
                 }
             }
         } else {
-            let padding = " ".repeat(space - name.len());
-            [name, padding, info].concat()
+            // The content does fit on the screen
+            FsEntry::display_with_padding(name, info, width)
+        }
+    }
+
+    /// Calculates the displayable string which is shortened at the end
+    ///
+    /// Example:
+    /// name = "a_veeeeeeeeery_looooooong_naaaaaaame"
+    /// extra_info = "10"
+    /// width = 32
+    ///
+    /// This leads to a display looking as follows
+    ///
+    /// |                                 |
+    /// |a_veeeeeeeeery_looooooong_naa~ 10|
+    /// |                                 |
+    ///
+    fn display_with_shortened_name_end(name: String, extra_info: String, width: usize) -> String {
+        const ENDING: &str = "~ ";
+        let shortened_name_len = width.saturating_sub(ENDING.len() + extra_info.len());
+        let shortened_name = &name[..shortened_name_len];
+        [shortened_name, &extra_info].join(ENDING)
+    }
+
+    /// Calculates the displayable string which is shortened at the beginning, since we are
+    /// interested in the last parts of the path
+    ///
+    /// Example:
+    /// name = "path_a/path_b/path_c/path_d/path_e/path_f"
+    /// width = 32
+    ///
+    /// This leads to a display looking as follows
+    ///
+    /// |                                 |
+    /// |./>>>/ath_c/path_d/path_e/path_f |
+    /// |                                 |
+    ///
+    fn display_with_shortened_name_start(current_path: String, width: usize) -> String {
+        const FRONT: &str = "./...";
+        const END: &str = " ";
+        const NEEDED_SPACE: usize = FRONT.len() + END.len();
+        let current_path_len = current_path.len();
+        let displayed_path_len = width.saturating_sub(NEEDED_SPACE);
+        let display_path_start_index = current_path_len.saturating_sub(displayed_path_len);
+        let shortened_path = &current_path[display_path_start_index..];
+        [FRONT, shortened_path, END].join("")
+    }
+
+    /// Fills out the space between `name` and `extra_info` with spaces
+    fn display_with_padding(name: String, extra_info: String, width: usize) -> String {
+        let content_len = name.len() + extra_info.len();
+        let padding = " ".repeat(width - content_len);
+        [name, padding, extra_info].concat()
+    }
+
+    /// Gets additional information for FsEntry
+    ///
+    /// For OpenableDir : Number of Children in this Dir
+    /// For File        : File Size
+    /// For DisplayDir  : -
+    ///
+    fn get_info(&self) -> String {
+        match self {
+            FsEntry::OpenableDir(_, num_children) => num_children.to_string(),
+            FsEntry::File(_, file_size) => file_size.to_string(),
+            FsEntry::DisplayDir(_) => Default::default(),
         }
     }
 
@@ -121,7 +216,7 @@ impl FsEntry {
 
 pub(crate) fn refresh_directory(state: &mut State) {
     // update the current dir
-    state.current_dir = state.current_dir.join(&state.path);
+    state.current_dir = state.path.clone();
 
     // get contents of dir with path `state.path`
     state.files = read_dir(Path::new(ROOT).join(&state.path))
@@ -130,10 +225,10 @@ pub(crate) fn refresh_directory(state: &mut State) {
             res.and_then(|d| {
                 if d.metadata()?.is_dir() {
                     let children = read_dir(d.path())?.count();
-                    Ok(FsEntry::OpenableDir(d.path(), children))
+                    Ok(FsEntry::OpenableDir(d.path(), NumChildren(children)))
                 } else {
                     let size = d.metadata()?.len();
-                    Ok(FsEntry::File(d.path(), size))
+                    Ok(FsEntry::File(d.path(), FileSize(size)))
                 }
             })
             .ok()
