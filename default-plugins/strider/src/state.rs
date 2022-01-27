@@ -99,7 +99,15 @@ impl FsEntry {
         let space = width.saturating_sub(info.len());
         let name = self.name();
         if space.saturating_sub(1) < name.len() {
-            [&name[..space.saturating_sub(2)], &info].join("~ ")
+            match self {
+                FsEntry::File(..) | FsEntry::OpenableDir(..) => {
+                    [&name[..space.saturating_sub(2)], &info].join("~ ")
+                }
+                FsEntry::DisplayDir(..) => {
+                    let valid_range_start = name.len().saturating_sub(space.saturating_sub(8));
+                    "./.../".to_string() + &name[valid_range_start..] + "  "
+                }
+            }
         } else {
             let padding = " ".repeat(space - name.len());
             [name, padding, info].concat()
