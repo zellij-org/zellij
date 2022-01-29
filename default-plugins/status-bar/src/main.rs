@@ -24,7 +24,7 @@ struct State {
     tabs: Vec<TabInfo>,
     tip_name: String,
     mode_info: ModeInfo,
-    diplay_text_copied_hint: bool,
+    text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
 }
 
@@ -156,14 +156,14 @@ impl ZellijPlugin for State {
             Event::TabUpdate(tabs) => {
                 self.tabs = tabs;
             }
-            Event::CopyToClipboard => {
-                self.diplay_text_copied_hint = true;
+            Event::CopyToClipboard(copy_destination) => {
+                self.text_copy_destination = Some(copy_destination);
             }
             Event::SystemClipboardFailure => {
                 self.display_system_clipboard_failure = true;
             }
             Event::InputReceived => {
-                self.diplay_text_copied_hint = false;
+                self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
             }
             _ => {}
@@ -186,64 +186,7 @@ impl ZellijPlugin for State {
         );
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
-
-        let mut second_line = LinePart::default();
-        for t in &mut self.tabs {
-            if t.active {
-                match self.mode_info.mode {
-                    InputMode::Normal => {
-                        if t.is_fullscreen_active {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                fullscreen_panes_to_hide(&self.mode_info.palette, t.panes_to_hide)
-                            }
-                        } else {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
-                            }
-                        }
-                    }
-                    InputMode::Locked => {
-                        if t.is_fullscreen_active {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                locked_fullscreen_panes_to_hide(
-                                    &self.mode_info.palette,
-                                    t.panes_to_hide,
-                                )
-                            }
-                        } else {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
-                            }
-                        }
-                    }
-                    _ => {
-                        second_line = if self.diplay_text_copied_hint {
-                            text_copied_hint(&self.mode_info.palette)
-                        } else if self.display_system_clipboard_failure {
-                            system_clipboard_error(&self.mode_info.palette)
-                        } else {
-                            keybinds(&self.mode_info, &self.tip_name, cols)
-                        }
-                    }
-                }
-            }
-        }
+        let second_line = self.second_line(cols);
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
@@ -256,5 +199,34 @@ impl ZellijPlugin for State {
             }
         }
         println!("\u{1b}[m{}\u{1b}[0K", second_line);
+    }
+}
+
+impl State {
+    fn second_line(&self, cols: usize) -> LinePart {
+        let active_tab = self.tabs.iter().find(|t| t.active);
+
+        if let Some(copy_destination) = self.text_copy_destination {
+            text_copied_hint(&self.mode_info.palette, copy_destination)
+        } else if self.display_system_clipboard_failure {
+            system_clipboard_error(&self.mode_info.palette)
+        } else if let Some(active_tab) = active_tab {
+            if active_tab.is_fullscreen_active {
+                match self.mode_info.mode {
+                    InputMode::Normal => {
+                        fullscreen_panes_to_hide(&self.mode_info.palette, active_tab.panes_to_hide)
+                    }
+                    InputMode::Locked => locked_fullscreen_panes_to_hide(
+                        &self.mode_info.palette,
+                        active_tab.panes_to_hide,
+                    ),
+                    _ => keybinds(&self.mode_info, &self.tip_name, cols),
+                }
+            } else {
+                keybinds(&self.mode_info, &self.tip_name, cols)
+            }
+        } else {
+            LinePart::default()
+        }
     }
 }

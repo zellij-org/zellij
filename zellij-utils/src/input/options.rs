@@ -1,6 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
-use clap::{arg_enum, ArgEnum, Args};
+use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;

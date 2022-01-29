@@ -1,3 +1,4 @@
+use zellij_tile::prelude::CopyDestination;
 use zellij_utils::{anyhow::Result, input::options::Clipboard};
 
 use crate::ClientId;
@@ -32,5 +33,15 @@ impl ClipboardProvider {
             }
         };
         Ok(())
+    }
+
+    pub(crate) fn as_copy_destination(&self) -> CopyDestination {
+        match self {
+            ClipboardProvider::Command(_) => CopyDestination::Command,
+            ClipboardProvider::Osc52(clipboard) => match clipboard {
+                Clipboard::Primary => CopyDestination::Primary,
+                Clipboard::System => CopyDestination::System,
+            },
+        }
     }
 }
