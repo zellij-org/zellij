@@ -23,7 +23,10 @@ impl ClipboardProvider {
             }
             ClipboardProvider::Osc52(clipboard) => {
                 let dest = match clipboard {
+                    #[cfg(not(target_os = "macos"))]
                     Clipboard::Primary => 'p',
+                    #[cfg(target_os = "macos")] // primary selection does not exist on macos
+                    Clipboard::Primary => 'c',
                     Clipboard::System => 'c',
                 };
                 output.push_str_to_multiple_clients(
