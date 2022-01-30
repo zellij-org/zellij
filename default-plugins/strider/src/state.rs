@@ -174,7 +174,7 @@ impl FsEntry {
     /// This leads to a display looking as follows
     ///
     /// |                                 |
-    /// |./>>>/ath_c/path_d/path_e/path_f |
+    /// |./.../ath_c/path_d/path_e/path_f |
     /// |                                 |
     ///
     fn display_with_shortened_name_start(current_path: String, width: usize) -> String {
