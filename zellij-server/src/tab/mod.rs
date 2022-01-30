@@ -104,6 +104,7 @@ pub(crate) struct Tab {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     pub panes_to_hide: HashSet<PaneId>,
     pub active_panes: HashMap<ClientId, PaneId>,
+    last_active_pane_id: Option<PaneId>,
     max_panes: Option<usize>,
     viewport: Viewport, // includes all non-UI panes
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -323,6 +324,7 @@ impl Tab {
             max_panes,
             panes_to_hide: HashSet::new(),
             active_panes: HashMap::new(),
+            last_active_pane_id: None,
             viewport: display_area.into(),
             display_area,
             fullscreen_is_active: false,
@@ -374,6 +376,13 @@ impl Tab {
         }
         let mut new_pids = new_pids.iter();
 
+        let mut focus_pane_id: Option<PaneId> = None;
+        let mut set_focus_pane_id = |layout: &Layout, pane_id: PaneId| {
+            if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
+                focus_pane_id = Some(pane_id);
+            }
+        };
+
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
             if let Some(Run::Plugin(run)) = layout.run.clone() {
@@ -392,6 +401,7 @@ impl Tab {
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+                set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
@@ -406,6 +416,7 @@ impl Tab {
                 new_pane.set_borderless(layout.borderless);
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));
+                set_focus_pane_id(layout, PaneId::Terminal(*pid));
             }
         }
         for unused_pid in new_pids {
@@ -435,24 +446,34 @@ impl Tab {
             self.offset_viewport(&geom)
         }
         self.set_pane_frames(self.draw_pane_frames);
-        // This is the end of the nasty viewport hack...
-        let next_selectable_pane_id = self
-            .panes
-            .iter()
-            .filter(|(_id, pane)| pane.selectable())
-            .map(|(id, _)| id.to_owned())
-            .next();
-        match next_selectable_pane_id {
-            Some(active_pane_id) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
-                    self.active_panes.insert(client_id, active_pane_id);
-                }
+
+        let mut active_pane = |pane_id: PaneId| {
+            self.active_panes.insert(client_id, pane_id);
+
+            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+            for client_id in connected_clients {
+                self.active_panes.insert(client_id, pane_id);
             }
-            None => {
-                // this is very likely a configuration error (layout with no selectable panes)
-                self.active_panes.clear();
+        };
+
+        if let Some(pane_id) = focus_pane_id {
+            active_pane(pane_id);
+        } else {
+            // This is the end of the nasty viewport hack...
+            let next_selectable_pane_id = self
+                .panes
+                .iter()
+                .filter(|(_id, pane)| pane.selectable())
+                .map(|(id, _)| id.to_owned())
+                .next();
+            match next_selectable_pane_id {
+                Some(active_pane_id) => {
+                    active_pane(active_pane_id);
+                }
+                None => {
+                    // this is very likely a configuration error (layout with no selectable panes)
+                    self.active_panes.clear();
+                }
             }
         }
     }
@@ -491,9 +512,7 @@ impl Tab {
                 }
                 pane_ids.sort(); // TODO: make this predictable
                 pane_ids.retain(|p| !self.panes_to_hide.contains(p));
-                let first_pane_id = pane_ids.get(0).unwrap();
                 self.connected_clients.insert(client_id);
-                self.active_panes.insert(client_id, *first_pane_id);
                 self.mode_info.insert(
                     client_id,
                     mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
