@@ -673,125 +673,132 @@ impl Grid {
             return;
         }
         self.selection.reset();
-        // avoid reflowing lines if in alternate screen
-        // TODO: remove characters exceeding width
-        if new_columns != self.width && self.alternate_viewport_and_cursor.is_none() {
-            self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
-            let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
-            let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
-            let mut viewport_canonical_lines = vec![];
-            for mut row in self.viewport.drain(..) {
-                if !row.is_canonical
-                    && viewport_canonical_lines.is_empty()
-                    && !self.lines_above.is_empty()
-                {
-                    let mut first_line_above = self.lines_above.pop_back().unwrap();
-                    first_line_above.append(&mut row.columns);
-                    viewport_canonical_lines.push(first_line_above);
-                    cursor_canonical_line_index += 1;
-                } else if row.is_canonical {
-                    viewport_canonical_lines.push(row);
-                } else {
-                    match viewport_canonical_lines.last_mut() {
-                        Some(last_line) => {
-                            last_line.append(&mut row.columns);
-                        }
-                        None => {
-                            // the state is corrupted somehow
-                            // this is a bug and I'm not yet sure why it happens
-                            // usually it fixes itself and is a result of some race
-                            // TODO: investigate why this happens and solve it
-                            return;
-                        }
-                    }
-                }
-            }
-
-            // trim lines after the last empty space that has no following character, because
-            // terminals don't trim empty lines
-            for line in &mut viewport_canonical_lines {
-                let mut trim_at = None;
-                for (index, character) in line.columns.iter().enumerate() {
-                    if character.character != EMPTY_TERMINAL_CHARACTER.character {
-                        trim_at = None;
-                    } else if trim_at.is_none() {
-                        trim_at = Some(index);
-                    }
-                }
-                if let Some(trim_at) = trim_at {
-                    line.columns.truncate(trim_at);
-                }
-            }
-
-            let mut new_viewport_rows = vec![];
-            for mut canonical_line in viewport_canonical_lines {
-                let mut canonical_line_parts: Vec<Row> = vec![];
-                if canonical_line.columns.is_empty() {
-                    canonical_line_parts.push(Row::new(new_columns).canonical());
-                }
-                while !canonical_line.columns.is_empty() {
-                    let next_wrap = canonical_line.drain_until(new_columns);
-                    // If the next character is wider than the grid (i.e. there is nothing in
-                    // `next_wrap`, then just abort the resizing
-                    if next_wrap.is_empty() {
-                        break;
-                    }
-                    let row = Row::from_columns(next_wrap);
-                    // if there are no more parts, this row is canonical as long as it originally
-                    // was canonical (it might not have been for example if it's the first row in
-                    // the viewport, and the actual canonical row is above it in the scrollback)
-                    let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical {
-                        row.canonical()
+        if new_columns != self.width {
+            if self.alternate_viewport_and_cursor.is_none() {
+                self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
+                let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
+                let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
+                let mut viewport_canonical_lines = vec![];
+                for mut row in self.viewport.drain(..) {
+                    if !row.is_canonical
+                        && viewport_canonical_lines.is_empty()
+                        && !self.lines_above.is_empty()
+                    {
+                        let mut first_line_above = self.lines_above.pop_back().unwrap();
+                        first_line_above.append(&mut row.columns);
+                        viewport_canonical_lines.push(first_line_above);
+                        cursor_canonical_line_index += 1;
+                    } else if row.is_canonical {
+                        viewport_canonical_lines.push(row);
                     } else {
-                        row
-                    };
-                    canonical_line_parts.push(row);
-                }
-                new_viewport_rows.append(&mut canonical_line_parts);
-            }
-
-            self.viewport = new_viewport_rows;
-
-            let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
-
-            let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
-                + (cursor_index_in_canonical_line % new_columns);
-            let current_viewport_row_count = self.viewport.len();
-            match current_viewport_row_count.cmp(&self.height) {
-                Ordering::Less => {
-                    let row_count_to_transfer = self.height - current_viewport_row_count;
-
-                    transfer_rows_from_lines_above_to_viewport(
-                        &mut self.lines_above,
-                        &mut self.viewport,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
-                    let rows_pulled = self.viewport.len() - current_viewport_row_count;
-                    new_cursor_y += rows_pulled;
-                }
-                Ordering::Greater => {
-                    let row_count_to_transfer = current_viewport_row_count - self.height;
-                    if row_count_to_transfer > new_cursor_y {
-                        new_cursor_y = 0;
-                    } else {
-                        new_cursor_y -= row_count_to_transfer;
+                        match viewport_canonical_lines.last_mut() {
+                            Some(last_line) => {
+                                last_line.append(&mut row.columns);
+                            }
+                            None => {
+                                // the state is corrupted somehow
+                                // this is a bug and I'm not yet sure why it happens
+                                // usually it fixes itself and is a result of some race
+                                // TODO: investigate why this happens and solve it
+                                return;
+                            }
+                        }
                     }
-                    transfer_rows_from_viewport_to_lines_above(
-                        &mut self.viewport,
-                        &mut self.lines_above,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
                 }
-                Ordering::Equal => {}
+
+                // trim lines after the last empty space that has no following character, because
+                // terminals don't trim empty lines
+                for line in &mut viewport_canonical_lines {
+                    let mut trim_at = None;
+                    for (index, character) in line.columns.iter().enumerate() {
+                        if character.character != EMPTY_TERMINAL_CHARACTER.character {
+                            trim_at = None;
+                        } else if trim_at.is_none() {
+                            trim_at = Some(index);
+                        }
+                    }
+                    if let Some(trim_at) = trim_at {
+                        line.columns.truncate(trim_at);
+                    }
+                }
+
+                let mut new_viewport_rows = vec![];
+                for mut canonical_line in viewport_canonical_lines {
+                    let mut canonical_line_parts: Vec<Row> = vec![];
+                    if canonical_line.columns.is_empty() {
+                        canonical_line_parts.push(Row::new(new_columns).canonical());
+                    }
+                    while !canonical_line.columns.is_empty() {
+                        let next_wrap = canonical_line.drain_until(new_columns);
+                        // If the next character is wider than the grid (i.e. there is nothing in
+                        // `next_wrap`, then just abort the resizing
+                        if next_wrap.is_empty() {
+                            break;
+                        }
+                        let row = Row::from_columns(next_wrap);
+                        // if there are no more parts, this row is canonical as long as it originally
+                        // was canonical (it might not have been for example if it's the first row in
+                        // the viewport, and the actual canonical row is above it in the scrollback)
+                        let row = if canonical_line_parts.is_empty() && canonical_line.is_canonical
+                        {
+                            row.canonical()
+                        } else {
+                            row
+                        };
+                        canonical_line_parts.push(row);
+                    }
+                    new_viewport_rows.append(&mut canonical_line_parts);
+                }
+
+                self.viewport = new_viewport_rows;
+
+                let mut new_cursor_y =
+                    self.canonical_line_y_coordinates(cursor_canonical_line_index);
+
+                let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
+                    + (cursor_index_in_canonical_line % new_columns);
+                let current_viewport_row_count = self.viewport.len();
+                match current_viewport_row_count.cmp(&self.height) {
+                    Ordering::Less => {
+                        let row_count_to_transfer = self.height - current_viewport_row_count;
+
+                        transfer_rows_from_lines_above_to_viewport(
+                            &mut self.lines_above,
+                            &mut self.viewport,
+                            row_count_to_transfer,
+                            new_columns,
+                        );
+                        let rows_pulled = self.viewport.len() - current_viewport_row_count;
+                        new_cursor_y += rows_pulled;
+                    }
+                    Ordering::Greater => {
+                        let row_count_to_transfer = current_viewport_row_count - self.height;
+                        if row_count_to_transfer > new_cursor_y {
+                            new_cursor_y = 0;
+                        } else {
+                            new_cursor_y -= row_count_to_transfer;
+                        }
+                        transfer_rows_from_viewport_to_lines_above(
+                            &mut self.viewport,
+                            &mut self.lines_above,
+                            row_count_to_transfer,
+                            new_columns,
+                        );
+                    }
+                    Ordering::Equal => {}
+                }
+                self.cursor.y = new_cursor_y;
+                self.cursor.x = new_cursor_x;
+            } else {
+                // in alternate screen just truncate exceeding width
+                for row in &mut self.viewport {
+                    if row.width() >= new_columns {
+                        row.truncate(new_columns);
+                    }
+                }
             }
-            self.cursor.y = new_cursor_y;
-            self.cursor.x = new_cursor_x;
         }
-        // avoid reflowing lines if in alternate screen
-        // TODO: remove extra lines
-        if new_rows != self.height && self.alternate_viewport_and_cursor.is_none() {
+        if new_rows != self.height {
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&new_rows) {
                 Ordering::Less => {
@@ -812,12 +819,17 @@ impl Grid {
                     } else {
                         self.cursor.y -= row_count_to_transfer;
                     }
-                    transfer_rows_from_viewport_to_lines_above(
-                        &mut self.viewport,
-                        &mut self.lines_above,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
+                    if self.alternate_viewport_and_cursor.is_none() {
+                        transfer_rows_from_viewport_to_lines_above(
+                            &mut self.viewport,
+                            &mut self.lines_above,
+                            row_count_to_transfer,
+                            new_columns,
+                        );
+                    } else {
+                        // in alternate screen, no scroll buffer, so just remove lines
+                        self.viewport.drain(0..row_count_to_transfer);
+                    }
                 }
                 Ordering::Equal => {}
             }
