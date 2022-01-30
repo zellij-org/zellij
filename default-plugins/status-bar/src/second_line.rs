@@ -238,7 +238,7 @@ pub fn text_copied_hint(palette: &Palette, copy_destination: CopyDestination) ->
         CopyDestination::Command => "Text piped to external command",
         #[cfg(not(target_os = "macos"))]
         CopyDestination::Primary => "Text copied to primary selection",
-        #[cfg(target_os = "macos")]
+        #[cfg(target_os = "macos")] // primary selection does not exist on macos
         CopyDestination::Primary => "Text copied to clipboard",
         CopyDestination::System => "Text copied to clipboard",
     };
