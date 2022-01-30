@@ -374,7 +374,7 @@ pub struct Grid {
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
     horizontal_tabstops: BTreeSet<usize>,
-    alternate_viewport_and_cursor: Option<(Vec<Row>, Cursor)>,
+    alternate_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
     cursor: Cursor,
     saved_cursor_position: Option<Cursor>,
     // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
@@ -1804,9 +1804,13 @@ impl Perform for Grid {
                     }
                     Some(1049) => {
                         // leave alternate buffer
-                        if let Some((alternative_viewport, alternative_cursor)) =
-                            &mut self.alternate_viewport_and_cursor
+                        if let Some((
+                            alternative_lines_above,
+                            alternative_viewport,
+                            alternative_cursor,
+                        )) = &mut self.alternate_viewport_and_cursor
                         {
+                            std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
                             std::mem::swap(&mut self.cursor, alternative_cursor);
                         }
@@ -1857,10 +1861,14 @@ impl Perform for Grid {
                     }
                     Some(1049) => {
                         // enter alternate buffer
+                        let current_lines_above = std::mem::replace(
+                            &mut self.lines_above,
+                            VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
+                        );
                         let current_viewport = std::mem::take(&mut self.viewport);
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
                         self.alternate_viewport_and_cursor =
-                            Some((current_viewport, current_cursor));
+                            Some((current_lines_above, current_viewport, current_cursor));
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
                     }
