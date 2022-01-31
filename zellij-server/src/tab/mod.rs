@@ -124,7 +124,7 @@ pub(crate) struct Tab {
     copy_command: Option<String>,
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
-    focus_pane_id: Option<PaneId>
+    focus_pane_id: Option<PaneId>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -343,7 +343,7 @@ impl Tab {
             connected_clients,
             selecting_with_mouse: false,
             copy_command,
-            focus_pane_id: None
+            focus_pane_id: None,
         }
     }
 
@@ -511,11 +511,14 @@ impl Tab {
                     // no panes here, bye bye
                     return;
                 }
-                self.active_panes.insert(client_id, self.focus_pane_id.unwrap_or_else(|| {
-                    pane_ids.sort(); // TODO: make this predictable
-                    pane_ids.retain(|p| !self.panes_to_hide.contains(p));
-                    *pane_ids.get(0).unwrap()
-                }));
+                self.active_panes.insert(
+                    client_id,
+                    self.focus_pane_id.unwrap_or_else(|| {
+                        pane_ids.sort(); // TODO: make this predictable
+                        pane_ids.retain(|p| !self.panes_to_hide.contains(p));
+                        *pane_ids.get(0).unwrap()
+                    }),
+                );
                 self.connected_clients.insert(client_id);
                 self.mode_info.insert(
                     client_id,
