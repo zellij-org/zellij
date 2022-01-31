@@ -1,0 +1,311 @@
+// Configuration for zellij.
+
+modes clear-defaults=true {
+  // Can also use `shared` with a list of modes to include
+  shared-except "locked" "renametab" "renamepane" {
+    bind "Ctrl-g" {
+      SwitchToMode "Locked"
+    }
+    bind "Ctrl-p" {
+      SwitchToMode "Pane"
+    }
+    bind "Ctrl-n" {
+      SwitchToMode "Resize"
+    }
+    bind "Ctrl-t" {
+      SwitchToMode "Tab"
+    }
+    bind "Ctrl-s" {
+      SwitchToMode "Scroll"
+    }
+    bind "Ctrl-o" {
+      SwitchToMode "Session"
+    }
+    bind "Ctrl-h" {
+      SwitchToMode "Move"
+    }
+    bind "Ctrl-q" {
+      Quit
+    }
+  }
+
+  shared-except "locked" {
+    bind "Alt-n" {
+      NewPane
+    }
+    bind "Alt-h" {
+      MoveFocusOrTab "Left"
+    }
+    bind "Alt-l" {
+      MoveFocusOrTab "Right"
+    }
+    bind "Alt-j" {
+      MoveFocusOrTab "Down"
+    }
+    bind "Alt-k" {
+      MoveFocusOrTab "Up"
+    }
+    bind "Alt-[" {
+      FocusPreviousPane
+    }
+    bind "Alt-]" {
+      FocusNextPane
+    }
+    bind "Alt-+" "Alt-=" {
+      Resize "Increase"
+    }
+    bind "Alt--" {
+      Resize "Decrease"
+    }
+  }
+
+  locked {
+    bind "Ctrl-g"{
+      SwitchToMode "Normal"
+    }
+  }
+
+  resize {
+    bind "Ctrl-n" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "Left" "h" {
+      Resize "Left"
+    }
+    bind "Right" "l" {
+      Resize "Right"
+    }
+    bind "Down" "j" {
+      Resize "Down"
+    }
+    bind "Up" "k" {
+      Resize "Up"
+    }
+    bind "+" "=" {
+      Resize "Increase"
+    }
+    bind "-" {
+      Resize "Decrease"
+    }
+    // This could be used to unbind a particular set of keys, if the global
+    // `clear-defaults` is unset / false – useful in layout files!
+    // unbind "h", "j", "k", "l"
+  }
+
+  pane {
+    bind "Ctrl-p" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "Left" "h" {
+      MoveFocus "Left"
+    }
+    bind "Right" "l" {
+      MoveFocus "Right"
+    }
+    bind "Down" "j" {
+      MoveFocus "Down"
+    }
+    bind "Up" "k" {
+      MoveFocus "Up"
+    }
+    bind "p" {
+      SwitchFocus
+    }
+    bind "n" {
+      NewPane
+      SwitchToMode "Normal"
+    }
+    bind "d" {
+      NewPane "Down"
+      SwitchToMode "Normal"
+    }
+    bind "r" {
+      NewPane "Right"
+      SwitchToMode "Normal"
+    }
+    bind "x" {
+      CloseFocus
+      SwitchToMode "Normal"
+    }
+    bind "f" {
+      ToggleFocusFullscreen
+      SwitchToMode "Normal"
+    }
+    bind "z" {
+      TogglePaneFrames
+      SwitchToMode "Normal"
+    }
+    bind "c" {
+      SwitchToMode "RenamePane"
+      PaneNameInput 0
+    }
+  }
+
+  move {
+    bind "Ctrl-h" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "n" "\t" {
+      MovePane
+    }
+    bind "Left" "h" {
+      MovePane "Left"
+    }
+    bind "Right" "l" {
+      MovePane "Right"
+    }
+    bind "Down" "j" {
+      MovePane "Down"
+    }
+    bind "Up" "k" {
+      MovePane "Up"
+    }
+  }
+
+  tab {
+    bind "Ctrl-t" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "Left" "Up" "h" "k" {
+      GoToPreviousTab
+    }
+    bind "Right" "Down" "l" "j" {
+    }
+    bind "n" {
+      NewTab
+      SwitchToMode "Normal"
+    }
+    bind "x" {
+      CloseTab
+      SwitchToMode "Normal"
+    }
+    bind "s" {
+      ToggleActiveSyncTab
+      SwitchToMode "Normal"
+    }
+    bind "\t" {
+      ToggleTab
+    }
+    bind "1" {
+      GoToTab: 1
+      SwitchToMode "Normal"
+    }
+    bind "2" {
+      GoToTab: 2
+      SwitchToMode "Normal"
+    }
+    bind "3" {
+      GoToTab: 3
+      SwitchToMode "Normal"
+    }
+    bind "4" {
+      GoToTab: 4
+      SwitchToMode "Normal"
+    }
+    bind "5" {
+      GoToTab: 5
+      SwitchToMode "Normal"
+    }
+    bind "6" {
+      GoToTab: 6
+      SwitchToMode "Normal"
+    }
+    bind "7" {
+      GoToTab: 7
+      SwitchToMode "Normal"
+    }
+    bind "8" {
+      GoToTab: 8
+      SwitchToMode "Normal"
+    }
+    bind "9" {
+      GoToTab: 9
+      SwitchToMode "Normal"
+    }
+    bind "0" {
+      GoToTab: 10
+      SwitchToMode "Normal"
+    }
+  }
+
+  scroll {
+    bind "Ctrl-s" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "c" {
+      ScrollToBottom
+      SwitchToMode "Normal"
+    }
+    bind "Down" "j" {
+      ScrollDown
+    }
+    bind "Up" "k" {
+      ScrollUp
+    }
+    bind "PageDown" "Right" "f" "l" {
+      PageScrollDown
+    }
+    bind "PageUp" "Left" "b" "h" {
+      PageScrollUp
+    }
+    bind "d" {
+      HalfPageScrollDown
+    }
+    bind "u" {
+      HalfPageScrollUp
+    }
+  }
+
+  renametab {
+    bind "Ctrl-c" "\n" {
+      SwitchToMode "Normal"
+    }
+    bind "Esc" {
+      TabNameInput 27
+      SwitchToMode "Tab"
+    }
+  }
+
+  renamepane {
+    bind "Ctrl-c" "\n" {
+      SwitchToMode "Normal"
+    }
+    bind "Esc" {
+      PaneNameInput 27
+      SwitchToMode "Pane"
+    }
+  }
+
+  session {
+    bind "Ctrl-o" "Esc" "\n" " " {
+      SwitchToMode "Normal"
+    }
+    bind "d" {
+      Detach
+    }
+  }
+}
+
+plugins {
+  tab-bar {
+    tag "tab-bar"
+  }
+  // Path could be: "target/wasm32-wasi/status-bar.wasm"
+  status-bar {
+    tag "status-bar"
+  }
+  strider {
+    tag "strider"
+  }
+}
+
+options {
+  on-force-close "quit"
+  default-shell "fish"
+  theme "default"
+  default-mode "locked"
+  simplified-ui false
+  pane-frames true
+  mouse-support false
+  scroll-buffer-size 10000
+}
