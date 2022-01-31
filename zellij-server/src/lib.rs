@@ -313,8 +313,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 };
 
                 if !&layout.tabs.is_empty() {
-                    for tab_layout in layout.tabs {
+                    for tab_layout in layout.clone().tabs {
                         spawn_tabs(Some(tab_layout.clone()));
+                    }
+
+                    let focused_tab = layout
+                        .tabs
+                        .into_iter()
+                        .enumerate()
+                        .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
+                    if let Some((tab_index, _)) = focused_tab {
+                        session_data
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_pty(PtyInstruction::GoToTab((tab_index + 1) as u32, client_id))
+                            .unwrap();
                     }
                 } else {
                     spawn_tabs(None);
