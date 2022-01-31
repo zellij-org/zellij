@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: scroll page up/down by actual amount of rows (https://github.com/zellij-org/zellij/pull/1025)
 * Fix: handle csi erase param 3 (https://github.com/zellij-org/zellij/pull/1026)
 * Add: theme example for `tokyo-night` (https://github.com/zellij-org/zellij/pull/1015)
+* Fix: log a warning, if a user-configured mode has no actions associated and is active (https://github.com/zellij-org/zellij/pull/1035)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
