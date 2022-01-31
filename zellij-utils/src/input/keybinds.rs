@@ -198,7 +198,14 @@ impl Keybinds {
             keybinds
                 .0
                 .get(mode)
-                .unwrap_or_else(|| unreachable!("Unrecognized mode: {:?}", mode))
+                .unwrap_or({
+                    log::warn!(
+                        "The following mode has no action associated with it: {:?}",
+                        mode
+                    );
+                    // create a dummy mode to recover from
+                    &ModeKeybinds::new()
+                })
                 .0
                 .get(key)
                 .cloned()
