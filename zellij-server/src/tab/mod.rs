@@ -104,7 +104,6 @@ pub(crate) struct Tab {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     pub panes_to_hide: HashSet<PaneId>,
     pub active_panes: HashMap<ClientId, PaneId>,
-    last_active_pane_id: Option<PaneId>,
     max_panes: Option<usize>,
     viewport: Viewport, // includes all non-UI panes
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -123,6 +122,9 @@ pub(crate) struct Tab {
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
     selecting_with_mouse: bool,
     copy_command: Option<String>,
+    // TODO: used only to focus the pane when the layout is loaded
+    // it seems that optimization is possible using `active_panes`
+    focus_pane_id: Option<PaneId>
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -324,7 +326,6 @@ impl Tab {
             max_panes,
             panes_to_hide: HashSet::new(),
             active_panes: HashMap::new(),
-            last_active_pane_id: None,
             viewport: display_area.into(),
             display_area,
             fullscreen_is_active: false,
@@ -342,6 +343,7 @@ impl Tab {
             connected_clients,
             selecting_with_mouse: false,
             copy_command,
+            focus_pane_id: None
         }
     }
 
@@ -448,8 +450,6 @@ impl Tab {
         self.set_pane_frames(self.draw_pane_frames);
 
         let mut active_pane = |pane_id: PaneId| {
-            self.active_panes.insert(client_id, pane_id);
-
             let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
             for client_id in connected_clients {
                 self.active_panes.insert(client_id, pane_id);
@@ -457,6 +457,7 @@ impl Tab {
         };
 
         if let Some(pane_id) = focus_pane_id {
+            self.focus_pane_id = Some(pane_id);
             active_pane(pane_id);
         } else {
             // This is the end of the nasty viewport hack...
@@ -510,8 +511,11 @@ impl Tab {
                     // no panes here, bye bye
                     return;
                 }
-                pane_ids.sort(); // TODO: make this predictable
-                pane_ids.retain(|p| !self.panes_to_hide.contains(p));
+                self.active_panes.insert(client_id, self.focus_pane_id.unwrap_or_else(|| {
+                    pane_ids.sort(); // TODO: make this predictable
+                    pane_ids.retain(|p| !self.panes_to_hide.contains(p));
+                    *pane_ids.get(0).unwrap()
+                }));
                 self.connected_clients.insert(client_id);
                 self.mode_info.insert(
                     client_id,
@@ -534,6 +538,7 @@ impl Tab {
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
+        self.focus_pane_id = None;
         self.connected_clients.remove(&client_id);
         self.set_force_render();
     }
