@@ -315,7 +315,7 @@ impl Pane for TerminalPane {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
-                // if true {
+                    // if true {
                     if !self.borderless {
                         vte_output = Some(frame.render());
                     }

@@ -159,7 +159,12 @@ pub(crate) fn pty_thread_main(
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
             }
-            PtyInstruction::ReopenPane(previous_id, terminal_action, should_close_previous_pane, client_or_tab_index) => {
+            PtyInstruction::ReopenPane(
+                previous_id,
+                terminal_action,
+                should_close_previous_pane,
+                client_or_tab_index,
+            ) => {
                 if should_close_previous_pane {
                     pty.close_pane(previous_id);
                 }

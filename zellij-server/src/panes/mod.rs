@@ -1,5 +1,5 @@
 mod alacritty_functions;
-mod grid;
+pub mod grid;
 mod link_handler;
 mod plugin_pane;
 mod selection;

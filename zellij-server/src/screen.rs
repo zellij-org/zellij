@@ -104,7 +104,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::ReopenPane(..) => ScreenContext::ReopenPane,
-            ScreenInstruction::TogglePaneEmbedOrFloating(..) => ScreenContext::TogglePaneEmbedOrFloating,
+            ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
+                ScreenContext::TogglePaneEmbedOrFloating
+            }
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
@@ -742,13 +744,18 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ReopenPane(previous_pid, new_pid, client_or_tab_index) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
-                        screen
-                            .get_active_tab_mut(client_id)
-                            .unwrap()
-                            .reopen_pane(previous_pid, new_pid, Some(client_id));
+                        screen.get_active_tab_mut(client_id).unwrap().reopen_pane(
+                            previous_pid,
+                            new_pid,
+                            Some(client_id),
+                        );
                     }
                     ClientOrTabIndex::TabIndex(tab_index) => {
-                        screen.tabs.get_mut(&tab_index).unwrap().reopen_pane(previous_pid, new_pid, None);
+                        screen.tabs.get_mut(&tab_index).unwrap().reopen_pane(
+                            previous_pid,
+                            new_pid,
+                            None,
+                        );
                     }
                 };
                 screen
@@ -761,7 +768,10 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().toggle_pane_embed_or_floating(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .toggle_pane_embed_or_floating(client_id);
                 screen
                     .bus
                     .senders
@@ -770,7 +780,10 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             }
             ScreenInstruction::ToggleFloatingPanes(client_id) => {
-                screen.get_active_tab_mut(client_id).unwrap().toggle_floating_panes(client_id);
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .toggle_floating_panes(client_id);
                 screen
                     .bus
                     .senders
