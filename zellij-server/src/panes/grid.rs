@@ -792,7 +792,8 @@ impl Grid {
             // in alternate screen just truncate exceeding width
             for row in &mut self.viewport {
                 if row.width() >= new_columns {
-                    row.truncate(new_columns);
+                    let truncate_at = row.position_accounting_for_widechars(new_columns);
+                    row.columns.truncate(truncate_at);
                 }
             }
         }
