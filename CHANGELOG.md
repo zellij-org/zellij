@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: theme example for `tokyo-night` (https://github.com/zellij-org/zellij/pull/1015)
 * Fix: log a warning, if a user-configured mode has no actions associated and is active (https://github.com/zellij-org/zellij/pull/1035)
 * Feature: add focus attribute in layout (https://github.com/zellij-org/zellij/pull/958)
+* Compatibility: disable scrollback in alternate screen (https://github.com/zellij-org/zellij/pull/1032)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
