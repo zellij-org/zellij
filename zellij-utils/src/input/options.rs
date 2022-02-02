@@ -87,9 +87,10 @@ pub struct Options {
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
 pub enum Clipboard {
+    #[serde(alias = "system")]
     System,
+    #[serde(alias = "primary")]
     Primary,
 }
 
