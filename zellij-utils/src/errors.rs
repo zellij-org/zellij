@@ -7,12 +7,29 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;
 
+use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, Report};
+use thiserror::Error as ThisError;
+
 /// The maximum amount of calls an [`ErrorContext`] will keep track
 /// of in its stack representation. This is a per-thread maximum.
 const MAX_THREAD_CALL_STACK: usize = 6;
 
 pub trait ErrorInstruction {
     fn error(err: String) -> Self;
+}
+
+#[derive(Debug, ThisError, Diagnostic)]
+#[error("{0}")]
+#[diagnostic(help("set the `RUST_BACKTRACE=1` environment variable to display a backtrace."))]
+struct Panic(String);
+
+fn fmt_report(diag: Report) -> String {
+    let mut out = String::new();
+    GraphicalReportHandler::new_themed(GraphicalTheme::unicode())
+        .with_width(120)
+        .render_report(&mut out, diag.as_ref())
+        .unwrap();
+    out
 }
 
 /// Custom panic handler/hook. Prints the [`ErrorContext`].
@@ -34,15 +51,17 @@ where
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
     let backtrace = match (info.location(), msg) {
-        (Some(location), Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
-            err_ctx,
-            thread,
-            msg,
-            location.file(),
-            location.line(),
-            backtrace,
-        ),
+        (Some(location), Some(msg)) => {
+            let mut report: Report = Panic(msg.to_string()).into();
+            report = report.wrap_err(format!(
+                "at {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            ));
+            report = report.wrap_err(format!("thread '{}' panicked.", thread));
+            format!("{}\nError: {}", err_ctx, fmt_report(report))
+        }
         (Some(location), None) => format!(
             "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
             err_ctx,
