@@ -101,9 +101,6 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
 }
 
 fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
-    let shortcut = "ENTER";
-    let description = "Select pane";
-    let separator = if is_first_shortcut { " " } else { " / " };
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -112,23 +109,37 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
-    let separator = Style::new().fg(white_color).paint(separator);
-    let shortcut_len = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
-    let shortcut = Style::new().fg(orange_color).bold().paint(shortcut);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
-    let description_len = description.chars().count();
-    let description = Style::new().fg(white_color).bold().paint(description);
-    let len = shortcut_len + description_len + separator.chars().count();
+    let green_color = match palette.green {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let separator = if is_first_shortcut { " " } else { " / " };
+    let text_with_style = [
+        (separator, white_color, false),
+        ("Alt", orange_color, true),
+        (" + ", white_color, false),
+        ("<", green_color, true),
+        ("[]", green_color, true),
+        (" or ", white_color, false),
+        ("hjkl", green_color, true),
+        (">", green_color, true),
+        (" Select pane", white_color, false),
+    ];
+    let len = text_with_style
+        .iter()
+        .fold(0, |len_sum, (text, _, _)| len_sum + text.chars().count());
+    let styled_text = text_with_style
+        .into_iter()
+        .map(|(text, color, is_bold)| {
+            if is_bold {
+                Style::new().fg(color).bold().paint(text)
+            } else {
+                Style::new().fg(color).paint(text)
+            }
+        })
+        .collect::<Vec<_>>();
     LinePart {
-        part: ANSIStrings(&[
-            separator,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            description,
-        ])
-        .to_string(),
+        part: ANSIStrings(&styled_text[..]).to_string(),
         len,
     }
 }
