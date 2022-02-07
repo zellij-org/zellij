@@ -163,7 +163,7 @@ fn confirm_pane_selection(palette: Palette) -> LinePart {
     use StatusBarTextColor::*;
     let text_with_style = [
         (" / ", White, NotBold),
-        ("<Enter>", Green, Bold),
+        ("<ENTER>", Green, Bold),
         (" Select pane", White, Bold),
     ];
     show_extra_hints(palette, text_with_style.to_vec())
