@@ -100,7 +100,9 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
+/// Creates hints for usage of Rename Mode in Pane Mode
 fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
+    // get the colors
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -113,7 +115,10 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
+    // dynamic separator
     let separator = if is_first_shortcut { " " } else { " / " };
+    // define text with according style
+    // tuple is (displayed text, color, bold [true=yes,false=no])
     let text_with_style = [
         (separator, white_color, false),
         ("Alt", orange_color, true),
@@ -123,11 +128,13 @@ fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
         (" or ", white_color, false),
         ("hjkl", green_color, true),
         (">", green_color, true),
-        (" Select pane", white_color, false),
+        (" Select pane", white_color, true),
     ];
+    // calculate length of tipp
     let len = text_with_style
         .iter()
         .fold(0, |len_sum, (text, _, _)| len_sum + text.chars().count());
+    // apply the styles defined above
     let styled_text = text_with_style
         .into_iter()
         .map(|(text, color, is_bold)| {
