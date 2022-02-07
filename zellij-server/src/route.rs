@@ -446,6 +446,10 @@ pub(crate) fn route_thread_main(
             ClientToServerMsg::KillSession => {
                 to_server.send(ServerInstruction::KillSession).unwrap();
             }
+            ClientToServerMsg::Ping => {
+                let _ = to_server.send(ServerInstruction::Ping(client_id));
+                break;
+            }
         }
     }
 }

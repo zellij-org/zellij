@@ -71,6 +71,7 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
+    Ping(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -85,6 +86,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
+            ServerInstruction::Ping(..) => ServerContext::Ping,
         }
     }
 }
@@ -524,6 +526,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
+            }
+            ServerInstruction::Ping(client_id) => {
+                os_input.send_to_client(client_id, ServerToClientMsg::Pong);
+                remove_client!(client_id, os_input, session_state);
             }
         }
     }
