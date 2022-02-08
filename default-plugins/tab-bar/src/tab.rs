@@ -25,14 +25,14 @@ pub fn render_tab(
     active: bool,
 ) -> LinePart {
     let background_color = if active { palette.green } else { palette.fg };
-    let left_separator = style!(palette.gray, background_color).paint(separator);
+    let left_separator = style!(palette.black, background_color).paint(separator);
     let mut tab_text_len = text.width() + 2 + separator.width() * 2; // 2 for left and right separators, 2 for the text padding
 
     let tab_styled_text = style!(palette.black, background_color)
         .bold()
         .paint(format!(" {} ", text));
 
-    let right_separator = style!(background_color, palette.gray).paint(separator);
+    let right_separator = style!(background_color, palette.black).paint(separator);
     let tab_styled_text = if !focused_clients.is_empty() {
         let (cursor_section, extra_length) = cursors(focused_clients, palette);
         tab_text_len += extra_length;

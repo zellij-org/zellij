@@ -102,11 +102,11 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let left_separator = style!(palette.gray, palette.orange).paint(separator);
+    let left_separator = style!(palette.black, palette.orange).paint(separator);
     let more_styled_text = style!(palette.black, palette.orange)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.orange, palette.gray).paint(separator);
+    let right_separator = style!(palette.orange, palette.black).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -130,11 +130,11 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let left_separator = style!(palette.gray, palette.orange).paint(separator);
+    let left_separator = style!(palette.black, palette.orange).paint(separator);
     let more_styled_text = style!(palette.black, palette.orange)
         .bold()
         .paint(more_text);
-    let right_separator = style!(palette.orange, palette.gray).paint(separator);
+    let right_separator = style!(palette.orange, palette.black).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -147,7 +147,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = style!(palette.white, palette.gray)
+    let prefix_styled_text = style!(palette.white, palette.black)
         .bold()
         .paint(prefix_text);
     let mut parts = vec![LinePart {
@@ -157,7 +157,7 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
-        let name_part_styled_text = style!(palette.white, palette.gray).bold().paint(name_part);
+        let name_part_styled_text = style!(palette.white, palette.black).bold().paint(name_part);
         if cols.saturating_sub(prefix_text_len) >= name_part_len {
             parts.push(LinePart {
                 part: name_part_styled_text.to_string(),

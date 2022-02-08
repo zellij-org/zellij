@@ -83,54 +83,54 @@ pub struct ColoredElements {
 fn color_elements(palette: Palette) -> ColoredElements {
     match palette.source {
         PaletteSource::Default => ColoredElements {
-            selected_prefix_separator: style!(palette.gray, palette.green),
+            selected_prefix_separator: style!(palette.black, palette.green),
             selected_char_left_separator: style!(palette.black, palette.green).bold(),
             selected_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_char_right_separator: style!(palette.black, palette.green).bold(),
             selected_styled_text: style!(palette.black, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, palette.gray).bold(),
-            unselected_prefix_separator: style!(palette.gray, palette.fg),
+            selected_suffix_separator: style!(palette.green, palette.black).bold(),
+            unselected_prefix_separator: style!(palette.black, palette.fg),
             unselected_char_left_separator: style!(palette.black, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
             unselected_char_right_separator: style!(palette.black, palette.fg).bold(),
             unselected_styled_text: style!(palette.black, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, palette.gray),
-            disabled_prefix_separator: style!(palette.gray, palette.fg),
-            disabled_styled_text: style!(palette.gray, palette.fg).dimmed(),
-            disabled_suffix_separator: style!(palette.fg, palette.gray),
-            selected_single_letter_prefix_separator: style!(palette.gray, palette.green),
+            unselected_suffix_separator: style!(palette.fg, palette.black),
+            disabled_prefix_separator: style!(palette.black, palette.fg),
+            disabled_styled_text: style!(palette.black, palette.fg).dimmed(),
+            disabled_suffix_separator: style!(palette.fg, palette.black),
+            selected_single_letter_prefix_separator: style!(palette.black, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_single_letter_suffix_separator: style!(palette.green, palette.gray),
-            unselected_single_letter_prefix_separator: style!(palette.gray, palette.fg),
-            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, palette.gray),
-            superkey_prefix: style!(palette.white, palette.gray).bold(),
-            superkey_suffix_separator: style!(palette.gray, palette.gray),
+            selected_single_letter_suffix_separator: style!(palette.green, palette.black),
+            unselected_single_letter_prefix_separator: style!(palette.black, palette.fg),
+            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold().dimmed(),
+            unselected_single_letter_suffix_separator: style!(palette.fg, palette.black),
+            superkey_prefix: style!(palette.white, palette.black).bold(),
+            superkey_suffix_separator: style!(palette.black, palette.black),
         },
         PaletteSource::Xresources => ColoredElements {
-            selected_prefix_separator: style!(palette.gray, palette.green),
+            selected_prefix_separator: style!(palette.black, palette.green),
             selected_char_left_separator: style!(palette.fg, palette.green).bold(),
             selected_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_char_right_separator: style!(palette.fg, palette.green).bold(),
-            selected_styled_text: style!(palette.gray, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, palette.gray).bold(),
-            unselected_prefix_separator: style!(palette.gray, palette.fg),
-            unselected_char_left_separator: style!(palette.gray, palette.fg).bold(),
+            selected_styled_text: style!(palette.black, palette.green).bold(),
+            selected_suffix_separator: style!(palette.green, palette.black).bold(),
+            unselected_prefix_separator: style!(palette.black, palette.fg),
+            unselected_char_left_separator: style!(palette.black, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(palette.gray, palette.fg).bold(),
-            unselected_styled_text: style!(palette.gray, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, palette.gray),
-            disabled_prefix_separator: style!(palette.gray, palette.fg),
-            disabled_styled_text: style!(palette.gray, palette.fg).dimmed(),
-            disabled_suffix_separator: style!(palette.fg, palette.gray),
+            unselected_char_right_separator: style!(palette.black, palette.fg).bold(),
+            unselected_styled_text: style!(palette.black, palette.fg).bold(),
+            unselected_suffix_separator: style!(palette.fg, palette.black),
+            disabled_prefix_separator: style!(palette.black, palette.fg),
+            disabled_styled_text: style!(palette.black, palette.fg).dimmed(),
+            disabled_suffix_separator: style!(palette.fg, palette.black),
             selected_single_letter_prefix_separator: style!(palette.fg, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_single_letter_suffix_separator: style!(palette.green, palette.fg),
-            unselected_single_letter_prefix_separator: style!(palette.fg, palette.gray),
+            unselected_single_letter_prefix_separator: style!(palette.fg, palette.black),
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, palette.gray),
-            superkey_prefix: style!(palette.gray, palette.fg).bold(),
-            superkey_suffix_separator: style!(palette.fg, palette.gray),
+            unselected_single_letter_suffix_separator: style!(palette.fg, palette.black),
+            superkey_prefix: style!(palette.black, palette.fg).bold(),
+            superkey_suffix_separator: style!(palette.fg, palette.black),
         },
     }
 }
@@ -189,9 +189,9 @@ impl ZellijPlugin for State {
         let first_line = format!("{}{}", superkey, ctrl_keys);
         let second_line = self.second_line(cols);
 
-        // [48;5;238m is gray background, [0K is so that it fills the rest of the line
+        // [48;5;238m is black background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
-        match self.mode_info.style.colors.gray {
+        match self.mode_info.style.colors.black {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
             }
