@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::{PaneId, TerminalCharacter};
+use crate::panes::{PaneId, TerminalCharacter, CharacterChunk};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
@@ -134,7 +134,7 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, client_id: Option<ClientId>) -> Option<(Vec<Vec<TerminalCharacter>>, Option<String>)> {
+    fn render(&mut self, client_id: Option<ClientId>) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;
         let client_id = client_id.unwrap();

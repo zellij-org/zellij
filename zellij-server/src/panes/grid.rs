@@ -267,7 +267,7 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CharacterChunk {
     pub terminal_characters: Vec<TerminalCharacter>,
     pub x: usize,
@@ -308,6 +308,8 @@ impl OutputBuffer {
         viewport: &[Row],
         viewport_width: usize,
         viewport_height: usize,
+        x_offset: usize,
+        y_offset: usize,
     ) -> Vec<CharacterChunk> {
         if self.should_update_all_lines {
             let mut changed_chunks = Vec::with_capacity(viewport.len());
@@ -315,8 +317,8 @@ impl OutputBuffer {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
                 changed_chunks.push(CharacterChunk {
-                    x: 0,
-                    y: line_index,
+                    x: 0 + x_offset, // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
+                    y: line_index + y_offset,
                     terminal_characters,
                 });
             }
@@ -850,10 +852,10 @@ impl Grid {
         }
         lines
     }
-    pub fn read_changes(&mut self) -> Vec<CharacterChunk> {
+    pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> Vec<CharacterChunk> {
         let changes =
             self.output_buffer
-                .changed_chunks_in_viewport(&self.viewport, self.width, self.height);
+                .changed_chunks_in_viewport(&self.viewport, self.width, self.height, x_offset, y_offset);
         self.output_buffer.clear();
         changes
     }

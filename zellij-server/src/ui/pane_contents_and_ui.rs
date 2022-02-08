@@ -1,3 +1,4 @@
+use std::time::Instant;
 use crate::panes::PaneId;
 use crate::tab::{Output, Pane};
 use crate::ui::boundaries::Boundaries;
@@ -41,16 +42,18 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         clients: impl Iterator<Item = ClientId>,
     ) {
-        if let Some((terminal_characters, raw_vte_output)) = self.pane.render(None) {
+        let render_pane_contents_to_multiple_clients_start = Instant::now();
+        if let Some((character_chunks, raw_vte_output)) = self.pane.render(None) {
             let clients: Vec<ClientId> = clients.collect();
-            for (line_index, line) in terminal_characters.iter().enumerate() {
-                self.output.push_terminal_characters_to_multiple_clients(
-                    self.pane.get_content_x(),
-                    self.pane.get_content_y() + line_index,
-                    &line,
-                    clients.iter().copied(),
-                );
-            }
+            self.output.add_character_chunks_to_multiple_clients(character_chunks, clients.iter().copied());
+//             for (line_index, line) in terminal_characters.iter().enumerate() {
+//                 self.output.push_terminal_characters_to_multiple_clients(
+//                     self.pane.get_content_x(),
+//                     self.pane.get_content_y() + line_index,
+//                     &line,
+//                     clients.iter().copied(),
+//                 );
+//             }
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.push_str_to_multiple_clients(
                     &format!(
@@ -63,18 +66,20 @@ impl<'a> PaneContentsAndUi<'a> {
                 );
             }
         }
+        // log::info!("total render_pane_contents_to_multiple_clients: {:?}", render_pane_contents_to_multiple_clients_start.elapsed());
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
-        if let Some((terminal_characters, raw_vte_output)) = self.pane.render(Some(client_id)) {
+        if let Some((character_chunks, raw_vte_output)) = self.pane.render(Some(client_id)) {
             // FIXME: Use Termion for cursor and style clearing?
-            for (line_index, line) in terminal_characters.iter().enumerate() {
-                self.output.push_terminal_characters_to_client(
-                    client_id,
-                    self.pane.get_content_x(),
-                    self.pane.get_content_y() + line_index,
-                    &line,
-                );
-            }
+            self.output.add_character_chunks_to_client(client_id, character_chunks);
+//             for (line_index, line) in terminal_characters.iter().enumerate() {
+//                 self.output.push_terminal_characters_to_client(
+//                     client_id,
+//                     self.pane.get_content_x(),
+//                     self.pane.get_content_y() + line_index,
+//                     &line,
+//                 );
+//             }
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.push_to_client(
                     client_id,

@@ -1,4 +1,4 @@
-use crate::panes::AnsiCode;
+use crate::panes::{AnsiCode, CharacterChunk};
 use crate::panes::{
     grid::Grid,
     terminal_character::{
@@ -184,15 +184,29 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, _client_id: Option<ClientId>) -> Option<(Vec<Vec<TerminalCharacter>>, Option<String>)> {
+    fn render(&mut self, _client_id: Option<ClientId>) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+        // TODO: CONTINUE HERE
+        // * receive Output, then instead of buffering or doing anything really, do an
+        // output.add_chunks(<chunks_from_grid>) - just make sure to adjust their x/y according to
+        // self.get_content_x and self.get_content_y (probably just add them up?)
+        // * then in output, instead of the whole terminal character thing, serialize these
+        // changed chunks
+        // * test this - if performance is satisfactory, all we need to do (I *hope*!) is reset the
+        // output buffer on pane size/position change and when a floating window is moved (above
+        // it? above certain lines?)
+        // * if performance is not satisfactory - first make sure it's not the frames, then consider looking into adjusting the chunks so that
+        // they also account for x and not just dump the whole changed line as (I think) they do
+        // now
         // we don't use client_id because terminal panes render the same for all users
-        // if self.should_render() {
-        if true {
+        if self.should_render() {
+        // if true {
+            let terminal_render_start = Instant::now();
             let mut raw_vte_output = String::new();
             let mut terminal_characters = vec![vec![EMPTY_TERMINAL_CHARACTER; self.grid.width]; self.grid.height];
             let mut character_styles = CharacterStyles::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
+            // log::info!("terminal 1 elapsed: {:?}", terminal_render_start.elapsed());
             if self.grid.clear_viewport_before_rendering {
                 // TODO: get rid of this now that everything starts out iwth
                 // EMPTY_TERMINAL_CHARACTER?
@@ -212,6 +226,7 @@ impl Pane for TerminalPane {
                 }
                 self.grid.clear_viewport_before_rendering = false;
             }
+            // log::info!("terminal 2 elapsed: {:?}", terminal_render_start.elapsed());
             // here we clear the previous cursor locations by adding an empty style-less character
             // in their location, this is done before the main rendering logic so that if there
             // actually is another character there, it will be overwritten
@@ -231,26 +246,56 @@ impl Pane for TerminalPane {
 //                 )
 //                 .unwrap();
 //             }
-            for (line_index, mut line) in self.grid.get_viewport().drain(..).enumerate() {
-                // TODO: 
-                // * account for self.changed_colors
-                // * account for selection
-                // * account for osc8 (links)
-                if let Some(first_character_in_line) = line.get_mut(0) {
-                    first_character_in_line.styles.reset_all_before_character();
-                }
-                let mut character_styles_union = CharacterStyles::new();
-                if let Some(buffer_line) = terminal_characters.get_mut(line_index) {
-                    let line: Vec<TerminalCharacter> = line.iter().copied().map(|mut terminal_character| {
-                        character_styles_union.merge_styles(&terminal_character.styles);
-                        terminal_character.styles = character_styles_union;
-                        terminal_character
-                    }).collect();
-                    buffer_line.splice(..line.len(), line);
-                } else {
-                    terminal_characters.push(Vec::from(line));
-                }
-            }
+            // log::info!("terminal 3 elapsed: {:?}", terminal_render_start.elapsed());
+            // for (line_index, mut line) in self.grid.get_viewport().drain(..).enumerate() {
+
+
+
+            let character_chunks = self.grid.read_changes(content_x, content_y);
+
+
+            // TODO: BRING ME BACK OR HANDLE ME SOMEHOW
+//             for character_chunk in self.grid.read_changes(content_x, content_y) {
+//                 // TODO: 
+//                 // * account for self.changed_colors
+//                 // * account for selection
+//                 // * account for osc8 (links)
+// 
+//                 //  TODO: do we still need to take care of this so the frame color doesn't leak
+//                 //  into unstyled first characters?
+// //                 if let Some(first_character_in_line) = line.get_mut(0) {
+// //                     first_character_in_line.styles.reset_all_before_character();
+// //                 }
+//                 let mut character_styles_union = CharacterStyles::new();
+//                 if let Some(buffer_line) = terminal_characters.get_mut(character_chunk.y) {
+//                     let line: Vec<TerminalCharacter> = character_chunk.terminal_characters.iter().copied().map(|mut terminal_character| {
+//                         character_styles_union.merge_styles(&terminal_character.styles);
+//                         terminal_character.styles = character_styles_union;
+//                         terminal_character
+//                     }).collect();
+//                     buffer_line.splice(..line.len(), line);
+//                 } else {
+//                     // TODO: is this entirely correct... or actually even needed?
+//                     terminal_characters.push(Vec::from(character_chunk.terminal_characters));
+//                 }
+
+
+
+
+
+
+//                 if let Some(buffer_line) = terminal_characters.get_mut(line_index) {
+//                     let line: Vec<TerminalCharacter> = line.iter().copied().map(|mut terminal_character| {
+//                         character_styles_union.merge_styles(&terminal_character.styles);
+//                         terminal_character.styles = character_styles_union;
+//                         terminal_character
+//                     }).collect();
+//                     buffer_line.splice(..line.len(), line);
+//                 } else {
+//                     terminal_characters.push(Vec::from(line));
+//                 }
+//            }
+            // log::info!("terminal 4 elapsed: {:?}", terminal_render_start.elapsed());
 //             let max_width = self.get_content_columns();
 //             for character_chunk in self.grid.read_changes() {
 //                 let pane_x = self.get_content_x();
@@ -305,7 +350,9 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Some((terminal_characters, Some(raw_vte_output)))
+            // log::info!("terminal 5 elapsed: {:?}", terminal_render_start.elapsed());
+            // Some((terminal_characters, Some(raw_vte_output)))
+            Some((character_chunks, Some(raw_vte_output)))
         } else {
             None
         }

@@ -417,34 +417,37 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        log::info!("****************** RENDER *****************************");
+        // log::info!("****************** RENDER *****************************");
         let render_start = Instant::now();
         let mut output = Output::default();
-        let mut tabs_to_close = vec![];
-        let size = self.size;
-        let overlay = self.overlay.clone();
+        // let mut tabs_to_close = vec![];
+        // let size = self.size;
+        // let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_active_panes() {
-                let vte_overlay = overlay.generate_overlay(size);
+                // let vte_overlay = overlay.generate_overlay(size);
                 let tab_render_start = Instant::now();
-                tab.render(&mut output, Some(vte_overlay));
-                log::info!("tab {:?} render duration: {:?} (elapsed: {:?})", tab_index, tab_render_start.elapsed(), render_start.elapsed());
+                // log::info!("tab {:?} before render (elapsed: {:?})", tab_index, render_start.elapsed());
+                // tab.render(&mut output, Some(vte_overlay));
+                tab.render(&mut output, None);
+                // log::info!("tab {:?} render duration: {:?} (elapsed: {:?})", tab_index, tab_render_start.elapsed(), render_start.elapsed());
             } else {
-                tabs_to_close.push(*tab_index);
+                // tabs_to_close.push(*tab_index);
             }
         }
-        log::info!("after tab loop (elapsed: {:?})", render_start.elapsed());
-        for tab_index in tabs_to_close {
-            self.close_tab_at_index(tab_index);
-        }
-        log::info!("after close tab loop (elapsed: {:?})", render_start.elapsed());
+        // log::info!("after tab loop (elapsed: {:?})", render_start.elapsed());
+        // TODO: BRING ME BACK!!
+//         for tab_index in tabs_to_close {
+//             self.close_tab_at_index(tab_index);
+//         }
+        // log::info!("after close tab loop (elapsed: {:?})", render_start.elapsed());
         // TODO: CONTINUE HERE (04/02)
         // * instead of swap_cache, create a HashMap here of the serialized render instructions and
         // send those directly in ServerInstruction::Render instead of output
         // * When serializing, send the self.image_cache, so that the serialize function can use it
         // directly and record changes directly on it as it does so
         let serialized_output = output.serialize(Some(&mut self.image_cache));
-        log::info!("render duration after serialize: {:?}", render_start.elapsed());
+        // log::info!("render duration after serialize: {:?}", render_start.elapsed());
         self.bus
             .senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
