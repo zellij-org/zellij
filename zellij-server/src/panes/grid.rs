@@ -857,6 +857,9 @@ impl Grid {
         self.output_buffer.clear();
         changes
     }
+    pub fn get_viewport(&self) -> Vec<Vec<TerminalCharacter>> {
+        self.viewport.iter().map(|v| v.columns.iter().copied().collect()).collect()
+    }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor.is_hidden {
             None

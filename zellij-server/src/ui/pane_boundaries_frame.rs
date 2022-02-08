@@ -1,5 +1,6 @@
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
+use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER};
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
@@ -9,25 +10,75 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use std::fmt::Write;
 
-fn color_string(character: &str, color: Option<PaletteColor>) -> String {
-    match color {
-        Some(PaletteColor::Rgb((r, g, b))) => RGB(r, g, b).bold().paint(character).to_string(),
-        Some(PaletteColor::EightBit(color)) => Fixed(color).bold().paint(character).to_string(),
-        None => Style::new().bold().paint(character).to_string(),
+// fn foreground_color(character: &str, color: Option<PaletteColor>) -> String {
+//     match color {
+//         Some(PaletteColor::Rgb((r, g, b))) => RGB(r, g, b).bold().paint(character).to_string(),
+//         Some(PaletteColor::EightBit(color)) => Fixed(color).bold().paint(character).to_string(),
+//         None => Style::new().bold().paint(character).to_string(),
+//     }
+// }
+
+fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
+    let mut colored_string = Vec::with_capacity(characters.chars().count());
+    for character in characters.chars() {
+        let styles = match color {
+            Some(palette_color) => {
+                let mut styles = CharacterStyles::new();
+                styles.reset_all();
+                styles.foreground(Some(AnsiCode::from(palette_color))).bold(Some(AnsiCode::On))
+            },
+            None => {
+                let mut styles = CharacterStyles::new();
+                styles.reset_all();
+                styles.bold(Some(AnsiCode::On))
+            }
+        };
+        let terminal_character = TerminalCharacter {
+            character,
+            styles,
+            width: character.width().unwrap_or(0)
+        };
+        colored_string.push(terminal_character);
     }
+    colored_string
 }
 
-fn background_color(character: &str, color: Option<PaletteColor>) -> String {
-    match color {
-        Some(PaletteColor::Rgb((r, g, b))) => {
-            Style::new().on(RGB(r, g, b)).paint(character).to_string()
-        }
-        Some(PaletteColor::EightBit(color)) => {
-            Style::new().on(Fixed(color)).paint(character).to_string()
-        }
-        None => character.to_string(),
+fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
+    let mut colored_string = Vec::with_capacity(characters.chars().count());
+    for character in characters.chars() {
+        let styles = match color {
+            Some(palette_color) => {
+                let mut styles = CharacterStyles::new();
+                styles.reset_all();
+                styles.background(Some(AnsiCode::from(palette_color))).bold(Some(AnsiCode::On))
+            },
+            None => {
+                let mut styles = CharacterStyles::new();
+                styles.reset_all();
+                styles
+            }
+        };
+        let terminal_character = TerminalCharacter {
+            character,
+            styles,
+            width: character.width().unwrap_or(0)
+        };
+        colored_string.push(terminal_character);
     }
+    colored_string
 }
+
+// fn background_color(character: &str, color: Option<PaletteColor>) -> String {
+//     match color {
+//         Some(PaletteColor::Rgb((r, g, b))) => {
+//             Style::new().on(RGB(r, g, b)).paint(character).to_string()
+//         }
+//         Some(PaletteColor::EightBit(color)) => {
+//             Style::new().on(Fixed(color)).paint(character).to_string()
+//         }
+//         None => character.to_string(),
+//     }
+// }
 
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
@@ -70,11 +121,11 @@ impl PaneFrame {
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
         }
     }
-    fn client_cursor(&self, client_id: ClientId) -> String {
+    fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.colors);
         background_color(" ", color.map(|c| c.0))
     }
-    fn render_title_right_side(&self, max_length: usize) -> Option<(String, usize)> {
+    fn render_title_right_side(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
         if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
             let prefix = " SCROLL: ";
@@ -86,17 +137,17 @@ impl PaneFrame {
             let prefix_len = prefix.chars().count();
             if prefix_len + full_indication_len <= max_length {
                 Some((
-                    color_string(&format!("{}{}", prefix, full_indication), self.color),
+                    foreground_color(&format!("{}{}", prefix, full_indication), self.color),
                     prefix_len + full_indication_len,
                 ))
             } else if full_indication_len <= max_length {
                 Some((
-                    color_string(&full_indication, self.color),
+                    foreground_color(&full_indication, self.color),
                     full_indication_len,
                 ))
             } else if short_indication_len <= max_length {
                 Some((
-                    color_string(&short_indication, self.color),
+                    foreground_color(&short_indication, self.color),
                     short_indication_len,
                 ))
             } else {
@@ -106,24 +157,24 @@ impl PaneFrame {
             None
         }
     }
-    fn render_my_focus(&self, max_length: usize) -> Option<(String, usize)> {
-        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
-        let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
+    fn render_my_focus(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
+        let right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS";
-        let full_indication = format!(
-            "{} {} {}",
-            left_separator,
-            color_string(full_indication_text, self.color),
-            right_separator
-        );
+        let mut full_indication = vec![];
+        full_indication.append(&mut left_separator.clone());
+        full_indication.push(EMPTY_TERMINAL_CHARACTER);
+        full_indication.append(&mut foreground_color(full_indication_text, self.color));
+        full_indication.push(EMPTY_TERMINAL_CHARACTER);
+        full_indication.append(&mut right_separator.clone());
         let full_indication_len = full_indication_text.width() + 4; // 2 for separators 2 for padding
         let short_indication_text = "ME";
-        let short_indication = format!(
-            "{} {} {}",
-            left_separator,
-            color_string(short_indication_text, self.color),
-            right_separator
-        );
+        let mut short_indication = vec![];
+        short_indication.append(&mut left_separator.clone());
+        short_indication.push(EMPTY_TERMINAL_CHARACTER);
+        short_indication.append(&mut foreground_color(short_indication_text, self.color));
+        short_indication.push(EMPTY_TERMINAL_CHARACTER);
+        short_indication.append(&mut right_separator.clone());
         let short_indication_len = short_indication_text.width() + 4; // 2 for separators 2 for padding
         if full_indication_len <= max_length {
             Some((full_indication, full_indication_len))
@@ -133,91 +184,110 @@ impl PaneFrame {
             None
         }
     }
-    fn render_my_and_others_focus(&self, max_length: usize) -> Option<(String, usize)> {
-        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
-        let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
+    fn render_my_and_others_focus(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
+        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS AND:";
         let short_indication_text = "+";
-        let mut full_indication = color_string(full_indication_text, self.color);
+        let mut full_indication = foreground_color(full_indication_text, self.color);
         let mut full_indication_len = full_indication_text.width();
-        let mut short_indication = color_string(short_indication_text, self.color);
+        let mut short_indication = foreground_color(short_indication_text, self.color);
         let mut short_indication_len = short_indication_text.width();
         for client_id in &self.other_focused_clients {
-            let text = format!(" {}", self.client_cursor(*client_id));
+            let mut text = self.client_cursor(*client_id);
             full_indication_len += 2;
-            full_indication.push_str(&text);
+            full_indication.append(&mut text.clone());
             short_indication_len += 2;
-            short_indication.push_str(&text);
+            short_indication.append(&mut text);
         }
         if full_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
+            let mut ret = vec![];
+            ret.append(&mut left_separator);
+            ret.append(&mut full_indication);
+            ret.append(&mut right_separator);
             Some((
-                format!("{} {} {}", left_separator, full_indication, right_separator),
+                ret,
                 full_indication_len + 4,
             ))
         } else if short_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
+            let mut ret = vec![];
+            ret.append(&mut left_separator);
+            ret.append(&mut short_indication);
+            ret.append(&mut right_separator);
             Some((
-                format!(
-                    "{} {} {}",
-                    left_separator, short_indication, right_separator
-                ),
+                ret,
                 short_indication_len + 4,
             ))
         } else {
             None
         }
     }
-    fn render_other_focused_users(&self, max_length: usize) -> Option<(String, usize)> {
-        let left_separator = color_string(boundary_type::VERTICAL_LEFT, self.color);
-        let right_separator = color_string(boundary_type::VERTICAL_RIGHT, self.color);
+    fn render_other_focused_users(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
+        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = if self.other_focused_clients.len() == 1 {
             "FOCUSED USER:"
         } else {
             "FOCUSED USERS:"
         };
         let middle_indication_text = "U:";
-        let mut full_indication = color_string(full_indication_text, self.color);
+        let mut full_indication = foreground_color(full_indication_text, self.color);
         let mut full_indication_len = full_indication_text.width();
-        let mut middle_indication = color_string(middle_indication_text, self.color);
+        let mut middle_indication = foreground_color(middle_indication_text, self.color);
         let mut middle_indication_len = middle_indication_text.width();
-        let mut short_indication = String::from("");
+        let mut short_indication = vec![];
         let mut short_indication_len = 0;
         for client_id in &self.other_focused_clients {
-            let text = format!(" {}", self.client_cursor(*client_id));
+            let mut text = self.client_cursor(*client_id);
             full_indication_len += 2;
-            full_indication.push_str(&text);
+            full_indication.append(&mut text.clone());
             middle_indication_len += 2;
-            middle_indication.push_str(&text);
+            middle_indication.append(&mut text.clone());
             short_indication_len += 2;
-            short_indication.push_str(&text);
+            short_indication.append(&mut text);
         }
         if full_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
+            let mut ret = vec![];
+            ret.append(&mut left_separator);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
+            ret.append(&mut full_indication);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
+            ret.append(&mut right_separator);
             Some((
-                format!("{} {} {}", left_separator, full_indication, right_separator),
+                ret,
                 full_indication_len + 4,
             ))
         } else if middle_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
+            let mut ret = vec![];
+            ret.append(&mut left_separator);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
+            ret.append(&mut middle_indication);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
+            ret.append(&mut right_separator);
             Some((
-                format!(
-                    "{} {} {}",
-                    left_separator, middle_indication, right_separator
-                ),
+                ret,
                 middle_indication_len + 4,
             ))
         } else if short_indication_len + 3 <= max_length {
             // 2 for separators, 1 for padding
+            let mut ret = vec![];
+            ret.append(&mut left_separator);
+            ret.append(&mut short_indication);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
+            ret.append(&mut right_separator);
             Some((
-                format!("{}{} {}", left_separator, short_indication, right_separator),
+                ret,
                 short_indication_len + 3,
             ))
         } else {
             None
         }
     }
-    fn render_title_middle(&self, max_length: usize) -> Option<(String, usize)> {
+    fn render_title_middle(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
         if self.is_main_client
             && self.other_focused_clients.is_empty()
@@ -237,7 +307,7 @@ impl PaneFrame {
             None
         }
     }
-    fn render_title_left_side(&self, max_length: usize) -> Option<(String, usize)> {
+    fn render_title_left_side(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
         let middle_truncated_sign = "[..]";
         let middle_truncated_sign_long = "[...]";
         let full_text = format!(" {} ", &self.title);
@@ -245,7 +315,7 @@ impl PaneFrame {
             None
         } else if full_text.width() <= max_length {
             Some((
-                color_string(&full_text, self.color),
+                foreground_color(&full_text, self.color),
                 full_text.chars().count(),
             ))
         } else {
@@ -282,22 +352,22 @@ impl PaneFrame {
                     format!("{}{}{}", first_part, middle_truncated_sign, second_part)
                 };
             Some((
-                color_string(&title_left_side, self.color),
+                foreground_color(&title_left_side, self.color),
                 title_left_side.chars().count(),
             ))
         }
     }
     fn three_part_title_line(
         &self,
-        left_side: &str,
+        mut left_side: Vec<TerminalCharacter>,
         left_side_len: &usize,
-        middle: &str,
+        mut middle: Vec<TerminalCharacter>,
         middle_len: &usize,
-        right_side: &str,
+        mut right_side: Vec<TerminalCharacter>,
         right_side_len: &usize,
-    ) -> String {
+    ) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let mut title_line = String::new();
+        let mut title_line = vec![];
         let left_side_start_position = self.geom.x + 1;
         let middle_start_position = self.geom.x + (total_title_length / 2) - (middle_len / 2) + 1;
         let right_side_start_position =
@@ -306,23 +376,23 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
             } else if col == left_side_start_position {
-                title_line.push_str(left_side);
+                title_line.append(&mut left_side);
                 col += left_side_len;
                 continue;
             } else if col == middle_start_position {
-                title_line.push_str(middle);
+                title_line.append(&mut middle);
                 col += middle_len;
                 continue;
             } else if col == right_side_start_position {
-                title_line.push_str(right_side);
+                title_line.append(&mut right_side);
                 col += right_side_len;
                 continue;
             } else {
-                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -333,32 +403,32 @@ impl PaneFrame {
     }
     fn left_and_middle_title_line(
         &self,
-        left_side: &str,
+        mut left_side: Vec<TerminalCharacter>,
         left_side_len: &usize,
-        middle: &str,
+        mut middle: Vec<TerminalCharacter>,
         middle_len: &usize,
-    ) -> String {
+    ) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let mut title_line = String::new();
+        let mut title_line = vec![];
         let left_side_start_position = self.geom.x + 1;
         let middle_start_position = self.geom.x + (total_title_length / 2) - (*middle_len / 2) + 1;
 
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
             } else if col == left_side_start_position {
-                title_line.push_str(left_side);
+                title_line.append(&mut left_side);
                 col += *left_side_len;
                 continue;
             } else if col == middle_start_position {
-                title_line.push_str(middle);
+                title_line.append(&mut middle);
                 col += *middle_len;
                 continue;
             } else {
-                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -367,23 +437,23 @@ impl PaneFrame {
         }
         title_line
     }
-    fn middle_only_title_line(&self, middle: &str, middle_len: &usize) -> String {
+    fn middle_only_title_line(&self, mut middle: Vec<TerminalCharacter>, middle_len: &usize) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let mut title_line = String::new();
+        let mut title_line = vec![];
         let middle_start_position = self.geom.x + (total_title_length / 2) - (*middle_len / 2) + 1;
 
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.push_str(&color_string(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.push_str(&color_string(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
             } else if col == middle_start_position {
-                title_line.push_str(middle);
+                title_line.append(&mut middle);
                 col += *middle_len;
                 continue;
             } else {
-                title_line.push_str(&color_string(boundary_type::HORIZONTAL, self.color));
+                title_line.append(&mut foreground_color(boundary_type::HORIZONTAL, self.color));
             }
             if col == self.geom.x + self.geom.cols - 1 {
                 break;
@@ -394,81 +464,78 @@ impl PaneFrame {
     }
     fn two_part_title_line(
         &self,
-        left_side: &str,
+        mut left_side: Vec<TerminalCharacter>,
         left_side_len: &usize,
-        right_side: &str,
+        mut right_side: Vec<TerminalCharacter>,
         right_side_len: &usize,
-    ) -> String {
-        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
+    ) -> Vec<TerminalCharacter> {
+        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
+        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle = String::new();
         for _ in (left_side_len + right_side_len)..total_title_length {
             middle.push_str(boundary_type::HORIZONTAL);
         }
-        format!(
-            "{}{}{}{}{}",
-            left_boundary,
-            left_side,
-            color_string(&middle, self.color),
-            color_string(right_side, self.color),
-            &right_boundary
-        )
+        let mut ret = vec![];
+        ret.append(&mut left_boundary);
+        ret.append(&mut left_side);
+        ret.append(&mut foreground_color(&middle, self.color));
+        ret.append(&mut right_side);
+        ret.append(&mut right_boundary);
+        ret
     }
-    fn left_only_title_line(&self, left_side: &str, left_side_len: &usize) -> String {
-        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
+    fn left_only_title_line(&self, mut left_side: Vec<TerminalCharacter>, left_side_len: &usize) ->  Vec<TerminalCharacter> {
+        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
+        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in *left_side_len..total_title_length {
             middle_padding.push_str(boundary_type::HORIZONTAL);
         }
-        format!(
-            "{}{}{}{}",
-            left_boundary,
-            left_side,
-            color_string(&middle_padding, self.color),
-            &right_boundary
-        )
+        let mut ret = vec![];
+        ret.append(&mut left_boundary);
+        ret.append(&mut left_side);
+        ret.append(&mut foreground_color(&middle_padding, self.color));
+        ret.append(&mut right_boundary);
+        ret
     }
-    fn empty_title_line(&self) -> String {
-        let left_boundary = color_string(boundary_type::TOP_LEFT, self.color);
-        let right_boundary = color_string(boundary_type::TOP_RIGHT, self.color);
+    fn empty_title_line(&self) -> Vec<TerminalCharacter> {
+        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
+        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in 0..total_title_length {
             middle_padding.push_str(boundary_type::HORIZONTAL);
         }
-        format!(
-            "{}{}{}",
-            left_boundary,
-            color_string(&middle_padding, self.color),
-            right_boundary
-        )
+        let mut ret = vec![];
+        ret.append(&mut left_boundary);
+        ret.append(&mut foreground_color(&middle_padding, self.color));
+        ret.append(&mut right_boundary);
+        ret
     }
-    fn title_line_with_middle(&self, middle: &str, middle_len: &usize) -> String {
+    fn title_line_with_middle(&self, middle: Vec<TerminalCharacter>, middle_len: &usize) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let length_of_each_side = total_title_length.saturating_sub(*middle_len + 2) / 2;
         let mut left_side = self.render_title_left_side(length_of_each_side);
         let mut right_side = self.render_title_right_side(length_of_each_side);
 
-        match (&mut left_side, &mut right_side) {
+        match (left_side, right_side) {
             (Some((left_side, left_side_len)), Some((right_side, right_side_len))) => self
                 .three_part_title_line(
                     left_side,
-                    left_side_len,
+                    &left_side_len,
                     middle,
                     middle_len,
                     right_side,
-                    right_side_len,
+                    &right_side_len,
                 ),
             (Some((left_side, left_side_len)), None) => {
-                self.left_and_middle_title_line(left_side, left_side_len, middle, middle_len)
+                self.left_and_middle_title_line(left_side, &left_side_len, middle, middle_len)
             }
             _ => self.middle_only_title_line(middle, middle_len),
         }
     }
-    fn title_line_without_middle(&self) -> String {
+    fn title_line_without_middle(&self) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let left_side = self.render_title_left_side(total_title_length);
         let right_side = left_side.as_ref().and_then(|(_left_side, left_side_len)| {
@@ -477,96 +544,72 @@ impl PaneFrame {
         });
         match (left_side, right_side) {
             (Some((left_side, left_side_len)), Some((right_side, right_side_len))) => {
-                self.two_part_title_line(&left_side, &left_side_len, &right_side, &right_side_len)
+                self.two_part_title_line(left_side, &left_side_len, right_side, &right_side_len)
             }
             (Some((left_side, left_side_len)), None) => {
-                self.left_only_title_line(&left_side, &left_side_len)
+                self.left_only_title_line(left_side, &left_side_len)
             }
             _ => self.empty_title_line(),
         }
     }
-    fn render_title(&self, vte_output: &mut String) {
+    fn render_title(&self) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
 
-        if let Some((middle, middle_length)) = &self.render_title_middle(total_title_length) {
-            let title_text = self.title_line_with_middle(middle, middle_length);
-            write!(
-                vte_output,
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                self.geom.y + 1, // +1 because goto is 1 indexed
-                self.geom.x + 1, // +1 because goto is 1 indexed
-                color_string(&title_text, self.color),
-            )
-            .unwrap(); // goto row/col + boundary character
-        } else {
-            let title_text = self.title_line_without_middle();
-            write!(
-                vte_output,
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                self.geom.y + 1, // +1 because goto is 1 indexed
-                self.geom.x + 1, // +1 because goto is 1 indexed
-                color_string(&title_text, self.color),
-            )
-            .unwrap(); // goto row/col + boundary character
-        }
+        self.render_title_middle(total_title_length)
+            .map(|(middle, _middle_length)| middle)
+            .or_else(|| Some(self.title_line_without_middle()))
+            .unwrap()
     }
-    pub fn render(&self) -> String {
-        let mut vte_output = String::new();
-        for row in self.geom.y..(self.geom.y + self.geom.rows) {
-            if row == self.geom.y {
+    pub fn render(&self) -> Vec<Vec<TerminalCharacter>> {
+        let mut output = vec![vec![EMPTY_TERMINAL_CHARACTER; self.geom.cols]; self.geom.rows];
+        // for row in self.geom.y..(self.geom.y + self.geom.rows) {
+        for row in 0..self.geom.rows {
+            // if row == self.geom.y {
+            if row == 0 {
                 // top row
-                self.render_title(&mut vte_output);
-            } else if row == self.geom.y + self.geom.rows - 1 {
+                let output_first_line = output.get_mut(0).unwrap();
+                let mut title = self.render_title();
+                std::mem::swap(output_first_line, &mut title);
+            // } else if row == self.geom.y + self.geom.rows - 1 {
+            } else if row == self.geom.rows - 1 {
                 // bottom row
-                for col in self.geom.x..(self.geom.x + self.geom.cols) {
-                    let boundary = if col == self.geom.x {
+                let mut bottom_row = vec![];
+                // for col in self.geom.x..(self.geom.x + self.geom.cols) {
+                for col in 0..self.geom.cols {
+                    let boundary = if col == 0 {
                         // bottom left corner
                         boundary_type::BOTTOM_LEFT
-                    } else if col == self.geom.x + self.geom.cols - 1 {
+                    } else if col == self.geom.cols - 1 {
                         // bottom right corner
                         boundary_type::BOTTOM_RIGHT
                     } else {
                         boundary_type::HORIZONTAL
                     };
 
-                    let boundary_rendered = color_string(boundary, self.color);
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        row + 1,
-                        col + 1,
-                        boundary_rendered
-                    )
-                    .unwrap();
+                    let mut boundary_character = foreground_color(boundary, self.color);
+                    bottom_row.append(&mut boundary_character);
                 }
+                std::mem::swap(output.last_mut().unwrap(), &mut bottom_row);
             } else {
-                write!(
-                    &mut vte_output,
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    row + 1, // +1 because goto is 1 indexed
-                    self.geom.x + 1,
-                    color_string(boundary_type::VERTICAL, self.color),
-                )
-                .unwrap(); // goto row/col + boundary character
-                write!(
-                    &mut vte_output,
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    row + 1, // +1 because goto is 1 indexed
-                    self.geom.x + self.geom.cols,
-                    color_string(boundary_type::VERTICAL, self.color),
-                )
-                .unwrap(); // goto row/col + boundary character
+                let row = output.get_mut(row).unwrap();
+                let mut boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
+                let mut boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
+                row.splice(..1, boundary_character_left);
+                // row.resize(self.geom.cols.saturating_sub(1), EMPTY_TERMINAL_CHARACTER);
+                row.splice(row.len() - 1.., boundary_character_right);
             }
         }
-        if self.is_main_client {
-            write!(
-                &mut vte_output,
-                "\u{1b}]0;Zellij ({}) - {}",
-                get_session_name().unwrap(),
-                self.title
-            )
-            .unwrap();
-        }
-        vte_output
+        // TODO: BRING THIS BACK (add a method on output, something like
+        // output.set_terminal_title()
+//         if self.is_main_client {
+//             write!(
+//                 &mut vte_output,
+//                 "\u{1b}]0;Zellij ({}) - {}",
+//                 get_session_name().unwrap(),
+//                 self.title
+//             )
+//             .unwrap();
+//         }
+        output
     }
 }

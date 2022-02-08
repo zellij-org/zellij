@@ -30,6 +30,7 @@ use crate::{
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     tab::Output,
+    panes::TerminalCharacter,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
@@ -63,7 +64,7 @@ pub enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<Output>),
+    Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -476,13 +477,17 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
             }
-            ServerInstruction::Render(mut output) => {
+            ServerInstruction::Render(mut serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(op) = &mut output {
-                    for (client_id, client_render_instruction) in &mut op.client_render_instructions
+                if let Some(output) = &mut serialized_output {
+                    // TODO: CONTINUE HERE
+                    // * instead of looping over these directly, make a serialize function (or
+                    // whatever name) that turns the grid into a string and appends the raw_vte
+                    // stuff
+                    for (client_id, client_render_instruction) in &mut output.iter()
                     {
                         os_input.send_to_client(
                             *client_id,

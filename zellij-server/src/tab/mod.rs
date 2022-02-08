@@ -12,16 +12,20 @@ use pane_grid::{split, FloatingPaneGrid, PaneGrid};
 
 use crate::{
     os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane},
+    panes::{PaneId, PluginPane, TerminalPane, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
+    panes::terminal_character::{
+        CharacterStyles, CursorShape,
+    },
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::fmt::Write;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
@@ -83,6 +87,9 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
 #[derive(Clone, Debug, Default)]
 pub struct Output {
     pub client_render_instructions: HashMap<ClientId, String>,
+    pub client_output_buffers: HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>, // grid of line/character
+    previous_images: HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>, // TODO: consolidate this to a type or some such
+    vte_instructions: HashMap<ClientId, HashSet<String>>, // TODO: is this actually a good idea? performance-wise and such? lookup in HashSet might be too expensive?
 }
 
 impl Output {
@@ -90,6 +97,8 @@ impl Output {
         for client_id in client_ids {
             self.client_render_instructions
                 .insert(*client_id, String::new());
+            self.client_output_buffers
+                .insert(*client_id, vec![]);
         }
     }
     pub fn push_str_to_multiple_clients(
@@ -108,6 +117,265 @@ impl Output {
         if let Some(render_instructions) = self.client_render_instructions.get_mut(&client_id) {
             render_instructions.push_str(to_push);
         }
+    }
+    pub fn push_terminal_characters_to_multiple_clients(
+        &mut self,
+        x: usize,
+        y: usize,
+        terminal_characters: &[TerminalCharacter],
+        client_ids: impl Iterator<Item = ClientId>,
+    ) {
+        for client_id in client_ids {
+            let output_buffer = self.client_output_buffers
+                .get_mut(&client_id)
+                .unwrap();
+            let lines_to_pad = (y + 1).saturating_sub(output_buffer.len());
+            for _ in 0..lines_to_pad {
+                output_buffer.push(vec![]);
+            }
+            let line = output_buffer.get_mut(y).unwrap();
+            let characters_to_pad = (x + terminal_characters.len()).saturating_sub(line.len());
+            for _ in 0..characters_to_pad {
+                line.push(None);
+            }
+            line.splice(x..x + terminal_characters.len(), terminal_characters.iter().map(|i| Some(*i)));
+        }
+    }
+    pub fn push_terminal_characters_to_client(&mut self, client_id: ClientId, x: usize, y: usize, terminal_characters: &[TerminalCharacter]) {
+        if let Some(output_buffer) = self.client_output_buffers.get_mut(&client_id) {
+            let lines_to_pad = (y + 1).saturating_sub(output_buffer.len());
+            for _ in 0..lines_to_pad {
+                output_buffer.push(vec![]);
+            }
+            let line = output_buffer.get_mut(y).unwrap();
+            let characters_to_pad = (x + terminal_characters.len()).saturating_sub(line.len());
+            for _ in 0..characters_to_pad {
+                line.push(None);
+            }
+            line.splice(x..x + terminal_characters.len(), terminal_characters.iter().map(|i| Some(*i)));
+        }
+    }
+    pub fn hide_cursor_for_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>) {
+        let hide_cursor = "\u{1b}[?25l";
+        self.add_vte_instruction_to_multiple_clients(client_ids, hide_cursor);
+//         for client_id in client_ids {
+//             let mut entry = self.vte_instructions.entry(client_id).or_insert(HashSet::new());
+//             entry.insert(String::from(hide_cursor));
+//         }
+//         output.hide_cursor_for_multiple_clients(self.connected_clients.iter().copied());
+//         // output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
+//         if self.should_clear_display_before_rendering {
+//             output.clear_display_for_multiple_clients(self.connected_clients.iter().copied());
+    }
+    pub fn clear_display_for_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>) {
+        let clear_display = "\u{1b}[2J";
+        self.add_vte_instruction_to_multiple_clients(client_ids, clear_display);
+    }
+    fn add_vte_instruction_to_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>, vte_instruction: &str) {
+        for client_id in client_ids {
+            let mut entry = self.vte_instructions.entry(client_id).or_insert(HashSet::new());
+            entry.insert(String::from(vte_instruction));
+        }
+    }
+//     pub fn render_instructions(&mut self) -> HashMap<ClientId, String> {
+//         let mut render_instructions = HashMap::new();
+//         let client_render_instructions: Vec<_> = self.client_render_instructions.drain().collect();
+//         for (client_id, mut client_render_instructions) in client_render_instructions {
+//             client_render_instructions.insert_str(0, &self.serialize_client_output(client_id));
+//             render_instructions.insert(client_id, client_render_instructions);
+//         }
+//         render_instructions
+//     }
+    fn pad_client_cache(&self, client_id: ClientId, cached_terminal_characters: &mut Vec<Vec<Option<TerminalCharacter>>>) {
+        let client_output_buffer = self.client_output_buffers.get(&client_id).unwrap();
+        let lines_to_pad = (client_output_buffer.len()).saturating_sub(cached_terminal_characters.len());
+        for _ in 0..lines_to_pad {
+            cached_terminal_characters.push(vec![]);
+        }
+        for (i, line) in cached_terminal_characters.iter_mut().enumerate() {
+            if let Some(client_output_buffer_line) = client_output_buffer.get(i) {
+                let output_buffer_line_len = client_output_buffer.len();
+                if output_buffer_line_len > line.len() {
+                    line.resize(client_output_buffer_line.len(), None);
+                }
+            }
+        }
+    }
+    fn serialize_client_output_with_cache(&self, client_id: ClientId, cached_terminal_characters: &mut Vec<Vec<Option<TerminalCharacter>>>) -> String {
+        // log::info!("WITH CACHE");
+        self.pad_client_cache(client_id, cached_terminal_characters);
+        let terminal_characters = self.client_output_buffers.get(&client_id).unwrap(); // TODO: remove? to match drain?
+
+        // let mut cached_terminal_characters = current_cache.get(&client_id).map(|p| p.iter());
+        let mut cached_terminal_characters = cached_terminal_characters.iter_mut();
+        let mut vte_output = String::new();
+        let mut character_styles = CharacterStyles::new();
+        for (line_index, line) in terminal_characters.iter().enumerate() {
+            // let mut previous_line = cached_terminal_characters.next().as_mut().map(|c| c.iter_mut());
+            let mut previous_line = cached_terminal_characters.next().unwrap().iter_mut();
+            // TODO: consider keeping these in a BTreeMap to see if its more performant?
+//             write!(
+//                 &mut vte_output,
+//                 "\u{1b}[{};{}H\u{1b}[m",
+//                 line_index + 1,
+//                 0 // TODO: shouldn't this be 1?
+//             )
+//             .unwrap(); // goto top of viewport
+
+            let mut writing_chunk = false;
+            for (character_index, t_character) in line.iter().enumerate() {
+                let mut previous_character = previous_line.next().unwrap();
+                // TODO: CONTINUE HERE (03/02) - when this is commented (rather than the if fale)
+                // almost nothing is rendered - find out why
+                // then find out why newly rendered colored stuff leaks into old rendered colored
+                // stuff (or something?)
+                // if previous_character.copied().flatten().as_ref() == t_character.as_ref() { // TODO: better
+                if previous_character == t_character { // TODO: better
+                    // log::info!("CACHE HIT: '{:?}'", previous_character);
+                // if false {
+                    writing_chunk = false;
+                    character_styles.clear();
+                    continue;
+                } else {
+                    // update the current cache
+                    // TODO: better? copied? something?
+                    if let Some(t_character) = t_character {
+                        let _ = previous_character.insert(t_character.clone());
+                        // std::mem::swap(&mut previous_character, &mut t_character.clone());
+                        // std::mem::replace(previous_character, &mut t_character.clone());
+                    }
+                    // std::mem::swap(previous_character, &mut Some(&t_character.clone()));
+                }
+                match t_character {
+                    Some(t_character) => {
+                        if writing_chunk == false {
+                            writing_chunk = true;
+                            write!(
+                                &mut vte_output,
+                                "\u{1b}[{};{}H\u{1b}[m",
+                                line_index + 1,
+                                character_index + 1,
+                            )
+                            .unwrap(); // goto top of viewport
+                        }
+                        if let Some(new_styles) = character_styles
+                            // .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
+                            .update_and_return_diff(&t_character.styles, None)
+                        {
+                            write!(
+                                &mut vte_output,
+                                "{}",
+                                new_styles,
+                            )
+                            .unwrap();
+                        }
+                        vte_output.push(t_character.character);
+                    },
+                    None => {
+                        writing_chunk = false;
+                        character_styles.clear();
+                    }
+                }
+            }
+            character_styles.clear();
+        }
+        vte_output
+    }
+    fn serialize_client_output_without_cache(&self, client_id: ClientId) -> String {
+        // log::info!("without cache");
+        let terminal_characters = self.client_output_buffers.get(&client_id).unwrap(); // TODO: remove? to match drain?
+        let mut vte_output = String::new();
+        let mut character_styles = CharacterStyles::new();
+        for (line_index, line) in terminal_characters.iter().enumerate() {
+            // TODO: consider keeping these in a BTreeMap to see if its more performant?
+            write!(
+                &mut vte_output,
+                "\u{1b}[{};{}H\u{1b}[m",
+                line_index + 1,
+                0 // TODO: shouldn't this be 1?
+            )
+            .unwrap(); // goto top of viewport
+
+            let mut writing_chunk = false;
+            for (character_index, t_character) in line.iter().enumerate() {
+                match t_character {
+                    Some(t_character) => {
+                        if writing_chunk == false {
+                            writing_chunk = true;
+                            write!(
+                                &mut vte_output,
+                                "\u{1b}[{};{}H\u{1b}[m",
+                                line_index + 1,
+                                character_index + 1,
+                            )
+                            .unwrap(); // goto top of viewport
+                        }
+                        if let Some(new_styles) = character_styles
+                            // .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
+                            .update_and_return_diff(&t_character.styles, None)
+                        {
+                            write!(
+                                &mut vte_output,
+                                "{}",
+                                new_styles,
+                            )
+                            .unwrap();
+                        }
+                        vte_output.push(t_character.character);
+                    },
+                    None => {
+                        writing_chunk = false;
+                        character_styles.clear();
+                    }
+                }
+            }
+            character_styles.clear();
+        }
+        vte_output
+    }
+    fn serialize_client_output(&self, client_id: ClientId, current_cache: Option<&mut Vec<Vec<Option<TerminalCharacter>>>>) -> String {
+        match current_cache {
+            Some(current_cache) => self.serialize_client_output_with_cache(client_id, current_cache),
+            None => self.serialize_client_output_without_cache(client_id)
+        }
+    }
+    pub fn swap_cache(&mut self, current_cache: &mut HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>) {
+        // TODO:
+        // * what we get: what's currently on screen
+        // * what we have: what needs to be updated
+        // * TODO: accept the current_cache as part of the render_instructions function, do the
+        // diff there, and as we are serializing, update the self.previous_images
+        let mut new_cache = self.client_output_buffers.clone();
+        std::mem::swap(current_cache, &mut self.previous_images); // record current_cache on our own state
+        std::mem::swap(current_cache, &mut new_cache); // update the reference to get the new cache for next time
+    }
+    pub fn serialize(&mut self, mut current_cache: Option<&mut HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>>) -> HashMap<ClientId, String> {
+        // TODO: CONTINUE HERE - try to find out why the performance degraded a little here (cat
+        // /tmp/bigfile etc.)
+        let serialize_start = Instant::now();
+        let mut serialized_render_instructions = HashMap::new();
+        let client_render_instructions: Vec<_> = self.client_render_instructions.drain().collect();
+        for (client_id, mut client_render_instructions) in client_render_instructions {
+            // the serialization order here is important. It should be:
+            // 1. self.vte_instructions (if they exist) ==> generic orders, eg. clear_display
+            // 2. self.serialize_client_output ==> The main thing we need to serialize
+            // 3. client_render_instructions ==> legacy raw vte instructions ==> these should all
+            //    move to be serialized in self.serialize_client_output (probably, unless there are
+            //    performance implications with the plugins)
+            let mut client_render_instructions = String::new(); // TODO: NO!!
+            let client_cache = current_cache.as_mut().map(|current_cache| current_cache.entry(client_id).or_insert(vec![]));
+            client_render_instructions.insert_str(0, &self.serialize_client_output(client_id, client_cache));
+            if let Some(vte_instructions_for_client) = self.vte_instructions.remove(&client_id) {
+                // TODO: this is not ordered - maybe would be nicer if it is?
+                for vte_instruction in vte_instructions_for_client {
+                    client_render_instructions.insert_str(0, &vte_instruction);
+                }
+            }
+            serialized_render_instructions.insert(client_id, client_render_instructions);
+        }
+        // log::info!("serialized_render_instructions: {:?}", serialized_render_instructions);
+        log::info!("fn serialize duration: {:?}", serialize_start.elapsed());
+        serialized_render_instructions
     }
 }
 
@@ -228,7 +496,8 @@ impl FloatingPanes {
         mode_info: &HashMap<ClientId, ModeInfo>,
         default_mode_info: &ModeInfo,
         session_is_mirrored: bool,
-        output: &mut Output, colors: Palette,
+        output: &mut Output,
+        colors: Palette,
     ) {
         // TODO: move args to state?
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
@@ -249,22 +518,6 @@ impl FloatingPanes {
                 )
         });
 
-//         #[derive(Clone, Copy, Debug, Default)]
-//         struct VisibleCharacterRange {
-//             start_x: usize,
-//             start_y: usize,
-//             end_x: usize,
-//             end_y: usize,
-//         }
-//         struct RenderBuffer {
-//             visible_chunks: HashMap<(usize, usize), 
-//         }
-        // TODO:
-        // * change floating panes to Vec<(kind, pane, visible_chunks)>
-        // * loop from bottom up and place each pane's full coordinates in an outside store
-        // * in the store, if the coordinates are already in the store, difference them out
-        // * the method that adds them to the store should also return the chunks to render
-        // * pass those chunks to the pane's render function and only render those
         for (kind, pane) in floating_panes {
             // this is a bit of a hack and harms performance of floating panes a little bit. In
             // order to prevent it, we should consider not rendering content that is under
@@ -284,27 +537,27 @@ impl FloatingPanes {
                 &active_panes,
                 multiple_users_exist_in_session,
             );
-            if let PaneId::Terminal(..) = kind {
-                pane_contents_and_ui.render_pane_contents_to_multiple_clients(
-                    connected_clients.iter().copied(),
-                );
-            }
             for &client_id in connected_clients {
                 let client_mode = mode_info
                     .get(&client_id)
                     .unwrap_or(default_mode_info)
                     .mode;
-                if let PaneId::Plugin(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_for_client(client_id);
-                }
                 pane_contents_and_ui.render_pane_frame(
                     client_id,
                     client_mode,
                     session_is_mirrored,
                 );
+                if let PaneId::Plugin(..) = kind {
+                    pane_contents_and_ui.render_pane_contents_for_client(client_id);
+                }
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)
                 pane_contents_and_ui.render_fake_cursor_if_needed(client_id);
+            }
+            if let PaneId::Terminal(..) = kind {
+                pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                    connected_clients.iter().copied(),
+                );
             }
         }
     }
@@ -982,13 +1235,13 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn render(&mut self, client_id: Option<ClientId>) -> Option<String>;
+    fn render(&mut self, client_id: Option<ClientId>) -> Option<(Vec<Vec<TerminalCharacter>>, Option<String>)>; // TODO: better
     fn render_frame(
         &mut self,
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<String>;
+    ) -> Option<Vec<Vec<TerminalCharacter>>>;
     fn render_fake_cursor(
         &mut self,
         cursor_color: PaletteColor,
@@ -2008,15 +2261,18 @@ impl Tab {
         }
     }
     pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
+        let tab_render_start = Instant::noew();
         if self.connected_clients.is_empty() || self.active_panes.is_empty() {
             return;
         }
+        log::info!("1 elapsed: {:?}", tab_render_start.elapsed());
         self.update_active_panes_in_pty_thread();
         output.add_clients(&self.connected_clients);
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
         self.hide_cursor_and_clear_display_as_needed(output);
         let active_non_floating_panes = self.active_non_floating_panes();
         // render panes and their frames
+        log::info!("2 elapsed: {:?}", tab_render_start.elapsed());
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 let mut active_panes = if self.floating_panes.panes_are_visible() {
@@ -2034,11 +2290,6 @@ impl Tab {
                     &active_panes,
                     multiple_users_exist_in_session,
                 );
-                if let PaneId::Terminal(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_to_multiple_clients(
-                        self.connected_clients.iter().copied(),
-                    );
-                }
                 for &client_id in &self.connected_clients {
                     let client_mode = self
                         .mode_info
@@ -2068,6 +2319,11 @@ impl Tab {
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
                     pane_contents_and_ui.render_fake_cursor_if_needed(client_id);
+                }
+                if let PaneId::Terminal(..) = kind {
+                    pane_contents_and_ui.render_pane_contents_to_multiple_clients(
+                        self.connected_clients.iter().copied(),
+                    );
                 }
             }
         }
@@ -2100,14 +2356,19 @@ impl Tab {
         active_non_floating_panes
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
+        // TODO: CONTINUE HERE
+        // * change this to: output.hide_cursor_for_multiple_clients and
+        // output.clear_display_for_multiple_clients
         let hide_cursor = "\u{1b}[?25l";
-        output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
+        output.hide_cursor_for_multiple_clients(self.connected_clients.iter().copied());
+        // output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
         if self.should_clear_display_before_rendering {
-            let clear_display = "\u{1b}[2J";
-            output.push_str_to_multiple_clients(
-                clear_display,
-                self.connected_clients.iter().copied(),
-            );
+            output.clear_display_for_multiple_clients(self.connected_clients.iter().copied());
+//             let clear_display = "\u{1b}[2J";
+//             output.push_str_to_multiple_clients(
+//                 clear_display,
+//                 self.connected_clients.iter().copied(),
+//             );
             self.should_clear_display_before_rendering = false;
         }
     }
@@ -3262,10 +3523,8 @@ impl Tab {
         self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
-        log::info!("handle_mouse_hold, position_on_screen: {:?}", position_on_screen);
         let search_selectable = true;
         if self.floating_panes.move_pane_with_mouse(*position_on_screen, search_selectable, self.display_area, self.viewport, client_id) {
-            log::info!("successfully moved pane with mouse");
             self.set_force_render();
         } else if self.floating_panes.panes_are_visible() {
             let active_pane = self
@@ -3315,8 +3574,9 @@ impl Tab {
         );
 
         // TODO: ideally we should be sending the Render instruction from the screen
+        let serialized_output = output.serialize(None);
         self.senders
-            .send_to_server(ServerInstruction::Render(Some(output)))
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
             .unwrap();
         self.senders
             .send_to_plugin(PluginInstruction::Update(

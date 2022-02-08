@@ -1,16 +1,17 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, HashMap};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
+use std::time::Instant;
 
 use zellij_utils::pane_size::Size;
 use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
-    panes::PaneId,
+    panes::{PaneId, TerminalCharacter},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::{Output, Tab},
     thread_bus::Bus,
@@ -198,6 +199,7 @@ pub(crate) struct Screen {
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
+    image_cache: HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>,
     colors: Palette,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
@@ -226,6 +228,7 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            image_cache: HashMap::new(),
             session_is_mirrored,
         }
     }
@@ -414,6 +417,8 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
+        log::info!("****************** RENDER *****************************");
+        let render_start = Instant::now();
         let mut output = Output::default();
         let mut tabs_to_close = vec![];
         let size = self.size;
@@ -421,17 +426,28 @@ impl Screen {
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_active_panes() {
                 let vte_overlay = overlay.generate_overlay(size);
+                let tab_render_start = Instant::now();
                 tab.render(&mut output, Some(vte_overlay));
+                log::info!("tab {:?} render duration: {:?} (elapsed: {:?})", tab_index, tab_render_start.elapsed(), render_start.elapsed());
             } else {
                 tabs_to_close.push(*tab_index);
             }
         }
+        log::info!("after tab loop (elapsed: {:?})", render_start.elapsed());
         for tab_index in tabs_to_close {
             self.close_tab_at_index(tab_index);
         }
+        log::info!("after close tab loop (elapsed: {:?})", render_start.elapsed());
+        // TODO: CONTINUE HERE (04/02)
+        // * instead of swap_cache, create a HashMap here of the serialized render instructions and
+        // send those directly in ServerInstruction::Render instead of output
+        // * When serializing, send the self.image_cache, so that the serialize function can use it
+        // directly and record changes directly on it as it does so
+        let serialized_output = output.serialize(Some(&mut self.image_cache));
+        log::info!("render duration after serialize: {:?}", render_start.elapsed());
         self.bus
             .senders
-            .send_to_server(ServerInstruction::Render(Some(output)))
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
             .unwrap();
     }
 

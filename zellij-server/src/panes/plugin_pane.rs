@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::PaneId;
+use crate::panes::{PaneId, TerminalCharacter};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
@@ -134,7 +134,7 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, client_id: Option<ClientId>) -> Option<String> {
+    fn render(&mut self, client_id: Option<ClientId>) -> Option<(Vec<Vec<TerminalCharacter>>, Option<String>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;
         let client_id = client_id.unwrap();
@@ -207,7 +207,7 @@ impl Pane for PluginPane {
                     }
                 }
             }
-            Some(vte_output)
+            Some((vec![], Some(vte_output))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
         } else {
             None
         }
@@ -217,7 +217,7 @@ impl Pane for PluginPane {
         _client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<String> {
+    ) -> Option<Vec<Vec<TerminalCharacter>>> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
