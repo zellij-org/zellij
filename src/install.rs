@@ -28,10 +28,10 @@ pub(crate) fn populate_data_dir(data_dir: &Path) {
 
     for (path, bytes) in assets {
         let path = data_dir.join(path);
-        let parent_path = path.parent().unwrap();
-        fs::create_dir_all(parent_path).unwrap();
-        set_permissions(parent_path).unwrap();
         if out_of_date || !path.exists() {
+            let parent_path = path.parent().unwrap();
+            fs::create_dir_all(parent_path).unwrap();
+            set_permissions(parent_path).unwrap();
             fs::write(path, bytes).expect("Failed to install default assets!");
         }
     }
