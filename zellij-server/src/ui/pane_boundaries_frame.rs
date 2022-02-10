@@ -1,6 +1,6 @@
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
-use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER};
+use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER, CharacterChunk};
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
@@ -560,16 +560,20 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .unwrap()
     }
-    pub fn render(&self) -> Vec<Vec<TerminalCharacter>> {
-        let mut output = vec![vec![EMPTY_TERMINAL_CHARACTER; self.geom.cols]; self.geom.rows];
+    pub fn render(&self) -> Vec<CharacterChunk> {
+        // let mut output = vec![vec![EMPTY_TERMINAL_CHARACTER; self.geom.cols]; self.geom.rows];
         // for row in self.geom.y..(self.geom.y + self.geom.rows) {
+        let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
             // if row == self.geom.y {
             if row == 0 {
                 // top row
-                let output_first_line = output.get_mut(0).unwrap();
-                let mut title = self.render_title();
-                std::mem::swap(output_first_line, &mut title);
+                // let output_first_line = output.get_mut(0).unwrap();
+                let title = self.render_title();
+                let x = self.geom.x;
+                let y = self.geom.y + row;
+                character_chunks.push(CharacterChunk::new(title, x, y));
+                // std::mem::swap(output_first_line, &mut title);
             // } else if row == self.geom.y + self.geom.rows - 1 {
             } else if row == self.geom.rows - 1 {
                 // bottom row
@@ -589,14 +593,25 @@ impl PaneFrame {
                     let mut boundary_character = foreground_color(boundary, self.color);
                     bottom_row.append(&mut boundary_character);
                 }
-                std::mem::swap(output.last_mut().unwrap(), &mut bottom_row);
+                let x = self.geom.x;
+                let y = self.geom.y + row;
+                character_chunks.push(CharacterChunk::new(bottom_row, x, y));
+                // std::mem::swap(output.last_mut().unwrap(), &mut bottom_row);
             } else {
-                let row = output.get_mut(row).unwrap();
+                // let row = output.get_mut(row).unwrap();
                 let mut boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
                 let mut boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
-                row.splice(..1, boundary_character_left);
-                // row.resize(self.geom.cols.saturating_sub(1), EMPTY_TERMINAL_CHARACTER);
-                row.splice(row.len() - 1.., boundary_character_right);
+
+                let x = self.geom.x;
+                let y = self.geom.y + row;
+                character_chunks.push(CharacterChunk::new(boundary_character_left, x, y));
+
+                let x = (self.geom.x + self.geom.cols).saturating_sub(1);
+                let y = self.geom.y + row;
+                character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
+//                 row.splice(..1, boundary_character_left);
+//                 // row.resize(self.geom.cols.saturating_sub(1), EMPTY_TERMINAL_CHARACTER);
+//                 row.splice(row.len() - 1.., boundary_character_right);
             }
         }
         // TODO: BRING THIS BACK (add a method on output, something like
@@ -610,6 +625,6 @@ impl PaneFrame {
 //             )
 //             .unwrap();
 //         }
-        output
+        character_chunks
     }
 }

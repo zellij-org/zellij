@@ -217,7 +217,7 @@ impl Pane for PluginPane {
         _client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<Vec<Vec<TerminalCharacter>>> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
@@ -237,7 +237,7 @@ impl Pane for PluginPane {
                 pane_title,
                 frame_params,
             );
-            Some(frame.render())
+            Some((frame.render(), None))
         } else {
             None
         }

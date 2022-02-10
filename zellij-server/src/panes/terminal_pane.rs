@@ -1,10 +1,12 @@
-use crate::panes::{AnsiCode, CharacterChunk};
+use crate::panes::{AnsiCode, CharacterChunk, LinkHandler};
 use crate::panes::{
     grid::Grid,
     terminal_character::{
         CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
 };
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
@@ -48,6 +50,7 @@ pub struct TerminalPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
+    link_handler: Rc<RefCell<LinkHandler>>,
 }
 
 impl Pane for TerminalPane {
@@ -185,173 +188,29 @@ impl Pane for TerminalPane {
         self.selectable = selectable;
     }
     fn render(&mut self, _client_id: Option<ClientId>) -> Option<(Vec<CharacterChunk>, Option<String>)> {
-        // TODO: CONTINUE HERE
-        // * receive Output, then instead of buffering or doing anything really, do an
-        // output.add_chunks(<chunks_from_grid>) - just make sure to adjust their x/y according to
-        // self.get_content_x and self.get_content_y (probably just add them up?)
-        // * then in output, instead of the whole terminal character thing, serialize these
-        // changed chunks
-        // * test this - if performance is satisfactory, all we need to do (I *hope*!) is reset the
-        // output buffer on pane size/position change and when a floating window is moved (above
-        // it? above certain lines?)
-        // * if performance is not satisfactory - first make sure it's not the frames, then consider looking into adjusting the chunks so that
-        // they also account for x and not just dump the whole changed line as (I think) they do
-        // now
-        // we don't use client_id because terminal panes render the same for all users
         if self.should_render() {
-        // if true {
-            let terminal_render_start = Instant::now();
             let mut raw_vte_output = String::new();
-            let mut terminal_characters = vec![vec![EMPTY_TERMINAL_CHARACTER; self.grid.width]; self.grid.height];
             let mut character_styles = CharacterStyles::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
-            // log::info!("terminal 1 elapsed: {:?}", terminal_render_start.elapsed());
-            if self.grid.clear_viewport_before_rendering {
-                // TODO: get rid of this now that everything starts out iwth
-                // EMPTY_TERMINAL_CHARACTER?
-                for line_index in 0..self.grid.height {
-                    let mut line = vec![EMPTY_TERMINAL_CHARACTER; self.grid.width];
-                    terminal_characters.push(line);
-//                     write!(
-//                         &mut vte_output,
-//                         "\u{1b}[{};{}H\u{1b}[m",
-//                         content_y + line_index + 1,
-//                         content_x + 1
-//                     )
-//                     .unwrap(); // goto row/col and reset styles
-//                     for _col_index in 0..self.grid.width {
-//                         vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
-//                     }
+
+            let mut character_chunks = self.grid.read_changes(content_x, content_y);
+            for character_chunk in character_chunks.iter_mut() {
+                character_chunk.add_changed_colors(self.grid.changed_colors);
+                if self.grid.selection.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                    let background_color = match self.colors.bg {
+                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                    };
+                    character_chunk.add_selection_and_background(self.grid.selection, background_color, content_x, content_y);
                 }
-                self.grid.clear_viewport_before_rendering = false;
             }
-            // log::info!("terminal 2 elapsed: {:?}", terminal_render_start.elapsed());
-            // here we clear the previous cursor locations by adding an empty style-less character
-            // in their location, this is done before the main rendering logic so that if there
-            // actually is another character there, it will be overwritten
-//             for (y, x) in self.fake_cursor_locations.drain() {
-//                 // we need to make sure to update the line in the line buffer so that if there's
-//                 // another character there it'll override it and we won't create holes with our
-//                 // empty character
-//                 self.grid.update_line_for_rendering(y);
-//                 let x = content_x + x;
-//                 let y = content_y + y;
-//                 write!(
-//                     &mut vte_output,
-//                     "\u{1b}[{};{}H\u{1b}[m{}",
-//                     y + 1,
-//                     x + 1,
-//                     EMPTY_TERMINAL_CHARACTER.character
-//                 )
-//                 .unwrap();
-//             }
-            // log::info!("terminal 3 elapsed: {:?}", terminal_render_start.elapsed());
-            // for (line_index, mut line) in self.grid.get_viewport().drain(..).enumerate() {
-
-
-
-            let character_chunks = self.grid.read_changes(content_x, content_y);
-
-
-            // TODO: BRING ME BACK OR HANDLE ME SOMEHOW
-//             for character_chunk in self.grid.read_changes(content_x, content_y) {
-//                 // TODO: 
-//                 // * account for self.changed_colors
-//                 // * account for selection
-//                 // * account for osc8 (links)
-// 
-//                 //  TODO: do we still need to take care of this so the frame color doesn't leak
-//                 //  into unstyled first characters?
-// //                 if let Some(first_character_in_line) = line.get_mut(0) {
-// //                     first_character_in_line.styles.reset_all_before_character();
-// //                 }
-//                 let mut character_styles_union = CharacterStyles::new();
-//                 if let Some(buffer_line) = terminal_characters.get_mut(character_chunk.y) {
-//                     let line: Vec<TerminalCharacter> = character_chunk.terminal_characters.iter().copied().map(|mut terminal_character| {
-//                         character_styles_union.merge_styles(&terminal_character.styles);
-//                         terminal_character.styles = character_styles_union;
-//                         terminal_character
-//                     }).collect();
-//                     buffer_line.splice(..line.len(), line);
-//                 } else {
-//                     // TODO: is this entirely correct... or actually even needed?
-//                     terminal_characters.push(Vec::from(character_chunk.terminal_characters));
-//                 }
-
-
-
-
-
-
-//                 if let Some(buffer_line) = terminal_characters.get_mut(line_index) {
-//                     let line: Vec<TerminalCharacter> = line.iter().copied().map(|mut terminal_character| {
-//                         character_styles_union.merge_styles(&terminal_character.styles);
-//                         terminal_character.styles = character_styles_union;
-//                         terminal_character
-//                     }).collect();
-//                     buffer_line.splice(..line.len(), line);
-//                 } else {
-//                     terminal_characters.push(Vec::from(line));
-//                 }
-//            }
-            // log::info!("terminal 4 elapsed: {:?}", terminal_render_start.elapsed());
-//             let max_width = self.get_content_columns();
-//             for character_chunk in self.grid.read_changes() {
-//                 let pane_x = self.get_content_x();
-//                 let pane_y = self.get_content_y();
-//                 let chunk_absolute_x = pane_x + character_chunk.x;
-//                 let chunk_absolute_y = pane_y + character_chunk.y;
-//                 let terminal_characters = character_chunk.terminal_characters;
-//                 write!(
-//                     &mut vte_output,
-//                     "\u{1b}[{};{}H\u{1b}[m",
-//                     chunk_absolute_y + 1,
-//                     chunk_absolute_x + 1
-//                 )
-//                 .unwrap(); // goto row/col and reset styles
-// 
-//                 let mut chunk_width = character_chunk.x;
-//                 for mut t_character in terminal_characters {
-//                     // adjust the background of currently selected characters
-//                     // doing it here is much easier than in grid
-//                     if self.grid.selection.contains(character_chunk.y, chunk_width) {
-//                         let color = match self.colors.bg {
-//                             PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-//                             PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
-//                         };
-// 
-//                         t_character.styles = t_character.styles.background(Some(color));
-//                     }
-//                     chunk_width += t_character.width;
-//                     if chunk_width > max_width {
-//                         break;
-//                     }
-// 
-//                     if let Some(new_styles) = character_styles
-//                         .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
-//                     {
-//                         write!(
-//                             &mut vte_output,
-//                             "{}{}",
-//                             new_styles,
-//                             self.grid.link_handler.output_osc8(new_styles.link_anchor)
-//                         )
-//                         .unwrap();
-//                     }
-// 
-//                     vte_output.push(t_character.character);
-//                 }
-//                 character_styles.clear();
-//             }
             if self.grid.ring_bell {
                 let ring_bell = '\u{7}';
                 raw_vte_output.push(ring_bell);
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            // log::info!("terminal 5 elapsed: {:?}", terminal_render_start.elapsed());
-            // Some((terminal_characters, Some(raw_vte_output)))
             Some((character_chunks, Some(raw_vte_output)))
         } else {
             None
@@ -362,7 +221,7 @@ impl Pane for TerminalPane {
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<Vec<Vec<TerminalCharacter>>> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
@@ -383,7 +242,7 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
-        Some(frame.render())
+        Some((frame.render(), None))
 //         match self.frame.get(&client_id) {
 //             // TODO: use and_then or something?
 //             Some(last_frame) => {
@@ -585,12 +444,14 @@ impl TerminalPane {
         palette: Palette,
         pane_index: usize,
         pane_name: String,
+        link_handler: Rc<RefCell<LinkHandler>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
             palette,
+            link_handler.clone(),
         );
         TerminalPane {
             frame: HashMap::new(),
@@ -608,6 +469,7 @@ impl TerminalPane {
             pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
+            link_handler,
         }
     }
     pub fn get_x(&self) -> usize {
