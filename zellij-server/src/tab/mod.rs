@@ -787,12 +787,15 @@ impl Tab {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self.panes.get(&pane_id).unwrap();
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                self.os_api
+                if let Err(e) = self
+                    .os_api
                     .write_to_tty_stdin(active_terminal_id, &adjusted_input)
-                    .expect("failed to write to terminal");
-                self.os_api
-                    .tcdrain(active_terminal_id)
-                    .expect("failed to drain terminal");
+                {
+                    log::error!("failed to write to terminal: {}", e);
+                }
+                if let Err(e) = self.os_api.tcdrain(active_terminal_id) {
+                    log::error!("failed to drain terminal: {}", e);
+                }
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
