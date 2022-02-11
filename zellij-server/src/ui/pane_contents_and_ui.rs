@@ -15,6 +15,7 @@ pub struct PaneContentsAndUi<'a> {
     colors: Palette,
     focused_clients: Vec<ClientId>,
     multiple_users_exist_in_session: bool,
+    z_index: Option<usize>,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -24,6 +25,7 @@ impl<'a> PaneContentsAndUi<'a> {
         colors: Palette,
         active_panes: &HashMap<ClientId, PaneId>,
         multiple_users_exist_in_session: bool,
+        z_index: Option<usize>,
     ) -> Self {
         let focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -36,6 +38,7 @@ impl<'a> PaneContentsAndUi<'a> {
             colors,
             focused_clients,
             multiple_users_exist_in_session,
+            z_index,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -44,7 +47,7 @@ impl<'a> PaneContentsAndUi<'a> {
     ) {
         if let Some((character_chunks, raw_vte_output)) = self.pane.render(None) {
             let clients: Vec<ClientId> = clients.collect();
-            self.output.add_character_chunks_to_multiple_clients(character_chunks, clients.iter().copied());
+            self.output.add_character_chunks_to_multiple_clients(character_chunks, clients.iter().copied(), self.z_index);
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.add_post_vte_instruction_to_multiple_clients(
                     clients.iter().copied(),
@@ -60,7 +63,7 @@ impl<'a> PaneContentsAndUi<'a> {
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
         if let Some((character_chunks, raw_vte_output)) = self.pane.render(Some(client_id)) {
-            self.output.add_character_chunks_to_client(client_id, character_chunks);
+            self.output.add_character_chunks_to_client(client_id, character_chunks, self.z_index);
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.add_post_vte_instruction_to_client(
                     client_id,
@@ -147,7 +150,7 @@ impl<'a> PaneContentsAndUi<'a> {
         };
         if let Some((frame_terminal_characters, vte_output)) = self.pane.render_frame(client_id, frame_params, client_mode) {
             // TODO: handle vte_output if we're not getting rid of it
-            self.output.add_character_chunks_to_client(client_id ,frame_terminal_characters);
+            self.output.add_character_chunks_to_client(client_id ,frame_terminal_characters, self.z_index);
         }
     }
     pub fn render_pane_boundaries(
