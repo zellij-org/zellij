@@ -1875,7 +1875,10 @@ impl Perform for Grid {
                             &mut self.lines_above,
                             VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
                         );
-                        let current_viewport = std::mem::take(&mut self.viewport);
+                        let current_viewport = std::mem::replace(
+                            &mut self.viewport,
+                            vec![Row::new(self.width).canonical()],
+                        );
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
                         self.alternate_lines_above_viewport_and_cursor =
                             Some((current_lines_above, current_viewport, current_cursor));
