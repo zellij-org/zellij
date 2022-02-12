@@ -1106,3 +1106,15 @@ pub fn alternate_screen_change_size() {
     assert_snapshot!(format!("{:?}", grid));
     assert_eq!(grid.scrollback_position_and_length(), (0, 0))
 }
+
+#[test]
+pub fn fzf_fullscreen() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 112, Palette::default());
+    let fixture_name = "fzf_fullscreen";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
