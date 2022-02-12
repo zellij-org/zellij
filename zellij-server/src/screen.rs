@@ -367,7 +367,7 @@ impl Screen {
 
     fn close_tab_at_index(&mut self, tab_index: usize) {
         let mut tab_to_close = self.tabs.remove(&tab_index).unwrap();
-        let pane_ids = tab_to_close.get_pane_ids();
+        let pane_ids = tab_to_close.get_all_pane_ids();
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
@@ -1102,7 +1102,7 @@ pub(crate) fn screen_thread_main(
                     }
                     None => {
                         for tab in screen.tabs.values_mut() {
-                            if tab.get_pane_ids().contains(&id) {
+                            if tab.get_all_pane_ids().contains(&id) {
                                 tab.close_pane(id);
                                 break;
                             }

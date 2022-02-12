@@ -242,27 +242,33 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
-        Some((frame.render(), None))
-//         match self.frame.get(&client_id) {
-//             // TODO: use and_then or something?
-//             Some(last_frame) => {
-//                 if &frame != last_frame {
-//                     // if true {
-//                     if !self.borderless {
-//                         vte_output = Some(frame.render());
-//                     }
-//                     self.frame.insert(client_id, frame);
-//                 }
-//                 Some(vte_output)
-//             }
-//             None => {
-//                 if !self.borderless {
-//                     vte_output = Some(frame.render());
-//                 }
-//                 self.frame.insert(client_id, frame);
-//                 Some(vte_output)
-//             }
-//         }
+        // Some((frame.render(), None))
+        match self.frame.get(&client_id) {
+            // TODO: use and_then or something?
+            Some(last_frame) => {
+                if &frame != last_frame {
+                    // if true {
+                    if !self.borderless {
+                        let frame_output = frame.render();
+                        self.frame.insert(client_id, frame);
+                        Some((frame_output, None))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            None => {
+                if !self.borderless {
+                    let frame_output = frame.render();
+                    self.frame.insert(client_id, frame);
+                    Some((frame_output, None))
+                } else {
+                    None
+                }
+            }
+        }
     }
     fn render_fake_cursor(
         &mut self,

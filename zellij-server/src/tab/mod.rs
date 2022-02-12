@@ -236,20 +236,23 @@ impl FloatingPanesStack {
                         let c_chunk_right_side = c_chunk.x + c_chunk.terminal_characters.len(); // TODO: record width of the chunk to account for wide characters
                         if pane_top_edge <= c_chunk.y && pane_bottom_edge >= c_chunk.y {
                             if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
+                                log::info!("pane covers chunk completely");
                                 // pane covers chunk completely
                                 continue 'chunk_loop;
                             } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
+                                log::info!("pane covers chunk partially to the left");
                                 // pane covers chunk partially to the left
                                 c_chunk.terminal_characters.drain(..pane_right_edge - c_chunk.x);
                                 c_chunk.x = pane_right_edge;
-                            } else if pane_left_edge > c_chunk_left_side && pane_left_edge <= c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
+                            // } else if pane_left_edge > c_chunk_left_side && pane_left_edge <= c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
+                            } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
                                 // pane covers chunk partially to the right
                                 c_chunk.terminal_characters.drain(pane_left_edge - c_chunk.x..);
                             } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
                                 // pane covers chunk middle
-                                let mut drained_characters = c_chunk.terminal_characters.drain(..pane_right_edge - c_chunk.x);
+                                let mut drained_characters = c_chunk.terminal_characters.drain(..pane_right_edge - (c_chunk.x - 1));
                                 let left_chunk_x = c_chunk.x;
-                                let right_chunk_x = pane_right_edge;
+                                let right_chunk_x = pane_right_edge + 1;
                                 let left_chunk_characters: Vec<TerminalCharacter> = drained_characters.take(pane_left_edge - 1).collect();
                                 let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
                                 c_chunk.x = right_chunk_x;
@@ -295,6 +298,9 @@ impl FloatingPanes {
         FloatingPanesStack {
             layers
         }
+    }
+    pub fn pane_ids(&self) -> impl Iterator<Item=&PaneId> {
+        self.panes.keys()
     }
     pub fn add_static_position(&mut self, pane_id: PaneId, floating_pane: FloatingPane, pane_geom: PaneGeom) {
         self.static_pane_positions.insert(
@@ -1659,20 +1665,27 @@ impl Tab {
             }
         } else if let Some(focused_pane_id) = self.active_panes.get(&client_id).copied() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane(self.display_area, self.viewport) {
-                let mut embedded_pane_to_float = self.close_pane(focused_pane_id).unwrap(); // TODO: is this unwrap safe?
-                embedded_pane_to_float.set_geom(new_pane_geom);
-                embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
-                self.floating_panes.add_pane(focused_pane_id, embedded_pane_to_float);
-                self.floating_panes.toggle_show_panes(true);
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
+                if self.get_selectable_panes().count() <= 1 {
+                    // don't close the only pane on screen...
+                    return;
+                }
+                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id) {
+                    embedded_pane_to_float.set_geom(new_pane_geom);
+                    resize_pty!(embedded_pane_to_float, self.os_api);
+                    embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
+                    self.floating_panes.add_pane(focused_pane_id, embedded_pane_to_float);
+                    self.floating_panes.toggle_show_panes(true);
+                    if self.session_is_mirrored {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
+                            self.floating_panes.focus_pane(focused_pane_id, client_id);
+                        }
+                    } else {
                         self.floating_panes.focus_pane(focused_pane_id, client_id);
                     }
-                } else {
-                    self.floating_panes.focus_pane(focused_pane_id, client_id);
+                    self.floating_panes.set_force_render();
                 }
             }
         }
@@ -1974,7 +1987,7 @@ impl Tab {
         }
     }
     pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
-        let pane_ids = self.get_pane_ids();
+        let pane_ids = self.get_static_and_floating_pane_ids();
         pane_ids.iter().for_each(|&pane_id| {
             self.write_to_pane_id(input_bytes.clone(), pane_id);
         });
@@ -2051,7 +2064,7 @@ impl Tab {
                 pane.set_should_render_boundaries(true);
             }
             let viewport_pane_ids: Vec<_> = self
-                .get_pane_ids()
+                .get_static_pane_ids()
                 .into_iter()
                 .filter(|id| !self.is_inside_viewport(id))
                 .collect();
@@ -2089,7 +2102,7 @@ impl Tab {
                     // screen, switch them to using override positions as well so that the resize
                     // system doesn't get confused by viewport and old panes that no longer line up
                     let viewport_pane_ids: Vec<_> = self
-                        .get_pane_ids()
+                        .get_static_pane_ids()
                         .into_iter()
                         .filter(|id| !self.is_inside_viewport(id))
                         .collect();
@@ -3029,7 +3042,7 @@ impl Tab {
     }
     fn close_down_to_max_terminals(&mut self) {
         if let Some(max_panes) = self.max_panes {
-            let terminals = self.get_pane_ids();
+            let terminals = self.get_static_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
@@ -3038,8 +3051,15 @@ impl Tab {
             }
         }
     }
-    pub fn get_pane_ids(&self) -> Vec<PaneId> {
+    pub fn get_static_pane_ids(&self) -> Vec<PaneId> {
         self.get_panes().map(|(&pid, _)| pid).collect()
+    }
+    pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
+        // this is here just as a naming thing to make things more explicit
+        self.get_static_and_floating_pane_ids()
+    }
+    pub fn get_static_and_floating_pane_ids(&self) -> Vec<PaneId> {
+        self.panes.keys().chain(self.floating_panes.pane_ids()).copied().collect()
     }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
         if let Some(pane) = self.panes.get_mut(&id) {
@@ -3070,7 +3090,7 @@ impl Tab {
             if active_pane_id == pane_id {
                 self.active_panes.insert(
                     client_id,
-                    self.next_active_pane(&self.get_pane_ids()).unwrap(),
+                    self.next_active_pane(&self.get_static_pane_ids()).unwrap(),
                 );
             }
         }
