@@ -38,7 +38,7 @@ use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Direction, FloatingPane, Layout, LayoutOrFloatingPane, Run},
+        layout::{Direction, Layout, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, Viewport},
@@ -229,29 +229,25 @@ impl FloatingPanesStack {
                     for pane_geom in panes_to_check {
                         let pane_top_edge = pane_geom.y;
                         let pane_left_edge = pane_geom.x;
-                        // let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize();
                         let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
                         let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
                         let c_chunk_left_side = c_chunk.x;
-                        let c_chunk_right_side = c_chunk.x + c_chunk.terminal_characters.len(); // TODO: record width of the chunk to account for wide characters
+                        let c_chunk_right_side = c_chunk.x + (c_chunk.terminal_characters.len()).saturating_sub(1); // TODO: record width of the chunk to account for wide characters
                         if pane_top_edge <= c_chunk.y && pane_bottom_edge >= c_chunk.y {
                             if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
-                                log::info!("pane covers chunk completely");
                                 // pane covers chunk completely
                                 continue 'chunk_loop;
                             } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
-                                log::info!("pane covers chunk partially to the left");
                                 // pane covers chunk partially to the left
-                                c_chunk.terminal_characters.drain(..pane_right_edge - c_chunk.x);
-                                c_chunk.x = pane_right_edge;
-                            // } else if pane_left_edge > c_chunk_left_side && pane_left_edge <= c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
+                                c_chunk.terminal_characters.drain(..pane_right_edge + 1 - c_chunk_left_side);
+                                c_chunk.x = pane_right_edge + 1;
                             } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
                                 // pane covers chunk partially to the right
-                                c_chunk.terminal_characters.drain(pane_left_edge - c_chunk.x..);
+                                c_chunk.terminal_characters.drain(pane_left_edge - c_chunk_left_side..);
                             } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
                                 // pane covers chunk middle
-                                let mut drained_characters = c_chunk.terminal_characters.drain(..pane_right_edge - (c_chunk.x - 1));
-                                let left_chunk_x = c_chunk.x;
+                                let mut drained_characters = c_chunk.terminal_characters.drain(..pane_right_edge + 1 - c_chunk_left_side);
+                                let left_chunk_x = c_chunk_left_side;
                                 let right_chunk_x = pane_right_edge + 1;
                                 let left_chunk_characters: Vec<TerminalCharacter> = drained_characters.take(pane_left_edge - 1).collect();
                                 let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
@@ -275,7 +271,6 @@ pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
-    static_pane_positions: HashMap<PaneId, (FloatingPane, PaneGeom)>,
     active_panes: HashMap<ClientId, PaneId>,
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
@@ -287,7 +282,6 @@ impl FloatingPanes {
             panes: BTreeMap::new(),
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
-            static_pane_positions: HashMap::new(),
             show_panes: false,
             active_panes: HashMap::new(),
             pane_being_moved_with_mouse: None,
@@ -301,15 +295,6 @@ impl FloatingPanes {
     }
     pub fn pane_ids(&self) -> impl Iterator<Item=&PaneId> {
         self.panes.keys()
-    }
-    pub fn add_static_position(&mut self, pane_id: PaneId, floating_pane: FloatingPane, pane_geom: PaneGeom) {
-        self.static_pane_positions.insert(
-            pane_id,
-            (floating_pane, pane_geom)
-        );
-    }
-    pub fn get_static_position(&mut self, pane_id: &PaneId) -> Option<&(FloatingPane, PaneGeom)> {
-        self.static_pane_positions.get(pane_id)
     }
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.desired_pane_positions.insert(pane_id, pane.position_and_size());
@@ -350,9 +335,6 @@ impl FloatingPanes {
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
         self.show_panes = should_show_floating_panes;
     }
-    pub fn static_panes_contain(&self, pane_id: &PaneId) -> bool {
-        self.static_pane_positions.contains_key(&pane_id)
-    }
     pub fn active_panes_contain(&self, client_id: &ClientId) -> bool {
         self.active_panes.contains_key(client_id)
     }
@@ -367,9 +349,6 @@ impl FloatingPanes {
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
-    }
-    pub fn remove_static_pane_position(&mut self, pane_id: &PaneId) -> Option<(FloatingPane, PaneGeom)> {
-        self.static_pane_positions.remove(pane_id)
     }
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
@@ -1361,7 +1340,6 @@ impl Tab {
         client_id: ClientId,
     ) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
-        // let free_space = PaneGeom::default();
         let mut free_space = PaneGeom::default();
         // TODO: are these troublesome?
         free_space.cols.set_inner(self.viewport.cols);
@@ -1390,92 +1368,40 @@ impl Tab {
         let mut new_pids = new_pids.iter();
 
         for (layout, position_and_size) in positions_and_size {
-            match layout {
-                LayoutOrFloatingPane::Layout(layout) => {
-                    // A plugin pane
-                    if let Some(Run::Plugin(run)) = layout.run.clone() {
-                        let (pid_tx, pid_rx) = channel();
-                        let pane_title = run.location.to_string();
-                        self.senders
-                            .send_to_plugin(PluginInstruction::Load(
-                                pid_tx, run, tab_index, client_id,
-                            ))
-                            .unwrap();
-                        let pid = pid_rx.recv().unwrap();
-                        let mut new_plugin = PluginPane::new(
-                            pid,
-                            *position_and_size,
-                            self.senders.to_plugin.as_ref().unwrap().clone(),
-                            pane_title,
-                            layout.pane_name.clone().unwrap_or_default(),
-                        );
-                        new_plugin.set_borderless(layout.borderless);
-                        self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
-                    } else {
-                        // there are still panes left to fill, use the pids we received in this method
-                        let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                        let next_terminal_position = self.get_next_terminal_position();
-                        let mut new_pane = TerminalPane::new(
-                            *pid,
-                            *position_and_size,
-                            self.colors,
-                            next_terminal_position,
-                            layout.pane_name.clone().unwrap_or_default(),
-                            self.link_handler.clone(),
-                        );
-                        new_pane.set_borderless(layout.borderless);
-                        self.panes
-                            .insert(PaneId::Terminal(*pid), Box::new(new_pane));
-                    }
-                }
-                LayoutOrFloatingPane::FloatingPane(floating_pane) => {
-                    if let Some(Run::Plugin(run)) = floating_pane.run.clone() {
-                        let (pid_tx, pid_rx) = channel();
-                        let pane_title = run.location.to_string();
-                        self.senders
-                            .send_to_plugin(PluginInstruction::Load(
-                                pid_tx, run, tab_index, client_id,
-                            ))
-                            .unwrap();
-                        let pid = pid_rx.recv().unwrap();
-                        let new_plugin = PluginPane::new(
-                            pid,
-                            *position_and_size,
-                            self.senders.to_plugin.as_ref().unwrap().clone(),
-                            pane_title,
-                            floating_pane.pane_name.clone().unwrap_or_default(),
-                        );
-                        self.floating_panes.add_pane(PaneId::Plugin(pid), Box::new(new_plugin));
-                        if floating_pane.sticky {
-                            self.floating_panes.add_static_position(
-                                PaneId::Plugin(pid),
-                                floating_pane.clone(),
-                                *position_and_size,
-                            );
-                        }
-                    } else {
-                        // there are still panes left to fill, use the pids we received in this method
-                        let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this floating_pane
-                        let next_terminal_position = self.get_next_terminal_position();
-                        let new_pane = TerminalPane::new(
-                            *pid,
-                            *position_and_size,
-                            self.colors,
-                            next_terminal_position,
-                            floating_pane.pane_name.clone().unwrap_or_default(),
-                            self.link_handler.clone(),
-                        );
-                        self.floating_panes
-                            .add_pane(PaneId::Terminal(*pid), Box::new(new_pane));
-                        if floating_pane.sticky {
-                            self.floating_panes.add_static_position(
-                                PaneId::Terminal(*pid),
-                                floating_pane.clone(),
-                                *position_and_size,
-                            );
-                        }
-                    }
-                }
+            // A plugin pane
+            if let Some(Run::Plugin(run)) = layout.run.clone() {
+                let (pid_tx, pid_rx) = channel();
+                let pane_title = run.location.to_string();
+                self.senders
+                    .send_to_plugin(PluginInstruction::Load(
+                        pid_tx, run, tab_index, client_id,
+                    ))
+                    .unwrap();
+                let pid = pid_rx.recv().unwrap();
+                let mut new_plugin = PluginPane::new(
+                    pid,
+                    *position_and_size,
+                    self.senders.to_plugin.as_ref().unwrap().clone(),
+                    pane_title,
+                    layout.pane_name.clone().unwrap_or_default(),
+                );
+                new_plugin.set_borderless(layout.borderless);
+                self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+            } else {
+                // there are still panes left to fill, use the pids we received in this method
+                let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
+                let next_terminal_position = self.get_next_terminal_position();
+                let mut new_pane = TerminalPane::new(
+                    *pid,
+                    *position_and_size,
+                    self.colors,
+                    next_terminal_position,
+                    layout.pane_name.clone().unwrap_or_default(),
+                    self.link_handler.clone(),
+                );
+                new_pane.set_borderless(layout.borderless);
+                self.panes
+                    .insert(PaneId::Terminal(*pid), Box::new(new_pane));
             }
         }
         for unused_pid in new_pids {
@@ -1653,14 +1579,6 @@ impl Tab {
                             .insert(client_id, focused_floating_pane_id);
                     }
                     self.floating_panes.toggle_show_panes(false);
-                    if self.floating_panes.static_panes_contain(&focused_floating_pane_id) {
-                        let should_close_previous_pane = false;
-                        self.reopen_static_floating_pane(
-                            focused_floating_pane_id,
-                            should_close_previous_pane,
-                            client_id,
-                        );
-                    }
                 }
             }
         } else if let Some(focused_pane_id) = self.active_panes.get(&client_id).copied() {
@@ -1690,15 +1608,30 @@ impl Tab {
             }
         }
     }
-    pub fn toggle_floating_panes(&mut self, client_id: ClientId) {
+    pub fn toggle_floating_panes(&mut self, client_id: ClientId, default_shell: Option<TerminalAction>) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.toggle_show_panes(false);
         } else {
             self.floating_panes.toggle_show_panes(true);
-            if !self.floating_panes.active_panes_contain(&client_id) {
-                if let Some(first_floating_pane_id) = self.floating_panes.first_floating_pane_id() {
-                    self.floating_panes.focus_pane(first_floating_pane_id, client_id);
-                    self.floating_panes.set_force_render();
+            match self.floating_panes.first_floating_pane_id() {
+                Some(first_floating_pane_id) => {
+                    if !self.floating_panes.active_panes_contain(&client_id) {
+                        self.floating_panes.focus_pane(first_floating_pane_id, client_id);
+                    }
+                },
+                None => {
+                    // there aren't any floating panes, we need to open a new one
+                    //
+                    // ************************************************************************************************
+                    // BEWARE - THIS IS NOT ATOMIC - this sends an instruction to the pty thread to open a new terminal
+                    // the pty thread will do its thing and eventually come back to the new_pane
+                    // method on this tab which will open a new floating pane because we just
+                    // toggled their visibility above us.
+                    // If the pty thread takes too long, weird things can happen...
+                    // ************************************************************************************************
+                    //
+                    let instruction = PtyInstruction::SpawnTerminal(default_shell, ClientOrTabIndex::ClientId(client_id));
+                    self.senders.send_to_pty(instruction).unwrap();
                 }
             }
             self.floating_panes.set_force_render();
@@ -1780,37 +1713,6 @@ impl Tab {
                         self.active_panes.insert(client_id, pid);
                     }
                 }
-            }
-        }
-    }
-    pub fn reopen_pane(
-        &mut self,
-        previous_pid: PaneId,
-        new_pid: PaneId,
-        client_id: Option<ClientId>,
-    ) {
-        if let Some((floating_pane, position_and_size)) =
-            self.floating_panes.remove_static_pane_position(&previous_pid)
-        {
-            if let PaneId::Terminal(new_term_pid) = new_pid {
-                let next_terminal_position = self.get_next_terminal_position();
-                let new_pane = TerminalPane::new(
-                    new_term_pid,
-                    position_and_size,
-                    self.colors,
-                    next_terminal_position,
-                    floating_pane.pane_name.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                );
-                self.floating_panes.add_pane(new_pid, Box::new(new_pane));
-                if floating_pane.sticky {
-                    self.floating_panes.add_static_position(
-                        new_pid,
-                        floating_pane.clone(),
-                        position_and_size
-                    );
-                }
-                self.set_pane_frames(self.draw_pane_frames); // this is here to set the inner offset of the new pane and we should really find a better way than this hack to do so :)
             }
         }
     }
@@ -3127,46 +3029,34 @@ impl Tab {
             }
         }
     }
-    fn reopen_static_floating_pane(
-        &mut self,
-        pane_id: PaneId,
-        should_close_previous_pane: bool,
-        client_id: ClientId,
-    ) {
-        let static_floating_pane = self.floating_panes.get_static_position(&pane_id).unwrap();
-        let terminal_action = static_floating_pane.0.run.clone().and_then(|run| match run {
-            // TODO: nicer, maybe as a method on FloatingPane?
-            Run::Command(command) => Some(TerminalAction::RunCommand(command)),
-            _ => None,
-        });
-        let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
-        self.senders
-            .send_to_pty(PtyInstruction::ReopenPane(
-                pane_id,
-                terminal_action,
-                should_close_previous_pane,
-                client_or_tab_index,
-            ))
-            .unwrap();
-    }
+//     fn reopen_static_floating_pane(
+//         &mut self,
+//         pane_id: PaneId,
+//         should_close_previous_pane: bool,
+//         client_id: ClientId,
+//     ) {
+//         let static_floating_pane = self.floating_panes.get_static_position(&pane_id).unwrap();
+//         let terminal_action = static_floating_pane.0.run.clone().and_then(|run| match run {
+//             // TODO: nicer, maybe as a method on FloatingPane?
+//             Run::Command(command) => Some(TerminalAction::RunCommand(command)),
+//             _ => None,
+//         });
+//         let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
+//         self.senders
+//             .send_to_pty(PtyInstruction::ReopenPane(
+//                 pane_id,
+//                 terminal_action,
+//                 should_close_previous_pane,
+//                 client_or_tab_index,
+//             ))
+//             .unwrap();
+//     }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
         if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-            let is_static_pane = self
-                .floating_panes
-                .static_panes_contain(&active_floating_pane_id);
             self.close_pane(active_floating_pane_id);
-            if is_static_pane {
-                let should_close_previous_pane = true;
-                self.reopen_static_floating_pane(
-                    active_floating_pane_id,
-                    should_close_previous_pane,
-                    client_id,
-                );
-            } else {
-                self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
-                    .unwrap();
-            }
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
+                .unwrap();
         } else if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             self.close_pane(active_pane_id);
             self.senders

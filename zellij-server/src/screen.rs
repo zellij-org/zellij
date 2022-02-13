@@ -8,7 +8,7 @@ use std::str;
 use std::time::Instant;
 
 use zellij_utils::pane_size::Size;
-use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
+use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
     panes::{PaneId, TerminalCharacter},
@@ -32,9 +32,8 @@ pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
-    ReopenPane(PaneId, PaneId, ClientOrTabIndex), // previous_id, current_id, client_or_tab_index
     TogglePaneEmbedOrFloating(ClientId),
-    ToggleFloatingPanes(ClientId),
+    ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, ClientId),
     VerticalSplit(PaneId, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
@@ -104,7 +103,6 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
-            ScreenInstruction::ReopenPane(..) => ScreenContext::ReopenPane,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
                 ScreenContext::TogglePaneEmbedOrFloating
             }
@@ -745,32 +743,6 @@ pub(crate) fn screen_thread_main(
 
                 screen.render();
             }
-            ScreenInstruction::ReopenPane(previous_pid, new_pid, client_or_tab_index) => {
-                match client_or_tab_index {
-                    ClientOrTabIndex::ClientId(client_id) => {
-                        screen.get_active_tab_mut(client_id).unwrap().reopen_pane(
-                            previous_pid,
-                            new_pid,
-                            Some(client_id),
-                        );
-                    }
-                    ClientOrTabIndex::TabIndex(tab_index) => {
-                        screen.tabs.get_mut(&tab_index).unwrap().reopen_pane(
-                            previous_pid,
-                            new_pid,
-                            None,
-                        );
-                    }
-                };
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-                screen.update_tabs();
-
-                screen.render();
-            }
             ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
                 screen
                     .get_active_tab_mut(client_id)
@@ -783,11 +755,11 @@ pub(crate) fn screen_thread_main(
                     .unwrap();
                 screen.render();
             }
-            ScreenInstruction::ToggleFloatingPanes(client_id) => {
+            ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .toggle_floating_panes(client_id);
+                    .toggle_floating_panes(client_id, default_shell);
                 screen
                     .bus
                     .senders

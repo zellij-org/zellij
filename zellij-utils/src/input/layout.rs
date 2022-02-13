@@ -127,24 +127,6 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
-pub struct FloatingPane {
-    #[serde(default)]
-    pub pane_name: Option<String>,
-    #[serde(default)]
-    pub run: Option<Run>,
-    #[serde(default)]
-    pub sticky: bool,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
-pub enum LayoutOrFloatingPane {
-    Layout(Layout),
-    FloatingPane(FloatingPane),
-}
-
 // The layout struct ultimately used to build the layouts.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(crate = "self::serde")]
@@ -158,7 +140,6 @@ pub struct Layout {
     pub run: Option<Run>,
     #[serde(default)]
     pub borderless: bool,
-    pub floating_pane: Option<FloatingPane>,
 }
 
 // The struct that is used to deserialize the layout from
@@ -441,7 +422,6 @@ pub struct LayoutTemplate {
     pub body: bool,
     pub split_size: Option<SplitSize>,
     pub run: Option<RunFromYaml>,
-    pub floating_pane: Option<FloatingPane>,
 }
 
 impl LayoutTemplate {
@@ -487,7 +467,6 @@ pub struct TabLayout {
     #[serde(default)]
     pub name: String,
     pub run: Option<RunFromYaml>,
-    pub floating_pane: Option<FloatingPane>,
 }
 
 impl TabLayout {
@@ -527,9 +506,6 @@ impl Layout {
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
-        if let Some(floating_pane) = &self.floating_pane {
-            run_instructions.push(floating_pane.run.clone());
-        }
         if self.parts.is_empty() {
             run_instructions.push(self.run.clone());
         }
@@ -540,7 +516,7 @@ impl Layout {
         run_instructions
     }
 
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(LayoutOrFloatingPane, PaneGeom)> {
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
         split_space(space, self)
     }
 
@@ -586,29 +562,10 @@ fn layout_size(direction: Direction, layout: &Layout) -> usize {
     child_layout_size(direction, direction, layout)
 }
 
-fn half_size_middle(space: &PaneGeom) -> PaneGeom {
-    let mut geom = PaneGeom {
-        x: space.x + (space.cols.as_usize() as f64 / 4.0).round() as usize,
-        y: space.y + (space.rows.as_usize() as f64 / 4.0).round() as usize,
-        cols: Dimension::fixed(space.cols.as_usize() / 2),
-        rows: Dimension::fixed(space.rows.as_usize() / 2),
-    };
-    geom.cols.set_inner(space.cols.as_usize() / 2);
-    geom.rows.set_inner(space.rows.as_usize() / 2);
-    geom
-}
-
-fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(LayoutOrFloatingPane, PaneGeom)> {
-    // TODO: CONTINUE HERE - everything is in place, but for some reason nothing is renderd...
-    // investigate where we're missing things - start here with floating_pane to see if it's being
-    // pushed into pane_positions
+fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneGeom)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
 
-    if let Some(floating_pane) = &layout.floating_pane {
-        let position_and_size = half_size_middle(space_to_split);
-        pane_positions.push((LayoutOrFloatingPane::FloatingPane(floating_pane.clone()), position_and_size));
-    }
     let mut split_geom = Vec::new();
     let (mut current_position, split_dimension_space, mut inherited_dimension) =
         match layout.direction {
@@ -672,7 +629,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(LayoutOrFloat
             let mut part_positions = split_space(part_position_and_size, part);
             pane_positions.append(&mut part_positions);
         } else {
-            pane_positions.push((LayoutOrFloatingPane::Layout(part.clone()), *part_position_and_size));
+            pane_positions.push((part.clone(), *part_position_and_size));
         }
     }
     pane_positions
@@ -756,7 +713,6 @@ impl TryFrom<TabLayout> for Layout {
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
             run: tab.run.map(Run::try_from).transpose()?,
-            floating_pane: tab.floating_pane,
         })
     }
 }
@@ -771,7 +727,6 @@ impl From<TabLayout> for LayoutTemplate {
             body: false,
             split_size: tab.split_size,
             run: tab.run,
-            floating_pane: None,
         }
     }
 }
@@ -792,7 +747,6 @@ impl TryFrom<LayoutTemplate> for Layout {
                 // FIXME: This is just Result::transpose but that method is unstable, when it
                 // stabalizes we should swap this out.
                 .map_or(Ok(None), |r| r.map(Some))?,
-            floating_pane: template.floating_pane,
         })
     }
 }
@@ -807,7 +761,6 @@ impl Default for TabLayout {
             run: None,
             name: String::new(),
             pane_name: None,
-            floating_pane: None,
         }
     }
 }
@@ -827,11 +780,9 @@ impl Default for LayoutTemplate {
                 split_size: None,
                 run: None,
                 parts: vec![],
-                floating_pane: None,
             }],
             split_size: None,
             run: None,
-            floating_pane: None,
         }
     }
 }

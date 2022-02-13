@@ -46,7 +46,6 @@ pub(crate) enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
-    ReopenPane(PaneId, Option<TerminalAction>, bool, ClientOrTabIndex), // bool => should_close_previous_pane
     CloseTab(Vec<PaneId>),
     Exit,
 }
@@ -59,7 +58,6 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
-            PtyInstruction::ReopenPane(..) => PtyContext::ReopenPane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
             PtyInstruction::Exit => PtyContext::Exit,
@@ -157,33 +155,6 @@ pub(crate) fn pty_thread_main(
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-            }
-            PtyInstruction::ReopenPane(
-                previous_id,
-                terminal_action,
-                should_close_previous_pane,
-                client_or_tab_index,
-            ) => {
-                if should_close_previous_pane {
-                    pty.close_pane(previous_id);
-                }
-                let terminal_action = terminal_action.or_else(|| {
-                    default_shell.clone().map(|shell| {
-                        TerminalAction::RunCommand(RunCommand {
-                            command: shell,
-                            ..Default::default()
-                        })
-                    })
-                });
-                let new_pid = pty.spawn_terminal(terminal_action, client_or_tab_index);
-                pty.bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::ReopenPane(
-                        previous_id,
-                        PaneId::Terminal(new_pid),
-                        client_or_tab_index,
-                    ))
                     .unwrap();
             }
             PtyInstruction::CloseTab(ids) => {
