@@ -26,10 +26,6 @@ keybinds:
           key: [Ctrl: 'q',]
         - action: [NewPane: ]
           key: [ Alt: 'n',]
-        - action: [TogglePaneEmbedOrFloating: ] # TODO: in other modes too
-          key: [ Alt: 'b',]
-        - action: [ToggleFloatingPanes: ] # TODO: in other modes too
-          key: [ Alt: 's',]
         - action: [MoveFocusOrTab: Left,]
           key: [ Alt: 'h',]
         - action: [MoveFocusOrTab: Right,]
@@ -141,6 +137,10 @@ keybinds:
           key: [Char: 'f',]
         - action: [TogglePaneFrames, SwitchToMode: Normal,]
           key: [Char: 'z',]
+        - action: [ToggleFloatingPanes, SwitchToMode: Normal,]
+          key: [Char: 'w']
+        - action: [TogglePaneEmbedOrFloating, SwitchToMode: Normal,]
+          key: [Char: 'e']
         - action: [NewPane: ,]
           key: [ Alt: 'n',]
         - action: [MoveFocus: Left,]
