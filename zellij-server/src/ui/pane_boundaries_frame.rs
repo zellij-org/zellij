@@ -196,6 +196,7 @@ impl PaneFrame {
         for client_id in &self.other_focused_clients {
             let mut text = self.client_cursor(*client_id);
             full_indication_len += 2;
+            full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
             short_indication_len += 2;
             short_indication.append(&mut text);
@@ -204,7 +205,9 @@ impl PaneFrame {
             // 2 for separators, 2 for padding
             let mut ret = vec![];
             ret.append(&mut left_separator);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut full_indication);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
             Some((
                 ret,
@@ -214,7 +217,9 @@ impl PaneFrame {
             // 2 for separators, 2 for padding
             let mut ret = vec![];
             ret.append(&mut left_separator);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut short_indication);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
             Some((
                 ret,
@@ -242,10 +247,13 @@ impl PaneFrame {
         for client_id in &self.other_focused_clients {
             let mut text = self.client_cursor(*client_id);
             full_indication_len += 2;
+            full_indication.push(EMPTY_TERMINAL_CHARACTER);
             full_indication.append(&mut text.clone());
             middle_indication_len += 2;
+            middle_indication.push(EMPTY_TERMINAL_CHARACTER);
             middle_indication.append(&mut text.clone());
             short_indication_len += 2;
+            short_indication.push(EMPTY_TERMINAL_CHARACTER);
             short_indication.append(&mut text);
         }
         if full_indication_len + 4 <= max_length {
@@ -276,6 +284,7 @@ impl PaneFrame {
             // 2 for separators, 1 for padding
             let mut ret = vec![];
             ret.append(&mut left_separator);
+            ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut short_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
@@ -556,7 +565,7 @@ impl PaneFrame {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
 
         self.render_title_middle(total_title_length)
-            .map(|(middle, _middle_length)| middle)
+            .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
             .or_else(|| Some(self.title_line_without_middle()))
             .unwrap()
     }
