@@ -6,7 +6,6 @@ use std::collections::{HashMap, HashSet};
 use zellij_utils::{
     input::layout::Direction,
     pane_size::{Dimension, PaneGeom, Size, Viewport},
-    position::Position,
 };
 
 use std::cell::RefCell;
@@ -22,6 +21,8 @@ const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 const MIN_TERMINAL_HEIGHT: usize = 5;
 const MIN_TERMINAL_WIDTH: usize = 5;
+
+const MAX_PANES: usize = 100;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
 pub struct PaneGrid<'a> {
@@ -3910,28 +3911,40 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn find_room_for_new_pane(&self) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
         let pane_count = panes.len();
-        if pane_count == 0 {
-            Some(half_size_middle(&self.viewport))
-        } else if pane_count == 1 {
-            Some(half_size_top_left_with_1_offset(&self.viewport))
-        } else if pane_count == 2 {
-            Some(half_size_bottom_left_with_1_offset(&self.viewport))
-        } else if pane_count == 3 {
-            Some(half_size_top_right_with_1_offset(&self.viewport))
-        } else if pane_count == 4 {
-            Some(half_size_bottom_right_with_1_offset(&self.viewport))
-        } else {
-            // TODO - place under existing panes with 1 offset left and down
-            None
+        // TODO:
+        // 1. get all existing panes
+        // 2. try to place the pane according to below placement, making sure it doesn't 100%
+        //    overlap with existing panes
+        // 3. If there's no room, try to offset down and right for each position
+        // 4. If there's still no room try to offset left and up for each position
+        // 5. If there's still no room try to offset up/left/right/down for each position
+        // 6. If there's still no room, give up
+        let pane_geoms: Vec<PaneGeom> = panes.values().map(|p| p.position_and_size()).collect();
+        for offset in 0..MAX_PANES / 5 {
+            let half_size_middle_geom = half_size_middle_geom(&self.viewport, offset);
+            let half_size_top_left_geom = half_size_top_left_geom(&self.viewport, offset);
+            let half_size_top_right_geom = half_size_top_right_geom(&self.viewport, offset);
+            let half_size_bottom_left_geom = half_size_bottom_left_geom(&self.viewport, offset);
+            let half_size_bottom_right_geom = half_size_bottom_right_geom(&self.viewport, offset);
+            if pane_geom_is_big_enough(&half_size_middle_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_middle_geom, &pane_geoms) {
+                return Some(half_size_middle_geom);
+            } else if pane_geom_is_big_enough(&half_size_top_left_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_top_left_geom, &pane_geoms) {
+                return Some(half_size_top_left_geom);
+            } else if pane_geom_is_big_enough(&half_size_top_right_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_top_right_geom, &pane_geoms) {
+                return Some(half_size_top_right_geom);
+            } else if pane_geom_is_big_enough(&half_size_bottom_left_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_bottom_left_geom, &pane_geoms) {
+                return Some(half_size_bottom_left_geom);
+            } else if pane_geom_is_big_enough(&half_size_bottom_right_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_bottom_right_geom, &pane_geoms) {
+                return Some(half_size_bottom_right_geom);
+            }
         }
+        None
     }
 }
-
-// TODO: move this to PaneGeom? It's (mostly) duplicated in layout.rs
-fn half_size_middle(space: &Viewport) -> PaneGeom {
+fn half_size_middle_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: space.x + (space.cols as f64 / 4.0).round() as usize,
-        y: space.y + (space.rows as f64 / 4.0).round() as usize,
+        x: space.x + (space.cols as f64 / 4.0).round() as usize + offset,
+        y: space.y + (space.rows as f64 / 4.0).round() as usize + offset,
         cols: Dimension::fixed(space.cols / 2),
         rows: Dimension::fixed(space.rows / 2),
     };
@@ -3940,10 +3953,10 @@ fn half_size_middle(space: &Viewport) -> PaneGeom {
     geom
 }
 
-fn half_size_top_left_with_1_offset(space: &Viewport) -> PaneGeom {
+fn half_size_top_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: space.x + 2,
-        y: space.y + 2,
+        x: space.x + 2 + offset,
+        y: space.y + 2 + offset,
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
     };
@@ -3952,10 +3965,10 @@ fn half_size_top_left_with_1_offset(space: &Viewport) -> PaneGeom {
     geom
 }
 
-fn half_size_bottom_left_with_1_offset(space: &Viewport) -> PaneGeom {
+fn half_size_top_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: space.x + 2,
-        y: (space.y + space.rows) - (space.rows / 3) - 2,
+        x: ((space.x + space.cols) - (space.cols / 3) - 2).saturating_sub(offset),
+        y: space.y + 2 + offset,
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
     };
@@ -3964,10 +3977,10 @@ fn half_size_bottom_left_with_1_offset(space: &Viewport) -> PaneGeom {
     geom
 }
 
-fn half_size_top_right_with_1_offset(space: &Viewport) -> PaneGeom {
+fn half_size_bottom_left_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: (space.x + space.cols) - (space.cols / 3) - 2,
-        y: space.y + 2,
+        x: space.x + 2 + offset,
+        y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
     };
@@ -3976,10 +3989,10 @@ fn half_size_top_right_with_1_offset(space: &Viewport) -> PaneGeom {
     geom
 }
 
-fn half_size_bottom_right_with_1_offset(space: &Viewport) -> PaneGeom {
+fn half_size_bottom_right_geom(space: &Viewport, offset: usize) -> PaneGeom {
     let mut geom = PaneGeom {
-        x: (space.x + space.cols) - (space.cols / 3) - 2,
-        y: (space.y + space.rows) - (space.rows / 3) - 2,
+        x: ((space.x + space.cols) - (space.cols / 3) - 2).saturating_sub(offset),
+        y: ((space.y + space.rows) - (space.rows / 3) - 2).saturating_sub(offset),
         cols: Dimension::fixed(space.cols / 3),
         rows: Dimension::fixed(space.rows / 3),
     };
@@ -3993,4 +4006,13 @@ fn pane_geom_is_inside_viewport(viewport: &Viewport, geom: &PaneGeom) -> bool {
         && geom.y + geom.rows.as_usize() <= viewport.y + viewport.rows
         && geom.x >= viewport.x
         && geom.x + geom.cols.as_usize() <= viewport.x + viewport.cols
+}
+
+fn pane_geom_is_big_enough(geom: &PaneGeom) -> bool {
+    geom.rows.as_usize() >= MIN_TERMINAL_HEIGHT && geom.cols.as_usize() >= MIN_TERMINAL_WIDTH
+}
+
+fn pane_geom_is_unoccupied_and_inside_viewport(viewport: &Viewport, geom: &PaneGeom, existing_geoms: &[PaneGeom]) -> bool {
+    pane_geom_is_inside_viewport(viewport, geom) &&
+        !existing_geoms.iter().find(|p| *p == geom).is_some()
 }
