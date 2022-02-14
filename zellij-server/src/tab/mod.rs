@@ -350,6 +350,9 @@ impl FloatingPanes {
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
     }
+    pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
+        self.active_panes.values().next().copied()
+    }
     pub fn set_force_render(&mut self) {
         for pane in self.panes.values_mut() {
             pane.set_should_render(true);
@@ -607,14 +610,10 @@ impl FloatingPanes {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
-                    if session_is_mirrored {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.focus_pane(p, client_id);
-                        }
-                    } else {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
 
@@ -684,14 +683,10 @@ impl FloatingPanes {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
-                    if session_is_mirrored {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.focus_pane(p, client_id);
-                        }
-                    } else {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
 
@@ -761,14 +756,10 @@ impl FloatingPanes {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
-                    if session_is_mirrored {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.focus_pane(p, client_id);
-                        }
-                    } else {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
 
@@ -838,14 +829,10 @@ impl FloatingPanes {
                     // there before (eg. another user's cursor)
                     next_active_pane.render_full_viewport();
 
-                    if session_is_mirrored {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.focus_pane(p, client_id);
-                        }
-                    } else {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
 
@@ -1470,9 +1457,15 @@ impl Tab {
         }
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
-        match self.connected_clients.iter().next() {
+        let first_connected_client = self.connected_clients.iter().next();
+        match first_connected_client {
             Some(first_client_id) => {
                 let first_active_pane_id = *self.active_panes.get(first_client_id).unwrap();
+                if self.floating_panes.panes_are_visible() {
+                    if let Some(first_active_floating_pane_id) = self.floating_panes.first_active_floating_pane_id() {
+                        self.floating_panes.focus_pane(first_active_floating_pane_id, client_id);
+                    }
+                }
                 self.connected_clients.insert(client_id);
                 self.active_panes.insert(client_id, first_active_pane_id);
                 self.mode_info.insert(
@@ -1594,14 +1587,10 @@ impl Tab {
                     embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
                     self.floating_panes.add_pane(focused_pane_id, embedded_pane_to_float);
                     self.floating_panes.toggle_show_panes(true);
-                    if self.session_is_mirrored {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            self.connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.floating_panes.focus_pane(focused_pane_id, client_id);
-                        }
-                    } else {
+                    // move all clients
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
                         self.floating_panes.focus_pane(focused_pane_id, client_id);
                     }
                     self.floating_panes.set_force_render();
@@ -1657,14 +1646,10 @@ impl Tab {
                     resize_pty!(new_pane, self.os_api);
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
                     if let Some(client_id) = client_id {
-                        if self.session_is_mirrored {
-                            // move all clients
-                            let connected_clients: Vec<ClientId> =
-                                self.connected_clients.iter().copied().collect();
-                            for client_id in connected_clients {
-                                self.floating_panes.focus_pane(pid, client_id);
-                            }
-                        } else {
+                        // move all clients
+                        let connected_clients: Vec<ClientId> =
+                            self.connected_clients.iter().copied().collect();
+                        for client_id in connected_clients {
                             self.floating_panes.focus_pane(pid, client_id);
                         }
                     }
@@ -2043,6 +2028,7 @@ impl Tab {
             pane.set_should_render_boundaries(true);
             pane.render_full_viewport();
         }
+        self.floating_panes.set_force_render();
     }
     pub fn is_sync_panes_active(&self) -> bool {
         self.synchronize_is_active
@@ -3344,14 +3330,10 @@ impl Tab {
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true) {
-                if self.session_is_mirrored {
-                    // move all clients
-                    let connected_clients: Vec<ClientId> =
-                        self.connected_clients.iter().copied().collect();
-                    for client_id in connected_clients {
-                        self.floating_panes.focus_pane(clicked_pane, client_id);
-                    }
-                } else {
+                // move all clients
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.iter().copied().collect();
+                for client_id in connected_clients {
                     self.floating_panes.focus_pane(clicked_pane, client_id);
                 }
                 return;
