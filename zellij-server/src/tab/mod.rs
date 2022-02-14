@@ -1601,8 +1601,10 @@ impl Tab {
     pub fn toggle_floating_panes(&mut self, client_id: ClientId, default_shell: Option<TerminalAction>) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.toggle_show_panes(false);
+            self.set_force_render();
         } else {
             self.floating_panes.toggle_show_panes(true);
+            self.set_force_render();
             match self.floating_panes.first_floating_pane_id() {
                 Some(first_floating_pane_id) => {
                     if !self.floating_panes.active_panes_contain(&client_id) {
@@ -2102,10 +2104,6 @@ impl Tab {
             None
         };
         output.add_clients(&self.connected_clients, self.link_handler.clone(), floating_panes_stack);
-        // TODO CONTINUE HERE: 
-        // * when adding clients to output, add a FloatingPanesStack (which will consist of the z-indices
-        // and geoms of all the floating panes, if visible)
-        // * When adding chunks, include their z-index and "shorten" them to their visible parts
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
         self.hide_cursor_and_clear_display_as_needed(output);
         let active_non_floating_panes = self.active_non_floating_panes();
