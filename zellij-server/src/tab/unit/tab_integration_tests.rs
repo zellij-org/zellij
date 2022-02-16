@@ -123,6 +123,7 @@ fn create_new_tab(size: Size) -> Tab {
 }
 
 use crate::panes::grid::Grid;
+use crate::panes::link_handler::LinkHandler;
 use zellij_utils::vte;
 use ::insta::assert_snapshot;
 
@@ -130,7 +131,8 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let mut grid = Grid::new(
         rows,
         columns,
-        palette
+        palette,
+        Rc::new(RefCell::new(LinkHandler::new())),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -143,7 +145,8 @@ fn take_snapshot_and_cursor_position(ansi_instructions: &str, rows: usize, colum
     let mut grid = Grid::new(
         rows,
         columns,
-        palette
+        palette,
+        Rc::new(RefCell::new(LinkHandler::new())),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -162,11 +165,11 @@ fn new_floating_pane() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -180,12 +183,12 @@ fn toggle_floating_panes_off() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -199,13 +202,13 @@ fn toggle_floating_panes_on() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
-    tab.toggle_floating_panes(client_id);
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
+    tab.toggle_floating_panes(client_id, None);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -223,7 +226,7 @@ fn five_new_floating_panes() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -235,7 +238,7 @@ fn five_new_floating_panes() {
     tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -249,12 +252,12 @@ fn increase_floating_pane_size() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_increase(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -268,12 +271,12 @@ fn decrease_floating_pane_size() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_decrease(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -287,12 +290,12 @@ fn resize_floating_pane_left() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_left(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -306,12 +309,12 @@ fn resize_floating_pane_right() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_right(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -325,12 +328,12 @@ fn resize_floating_pane_up() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_up(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -344,12 +347,12 @@ fn resize_floating_pane_down() {
     let mut tab = create_new_tab(size);
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("\n\n\n                   I am scratch terminal".as_bytes()));
     tab.resize_down(client_id);
     tab.render(&mut output, None);
-    let snapshot = take_snapshot(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let snapshot = take_snapshot(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_snapshot!(snapshot);
 }
 
@@ -367,7 +370,7 @@ fn move_floating_pane_focus_left() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -380,7 +383,7 @@ fn move_floating_pane_focus_left() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.move_focus_left(client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((71, 9)), "cursor coordinates moved to the pane on the left");
 
     assert_snapshot!(snapshot);
@@ -400,7 +403,7 @@ fn move_floating_pane_focus_right() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -414,7 +417,7 @@ fn move_floating_pane_focus_right() {
     tab.move_focus_left(client_id);
     tab.move_focus_right(client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((80, 3)), "cursor coordinates moved to the pane on the right");
 
     assert_snapshot!(snapshot);
@@ -434,7 +437,7 @@ fn move_floating_pane_focus_up() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -447,7 +450,7 @@ fn move_floating_pane_focus_up() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.move_focus_up(client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((71, 9)), "cursor coordinates moved to the pane above");
 
     assert_snapshot!(snapshot);
@@ -467,7 +470,7 @@ fn move_floating_pane_focus_down() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -481,7 +484,7 @@ fn move_floating_pane_focus_down() {
     tab.move_focus_up(client_id);
     tab.move_focus_down(client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((80, 13)), "cursor coordinates moved to the pane below");
 
     assert_snapshot!(snapshot);
@@ -501,7 +504,7 @@ fn move_floating_pane_focus_with_mouse() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -515,7 +518,7 @@ fn move_floating_pane_focus_with_mouse() {
     tab.handle_left_click(&Position::new(9, 71), client_id);
     tab.handle_mouse_release(&Position::new(9, 71), client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((71, 9)), "cursor coordinates moved to the clicked pane");
 
     assert_snapshot!(snapshot);
@@ -535,7 +538,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -549,7 +552,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
     tab.handle_left_click(&Position::new(4, 71), client_id);
     tab.handle_mouse_release(&Position::new(4, 71), client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((1, 1)), "cursor coordinates moved to the clicked pane");
 
     assert_snapshot!(snapshot);
@@ -569,7 +572,7 @@ fn drag_pane_with_mouse() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -583,7 +586,7 @@ fn drag_pane_with_mouse() {
     tab.handle_left_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_release(&Position::new(7, 75), client_id);
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((75, 11)), "cursor coordinates moved to the clicked pane");
 
     assert_snapshot!(snapshot);
@@ -603,7 +606,7 @@ fn mark_text_inside_floating_pane() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -619,7 +622,7 @@ fn mark_text_inside_floating_pane() {
     tab.handle_mouse_release(&Position::new(8, 50), client_id);
     assert_eq!(tab.selecting_with_mouse, false, "stopped selecting with mouse on release");
     tab.render(&mut output, None);
-    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
     assert_eq!(cursor_coordinates, Some((71, 9)), "cursor coordinates stayed in clicked pane");
 
     assert_snapshot!(snapshot);
@@ -639,7 +642,7 @@ fn resize_tab_with_floating_panes() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -652,7 +655,7 @@ fn resize_tab_with_floating_panes() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.resize_whole_tab(Size { cols: 100, rows: 10});
     tab.render(&mut output, None);
-    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
 
     assert_snapshot!(snapshot);
 }
@@ -671,7 +674,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -684,7 +687,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.resize_whole_tab(Size { cols: 50, rows: 10});
     tab.render(&mut output, None);
-    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
 
     assert_snapshot!(snapshot);
 }
@@ -703,7 +706,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
     let new_pane_id_4 = PaneId::Terminal(5);
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
-    tab.toggle_floating_panes(client_id);
+    tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id_1, Some(client_id));
     tab.new_pane(new_pane_id_2, Some(client_id));
     tab.new_pane(new_pane_id_3, Some(client_id));
@@ -717,7 +720,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
     tab.resize_whole_tab(Size { cols: 50, rows: 10});
     tab.resize_whole_tab(Size { cols: 121, rows: 20});
     tab.render(&mut output, None);
-    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.client_render_instructions.get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
+    let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(output.serialize(None).get(&client_id).unwrap(), size.rows, size.cols, Palette::default());
 
     assert_snapshot!(snapshot);
 }

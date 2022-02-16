@@ -1,6 +1,6 @@
 mod alacritty_functions;
 pub mod grid;
-mod link_handler;
+pub mod link_handler;
 mod plugin_pane;
 mod selection;
 pub mod terminal_character;

@@ -1,6 +1,9 @@
 use super::super::Grid;
 use ::insta::assert_snapshot;
 use zellij_utils::{position::Position, vte, zellij_tile::data::Palette};
+use crate::panes::link_handler::LinkHandler;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -15,7 +18,7 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 #[test]
 fn vttest1_0() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -27,7 +30,7 @@ fn vttest1_0() {
 #[test]
 fn vttest1_1() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -39,7 +42,7 @@ fn vttest1_1() {
 #[test]
 fn vttest1_2() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -51,7 +54,7 @@ fn vttest1_2() {
 #[test]
 fn vttest1_3() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -63,7 +66,7 @@ fn vttest1_3() {
 #[test]
 fn vttest1_4() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -75,7 +78,7 @@ fn vttest1_4() {
 #[test]
 fn vttest1_5() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -87,7 +90,7 @@ fn vttest1_5() {
 #[test]
 fn vttest2_0() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -99,7 +102,7 @@ fn vttest2_0() {
 #[test]
 fn vttest2_1() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -111,7 +114,7 @@ fn vttest2_1() {
 #[test]
 fn vttest2_2() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -123,7 +126,7 @@ fn vttest2_2() {
 #[test]
 fn vttest2_3() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -135,7 +138,7 @@ fn vttest2_3() {
 #[test]
 fn vttest2_4() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -147,7 +150,7 @@ fn vttest2_4() {
 #[test]
 fn vttest2_5() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -159,7 +162,7 @@ fn vttest2_5() {
 #[test]
 fn vttest2_6() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -171,7 +174,7 @@ fn vttest2_6() {
 #[test]
 fn vttest2_7() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -183,7 +186,7 @@ fn vttest2_7() {
 #[test]
 fn vttest2_8() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -195,7 +198,7 @@ fn vttest2_8() {
 #[test]
 fn vttest2_9() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -207,7 +210,7 @@ fn vttest2_9() {
 #[test]
 fn vttest2_10() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -219,7 +222,7 @@ fn vttest2_10() {
 #[test]
 fn vttest2_11() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -231,7 +234,7 @@ fn vttest2_11() {
 #[test]
 fn vttest2_12() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -243,7 +246,7 @@ fn vttest2_12() {
 #[test]
 fn vttest2_13() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -255,7 +258,7 @@ fn vttest2_13() {
 #[test]
 fn vttest2_14() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -267,7 +270,7 @@ fn vttest2_14() {
 #[test]
 fn vttest3_0() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(41, 110, Palette::default());
+    let mut grid = Grid::new(41, 110, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -279,7 +282,7 @@ fn vttest3_0() {
 #[test]
 fn vttest8_0() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -291,7 +294,7 @@ fn vttest8_0() {
 #[test]
 fn vttest8_1() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -303,7 +306,7 @@ fn vttest8_1() {
 #[test]
 fn vttest8_2() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -315,7 +318,7 @@ fn vttest8_2() {
 #[test]
 fn vttest8_3() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -327,7 +330,7 @@ fn vttest8_3() {
 #[test]
 fn vttest8_4() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -339,7 +342,7 @@ fn vttest8_4() {
 #[test]
 fn vttest8_5() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -351,7 +354,7 @@ fn vttest8_5() {
 #[test]
 fn csi_b() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -363,7 +366,7 @@ fn csi_b() {
 #[test]
 fn csi_capital_i() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -375,7 +378,7 @@ fn csi_capital_i() {
 #[test]
 fn csi_capital_z() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -387,7 +390,7 @@ fn csi_capital_z() {
 #[test]
 fn terminal_reports() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(51, 97, Palette::default());
+    let mut grid = Grid::new(51, 97, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -399,7 +402,7 @@ fn terminal_reports() {
 #[test]
 fn wide_characters() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -411,7 +414,7 @@ fn wide_characters() {
 #[test]
 fn wide_characters_line_wrap() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -423,7 +426,7 @@ fn wide_characters_line_wrap() {
 #[test]
 fn insert_character_in_line_with_wide_character() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -435,7 +438,7 @@ fn insert_character_in_line_with_wide_character() {
 #[test]
 fn delete_char_in_middle_of_line_with_widechar() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -447,7 +450,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
 #[test]
 fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -459,7 +462,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
 #[test]
 fn fish_wide_characters_override_clock() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -471,7 +474,7 @@ fn fish_wide_characters_override_clock() {
 #[test]
 fn bash_delete_wide_characters() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -483,7 +486,7 @@ fn bash_delete_wide_characters() {
 #[test]
 fn delete_wide_characters_before_cursor() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -495,7 +498,7 @@ fn delete_wide_characters_before_cursor() {
 #[test]
 fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -507,7 +510,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
 #[test]
 fn delete_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -519,7 +522,7 @@ fn delete_wide_character_under_cursor() {
 #[test]
 fn replace_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 104, Palette::default());
+    let mut grid = Grid::new(21, 104, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -531,7 +534,7 @@ fn replace_wide_character_under_cursor() {
 #[test]
 fn wrap_wide_characters() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 90, Palette::default());
+    let mut grid = Grid::new(21, 90, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -543,7 +546,7 @@ fn wrap_wide_characters() {
 #[test]
 fn wrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 93, Palette::default());
+    let mut grid = Grid::new(21, 93, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -556,7 +559,7 @@ fn wrap_wide_characters_on_size_change() {
 #[test]
 fn unwrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 93, Palette::default());
+    let mut grid = Grid::new(21, 93, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -570,7 +573,7 @@ fn unwrap_wide_characters_on_size_change() {
 #[test]
 fn wrap_wide_characters_in_the_middle_of_the_line() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 91, Palette::default());
+    let mut grid = Grid::new(21, 91, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -582,7 +585,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
 #[test]
 fn wrap_wide_characters_at_the_end_of_the_line() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 90, Palette::default());
+    let mut grid = Grid::new(21, 90, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -594,7 +597,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
 #[test]
 fn copy_selected_text_from_viewport() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(27, 125, Palette::default());
+    let mut grid = Grid::new(27, 125, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -614,7 +617,7 @@ fn copy_selected_text_from_viewport() {
 #[test]
 fn copy_selected_text_from_lines_above() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(27, 125, Palette::default());
+    let mut grid = Grid::new(27, 125, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -634,7 +637,7 @@ fn copy_selected_text_from_lines_above() {
 #[test]
 fn copy_selected_text_from_lines_below() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(27, 125, Palette::default());
+    let mut grid = Grid::new(27, 125, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -662,7 +665,7 @@ fn copy_selected_text_from_lines_below() {
 #[test]
 fn run_bandwhich_from_fish_shell() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -674,7 +677,7 @@ fn run_bandwhich_from_fish_shell() {
 #[test]
 fn fish_tab_completion_options() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -691,7 +694,7 @@ pub fn fish_select_tab_completion_options() {
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -711,7 +714,7 @@ pub fn vim_scroll_region_down() {
     // this tests also has other steps afterwards that fills the line with the next line in the
     // file
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -729,7 +732,7 @@ pub fn vim_ctrl_d() {
     // end of the scroll region
     // vim makes sure to fill these empty lines with the rest of the file
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -746,7 +749,7 @@ pub fn vim_ctrl_u() {
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -758,7 +761,7 @@ pub fn vim_ctrl_u() {
 #[test]
 pub fn htop() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -770,7 +773,7 @@ pub fn htop() {
 #[test]
 pub fn htop_scrolling() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -782,7 +785,7 @@ pub fn htop_scrolling() {
 #[test]
 pub fn htop_right_scrolling() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -802,7 +805,7 @@ pub fn vim_overwrite() {
     // * confirm you would like to change the file by pressing 'y' and then ENTER
     // * if everything looks fine, this test passed :)
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -816,7 +819,7 @@ pub fn clear_scroll_region() {
     // this is actually a test of 1049h/l (alternative buffer)
     // @imsnif - the name is a monument to the time I didn't fully understand this mechanism :)
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -828,7 +831,7 @@ pub fn clear_scroll_region() {
 #[test]
 pub fn display_tab_characters_properly() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -840,7 +843,7 @@ pub fn display_tab_characters_properly() {
 #[test]
 pub fn neovim_insert_mode() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -852,7 +855,7 @@ pub fn neovim_insert_mode() {
 #[test]
 pub fn bash_cursor_linewrap() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 116, Palette::default());
+    let mut grid = Grid::new(28, 116, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -866,7 +869,7 @@ pub fn fish_paste_multiline() {
     // here we paste a multiline command in fish shell, making sure we support it
     // going up and changing the colors of our line-wrapped pasted text
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 149, Palette::default());
+    let mut grid = Grid::new(28, 149, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -878,7 +881,7 @@ pub fn fish_paste_multiline() {
 #[test]
 pub fn git_log() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 149, Palette::default());
+    let mut grid = Grid::new(28, 149, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -892,7 +895,7 @@ pub fn git_diff_scrollup() {
     // this tests makes sure that when we have a git diff that exceeds the screen size
     // we are able to scroll up
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(28, 149, Palette::default());
+    let mut grid = Grid::new(28, 149, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -904,7 +907,7 @@ pub fn git_diff_scrollup() {
 #[test]
 pub fn emacs_longbuf() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(60, 284, Palette::default());
+    let mut grid = Grid::new(60, 284, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -916,7 +919,7 @@ pub fn emacs_longbuf() {
 #[test]
 pub fn top_and_quit() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(56, 235, Palette::default());
+    let mut grid = Grid::new(56, 235, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -934,7 +937,7 @@ pub fn exa_plus_omf_theme() {
     // over existing on-screen content without deleting it, so we must
     // convert it to spaces
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(56, 235, Palette::default());
+    let mut grid = Grid::new(56, 235, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -946,7 +949,7 @@ pub fn exa_plus_omf_theme() {
 #[test]
 pub fn scroll_up() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 50, Palette::default());
+    let mut grid = Grid::new(10, 50, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -959,7 +962,7 @@ pub fn scroll_up() {
 #[test]
 pub fn scroll_down() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 50, Palette::default());
+    let mut grid = Grid::new(10, 50, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -973,7 +976,7 @@ pub fn scroll_down() {
 #[test]
 pub fn scroll_up_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 25, Palette::default());
+    let mut grid = Grid::new(10, 25, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -986,7 +989,7 @@ pub fn scroll_up_with_line_wraps() {
 #[test]
 pub fn scroll_down_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 25, Palette::default());
+    let mut grid = Grid::new(10, 25, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1000,7 +1003,7 @@ pub fn scroll_down_with_line_wraps() {
 #[test]
 pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 50, Palette::default());
+    let mut grid = Grid::new(10, 50, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1019,7 +1022,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
 #[test]
 pub fn scroll_up_increase_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(10, 25, Palette::default());
+    let mut grid = Grid::new(10, 25, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1038,7 +1041,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
 #[test]
 pub fn move_cursor_below_scroll_region() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(34, 114, Palette::default());
+    let mut grid = Grid::new(34, 114, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1050,7 +1053,7 @@ pub fn move_cursor_below_scroll_region() {
 #[test]
 pub fn insert_wide_characters_in_existing_line() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(21, 86, Palette::default());
+    let mut grid = Grid::new(21, 86, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1067,7 +1070,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     // lines to get deleted from the viewport rather
     // than moving to "lines_above"
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(54, 80, Palette::default());
+    let mut grid = Grid::new(54, 80, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
     for byte in content {
@@ -1082,7 +1085,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
 #[test]
 pub fn ring_bell() {
     let mut vte_parser = vte::Parser::new();
-    let mut grid = Grid::new(134, 64, Palette::default());
+    let mut grid = Grid::new(134, 64, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
     for byte in content {
