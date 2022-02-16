@@ -10,14 +10,6 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use std::fmt::Write;
 
-// fn foreground_color(character: &str, color: Option<PaletteColor>) -> String {
-//     match color {
-//         Some(PaletteColor::Rgb((r, g, b))) => RGB(r, g, b).bold().paint(character).to_string(),
-//         Some(PaletteColor::EightBit(color)) => Fixed(color).bold().paint(character).to_string(),
-//         None => Style::new().bold().paint(character).to_string(),
-//     }
-// }
-
 fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     let mut colored_string = Vec::with_capacity(characters.chars().count());
     for character in characters.chars() {
@@ -67,18 +59,6 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     }
     colored_string
 }
-
-// fn background_color(character: &str, color: Option<PaletteColor>) -> String {
-//     match color {
-//         Some(PaletteColor::Rgb((r, g, b))) => {
-//             Style::new().on(RGB(r, g, b)).paint(character).to_string()
-//         }
-//         Some(PaletteColor::EightBit(color)) => {
-//             Style::new().on(Fixed(color)).paint(character).to_string()
-//         }
-//         None => character.to_string(),
-//     }
-// }
 
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
@@ -348,21 +328,28 @@ impl PaneFrame {
                 }
             }
 
-            let title_left_side =
+            let (title_left_side, title_length) =
                 if first_part.width() + middle_truncated_sign.width() + second_part.width()
                     < max_length
                 {
                     // this means we lost 1 character when dividing the total length into halves
-                    format!(
-                        "{}{}{}",
-                        first_part, middle_truncated_sign_long, second_part
+                    (
+                        format!(
+                            "{}{}{}",
+                            first_part, middle_truncated_sign_long, second_part
+                        ),
+                        first_part.width() + middle_truncated_sign_long.width() + second_part.width()
                     )
+
                 } else {
-                    format!("{}{}{}", first_part, middle_truncated_sign, second_part)
+                    (
+                        format!("{}{}{}", first_part, middle_truncated_sign, second_part),
+                        first_part.width() + middle_truncated_sign.width() + second_part.width()
+                    )
                 };
             Some((
                 foreground_color(&title_left_side, self.color),
-                title_left_side.chars().count(),
+                title_length,
             ))
         }
     }
