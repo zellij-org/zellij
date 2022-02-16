@@ -383,7 +383,6 @@ impl FloatingPanes {
         output: &mut Output,
         colors: Palette,
     ) {
-        // return; // TODO: NO!!!
         // TODO: move args to state?
 
 

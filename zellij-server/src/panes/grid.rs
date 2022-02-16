@@ -1161,7 +1161,7 @@ impl Grid {
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         // TODO: try to separate adding characters from moving the cursors in this function
         let character_width = terminal_character.width;
-        if self.cursor.x >= self.width {
+        if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
                 return;
             }
