@@ -2176,7 +2176,7 @@ impl Tab {
         // render boundaries if needed
         for (client_id, boundaries) in &mut client_id_to_boundaries {
             // TODO: add some conditional rendering here so this isn't rendered for every character
-            output.add_post_vte_instruction_to_client(*client_id, &boundaries.vte_output());
+            output.add_character_chunks_to_client(*client_id, boundaries.render(), None);
         }
         // FIXME: Once clients can be distinguished
         if let Some(overlay_vte) = &overlay {
