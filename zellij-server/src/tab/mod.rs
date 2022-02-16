@@ -111,9 +111,10 @@ fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handle
         )
         .unwrap(); // goto top of viewport
 
+        let mut chunk_width = character_chunk.x;
         for (i, t_character) in character_chunk.terminal_characters.iter().enumerate() {
             let mut t_character_styles = chunk_selection_and_background_color.and_then(|(selection, background_color)| {
-                if selection.contains(character_chunk.y, character_chunk.x + i) {
+                if selection.contains(character_chunk.y, chunk_width) {
                     Some(t_character.styles.background(Some(background_color)))
                 } else {
                     None
@@ -138,6 +139,7 @@ fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handle
                 }
 
             }
+            chunk_width += t_character.width;
             vte_output.push(t_character.character);
         }
         character_styles.clear();
