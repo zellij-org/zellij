@@ -300,6 +300,82 @@ impl CharacterChunk {
     pub fn changed_colors(&self) -> Option<[Option<AnsiCode>; 256]> {
         self.changed_colors
     }
+    pub fn width(&self) -> usize {
+        let mut width = 0;
+        for t_character in &self.terminal_characters {
+            width += t_character.width
+        }
+        width
+    }
+    pub fn drain_by_width(&mut self, x: usize) -> impl Iterator<Item=TerminalCharacter> {
+        let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
+        let mut drained_part_len = 0;
+        loop {
+            if self.terminal_characters.is_empty() {
+                break;
+            }
+            let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
+            if drained_part_len + next_character.width <= x {
+                drained_part.push_back(next_character);
+                drained_part_len += next_character.width;
+            } else {
+                if drained_part_len == x {
+                    self.terminal_characters.insert(0, next_character); // put it back
+                } else if next_character.width > 1 {
+                    for _ in 1..next_character.width {
+                        self.terminal_characters.insert(0, EMPTY_TERMINAL_CHARACTER);
+                        drained_part.push_back(EMPTY_TERMINAL_CHARACTER);
+                    }
+                }
+                break;
+            }
+        }
+        drained_part.into_iter()
+    }
+    pub fn retain_by_width(&mut self, x: usize) {
+        let part_to_retain = self.drain_by_width(x); // TODO: better
+        self.terminal_characters = part_to_retain.collect();
+    }
+    pub fn cut_middle_out(&mut self, middle_start: usize, middle_end: usize) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
+        let mut absolute_middle_start_index = None;
+        let mut absolute_middle_end_index = None;
+        let mut current_x = 0;
+        let mut pad_left_end_by = 0;
+        let mut pad_right_start_by = 0;
+        for (absolute_index, t_character) in self.terminal_characters.iter().enumerate() {
+            current_x += t_character.width;
+            if current_x >= middle_start && absolute_middle_start_index.is_none() {
+                if current_x > middle_start {
+                    pad_left_end_by = current_x - middle_start;
+                    absolute_middle_start_index = Some(absolute_index);
+                } else {
+                    absolute_middle_start_index = Some(absolute_index + 1);
+                }
+            }
+            if current_x >= middle_end && absolute_middle_end_index.is_none() {
+                absolute_middle_end_index = Some(absolute_index + 1);
+                if current_x > middle_end {
+                    pad_right_start_by = current_x - middle_end;
+                }
+            }
+        }
+        let absolute_middle_start_index = absolute_middle_start_index.unwrap();
+        let absolute_middle_end_index = absolute_middle_end_index.unwrap();
+        let mut terminal_characters: Vec<TerminalCharacter> = self.terminal_characters.drain(..).collect();
+        let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters.drain(absolute_middle_end_index..).collect();
+        let mut characters_on_the_left: Vec<TerminalCharacter>  = terminal_characters.drain(..absolute_middle_start_index).collect();
+        if pad_left_end_by > 0 {
+            for _ in 0..pad_left_end_by {
+                characters_on_the_left.push(EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        if pad_right_start_by > 0 {
+            for _ in 0..pad_right_start_by {
+                characters_on_the_right.insert(0, EMPTY_TERMINAL_CHARACTER);
+            }
+        }
+        (characters_on_the_left, characters_on_the_right)
+    }
 }
 
 #[derive(Clone, Debug)]

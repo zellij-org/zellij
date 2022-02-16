@@ -231,27 +231,28 @@ impl FloatingPanesStack {
                         let pane_left_edge = pane_geom.x;
                         let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
                         let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
+
                         let c_chunk_left_side = c_chunk.x;
-                        let c_chunk_right_side = c_chunk.x + (c_chunk.terminal_characters.len()).saturating_sub(1); // TODO: record width of the chunk to account for wide characters
+                        let c_chunk_right_side = c_chunk.x + (c_chunk.width()).saturating_sub(1);
                         if pane_top_edge <= c_chunk.y && pane_bottom_edge >= c_chunk.y {
                             if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
                                 // pane covers chunk completely
                                 continue 'chunk_loop;
                             } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
                                 // pane covers chunk partially to the left
-                                c_chunk.terminal_characters.drain(..pane_right_edge + 1 - c_chunk_left_side);
+                                c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side); // 2 - one to get to the actual right edge, one to get an extra character
                                 c_chunk.x = pane_right_edge + 1;
                             } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
                                 // pane covers chunk partially to the right
-                                c_chunk.terminal_characters.drain(pane_left_edge - c_chunk_left_side..);
+                                c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
                             } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
                                 // pane covers chunk middle
-                                let mut drained_characters = c_chunk.terminal_characters.drain(..pane_right_edge + 1 - c_chunk_left_side);
+                                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(pane_left_edge - c_chunk_left_side, (pane_right_edge + 1) - c_chunk_left_side);
                                 let left_chunk_x = c_chunk_left_side;
                                 let right_chunk_x = pane_right_edge + 1;
-                                let left_chunk_characters: Vec<TerminalCharacter> = drained_characters.take(pane_left_edge - 1).collect();
                                 let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
                                 c_chunk.x = right_chunk_x;
+                                c_chunk.terminal_characters = right_chunk_characters;
                                 chunks_to_check.push(left_chunk);
                             }
                         }
@@ -1604,7 +1605,6 @@ impl Tab {
             self.set_force_render();
         } else {
             self.floating_panes.toggle_show_panes(true);
-            self.set_force_render();
             match self.floating_panes.first_floating_pane_id() {
                 Some(first_floating_pane_id) => {
                     if !self.floating_panes.active_panes_contain(&client_id) {
