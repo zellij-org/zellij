@@ -58,12 +58,6 @@ macro_rules! resize_pty {
 }
 
 
-// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
-const MIN_TERMINAL_HEIGHT: usize = 5;
-const MIN_TERMINAL_WIDTH: usize = 5;
-
-const MAX_PENDING_VTE_EVENTS: usize = 7000;
-
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
     // (columns_offset, rows_offset)
     // if the pane is not on the bottom or right edge on the screen, we need to reserve one space

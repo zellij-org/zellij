@@ -40,10 +40,6 @@ use zellij_utils::{
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
 
-// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
-const MIN_TERMINAL_HEIGHT: usize = 5;
-const MIN_TERMINAL_WIDTH: usize = 5;
-
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 
 #[derive(Clone, Debug, Default)]
