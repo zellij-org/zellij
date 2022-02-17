@@ -90,14 +90,6 @@ pub enum Constraint {
     Percent(f64),
 }
 
-// impl PartialEq for Constraint {
-//     fn eq(&self, other: &Self) -> bool {
-//         match (self, other) {
-//             (Constraint::Fixed(self_size), Constraint::Fixed(other_size)) => self_size == other_size,
-//             _ => false
-//         }
-//     }
-// }
 impl Eq for Constraint {}
 
 impl PaneGeom {

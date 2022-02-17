@@ -274,12 +274,7 @@ mod config_test {
     fn try_from_cli_args_default() {
         let opts = CliArgs::default();
         let result = Config::try_from(&opts);
-        // let result = result.unwrap();
 
         assert_eq!(result.unwrap(), Config::default());
-//         assert_eq!(result.keybinds, Config::default().keybinds);
-//         assert_eq!(result.themes, Config::default().themes);
-//         assert_eq!(result.plugins, Config::default().plugins);
-//         assert_eq!(result.options, Config::default().options);
     }
 }
