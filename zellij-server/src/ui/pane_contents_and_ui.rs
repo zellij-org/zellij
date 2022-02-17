@@ -149,8 +149,10 @@ impl<'a> PaneContentsAndUi<'a> {
             }
         };
         if let Some((frame_terminal_characters, vte_output)) = self.pane.render_frame(client_id, frame_params, client_mode) {
-            // TODO: handle vte_output if we're not getting rid of it
             self.output.add_character_chunks_to_client(client_id ,frame_terminal_characters, self.z_index);
+            if let Some(vte_output) = vte_output {
+                self.output.add_post_vte_instruction_to_client(client_id, &vte_output);
+            }
         }
     }
     pub fn render_pane_boundaries(
