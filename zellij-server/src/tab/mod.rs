@@ -8,11 +8,11 @@ use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
 use crate::ui::pane_boundaries_frame::FrameParams;
-use pane_grid::{split, FloatingPaneGrid, PaneGrid};
+use pane_grid::{split, PaneGrid};
 
 use crate::{
     os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, CharacterChunk, LinkHandler},
+    panes::{PaneId, PluginPane, TerminalPane, CharacterChunk, LinkHandler},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
@@ -20,14 +20,10 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
     panes::FloatingPanes,
-    panes::terminal_character::{
-        CharacterStyles, CursorShape,
-    },
-    output::{Output, FloatingPanesStack},
+    output::Output,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::fmt::Write;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
@@ -39,7 +35,7 @@ use std::{
 use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
     input::{
-        command::{RunCommand, TerminalAction},
+        command::TerminalAction,
         layout::{Direction, Layout, Run},
         parse_keys,
     },
@@ -269,7 +265,7 @@ pub trait Pane {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
     fn position_is_on_frame(&self, position_on_screen: &Position) -> bool {
-        // TODO: handle cases where we have no frame (content_X is not different from x, etc.)
+        // TODO: handle cases where we have no frame
         position_on_screen.line() == self.y() as isize
             || position_on_screen.line()
                 == (self.y() as isize + self.rows() as isize).saturating_sub(1)
@@ -349,7 +345,6 @@ impl Tab {
     ) {
         // TODO: this should be an attribute on Screen instead of full_screen_ws
         let mut free_space = PaneGeom::default();
-        // TODO: are these troublesome?
         free_space.cols.set_inner(self.viewport.cols);
         free_space.rows.set_inner(self.viewport.rows);
 
@@ -562,8 +557,9 @@ impl Tab {
                 if let Some((terminal_id_to_split, split_direction)) =
                     terminal_id_and_split_direction
                 {
+                    // this unwrap is safe because floating panes should not be visible if there are no floating panes
                     let mut floating_pane_to_embed =
-                        self.close_pane(focused_floating_pane_id).unwrap(); // TODO: is this unwrap safe?
+                        self.close_pane(focused_floating_pane_id).unwrap();
                     let pane_to_split = self.panes.get_mut(&terminal_id_to_split).unwrap();
                     let size_of_both_panes = pane_to_split.position_and_size();
                     if let Some((first_geom, second_geom)) =
@@ -604,7 +600,7 @@ impl Tab {
                 if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id) {
                     embedded_pane_to_float.set_geom(new_pane_geom);
                     resize_pty!(embedded_pane_to_float, self.os_api);
-                    embedded_pane_to_float.set_active_at(Instant::now()); // TODO: restore this in other places too
+                    embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes.add_pane(focused_pane_id, embedded_pane_to_float);
                     self.floating_panes.toggle_show_panes(true);
                     // move all clients
@@ -666,13 +662,11 @@ impl Tab {
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
-                    if let Some(client_id) = client_id {
-                        // move all clients
-                        let connected_clients: Vec<ClientId> =
-                            self.connected_clients.iter().copied().collect();
-                        for client_id in connected_clients {
-                            self.floating_panes.focus_pane(pid, client_id);
-                        }
+                    // move all clients to new floating pane
+                    let connected_clients: Vec<ClientId> =
+                        self.connected_clients.iter().copied().collect();
+                    for client_id in connected_clients {
+                        self.floating_panes.focus_pane(pid, client_id);
                     }
                 }
             }
@@ -836,22 +830,7 @@ impl Tab {
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
     }
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
-        let handle_pty_bytes_start = Instant::now();
-        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
-            // If the pane is scrolled buffer the vte events
-            if terminal_output.is_scrolled() {
-                self.pending_vte_events.entry(pid).or_default().push(bytes);
-                if let Some(evs) = self.pending_vte_events.get(&pid) {
-                    // Reset scroll - and process all pending events for this pane
-                    if evs.len() >= MAX_PENDING_VTE_EVENTS {
-                        terminal_output.clear_scroll();
-                        self.process_pending_vte_events(pid);
-                    }
-                }
-                return;
-            }
-        } else if let Some(terminal_output) = self.floating_panes.get_mut(&PaneId::Terminal(pid)) {
-            // TODO: combine these
+        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)).or_else(|| self.floating_panes.get_mut(&PaneId::Terminal(pid))) {
             // If the pane is scrolled buffer the vte events
             if terminal_output.is_scrolled() {
                 self.pending_vte_events.entry(pid).or_default().push(bytes);
@@ -876,18 +855,7 @@ impl Tab {
         }
     }
     fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
-        // if we don't have the terminal in self.terminals it's probably because
-        // of a race condition where the terminal was created in pty but has not
-        // yet been created in Screen. These events are currently not buffered, so
-        // if you're debugging seemingly randomly missing stdout data, this is
-        // the reason
-        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)) {
-            terminal_output.handle_pty_bytes(bytes);
-            let messages_to_pty = terminal_output.drain_messages_to_pty();
-            for message in messages_to_pty {
-                self.write_to_pane_id(message, PaneId::Terminal(pid));
-            }
-        } else if let Some(terminal_output) = self.floating_panes.get_mut(&PaneId::Terminal(pid)) {
+        if let Some(terminal_output) = self.panes.get_mut(&PaneId::Terminal(pid)).or_else(|| self.floating_panes.get_mut(&PaneId::Terminal(pid))) {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             for message in messages_to_pty {
@@ -902,7 +870,6 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
-        // let pane_id = self.get_active_pane_id(client_id).unwrap();
         let pane_id = if self.floating_panes.panes_are_visible() {
             self
                 .floating_panes
@@ -937,13 +904,8 @@ impl Tab {
             }
         }
     }
-    pub fn get_active_terminal_cursor_position(
-        &self,
-        client_id: ClientId,
-    ) -> Option<(usize, usize)> {
+    pub fn get_active_terminal_cursor_position(&self, client_id: ClientId) -> Option<(usize, usize)> {
         // (x, y)
-        // let active_terminal = &self.get_active_pane(client_id)?;
-
         let active_pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .active_pane_id(client_id)
@@ -973,7 +935,7 @@ impl Tab {
                 pane.set_should_render_boundaries(true);
             }
             let viewport_pane_ids: Vec<_> = self
-                .get_static_pane_ids()
+                .get_embedded_pane_ids()
                 .into_iter()
                 .filter(|id| !self.is_inside_viewport(id))
                 .collect();
@@ -1011,7 +973,7 @@ impl Tab {
                     // screen, switch them to using override positions as well so that the resize
                     // system doesn't get confused by viewport and old panes that no longer line up
                     let viewport_pane_ids: Vec<_> = self
-                        .get_static_pane_ids()
+                        .get_embedded_pane_ids()
                         .into_iter()
                         .filter(|id| !self.is_inside_viewport(id))
                         .collect();
@@ -1211,20 +1173,11 @@ impl Tab {
         active_non_floating_panes
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
-        // TODO: CONTINUE HERE
-        // * change this to: output.hide_cursor_for_multiple_clients and
-        // output.clear_display_for_multiple_clients
         let hide_cursor = "\u{1b}[?25l";
         output.add_pre_vte_instruction_to_multiple_clients(self.connected_clients.iter().copied(), hide_cursor);
-        // output.push_str_to_multiple_clients(hide_cursor, self.connected_clients.iter().copied());
         if self.should_clear_display_before_rendering {
             let clear_display = "\u{1b}[2J";
             output.add_pre_vte_instruction_to_multiple_clients(self.connected_clients.iter().copied(), clear_display);
-//             let clear_display = "\u{1b}[2J";
-//             output.push_str_to_multiple_clients(
-//                 clear_display,
-//                 self.connected_clients.iter().copied(),
-//             );
             self.should_clear_display_before_rendering = false;
         }
     }
@@ -1247,7 +1200,6 @@ impl Tab {
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
-                    // output.push_to_client(client_id, hide_cursor);
                 }
             }
         }
@@ -1258,9 +1210,6 @@ impl Tab {
     fn get_selectable_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter().filter(|(_, p)| p.selectable())
     }
-//     fn get_selectable_floating_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
-//         self.floating_panes.iter().filter(|(_, p)| p.selectable())
-//     }
     fn get_next_terminal_position(&self) -> usize {
         self.panes
             .iter()
@@ -1948,7 +1897,7 @@ impl Tab {
     }
     fn close_down_to_max_terminals(&mut self) {
         if let Some(max_panes) = self.max_panes {
-            let terminals = self.get_static_pane_ids();
+            let terminals = self.get_embedded_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
@@ -1957,7 +1906,7 @@ impl Tab {
             }
         }
     }
-    pub fn get_static_pane_ids(&self) -> Vec<PaneId> {
+    pub fn get_embedded_pane_ids(&self) -> Vec<PaneId> {
         self.get_panes().map(|(&pid, _)| pid).collect()
     }
     pub fn get_all_pane_ids(&self) -> Vec<PaneId> {
@@ -1996,7 +1945,7 @@ impl Tab {
             if active_pane_id == pane_id {
                 self.active_panes.insert(
                     client_id,
-                    self.next_active_pane(&self.get_static_pane_ids()).unwrap(),
+                    self.next_active_pane(&self.get_embedded_pane_ids()).unwrap(),
                 );
             }
         }
@@ -2033,28 +1982,6 @@ impl Tab {
             }
         }
     }
-//     fn reopen_static_floating_pane(
-//         &mut self,
-//         pane_id: PaneId,
-//         should_close_previous_pane: bool,
-//         client_id: ClientId,
-//     ) {
-//         let static_floating_pane = self.floating_panes.get_static_position(&pane_id).unwrap();
-//         let terminal_action = static_floating_pane.0.run.clone().and_then(|run| match run {
-//             // TODO: nicer, maybe as a method on FloatingPane?
-//             Run::Command(command) => Some(TerminalAction::RunCommand(command)),
-//             _ => None,
-//         });
-//         let client_or_tab_index = ClientOrTabIndex::ClientId(client_id);
-//         self.senders
-//             .send_to_pty(PtyInstruction::ReopenPane(
-//                 pane_id,
-//                 terminal_action,
-//                 should_close_previous_pane,
-//                 client_or_tab_index,
-//             ))
-//             .unwrap();
-//     }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
         if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
             self.close_pane(active_floating_pane_id);
@@ -2297,11 +2224,6 @@ impl Tab {
         } else {
             None
         }
-        //         if let Some(pane_id) = self.get_pane_id_at(point, search_selectable) {
-        //             self.panes.get_mut(&pane_id)
-        //         } else {
-        //             None
-        //         }
     }
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
@@ -2576,23 +2498,6 @@ impl Tab {
             && line <= self.viewport.y + self.viewport.rows
             && column <= self.viewport.x + self.viewport.cols
     }
-//     fn insert_floating_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
-//         self.floating_panes.insert(pane_id, pane);
-//         self.floating_z_indices.push(pane_id);
-//     }
-//     fn remove_floating_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
-//         self.floating_z_indices.retain(|p_id| *p_id != pane_id);
-//         self.floating_panes.remove(&pane_id)
-//     }
-//     fn focus_floating_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-//         self.active_floating_panes.insert(client_id, pane_id);
-//         self.floating_z_indices.retain(|p_id| *p_id != pane_id);
-//         self.floating_z_indices.push(pane_id);
-//     }
-//     fn defocus_floating_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-//         self.floating_z_indices.retain(|p_id| *p_id != pane_id);
-//         self.active_floating_panes.remove(&client_id);
-//     }
 }
 
 #[allow(clippy::borrowed_box)]
