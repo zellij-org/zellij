@@ -78,9 +78,7 @@ use std::convert::TryFrom;
 pub(crate) fn pty_thread_main(
     mut pty: Pty,
     layout: Box<LayoutFromYaml>,
-    config_options: Box<Options>,
 ) {
-    let default_shell = config_options.default_shell;
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));

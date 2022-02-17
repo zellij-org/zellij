@@ -579,7 +579,6 @@ fn init_session(
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
-            let config_options = config_options.clone();
             let pty = Pty::new(
                 Bus::new(
                     vec![pty_receiver],
@@ -592,7 +591,7 @@ fn init_session(
                 opts.debug,
             );
 
-            move || pty_thread_main(pty, layout, config_options)
+            move || pty_thread_main(pty, layout)
         })
         .unwrap();
 
