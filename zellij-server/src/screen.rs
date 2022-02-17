@@ -1,17 +1,16 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet, HashMap};
+use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
-use std::time::Instant;
 
 use zellij_utils::pane_size::Size;
 use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile};
 
 use crate::{
-    panes::{PaneId, TerminalCharacter},
+    panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     output::Output,
@@ -198,7 +197,6 @@ pub(crate) struct Screen {
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
-    image_cache: HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>,
     colors: Palette,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
@@ -227,7 +225,6 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
-            image_cache: HashMap::new(),
             session_is_mirrored,
         }
     }
@@ -431,7 +428,7 @@ impl Screen {
         for tab_index in tabs_to_close {
             self.close_tab_at_index(tab_index);
         }
-        let serialized_output = output.serialize(Some(&mut self.image_cache));
+        let serialized_output = output.serialize(None);
         self.bus
             .senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))

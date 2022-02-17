@@ -238,7 +238,7 @@ impl Pane for PluginPane {
                 pane_title,
                 frame_params,
             );
-            Some((frame.render(), None))
+            Some(frame.render())
         } else {
             None
         }

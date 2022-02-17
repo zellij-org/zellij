@@ -12,7 +12,7 @@ use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
@@ -243,16 +243,14 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
-        // Some((frame.render(), None))
         match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
-                    // if true {
                     if !self.borderless {
                         let frame_output = frame.render();
                         self.frame.insert(client_id, frame);
-                        Some((frame_output, None))
+                        Some(frame_output)
                     } else {
                         None
                     }
@@ -264,7 +262,7 @@ impl Pane for TerminalPane {
                 if !self.borderless {
                     let frame_output = frame.render();
                     self.frame.insert(client_id, frame);
-                    Some((frame_output, None))
+                    Some(frame_output)
                 } else {
                     None
                 }

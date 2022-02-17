@@ -2,14 +2,10 @@ use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER};
 use crate::output::CharacterChunk;
-use ansi_term::Colour::{Fixed, RGB};
-use ansi_term::Style;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
 use zellij_utils::{envs::get_session_name, pane_size::Viewport};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
-
-use std::fmt::Write;
 
 fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<TerminalCharacter> {
     let mut colored_string = Vec::with_capacity(characters.chars().count());
@@ -557,25 +553,18 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .unwrap()
     }
-    pub fn render(&self) -> Vec<CharacterChunk> {
-        // let mut output = vec![vec![EMPTY_TERMINAL_CHARACTER; self.geom.cols]; self.geom.rows];
-        // for row in self.geom.y..(self.geom.y + self.geom.rows) {
+    pub fn render(&self) -> (Vec<CharacterChunk>, Option<String>) {
         let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
-            // if row == self.geom.y {
             if row == 0 {
                 // top row
-                // let output_first_line = output.get_mut(0).unwrap();
                 let title = self.render_title();
                 let x = self.geom.x;
                 let y = self.geom.y + row;
                 character_chunks.push(CharacterChunk::new(title, x, y));
-                // std::mem::swap(output_first_line, &mut title);
-            // } else if row == self.geom.y + self.geom.rows - 1 {
             } else if row == self.geom.rows - 1 {
                 // bottom row
                 let mut bottom_row = vec![];
-                // for col in self.geom.x..(self.geom.x + self.geom.cols) {
                 for col in 0..self.geom.cols {
                     let boundary = if col == 0 {
                         // bottom left corner
@@ -593,9 +582,7 @@ impl PaneFrame {
                 let x = self.geom.x;
                 let y = self.geom.y + row;
                 character_chunks.push(CharacterChunk::new(bottom_row, x, y));
-                // std::mem::swap(output.last_mut().unwrap(), &mut bottom_row);
             } else {
-                // let row = output.get_mut(row).unwrap();
                 let mut boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
                 let mut boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
 
@@ -606,22 +593,19 @@ impl PaneFrame {
                 let x = (self.geom.x + self.geom.cols).saturating_sub(1);
                 let y = self.geom.y + row;
                 character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
-//                 row.splice(..1, boundary_character_left);
-//                 // row.resize(self.geom.cols.saturating_sub(1), EMPTY_TERMINAL_CHARACTER);
-//                 row.splice(row.len() - 1.., boundary_character_right);
             }
         }
         // TODO: BRING THIS BACK (add a method on output, something like
         // output.set_terminal_title()
-//         if self.is_main_client {
-//             write!(
-//                 &mut vte_output,
-//                 "\u{1b}]0;Zellij ({}) - {}",
-//                 get_session_name().unwrap(),
-//                 self.title
-//             )
-//             .unwrap();
-//         }
-        character_chunks
+        let vte_output = if self.is_main_client {
+            Some(format!(
+                "\u{1b}]0;Zellij ({}) - {}",
+                get_session_name().unwrap(),
+                self.title
+            ))
+        } else {
+            None
+        };
+        (character_chunks, vte_output)
     }
 }
