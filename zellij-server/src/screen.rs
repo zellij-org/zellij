@@ -13,7 +13,8 @@ use zellij_utils::{input::command::TerminalAction, input::layout::Layout, positi
 use crate::{
     panes::{PaneId, TerminalCharacter},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
-    tab::{Output, Tab},
+    tab::Tab,
+    output::Output,
     thread_bus::Bus,
     ui::overlay::{Overlay, OverlayWindow, Overlayable},
     wasm_vm::PluginInstruction,

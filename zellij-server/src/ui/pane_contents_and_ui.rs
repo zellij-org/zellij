@@ -1,6 +1,6 @@
-use std::time::Instant;
 use crate::panes::PaneId;
-use crate::tab::{Output, Pane};
+use crate::tab::Pane;
+use crate::output::Output;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;

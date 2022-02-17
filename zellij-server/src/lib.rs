@@ -1,6 +1,7 @@
 pub mod os_input_output;
 pub mod panes;
 pub mod tab;
+pub mod output;
 
 mod logging_pipe;
 mod pty;
@@ -29,8 +30,6 @@ use crate::{
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
-    tab::Output,
-    panes::TerminalCharacter,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
