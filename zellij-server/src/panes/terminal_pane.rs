@@ -1,4 +1,5 @@
-use crate::panes::{AnsiCode, CharacterChunk, LinkHandler};
+use crate::panes::{AnsiCode, LinkHandler};
+use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
     terminal_character::{

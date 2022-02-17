@@ -1,6 +1,7 @@
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
-use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER, CharacterChunk};
+use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER};
+use crate::output::CharacterChunk;
 use ansi_term::Colour::{Fixed, RGB};
 use ansi_term::Style;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};

@@ -3,7 +3,8 @@ use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::unimplemented;
 
-use crate::panes::{PaneId, TerminalCharacter, CharacterChunk};
+use crate::panes::PaneId;
+use crate::output::CharacterChunk;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};

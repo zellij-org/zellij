@@ -1,11 +1,10 @@
 use unicode_width::UnicodeWidthChar;
-use super::Link;
 use std::rc::Rc;
 use std::cell::RefCell;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, VecDeque, HashMap},
+    collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
     str,
 };
@@ -26,6 +25,7 @@ use zellij_utils::{consts::VERSION, shared::version_number};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::selection::Selection;
+use crate::output::{CharacterChunk, OutputBuffer};
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
@@ -267,206 +267,6 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
         u - i.abs() as usize
     } else {
         u + i as usize
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct CharacterChunk {
-    pub terminal_characters: Vec<TerminalCharacter>,
-    pub x: usize,
-    pub y: usize,
-    pub changed_colors: Option<[Option<AnsiCode>; 256]>,
-    selection_and_background_color: Option<(Selection, AnsiCode)>,
-}
-
-impl CharacterChunk {
-    pub fn new(terminal_characters: Vec<TerminalCharacter>, x: usize, y: usize) -> Self {
-        CharacterChunk {
-            terminal_characters,
-            x,
-            y,
-            ..Default::default()
-        }
-    }
-    pub fn add_selection_and_background(&mut self, selection: Selection, background_color: AnsiCode, offset_x: usize, offset_y: usize) {
-        self.selection_and_background_color = Some((selection.offset(offset_x, offset_y), background_color));
-    }
-    pub fn selection_and_background_color(&self) -> Option<(Selection, AnsiCode)> {
-        self.selection_and_background_color
-    }
-    pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
-        self.changed_colors = changed_colors;
-    }
-    pub fn changed_colors(&self) -> Option<[Option<AnsiCode>; 256]> {
-        self.changed_colors
-    }
-    pub fn width(&self) -> usize {
-        let mut width = 0;
-        for t_character in &self.terminal_characters {
-            width += t_character.width
-        }
-        width
-    }
-    pub fn drain_by_width(&mut self, x: usize) -> impl Iterator<Item=TerminalCharacter> {
-        let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
-        let mut drained_part_len = 0;
-        loop {
-            if self.terminal_characters.is_empty() {
-                break;
-            }
-            let next_character = self.terminal_characters.remove(0); // TODO: consider copying self.terminal_characters into a VecDeque to make this process faster?
-            if drained_part_len + next_character.width <= x {
-                drained_part.push_back(next_character);
-                drained_part_len += next_character.width;
-            } else {
-                if drained_part_len == x {
-                    self.terminal_characters.insert(0, next_character); // put it back
-                } else if next_character.width > 1 {
-                    for _ in 1..next_character.width {
-                        self.terminal_characters.insert(0, EMPTY_TERMINAL_CHARACTER);
-                        drained_part.push_back(EMPTY_TERMINAL_CHARACTER);
-                    }
-                }
-                break;
-            }
-        }
-        drained_part.into_iter()
-    }
-    pub fn retain_by_width(&mut self, x: usize) {
-        let part_to_retain = self.drain_by_width(x); // TODO: better
-        self.terminal_characters = part_to_retain.collect();
-    }
-    pub fn cut_middle_out(&mut self, middle_start: usize, middle_end: usize) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
-        let mut absolute_middle_start_index = None;
-        let mut absolute_middle_end_index = None;
-        let mut current_x = 0;
-        let mut pad_left_end_by = 0;
-        let mut pad_right_start_by = 0;
-        for (absolute_index, t_character) in self.terminal_characters.iter().enumerate() {
-            current_x += t_character.width;
-            if current_x >= middle_start && absolute_middle_start_index.is_none() {
-                if current_x > middle_start {
-                    pad_left_end_by = current_x - middle_start;
-                    absolute_middle_start_index = Some(absolute_index);
-                } else {
-                    absolute_middle_start_index = Some(absolute_index + 1);
-                }
-            }
-            if current_x >= middle_end && absolute_middle_end_index.is_none() {
-                absolute_middle_end_index = Some(absolute_index + 1);
-                if current_x > middle_end {
-                    pad_right_start_by = current_x - middle_end;
-                }
-            }
-        }
-        let absolute_middle_start_index = absolute_middle_start_index.unwrap();
-        let absolute_middle_end_index = absolute_middle_end_index.unwrap();
-        let mut terminal_characters: Vec<TerminalCharacter> = self.terminal_characters.drain(..).collect();
-        let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters.drain(absolute_middle_end_index..).collect();
-        let mut characters_on_the_left: Vec<TerminalCharacter>  = terminal_characters.drain(..absolute_middle_start_index).collect();
-        if pad_left_end_by > 0 {
-            for _ in 0..pad_left_end_by {
-                characters_on_the_left.push(EMPTY_TERMINAL_CHARACTER);
-            }
-        }
-        if pad_right_start_by > 0 {
-            for _ in 0..pad_right_start_by {
-                characters_on_the_right.insert(0, EMPTY_TERMINAL_CHARACTER);
-            }
-        }
-        (characters_on_the_left, characters_on_the_right)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct OutputBuffer {
-    changed_lines: Vec<usize>, // line index
-    should_update_all_lines: bool,
-}
-
-impl Default for OutputBuffer {
-    fn default() -> Self {
-        OutputBuffer {
-            changed_lines: vec![],
-            should_update_all_lines: true, // first time we should do a full render
-        }
-    }
-}
-
-impl OutputBuffer {
-    pub fn update_line(&mut self, line_index: usize) {
-        if !self.should_update_all_lines {
-            self.changed_lines.push(line_index);
-        }
-    }
-    pub fn update_all_lines(&mut self) {
-        self.clear();
-        self.should_update_all_lines = true;
-    }
-    pub fn clear(&mut self) {
-        self.changed_lines.clear();
-        self.should_update_all_lines = false;
-    }
-    pub fn changed_chunks_in_viewport(
-        &self,
-        viewport: &[Row],
-        viewport_width: usize,
-        viewport_height: usize,
-        x_offset: usize,
-        y_offset: usize,
-    ) -> Vec<CharacterChunk> {
-        if self.should_update_all_lines {
-            let mut changed_chunks = Vec::with_capacity(viewport.len());
-            for line_index in 0..viewport_height {
-                let terminal_characters =
-                    self.extract_line_from_viewport(line_index, viewport, viewport_width);
-                let x = 0 + x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
-                let y = line_index + y_offset;
-                changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
-            }
-            changed_chunks
-        } else {
-            let mut line_changes = self.changed_lines.to_vec();
-            line_changes.sort_unstable();
-            line_changes.dedup();
-            let mut changed_chunks = Vec::with_capacity(line_changes.len());
-            for line_index in line_changes {
-                let terminal_characters =
-                    self.extract_line_from_viewport(line_index, viewport, viewport_width);
-                let x = 0 + x_offset;
-                let y = line_index + y_offset;
-                changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
-            }
-            changed_chunks
-        }
-    }
-    fn extract_characters_from_row(
-        &self,
-        row: &Row,
-        viewport_width: usize,
-    ) -> Vec<TerminalCharacter> {
-        let mut terminal_characters: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
-        // pad row
-        let row_width = row.width();
-        if row_width < viewport_width {
-            let mut padding = vec![EMPTY_TERMINAL_CHARACTER; viewport_width - row_width];
-            terminal_characters.append(&mut padding);
-        }
-        terminal_characters
-    }
-    fn extract_line_from_viewport(
-        &self,
-        line_index: usize,
-        viewport: &[Row],
-        viewport_width: usize,
-    ) -> Vec<TerminalCharacter> {
-        match viewport.get(line_index) {
-            // TODO: iterator?
-            Some(row) => self.extract_characters_from_row(row, viewport_width),
-            None => {
-                vec![EMPTY_TERMINAL_CHARACTER; viewport_width]
-            }
-        }
     }
 }
 
@@ -819,7 +619,6 @@ impl Grid {
                     }
                 }
                 if let Some(trim_at) = trim_at {
-                    // line.columns.truncate(trim_at);
                     line.truncate(trim_at);
                 }
             }
@@ -2310,14 +2109,6 @@ impl Row {
             width += terminal_character.width;
         }
         width
-
-//         let mut width = 0;
-//         for terminal_character in self.columns.iter() {
-//             width += terminal_character.width;
-//         }
-//         width
-
-        // self.columns.len() // TODO: NO!!! Bring back what's up
     }
     pub fn excess_width(&self) -> usize {
         let mut acc = 0;
@@ -2353,7 +2144,6 @@ impl Row {
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width_cached().cmp(&x) {
             Ordering::Equal => {
-                // why is this causing trouble? why does it decrease performance so much?
                 self.columns.push_back(terminal_character);
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width;

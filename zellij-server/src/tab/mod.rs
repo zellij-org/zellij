@@ -12,7 +12,7 @@ use pane_grid::{split, PaneGrid};
 
 use crate::{
     os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane, CharacterChunk, LinkHandler},
+    panes::{PaneId, PluginPane, TerminalPane, LinkHandler},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
@@ -20,7 +20,7 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
     panes::FloatingPanes,
-    output::Output,
+    output::{Output, CharacterChunk},
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;

@@ -2,7 +2,7 @@ mod alacritty_functions;
 pub mod grid;
 pub mod link_handler;
 mod plugin_pane;
-mod selection;
+pub mod selection;
 pub mod terminal_character;
 mod terminal_pane;
 mod floating_panes;

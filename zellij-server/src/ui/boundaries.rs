@@ -1,7 +1,8 @@
 use zellij_utils::{pane_size::Viewport, zellij_tile};
 
 use crate::tab::Pane;
-use crate::panes::{terminal_character::{TerminalCharacter, RESET_STYLES, EMPTY_TERMINAL_CHARACTER}, CharacterChunk};
+use crate::panes::terminal_character::{TerminalCharacter, RESET_STYLES, EMPTY_TERMINAL_CHARACTER};
+use crate::output::CharacterChunk;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use std::fmt::Write;

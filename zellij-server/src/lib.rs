@@ -476,17 +476,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
             }
-            ServerInstruction::Render(mut serialized_output) => {
+            ServerInstruction::Render(serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
-                // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(output) = &mut serialized_output {
-                    // TODO: CONTINUE HERE
-                    // * instead of looping over these directly, make a serialize function (or
-                    // whatever name) that turns the grid into a string and appends the raw_vte
-                    // stuff
-                    for (client_id, client_render_instruction) in &mut output.iter()
+                if let Some(output) = &serialized_output {
+                    for (client_id, client_render_instruction) in output.iter()
                     {
                         os_input.send_to_client(
                             *client_id,

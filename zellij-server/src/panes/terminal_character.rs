@@ -1,4 +1,4 @@
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_width::UnicodeWidthChar;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
@@ -267,23 +267,6 @@ impl CharacterStyles {
         }
         Some(diff)
     }
-    pub fn merge_styles(
-        &mut self,
-        new_styles: &CharacterStyles,
-    ) {
-        self.foreground = new_styles.foreground.or(self.foreground);
-        self.background = new_styles.background.or(self.background);
-        self.strike = new_styles.strike.or(self.strike);
-        self.hidden = new_styles.hidden.or(self.hidden);
-        self.reverse = new_styles.reverse.or(self.reverse);
-        self.slow_blink = new_styles.slow_blink.or(self.slow_blink);
-        self.fast_blink = new_styles.fast_blink.or(self.fast_blink);
-        self.underline = new_styles.underline.or(self.underline);
-        self.bold = new_styles.bold.or(self.bold);
-        self.dim = new_styles.dim.or(self.dim);
-        self.italic = new_styles.italic.or(self.italic);
-        self.link_anchor = new_styles.link_anchor.or(self.link_anchor);
-    }
     pub fn reset_all(&mut self) {
         self.foreground = Some(AnsiCode::Reset);
         self.background = Some(AnsiCode::Reset);
@@ -296,19 +279,6 @@ impl CharacterStyles {
         self.reverse = Some(AnsiCode::Reset);
         self.hidden = Some(AnsiCode::Reset);
         self.strike = Some(AnsiCode::Reset);
-    }
-    pub fn reset_all_before_character(&mut self) {
-        self.foreground = self.foreground.or(Some(AnsiCode::Reset));
-        self.background = self.background.or(Some(AnsiCode::Reset));
-        self.bold = self.bold.or(Some(AnsiCode::Reset));
-        self.dim = self.dim.or(Some(AnsiCode::Reset));
-        self.italic = self.italic.or(Some(AnsiCode::Reset));
-        self.underline = self.underline.or(Some(AnsiCode::Reset));
-        self.slow_blink = self.slow_blink.or(Some(AnsiCode::Reset));
-        self.fast_blink = self.fast_blink.or(Some(AnsiCode::Reset));
-        self.reverse = self.reverse.or(Some(AnsiCode::Reset));
-        self.hidden = self.hidden.or(Some(AnsiCode::Reset));
-        self.strike = self.strike.or(Some(AnsiCode::Reset));
     }
     pub fn add_style_from_ansi_params(&mut self, params: &mut ParamsIter) {
         while let Some(param) = params.next() {
