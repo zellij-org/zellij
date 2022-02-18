@@ -603,8 +603,6 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
             }
         }
-        // TODO: BRING THIS BACK (add a method on output, something like
-        // output.set_terminal_title()
         let vte_output = if self.is_main_client {
             Some(format!(
                 "\u{1b}]0;Zellij ({}) - {}",
