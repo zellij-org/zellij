@@ -2405,7 +2405,7 @@ impl Tab {
         );
 
         // TODO: ideally we should be sending the Render instruction from the screen
-        let serialized_output = output.serialize(None);
+        let serialized_output = output.serialize();
         self.senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
             .unwrap();

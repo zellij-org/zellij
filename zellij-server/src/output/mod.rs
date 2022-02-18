@@ -1,46 +1,23 @@
-use zellij_utils::position::{Column, Line};
-use zellij_utils::{position::Position, serde, zellij_tile};
 use std::collections::VecDeque;
 
-use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::panes::selection::Selection;
 use crate::panes::Row;
 
 use crate::{
-    os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, LinkHandler},
-    pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
-    thread_bus::ThreadSenders,
-    ui::boundaries::Boundaries,
-    ui::pane_contents_and_ui::PaneContentsAndUi,
-    wasm_vm::PluginInstruction,
-    ClientId, ServerInstruction,
+    panes::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, LinkHandler},
+    ClientId,
     panes::terminal_character::{
-        CharacterStyles, CursorShape, AnsiCode,
+        CharacterStyles, AnsiCode,
     },
 };
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::fmt::Write;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
-use std::sync::mpsc::channel;
-use std::time::Instant;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     str,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
-use zellij_utils::{
-    input::{
-        command::{RunCommand, TerminalAction},
-        layout::{Direction, Layout, Run},
-        parse_keys,
-    },
-    pane_size::{Offset, PaneGeom, Size, Viewport},
-};
-
-const MAX_PENDING_VTE_EVENTS: usize = 7000;
+use zellij_utils::pane_size::PaneGeom;
 
 #[derive(Clone, Debug, Default)]
 pub struct Output {
@@ -51,7 +28,6 @@ pub struct Output {
     floating_panes_stack: Option<FloatingPanesStack>,
 }
 
-// this belongs to output but is not on its impl because of borrow checker stuffs
 fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handler: Option<&mut Rc<RefCell<LinkHandler>>>) -> String {
     let mut vte_output = String::new();
     for character_chunk in character_chunks {
@@ -67,8 +43,8 @@ fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handle
         .unwrap(); // goto top of viewport
 
         let mut chunk_width = character_chunk.x;
-        for (i, t_character) in character_chunk.terminal_characters.iter().enumerate() {
-            let mut t_character_styles = chunk_selection_and_background_color.and_then(|(selection, background_color)| {
+        for t_character in character_chunk.terminal_characters.iter() {
+            let t_character_styles = chunk_selection_and_background_color.and_then(|(selection, background_color)| {
                 if selection.contains(character_chunk.y, chunk_width) {
                     Some(t_character.styles.background(Some(background_color)))
                 } else {
@@ -128,25 +104,25 @@ impl Output {
     }
     pub fn add_post_vte_instruction_to_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>, vte_instruction: &str) {
         for client_id in client_ids {
-            let mut entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
+            let entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
             entry.push(String::from(vte_instruction));
         }
     }
     pub fn add_pre_vte_instruction_to_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>, vte_instruction: &str) {
         for client_id in client_ids {
-            let mut entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
+            let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
             entry.push(String::from(vte_instruction));
         }
     }
     pub fn add_post_vte_instruction_to_client(&mut self, client_id: ClientId, vte_instruction: &str) {
-        let mut entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
+        let entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
         entry.push(String::from(vte_instruction));
     }
     pub fn add_pre_vte_instruction_to_client(&mut self, client_id: ClientId, vte_instruction: &str) {
-        let mut entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
+        let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
         entry.push(String::from(vte_instruction));
     }
-    pub fn serialize(&mut self, mut current_cache: Option<&mut HashMap<ClientId, Vec<Vec<Option<TerminalCharacter>>>>>) -> HashMap<ClientId, String> {
+    pub fn serialize(&mut self) -> HashMap<ClientId, String> {
         let mut serialized_render_instructions = HashMap::new();
         for (client_id, client_character_chunks) in self.client_character_chunks.drain() {
             let mut client_serialized_render_instructions = String::new();
@@ -196,7 +172,7 @@ impl FloatingPanesStack {
                                 continue 'chunk_loop;
                             } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
                                 // pane covers chunk partially to the left
-                                c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side); // 2 - one to get to the actual right edge, one to get an extra character
+                                drop(c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side));
                                 c_chunk.x = pane_right_edge + 1;
                             } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
                                 // pane covers chunk partially to the right

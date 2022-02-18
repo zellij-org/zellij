@@ -428,7 +428,7 @@ impl Screen {
         for tab_index in tabs_to_close {
             self.close_tab_at_index(tab_index);
         }
-        let serialized_output = output.serialize(None);
+        let serialized_output = output.serialize();
         self.bus
             .senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
