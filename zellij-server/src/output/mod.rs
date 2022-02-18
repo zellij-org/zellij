@@ -211,7 +211,10 @@ impl Output {
         vte_instruction: &str,
     ) {
         for client_id in client_ids {
-            let entry = self.pre_vte_instructions.entry(client_id).or_insert_with(Vec::new);
+            let entry = self
+                .pre_vte_instructions
+                .entry(client_id)
+                .or_insert_with(Vec::new);
             entry.push(String::from(vte_instruction));
         }
     }
@@ -231,7 +234,10 @@ impl Output {
         client_id: ClientId,
         vte_instruction: &str,
     ) {
-        let entry = self.pre_vte_instructions.entry(client_id).or_insert_with(Vec::new);
+        let entry = self
+            .pre_vte_instructions
+            .entry(client_id)
+            .or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
     pub fn serialize(&mut self) -> HashMap<ClientId, String> {
