@@ -8,6 +8,7 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
+use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -85,6 +86,7 @@ impl ServerOsApi for FakeInputOutput {
 
 // TODO: move to shared thingy with other test file
 fn create_new_tab(size: Size) -> Tab {
+    set_session_name("test".into());
     let index = 0;
     let position = 0;
     let name = String::new();
