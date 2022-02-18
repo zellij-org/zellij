@@ -274,7 +274,6 @@ mod config_test {
     fn try_from_cli_args_default() {
         let opts = CliArgs::default();
         let result = Config::try_from(&opts);
-
         assert_eq!(result.unwrap(), Config::default());
     }
 }

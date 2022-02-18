@@ -24,20 +24,6 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
-pub mod double_boundary_type {
-    pub const TOP_RIGHT: &str = "╗";
-    pub const VERTICAL: &str = "║";
-    pub const HORIZONTAL: &str = "═";
-    pub const TOP_LEFT: &str = "╔";
-    pub const BOTTOM_RIGHT: &str = "╝";
-    pub const BOTTOM_LEFT: &str = "╚";
-    pub const VERTICAL_LEFT: &str = "╣";
-    pub const VERTICAL_RIGHT: &str = "╠";
-    pub const HORIZONTAL_DOWN: &str = "╦";
-    pub const HORIZONTAL_UP: &str = "╩";
-    pub const CROSS: &str = "╬";
-}
-
 pub(crate) type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
 #[derive(Clone, Copy, Debug)]
@@ -538,20 +524,6 @@ impl Boundaries {
                 self.boundary_characters.insert(coordinates, next_symbol);
             }
         }
-    }
-    pub fn vte_output(&self) -> String {
-        let mut vte_output = String::new();
-        for (coordinates, boundary_character) in &self.boundary_characters {
-            write!(
-                &mut vte_output,
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                coordinates.y + 1,
-                coordinates.x + 1,
-                boundary_character
-            )
-            .unwrap(); // goto row/col + boundary character
-        }
-        vte_output
     }
     pub fn render(&self) -> Vec<CharacterChunk> {
         let mut character_chunks = vec![];

@@ -1,45 +1,22 @@
-//! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
-//! as well as how they should be resized
+use zellij_utils::{position::Position, zellij_tile};
 
-use zellij_utils::position::{Column, Line};
-use zellij_utils::{position::Position, serde, zellij_tile};
-
-use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::tab::Pane;
-use crate::tab::pane_grid::{split, FloatingPaneGrid, PaneGrid};
+use crate::tab::pane_grid::FloatingPaneGrid;
 
 use crate::{
     os_input_output::ServerOsApi,
-    panes::{PaneId, PluginPane, TerminalPane, TerminalCharacter, EMPTY_TERMINAL_CHARACTER, LinkHandler},
-    pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
-    thread_bus::ThreadSenders,
-    ui::boundaries::Boundaries,
+    panes::PaneId,
     ui::pane_contents_and_ui::PaneContentsAndUi,
-    wasm_vm::PluginInstruction,
-    ClientId, ServerInstruction,
-    panes::terminal_character::{
-        CharacterStyles, CursorShape,
-    },
+    ClientId,
     output::{Output, FloatingPanesStack},
 };
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::fmt::Write;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
-use std::sync::mpsc::channel;
-use std::time::Instant;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    str,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
+use zellij_tile::data::{ModeInfo, Palette};
 use zellij_utils::{
-    input::{
-        command::{RunCommand, TerminalAction},
-        layout::{Direction, Layout, Run},
-        parse_keys,
-    },
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
 
@@ -58,27 +35,10 @@ macro_rules! resize_pty {
 }
 
 
-fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
-    // (columns_offset, rows_offset)
-    // if the pane is not on the bottom or right edge on the screen, we need to reserve one space
-    // from its content to leave room for the boundary between it and the next pane (if it doesn't
-    // draw its own frame)
-    let columns_offset = if position_and_size.x + position_and_size.cols.as_usize() < viewport.cols
-    {
-        1
-    } else {
-        0
-    };
-    let rows_offset = if position_and_size.y + position_and_size.rows.as_usize() < viewport.rows {
-        1
-    } else {
-        0
-    };
-    (columns_offset, rows_offset)
-}
-
 pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    display_area: Rc<RefCell<Size>>,
+    viewport: Rc<RefCell<Viewport>>,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
     active_panes: HashMap<ClientId, PaneId>,
@@ -87,9 +47,11 @@ pub struct FloatingPanes {
 }
 
 impl FloatingPanes {
-    pub fn new() -> Self {
+    pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
+            display_area,
+            viewport,
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
@@ -151,8 +113,10 @@ impl FloatingPanes {
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
     }
-    pub fn find_room_for_new_pane(&mut self, display_area: Size, viewport: Viewport) -> Option<PaneGeom> {
+    pub fn find_room_for_new_pane(&mut self) -> Option<PaneGeom> {
         // TODO: move display_area and viewport to RC on the state
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let floating_pane_grid =
             FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
         floating_pane_grid.find_room_for_new_pane()
@@ -214,13 +178,6 @@ impl FloatingPanes {
         });
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
-            // this is a bit of a hack and harms performance of floating panes a little bit. In
-            // order to prevent it, we should consider not rendering content that is under
-            // floating panes, rather than always rendering floating panes above them
-//             pane.set_should_render(true);
-//             pane.set_should_render_boundaries(true);
-//             pane.render_full_viewport();
-
             let mut active_panes = self.active_panes.clone();
             let multiple_users_exist_in_session =
                 { connected_clients_in_app.borrow().len() > 1 };
@@ -257,16 +214,18 @@ impl FloatingPanes {
             }
         }
     }
-    pub fn resize(&mut self, display_area: Size, viewport: Viewport, new_screen_size: Size) {
-        // TODO: args as state?
+    pub fn resize(&mut self, new_screen_size: Size) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let mut floating_pane_grid =
             FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
         floating_pane_grid.resize(new_screen_size);
         self.set_force_render();
     }
-    pub fn resize_active_pane_left(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_left(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -283,9 +242,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn resize_active_pane_right(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_right(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -302,9 +262,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn resize_active_pane_down(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_down(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -321,9 +282,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn resize_active_pane_up(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_up(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -340,9 +302,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn resize_active_pane_increase(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_increase(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -359,9 +322,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn resize_active_pane_decrease(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport, os_api: &mut Box<dyn ServerOsApi>) -> bool {
-        // TODO: args as state?
+    pub fn resize_active_pane_decrease(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) -> bool {
         // true => successfully resized
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_floating_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid = FloatingPaneGrid::new(
                 &mut self.panes,
@@ -378,17 +342,10 @@ impl FloatingPanes {
         }
         return false;
     }
-    pub fn move_focus_left(
-        &mut self,
-        client_id: ClientId,
-        display_area: Size,
-        viewport: Viewport,
-        os_api: &mut Box<dyn ServerOsApi>,
-        session_is_mirrored: bool,
-        connected_clients: &HashSet<ClientId>,
-    ) -> bool {
-        // TODO: args as state?
+    pub fn move_focus_left(&mut self, client_id: ClientId, connected_clients: &HashSet<ClientId>) -> bool {
         // true => successfully moved
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let active_pane_id = self.active_panes.get(&client_id).copied();
         let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
             let floating_pane_grid = FloatingPaneGrid::new(
@@ -451,17 +408,10 @@ impl FloatingPanes {
         }
         false
     }
-    pub fn move_focus_right(
-        &mut self,
-        client_id: ClientId,
-        display_area: Size,
-        viewport: Viewport,
-        os_api: &mut Box<dyn ServerOsApi>,
-        session_is_mirrored: bool,
-        connected_clients: &HashSet<ClientId>,
-    ) -> bool {
-        // TODO: args as state?
+    pub fn move_focus_right(&mut self, client_id: ClientId, connected_clients: &HashSet<ClientId>) -> bool {
         // true => successfully moved
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let active_pane_id = self.active_panes.get(&client_id).copied();
         let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
             let floating_pane_grid = FloatingPaneGrid::new(
@@ -524,17 +474,10 @@ impl FloatingPanes {
         }
         false
     }
-    pub fn move_focus_up(
-        &mut self,
-        client_id: ClientId,
-        display_area: Size,
-        viewport: Viewport,
-        os_api: &mut Box<dyn ServerOsApi>,
-        session_is_mirrored: bool,
-        connected_clients: &HashSet<ClientId>,
-    ) -> bool {
-        // TODO: args as state?
+    pub fn move_focus_up(&mut self, client_id: ClientId, connected_clients: &HashSet<ClientId>) -> bool {
         // true => successfully moved
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let active_pane_id = self.active_panes.get(&client_id).copied();
         let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
             let floating_pane_grid = FloatingPaneGrid::new(
@@ -597,17 +540,10 @@ impl FloatingPanes {
         }
         false
     }
-    pub fn move_focus_down(
-        &mut self,
-        client_id: ClientId,
-        display_area: Size,
-        viewport: Viewport,
-        os_api: &mut Box<dyn ServerOsApi>,
-        session_is_mirrored: bool,
-        connected_clients: &HashSet<ClientId>,
-    ) -> bool {
-        // TODO: args as state?
+    pub fn move_focus_down(&mut self, client_id: ClientId, connected_clients: &HashSet<ClientId>) -> bool {
         // true => successfully moved
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let active_pane_id = self.active_panes.get(&client_id).copied();
         let updated_active_pane = if let Some(active_pane_id) = active_pane_id {
             let floating_pane_grid = FloatingPaneGrid::new(
@@ -670,7 +606,9 @@ impl FloatingPanes {
         }
         false
     }
-    pub fn move_active_pane_down(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport) {
+    pub fn move_active_pane_down(&mut self, client_id: ClientId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid =
                 FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
@@ -678,7 +616,9 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
-    pub fn move_active_pane_up(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport) {
+    pub fn move_active_pane_up(&mut self, client_id: ClientId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid =
                 FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
@@ -686,7 +626,9 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
-    pub fn move_active_pane_left(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport) {
+    pub fn move_active_pane_left(&mut self, client_id: ClientId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid =
                 FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
@@ -694,7 +636,9 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
-    pub fn move_active_pane_right(&mut self, client_id: ClientId, display_area: Size, viewport: Viewport) {
+    pub fn move_active_pane_right(&mut self, client_id: ClientId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         if let Some(active_pane_id) = self.active_panes.get(&client_id) {
             let mut floating_pane_grid =
                 FloatingPaneGrid::new(&mut self.panes, &mut self.desired_pane_positions, display_area, viewport);
@@ -787,9 +731,10 @@ impl FloatingPanes {
     pub fn pane_is_being_moved_with_mouse(&self) -> bool {
         self.pane_being_moved_with_mouse.is_some()
     }
-    pub fn move_pane_to_position(&mut self, click_position: &Position, display_area: Size, viewport: Viewport) -> bool {
-        // TODO: args as state
+    pub fn move_pane_to_position(&mut self, click_position: &Position) -> bool {
         // true => changed position
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
         let (pane_id, previous_position) = self.pane_being_moved_with_mouse.unwrap();
         if click_position == &previous_position {
             return false;
@@ -803,12 +748,11 @@ impl FloatingPanes {
         self.set_force_render();
         true
     }
-    pub fn move_pane_with_mouse(&mut self, position: Position, search_selectable: bool, display_area: Size, viewport: Viewport, client_id: ClientId) -> bool {
-        // TODO: args as state
+    pub fn move_pane_with_mouse(&mut self, position: Position, search_selectable: bool) -> bool {
         // true => handled, false => not handled (eg. no pane at this position)
         let show_panes = self.show_panes;
         if self.pane_being_moved_with_mouse.is_some() {
-            self.move_pane_to_position(&position, display_area, viewport);
+            self.move_pane_to_position(&position);
             self.set_force_render();
             return true;
         } else if let Some(pane) = self.get_pane_at_mut(&position, search_selectable) {
@@ -818,52 +762,18 @@ impl FloatingPanes {
                 if self.pane_being_moved_with_mouse.is_none() {
                     self.set_pane_being_moved_with_mouse(pid, position.clone());
                 }
-                self.move_pane_to_position(&position, display_area, viewport);
-                // self.set_pane_being_moved_with_mouse(pid, position.clone());
+                self.move_pane_to_position(&position);
                 self.set_force_render();
                 return true;
             }
         };
         return false;
     }
-    pub fn stop_moving_pane_with_mouse(&mut self, position: Position, search_selectable: bool, display_area: Size, viewport: Viewport, client_id: ClientId) {
-        // TODO: args as state
+    pub fn stop_moving_pane_with_mouse(&mut self, position: Position) {
         if self.pane_being_moved_with_mouse.is_some() {
-            self.move_pane_to_position(&position, display_area, viewport);
+            self.move_pane_to_position(&position);
             self.set_force_render();
         };
         self.pane_being_moved_with_mouse = None;
-    }
-    pub fn select_text(&mut self, position: &Position, display_area: Size, viewport: Viewport, client_id: ClientId) -> Option<String> {
-        if !self.panes_are_visible() {
-            return None;
-        }
-        let mut selected_text = None;
-        let active_pane_id = self
-            .active_pane_id(client_id);
-        // on release, get the selected text from the active pane, and reset it's selection
-        let pane_id_at_position = self
-            .get_pane_id_at(position, true);
-        if active_pane_id != pane_id_at_position {
-            // release happened outside of pane
-            if let Some(active_pane_id) = active_pane_id {
-                if let Some(active_pane) = self
-                    .get_mut(&active_pane_id)
-                {
-                    active_pane.end_selection(None, client_id);
-                    selected_text = active_pane.get_selected_text();
-                    active_pane.reset_selection();
-                }
-            }
-        } else if let Some(pane) = pane_id_at_position.and_then(|pane_id_at_position| {
-            self.get_mut(&pane_id_at_position)
-        }) {
-            // release happened inside of pane
-            let relative_position = pane.relative_position(position);
-            pane.end_selection(Some(&relative_position), client_id);
-            selected_text = pane.get_selected_text();
-            pane.reset_selection();
-        }
-        selected_text
     }
 }
