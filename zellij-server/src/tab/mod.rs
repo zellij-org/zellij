@@ -2158,12 +2158,16 @@ impl Tab {
         }
     }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
-        if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-            self.close_pane(active_floating_pane_id);
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
-                .unwrap();
-        } else if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+        if self.floating_panes.panes_are_visible() {
+            if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
+                self.close_pane(active_floating_pane_id);
+                self.senders
+                    .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
+                    .unwrap();
+                return;
+            }
+        }
+        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             self.close_pane(active_pane_id);
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
