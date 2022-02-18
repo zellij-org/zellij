@@ -19,63 +19,118 @@ use std::{
 };
 use zellij_utils::pane_size::PaneGeom;
 
-#[derive(Clone, Debug, Default)]
-pub struct Output {
-    pre_vte_instructions: HashMap<ClientId, Vec<String>>, // TODO: is this actually a good idea? performance-wise and such? lookup in HashSet might be too expensive?
-    post_vte_instructions: HashMap<ClientId, Vec<String>>, // TODO: is this actually a good idea? performance-wise and such? lookup in HashSet might be too expensive?
-    client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
-    link_handler: Option<Rc<RefCell<LinkHandler>>>,
-    floating_panes_stack: Option<FloatingPanesStack>,
+fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut String) {
+    write!(
+        vte_output,
+        "\u{1b}[{};{}H\u{1b}[m",
+        y_coords + 1, // + 1 because VTE is 1 indexed
+        x_coords + 1,
+    )
+    .unwrap();
+}
+
+fn adjust_styles_for_possible_selection(
+    chunk_selection_and_background_color: Option<(Selection, AnsiCode)>,
+    character_styles: CharacterStyles,
+    chunk_y: usize,
+    chunk_width: usize
+) -> CharacterStyles {
+    chunk_selection_and_background_color.and_then(|(selection, background_color)| {
+        if selection.contains(chunk_y, chunk_width) {
+            Some(character_styles.background(Some(background_color)))
+        } else {
+            None
+        }
+    }).unwrap_or(character_styles)
+}
+
+fn write_changed_styles(
+    character_styles: &mut CharacterStyles,
+    current_character_styles: CharacterStyles,
+    chunk_changed_colors: Option<[Option<AnsiCode>; 256]>,
+    link_handler: Option<&std::cell::Ref<LinkHandler>>,
+    vte_output: &mut String
+) {
+    if let Some(new_styles) = character_styles.update_and_return_diff(&current_character_styles, chunk_changed_colors) {
+        // if let Some(osc8_link) = link_handler.as_ref().and_then(|l_h| l_h.borrow().output_osc8(new_styles.link_anchor)) {
+        if let Some(osc8_link) = link_handler.and_then(|l_h| l_h.output_osc8(new_styles.link_anchor)) {
+            write!(vte_output, "{}{}", new_styles, osc8_link).unwrap();
+        } else {
+            write!(vte_output, "{}", new_styles).unwrap();
+        }
+
+    }
 }
 
 fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handler: Option<&mut Rc<RefCell<LinkHandler>>>) -> String {
-    let mut vte_output = String::new();
+    let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
+    let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_selection_and_background_color = character_chunk.selection_and_background_color();
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = CharacterStyles::new();
-        write!(
-            &mut vte_output,
-            "\u{1b}[{};{}H\u{1b}[m",
-            character_chunk.y + 1,
-            character_chunk.x + 1,
-        )
-        .unwrap(); // goto top of viewport
-
+        vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
-            let t_character_styles = chunk_selection_and_background_color.and_then(|(selection, background_color)| {
-                if selection.contains(character_chunk.y, chunk_width) {
-                    Some(t_character.styles.background(Some(background_color)))
-                } else {
-                    None
-                }
-            }).unwrap_or(t_character.styles);
-            if let Some(new_styles) = character_styles.update_and_return_diff(&t_character_styles, chunk_changed_colors) {
-                if let Some(osc8_link) = link_handler.as_ref().and_then(|l_h| l_h.borrow().output_osc8(new_styles.link_anchor)) {
-                    write!(
-                        &mut vte_output,
-                        "{}{}",
-                        new_styles,
-                        osc8_link,
-                    )
-                    .unwrap();
-                } else {
-                    write!(
-                        &mut vte_output,
-                        "{}",
-                        new_styles,
-                    )
-                    .unwrap();
-                }
-
-            }
+            let current_character_styles = adjust_styles_for_possible_selection(
+                chunk_selection_and_background_color,
+                t_character.styles,
+                character_chunk.y,
+                chunk_width
+            );
+            write_changed_styles(
+                &mut character_styles,
+                current_character_styles,
+                chunk_changed_colors,
+                link_handler.as_ref(),
+                &mut vte_output
+            );
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
         }
         character_styles.clear();
     }
     vte_output
+}
+
+type AbsoluteMiddleStart = usize;
+type AbsoluteMiddleEnd = usize;
+type PadLeftEndBy = usize;
+type PadRightStartBy = usize;
+fn adjust_middle_segment_for_wide_chars(middle_start: usize, middle_end: usize, terminal_characters: &[TerminalCharacter]) -> (AbsoluteMiddleStart, AbsoluteMiddleEnd, PadLeftEndBy, PadRightStartBy) {
+    let mut absolute_middle_start_index = None;
+    let mut absolute_middle_end_index = None;
+    let mut current_x = 0;
+    let mut pad_left_end_by = 0;
+    let mut pad_right_start_by = 0;
+    for (absolute_index, t_character) in terminal_characters.iter().enumerate() {
+        current_x += t_character.width;
+        if current_x >= middle_start && absolute_middle_start_index.is_none() {
+            if current_x > middle_start {
+                pad_left_end_by = current_x - middle_start;
+                absolute_middle_start_index = Some(absolute_index);
+            } else {
+                absolute_middle_start_index = Some(absolute_index + 1);
+            }
+        }
+        if current_x >= middle_end && absolute_middle_end_index.is_none() {
+            absolute_middle_end_index = Some(absolute_index + 1);
+            if current_x > middle_end {
+                pad_right_start_by = current_x - middle_end;
+            }
+        }
+    }
+    (absolute_middle_start_index.unwrap(), absolute_middle_end_index.unwrap(), pad_left_end_by, pad_right_start_by)
+}
+
+
+#[derive(Clone, Debug, Default)]
+pub struct Output {
+    pre_vte_instructions: HashMap<ClientId, Vec<String>>,
+    post_vte_instructions: HashMap<ClientId, Vec<String>>,
+    client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
+    link_handler: Option<Rc<RefCell<LinkHandler>>>,
+    floating_panes_stack: Option<FloatingPanesStack>,
 }
 
 impl Output {
@@ -124,14 +179,21 @@ impl Output {
     }
     pub fn serialize(&mut self) -> HashMap<ClientId, String> {
         let mut serialized_render_instructions = HashMap::new();
+
         for (client_id, client_character_chunks) in self.client_character_chunks.drain() {
             let mut client_serialized_render_instructions = String::new();
+
+            // append pre-vte instructions for this client
             if let Some(pre_vte_instructions_for_client) = self.pre_vte_instructions.remove(&client_id) {
                 for vte_instruction in pre_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }
+
+            // append the actual vte
             client_serialized_render_instructions.push_str(&serialize_character_chunks(client_character_chunks, self.link_handler.as_mut())); // TODO: less allocations?
+
+            // append post-vte instructions for this client
             if let Some(post_vte_instructions_for_client) = self.post_vte_instructions.remove(&client_id) {
                 for vte_instruction in post_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
@@ -144,6 +206,10 @@ impl Output {
     }
 }
 
+// this struct represents the geometry of a group of floating panes
+// we use it to filter out CharacterChunks who are behind these geometries
+// and so would not be visible. If a chunk is partially covered, it is adjusted
+// to include only the non-covered parts
 #[derive(Debug, Clone, Default)]
 pub struct FloatingPanesStack {
     pub layers: Vec<PaneGeom>,
@@ -159,34 +225,15 @@ impl FloatingPanesStack {
                 Some(mut c_chunk) => {
                     let panes_to_check = self.layers.iter().skip(z_index);
                     for pane_geom in panes_to_check {
-                        let pane_top_edge = pane_geom.y;
-                        let pane_left_edge = pane_geom.x;
-                        let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
-                        let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
-
-                        let c_chunk_left_side = c_chunk.x;
-                        let c_chunk_right_side = c_chunk.x + (c_chunk.width()).saturating_sub(1);
-                        if pane_top_edge <= c_chunk.y && pane_bottom_edge >= c_chunk.y {
-                            if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
-                                // pane covers chunk completely
-                                continue 'chunk_loop;
-                            } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
-                                // pane covers chunk partially to the left
-                                drop(c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side));
-                                c_chunk.x = pane_right_edge + 1;
-                            } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
-                                // pane covers chunk partially to the right
-                                c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
-                            } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
-                                // pane covers chunk middle
-                                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(pane_left_edge - c_chunk_left_side, (pane_right_edge + 1) - c_chunk_left_side);
-                                let left_chunk_x = c_chunk_left_side;
-                                let right_chunk_x = pane_right_edge + 1;
-                                let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
-                                c_chunk.x = right_chunk_x;
-                                c_chunk.terminal_characters = right_chunk_characters;
-                                chunks_to_check.push(left_chunk);
-                            }
+                        let new_chunk_to_check = self.remove_covered_parts(pane_geom, &mut c_chunk);
+                        if let Some(new_chunk_to_check) = new_chunk_to_check {
+                            // this happens when the pane covers the middle of the chunk, and so we
+                            // end up with an extra chunk we need to check (eg. against panes above
+                            // this one)
+                            chunks_to_check.push(new_chunk_to_check);
+                        }
+                        if c_chunk.terminal_characters.is_empty() {
+                            continue 'chunk_loop;
                         }
                     }
                     visible_chunks.push(c_chunk);
@@ -197,6 +244,41 @@ impl FloatingPanesStack {
             }
         }
         visible_chunks
+    }
+    fn remove_covered_parts(&self, pane_geom: &PaneGeom, c_chunk: &mut CharacterChunk) -> Option<CharacterChunk> {
+        let pane_top_edge = pane_geom.y;
+        let pane_left_edge = pane_geom.x;
+        let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
+        let pane_right_edge = pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1);
+        let c_chunk_left_side = c_chunk.x;
+        let c_chunk_right_side = c_chunk.x + (c_chunk.width()).saturating_sub(1);
+        if pane_top_edge <= c_chunk.y && pane_bottom_edge >= c_chunk.y {
+            if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
+                // pane covers chunk completely
+                drop(c_chunk.terminal_characters.drain(..));
+                return None;
+            } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
+                // pane covers chunk partially to the left
+                let covered_part = c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side);
+                drop(covered_part);
+                c_chunk.x = pane_right_edge + 1;
+                return None;
+            } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
+                // pane covers chunk partially to the right
+                c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
+                return None;
+            } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
+                // pane covers chunk middle
+                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(pane_left_edge - c_chunk_left_side, (pane_right_edge + 1) - c_chunk_left_side);
+                let left_chunk_x = c_chunk_left_side;
+                let right_chunk_x = pane_right_edge + 1;
+                let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
+                c_chunk.x = right_chunk_x;
+                c_chunk.terminal_characters = right_chunk_characters;
+                return Some(left_chunk);
+            }
+        };
+        None
     }
 }
 
@@ -263,34 +345,16 @@ impl CharacterChunk {
         drained_part.into_iter()
     }
     pub fn retain_by_width(&mut self, x: usize) {
-        let part_to_retain = self.drain_by_width(x); // TODO: better
+        let part_to_retain = self.drain_by_width(x);
         self.terminal_characters = part_to_retain.collect();
     }
     pub fn cut_middle_out(&mut self, middle_start: usize, middle_end: usize) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
-        let mut absolute_middle_start_index = None;
-        let mut absolute_middle_end_index = None;
-        let mut current_x = 0;
-        let mut pad_left_end_by = 0;
-        let mut pad_right_start_by = 0;
-        for (absolute_index, t_character) in self.terminal_characters.iter().enumerate() {
-            current_x += t_character.width;
-            if current_x >= middle_start && absolute_middle_start_index.is_none() {
-                if current_x > middle_start {
-                    pad_left_end_by = current_x - middle_start;
-                    absolute_middle_start_index = Some(absolute_index);
-                } else {
-                    absolute_middle_start_index = Some(absolute_index + 1);
-                }
-            }
-            if current_x >= middle_end && absolute_middle_end_index.is_none() {
-                absolute_middle_end_index = Some(absolute_index + 1);
-                if current_x > middle_end {
-                    pad_right_start_by = current_x - middle_end;
-                }
-            }
-        }
-        let absolute_middle_start_index = absolute_middle_start_index.unwrap();
-        let absolute_middle_end_index = absolute_middle_end_index.unwrap();
+        let (
+            absolute_middle_start_index,
+            absolute_middle_end_index,
+            pad_left_end_by,
+            pad_right_start_by
+        ) = adjust_middle_segment_for_wide_chars(middle_start, middle_end, &self.terminal_characters);
         let mut terminal_characters: Vec<TerminalCharacter> = self.terminal_characters.drain(..).collect();
         let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters.drain(absolute_middle_end_index..).collect();
         let mut characters_on_the_left: Vec<TerminalCharacter>  = terminal_characters.drain(..absolute_middle_start_index).collect();
