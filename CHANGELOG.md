@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
+* Fix: crash when opening pane in non-existent cwd (https://github.com/zellij-org/zellij/pull/995)
+* Feature: add `copy-command` option (https://github.com/zellij-org/zellij/pull/996)
+* Feature: update parsing crate to `clap v3.0` (https://github.com/zellij-org/zellij/pull/1017)
+* Feature: accept only printable unicode char when rename pane or tab name (https://github.com/zellij-org/zellij/pull/1016)
+* Fix: scroll page up/down by actual amount of rows (https://github.com/zellij-org/zellij/pull/1025)
+* Fix: handle csi erase param 3 (https://github.com/zellij-org/zellij/pull/1026)
+* Add: theme example for `tokyo-night` (https://github.com/zellij-org/zellij/pull/1015)
+* Fix: log a warning, if a user-configured mode has no actions associated and is active (https://github.com/zellij-org/zellij/pull/1035)
+* Feature: add focus attribute in layout (https://github.com/zellij-org/zellij/pull/958)
+* Compatibility: disable scrollback in alternate screen (https://github.com/zellij-org/zellij/pull/1032)
+* Feature: add `copy-clipboard` option (https://github.com/zellij-org/zellij/pull/1022)
+* Fix: update the confusing tips on `RenamePane` (https://github.com/zellij-org/zellij/pull/1045)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)

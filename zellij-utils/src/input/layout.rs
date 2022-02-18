@@ -140,6 +140,7 @@ pub struct Layout {
     pub run: Option<Run>,
     #[serde(default)]
     pub borderless: bool,
+    pub focus: Option<bool>,
 }
 
 // The struct that is used to deserialize the layout from
@@ -421,6 +422,7 @@ pub struct LayoutTemplate {
     #[serde(default)]
     pub body: bool,
     pub split_size: Option<SplitSize>,
+    pub focus: Option<bool>,
     pub run: Option<RunFromYaml>,
 }
 
@@ -466,6 +468,7 @@ pub struct TabLayout {
     pub split_size: Option<SplitSize>,
     #[serde(default)]
     pub name: String,
+    pub focus: Option<bool>,
     pub run: Option<RunFromYaml>,
 }
 
@@ -712,6 +715,7 @@ impl TryFrom<TabLayout> for Layout {
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
+            focus: tab.focus,
             run: tab.run.map(Run::try_from).transpose()?,
         })
     }
@@ -726,6 +730,7 @@ impl From<TabLayout> for LayoutTemplate {
             parts: Self::from_vec_tab_layout(tab.parts),
             body: false,
             split_size: tab.split_size,
+            focus: tab.focus,
             run: tab.run,
         }
     }
@@ -741,6 +746,7 @@ impl TryFrom<LayoutTemplate> for Layout {
             borderless: template.borderless,
             parts: Self::from_vec_template_layout(template.parts)?,
             split_size: template.split_size,
+            focus: template.focus,
             run: template
                 .run
                 .map(Run::try_from)
@@ -761,6 +767,7 @@ impl Default for TabLayout {
             run: None,
             name: String::new(),
             pane_name: None,
+            focus: None,
         }
     }
 }
@@ -778,10 +785,12 @@ impl Default for LayoutTemplate {
                 body: true,
                 borderless: false,
                 split_size: None,
+                focus: None,
                 run: None,
                 parts: vec![],
             }],
             split_size: None,
+            focus: None,
             run: None,
         }
     }

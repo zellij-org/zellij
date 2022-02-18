@@ -6,6 +6,7 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile};
 
@@ -200,10 +201,13 @@ pub(crate) struct Screen {
     colors: Palette,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
+    copy_command: Option<String>,
+    copy_clipboard: Clipboard,
 }
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         bus: Bus<ScreenInstruction>,
         client_attributes: &ClientAttributes,
@@ -211,6 +215,8 @@ impl Screen {
         mode_info: ModeInfo,
         draw_pane_frames: bool,
         session_is_mirrored: bool,
+        copy_command: Option<String>,
+        copy_clipboard: Clipboard,
     ) -> Self {
         Screen {
             bus,
@@ -226,6 +232,8 @@ impl Screen {
             default_mode_info: mode_info,
             draw_pane_frames,
             session_is_mirrored,
+            copy_command,
+            copy_clipboard,
         }
     }
 
@@ -499,6 +507,8 @@ impl Screen {
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
+            self.copy_command.clone(),
+            self.copy_clipboard.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -615,11 +625,14 @@ impl Screen {
                 active_tab.name = String::new();
             }
             "\u{007F}" | "\u{0008}" => {
-                //delete and backspace keys
+                // delete and backspace keys
                 active_tab.name.pop();
             }
             c => {
-                active_tab.name.push_str(c);
+                // It only allows printable unicode
+                if buf.iter().all(|u| matches!(u, 0x20..=0x7E)) {
+                    active_tab.name.push_str(c);
+                }
             }
         }
         self.update_tabs();
@@ -700,6 +713,8 @@ pub(crate) fn screen_thread_main(
         ),
         draw_pane_frames,
         session_is_mirrored,
+        config_options.copy_command,
+        config_options.copy_clipboard.unwrap_or_default(),
     );
     loop {
         let (event, mut err_ctx) = screen

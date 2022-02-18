@@ -10,12 +10,13 @@ use crate::{
         options::Options,
     },
 };
+use clap::{Args, IntoApp};
+use clap_complete::Shell;
 use directories_next::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom, fmt::Write as FmtWrite, io::Write, path::Path, path::PathBuf, process,
 };
-use structopt::StructOpt;
 
 const CONFIG_LOCATION: &str = ".config/zellij";
 const CONFIG_NAME: &str = "config.yaml";
@@ -124,25 +125,25 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
-#[derive(Debug, Default, Clone, StructOpt, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
-    #[structopt(long)]
+    #[clap(long)]
     pub dump_config: bool,
     /// Disables loading of configuration file at default location,
     /// loads the defaults that zellij ships with
-    #[structopt(long)]
+    #[clap(long)]
     pub clean: bool,
     /// Checks the configuration of zellij and displays
     /// currently used directories
-    #[structopt(long)]
+    #[clap(long)]
     pub check: bool,
 
     /// Dump the specified layout file to stdout
-    #[structopt(long)]
+    #[clap(long)]
     pub dump_layout: Option<String>,
     /// Generates completion for the specified shell
-    #[structopt(long)]
+    #[clap(long, value_name = "SHELL")]
     pub generate_completion: Option<String>,
 }
 
@@ -231,7 +232,7 @@ impl Setup {
         }
 
         if let Some(shell) = &self.generate_completion {
-            Self::generate_completion(shell.into());
+            Self::generate_completion(shell);
             std::process::exit(0);
         }
 
@@ -376,8 +377,8 @@ impl Setup {
 
         Ok(())
     }
-    fn generate_completion(shell: String) {
-        let shell = match shell.parse() {
+    fn generate_completion(shell: &str) {
+        let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
             _ => {
                 eprintln!("Unsupported shell: {}", shell);
@@ -385,7 +386,7 @@ impl Setup {
             }
         };
         let mut out = std::io::stdout();
-        CliArgs::clap().gen_completions_to("zellij", shell, &mut out);
+        clap_complete::generate(shell, &mut CliArgs::into_app(), "zellij", &mut out);
     }
 }
 

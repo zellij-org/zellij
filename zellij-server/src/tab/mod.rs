@@ -4,7 +4,11 @@
 pub mod tiled_pane_grid;
 pub mod floating_pane_grid;
 pub mod pane_resizer;
+mod clipboard;
+mod copy_command;
 
+use copy_command::CopyCommand;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
@@ -42,6 +46,7 @@ use zellij_utils::{
     },
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
+use self::clipboard::ClipboardProvider;
 
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
@@ -56,7 +61,6 @@ macro_rules! resize_pty {
         }
     };
 }
-
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
@@ -109,6 +113,10 @@ pub(crate) struct Tab {
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
     pub selecting_with_mouse: bool, // this is only pub for the tests TODO: remove this once we combine write_text_to_clipboard with render
     link_handler: Rc<RefCell<LinkHandler>>,
+    clipboard_provider: ClipboardProvider,
+    // TODO: used only to focus the pane when the layout is loaded
+    // it seems that optimization is possible using `active_panes`
+    focus_pane_id: Option<PaneId>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -295,6 +303,8 @@ impl Tab {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
+        copy_command: Option<String>,
+        copy_clipboard: Clipboard,
     ) -> Self {
         let panes = BTreeMap::new();
 
@@ -310,6 +320,11 @@ impl Tab {
         let viewport = Rc::new(RefCell::new(viewport));
         let display_area = Rc::new(RefCell::new(display_area));
         let floating_panes = FloatingPanes::new(display_area.clone(), viewport.clone());
+
+        let clipboard_provider = match copy_command {
+            Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
+            None => ClipboardProvider::Osc52(copy_clipboard),
+        };
 
         Tab {
             index,
@@ -337,6 +352,8 @@ impl Tab {
             connected_clients,
             selecting_with_mouse: false,
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
+            clipboard_provider,
+            focus_pane_id: None,
         }
     }
 
@@ -378,6 +395,13 @@ impl Tab {
         }
         let mut new_pids = new_pids.iter();
 
+        let mut focus_pane_id: Option<PaneId> = None;
+        let mut set_focus_pane_id = |layout: &Layout, pane_id: PaneId| {
+            if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
+                focus_pane_id = Some(pane_id);
+            }
+        };
+
         for (layout, position_and_size) in positions_and_size {
             // A plugin pane
             if let Some(Run::Plugin(run)) = layout.run.clone() {
@@ -398,6 +422,7 @@ impl Tab {
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.panes.insert(PaneId::Plugin(pid), Box::new(new_plugin));
+                set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
@@ -413,6 +438,7 @@ impl Tab {
                 new_pane.set_borderless(layout.borderless);
                 self.panes
                     .insert(PaneId::Terminal(*pid), Box::new(new_pane));
+                set_focus_pane_id(layout, PaneId::Terminal(*pid));
             }
         }
         for unused_pid in new_pids {
@@ -446,24 +472,33 @@ impl Tab {
             self.offset_viewport(&geom)
         }
         self.set_pane_frames(self.draw_pane_frames);
-        // This is the end of the nasty viewport hack...
-        let next_selectable_pane_id = self
-            .panes
-            .iter()
-            .filter(|(_id, pane)| pane.selectable())
-            .map(|(id, _)| id.to_owned())
-            .next();
-        match next_selectable_pane_id {
-            Some(active_pane_id) => {
-                let connected_clients: Vec<ClientId> =
-                    self.connected_clients.iter().copied().collect();
-                for client_id in connected_clients {
-                    self.active_panes.insert(client_id, active_pane_id);
-                }
+
+        let mut active_pane = |pane_id: PaneId| {
+            let connected_clients: Vec<ClientId> = self.connected_clients.iter().copied().collect();
+            for client_id in connected_clients {
+                self.active_panes.insert(client_id, pane_id);
             }
-            None => {
-                // this is very likely a configuration error (layout with no selectable panes)
-                self.active_panes.clear();
+        };
+
+        if let Some(pane_id) = focus_pane_id {
+            self.focus_pane_id = Some(pane_id);
+            active_pane(pane_id);
+        } else {
+            // This is the end of the nasty viewport hack...
+            let next_selectable_pane_id = self
+                .panes
+                .iter()
+                .filter(|(_id, pane)| pane.selectable())
+                .map(|(id, _)| id.to_owned())
+                .next();
+            match next_selectable_pane_id {
+                Some(active_pane_id) => {
+                    active_pane(active_pane_id);
+                }
+                None => {
+                    // this is very likely a configuration error (layout with no selectable panes)
+                    self.active_panes.clear();
+                }
             }
         }
     }
@@ -506,11 +541,15 @@ impl Tab {
                     // no panes here, bye bye
                     return;
                 }
-                pane_ids.sort(); // TODO: make this predictable
-                pane_ids.retain(|p| !self.panes_to_hide.contains(p));
-                let first_pane_id = pane_ids.get(0).unwrap();
+                self.active_panes.insert(
+                    client_id,
+                    self.focus_pane_id.unwrap_or_else(|| {
+                        pane_ids.sort(); // TODO: make this predictable
+                        pane_ids.retain(|p| !self.panes_to_hide.contains(p));
+                        *pane_ids.get(0).unwrap()
+                    }),
+                );
                 self.connected_clients.insert(client_id);
-                self.active_panes.insert(client_id, *first_pane_id);
                 self.mode_info.insert(
                     client_id,
                     mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
@@ -532,6 +571,7 @@ impl Tab {
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
+        self.focus_pane_id = None;
         self.connected_clients.remove(&client_id);
         self.set_force_render();
     }
@@ -2040,7 +2080,7 @@ impl Tab {
                 .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
                 .map(|active_pane| {
                     // prevent overflow when row == 0
-                    let scroll_rows = active_pane.rows().max(1) - 1;
+                    let scroll_rows = active_pane.get_content_rows();
                     active_pane.scroll_up(scroll_rows, client_id);
                 });
         }
@@ -2049,7 +2089,7 @@ impl Tab {
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.get_active_pane_mut(client_id)
                 .and_then(|active_pane| {
-                    let scroll_rows = active_pane.rows().max(1) - 1;
+                    let scroll_rows = active_pane.get_content_rows();
                     active_pane.scroll_down(scroll_rows, client_id);
                     if !active_pane.is_scrolled() {
                         if let PaneId::Terminal(raw_fd) = active_pane.pid() {
@@ -2064,7 +2104,7 @@ impl Tab {
                 .get(&client_id)
                 .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
                 .and_then(|active_pane| {
-                    let scroll_rows = active_pane.rows().max(1) - 1;
+                    let scroll_rows = active_pane.get_content_rows();
                     active_pane.scroll_down(scroll_rows, client_id);
                     if !active_pane.is_scrolled() {
                         if let PaneId::Terminal(raw_fd) = active_pane.pid() {
@@ -2390,7 +2430,7 @@ impl Tab {
                 .send_to_plugin(PluginInstruction::Update(
                     None,
                     None,
-                    Event::CopyToClipboard,
+                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
                 ))
                 .unwrap();
         }
@@ -2399,22 +2439,26 @@ impl Tab {
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
         output.add_clients(&self.connected_clients, self.link_handler.clone(), None);
-        output.add_post_vte_instruction_to_multiple_clients(
-            self.connected_clients.iter().copied(),
-            &format!("\u{1b}]52;c;{}\u{1b}\\", base64::encode(selection)),
-        );
-
-        // TODO: ideally we should be sending the Render instruction from the screen
-        let serialized_output = output.serialize();
+        let client_ids = self.connected_clients.iter().copied();
+        let clipboard_event =
+            match self
+                .clipboard_provider
+                .set_content(selection, &mut output, client_ids)
+            {
+                Ok(_) => {
+                    let serialized_output = output.serialize();
+                    self.senders
+                        .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                        .unwrap();
+                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
+                }
+                Err(err) => {
+                    log::error!("could not write selection to clipboard: {}", err);
+                    Event::SystemClipboardFailure
+                }
+            };
         self.senders
-            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-            .unwrap();
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(
-                None,
-                None,
-                Event::CopyToClipboard,
-            ))
+            .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
             .unwrap();
     }
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
@@ -2468,12 +2512,17 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let s = str::from_utf8(&buf).unwrap();
             let active_terminal = self
                 .panes
                 .get_mut(&PaneId::Terminal(active_terminal_id))
                 .unwrap();
-            active_terminal.update_name(s);
+
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_terminal.update_name(s);
+            }
         }
     }
 

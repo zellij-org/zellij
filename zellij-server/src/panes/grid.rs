@@ -276,7 +276,7 @@ pub struct Grid {
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
     horizontal_tabstops: BTreeSet<usize>,
-    alternative_lines_above_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
+    alternate_lines_above_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
     cursor: Cursor,
     saved_cursor_position: Option<Cursor>,
     // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
@@ -344,7 +344,7 @@ impl Grid {
             erasure_mode: false,
             insert_mode: false,
             disable_linewrap: false,
-            alternative_lines_above_viewport_and_cursor: None,
+            alternate_lines_above_viewport_and_cursor: None,
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
@@ -575,7 +575,7 @@ impl Grid {
             return;
         }
         self.selection.reset();
-        if new_columns != self.width {
+        if new_columns != self.width && self.alternate_lines_above_viewport_and_cursor.is_none() {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -688,6 +688,16 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
+        } else if new_columns != self.width
+            && self.alternate_lines_above_viewport_and_cursor.is_some()
+        {
+            // in alternate screen just truncate exceeding width
+            for row in &mut self.viewport {
+                if row.width() >= new_columns {
+                    let truncate_at = row.position_accounting_for_widechars(new_columns);
+                    row.columns.truncate(truncate_at);
+                }
+            }
         }
         if new_rows != self.height {
             let current_viewport_row_count = self.viewport.len();
@@ -710,12 +720,17 @@ impl Grid {
                     } else {
                         self.cursor.y -= row_count_to_transfer;
                     }
-                    transfer_rows_from_viewport_to_lines_above(
-                        &mut self.viewport,
-                        &mut self.lines_above,
-                        row_count_to_transfer,
-                        new_columns,
-                    );
+                    if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                        transfer_rows_from_viewport_to_lines_above(
+                            &mut self.viewport,
+                            &mut self.lines_above,
+                            row_count_to_transfer,
+                            new_columns,
+                        );
+                    } else {
+                        // in alternate screen, no scroll buffer, so just remove lines
+                        self.viewport.drain(0..row_count_to_transfer);
+                    }
                 }
                 Ordering::Equal => {}
             }
@@ -818,16 +833,11 @@ impl Grid {
         }
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
-        let row_count_to_transfer = self.viewport.len();
-        let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
-            &mut self.viewport,
-            &mut self.lines_above,
-            row_count_to_transfer,
-            self.width,
-        );
-
-        self.scrollback_buffer_lines =
-            subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+        if self.alternate_lines_above_viewport_and_cursor.is_some() {
+            self.viewport.clear();
+        } else {
+            self.transfer_rows_to_lines_above(self.viewport.len())
+        };
 
         for _ in 0..self.height {
             let columns = VecDeque::from(vec![character; self.width]);
@@ -849,17 +859,12 @@ impl Grid {
                     return;
                 }
                 if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
-                    let row_count_to_transfer = 1;
-                    let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
-                        &mut self.viewport,
-                        &mut self.lines_above,
-                        row_count_to_transfer,
-                        self.width,
-                    );
-                    self.scrollback_buffer_lines = subtract_isize_from_usize(
-                        self.scrollback_buffer_lines,
-                        transferred_rows_count,
-                    );
+                    if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                        self.transfer_rows_to_lines_above(1);
+                    } else {
+                        self.viewport.remove(0);
+                    }
+
                     let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                     self.viewport.push(Row::from_columns(columns).canonical());
                     self.selection.move_up(1);
@@ -886,15 +891,11 @@ impl Grid {
         }
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
-                let row_count_to_transfer = 1;
-                let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
-                    &mut self.viewport,
-                    &mut self.lines_above,
-                    row_count_to_transfer,
-                    self.width,
-                );
-                self.scrollback_buffer_lines =
-                    subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+                if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                    self.transfer_rows_to_lines_above(1);
+                } else {
+                    self.viewport.remove(0);
+                }
 
                 self.selection.move_up(1);
             }
@@ -964,19 +965,15 @@ impl Grid {
             // line wrap
             self.cursor.x = 0;
             if self.cursor.y == self.height - 1 {
-               let row_count_to_transfer = 1;
-               let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
-                   &mut self.viewport,
-                   &mut self.lines_above,
-                   row_count_to_transfer,
-                   self.width,
-               );
-               self.scrollback_buffer_lines =
-                   subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
-               let wrapped_row = Row::new(self.width);
-               self.viewport.push(wrapped_row);
-               self.selection.move_up(1);
-               self.output_buffer.update_all_lines();
+                if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                    self.transfer_rows_to_lines_above(1);
+                } else {
+                    self.viewport.remove(0);
+                }
+                let wrapped_row = Row::new(self.width);
+                self.viewport.push(wrapped_row);
+                self.selection.move_up(1);
+                self.output_buffer.update_all_lines();
             } else {
                self.cursor.y += 1;
                if self.viewport.len() <= self.cursor.y {
@@ -1047,6 +1044,11 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    fn clear_lines_above(&mut self) {
+        self.lines_above.clear();
+        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+    }
+
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in current_row.len()..position {
@@ -1262,7 +1264,7 @@ impl Grid {
         self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];
-        self.alternative_lines_above_viewport_and_cursor = None;
+        self.alternate_lines_above_viewport_and_cursor = None;
         self.cursor_key_mode = false;
         self.scroll_region = None;
         self.clear_viewport_before_rendering = true;
@@ -1397,6 +1399,17 @@ impl Grid {
         if let Some(popped_title) = self.title_stack.pop() {
             self.title = Some(popped_title);
         }
+    }
+    fn transfer_rows_to_lines_above(&mut self, count: usize) {
+        let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
+            &mut self.viewport,
+            &mut self.lines_above,
+            count,
+            self.width,
+        );
+
+        self.scrollback_buffer_lines =
+            subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
 }
 
@@ -1667,6 +1680,8 @@ impl Perform for Grid {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
                     self.fill_viewport(char_to_replace);
+                } else if clear_type == 3 {
+                    self.clear_lines_above();
                 }
             };
         } else if c == 'H' || c == 'f' {
@@ -1700,17 +1715,18 @@ impl Perform for Grid {
                         self.bracketed_paste_mode = false;
                     }
                     Some(1049) => {
+                        // leave alternate buffer
                         if let Some((
                             alternative_lines_above,
                             alternative_viewport,
                             alternative_cursor,
-                        )) = &mut self.alternative_lines_above_viewport_and_cursor
+                        )) = &mut self.alternate_lines_above_viewport_and_cursor
                         {
                             std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
                             std::mem::swap(&mut self.cursor, alternative_cursor);
                         }
-                        self.alternative_lines_above_viewport_and_cursor = None;
+                        self.alternate_lines_above_viewport_and_cursor = None;
                         self.clear_viewport_before_rendering = true;
                         self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
@@ -1756,6 +1772,7 @@ impl Perform for Grid {
                         self.bracketed_paste_mode = true;
                     }
                     Some(1049) => {
+                        // enter alternate buffer
                         let current_lines_above = std::mem::replace(
                             &mut self.lines_above,
                             VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
@@ -1765,9 +1782,10 @@ impl Perform for Grid {
                             vec![Row::new(self.width).canonical()],
                         );
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        self.alternative_lines_above_viewport_and_cursor =
+                        self.alternate_lines_above_viewport_and_cursor =
                             Some((current_lines_above, current_viewport, current_cursor));
                         self.clear_viewport_before_rendering = true;
+                        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
                     }
                     Some(1) => {
                         self.cursor_key_mode = true;

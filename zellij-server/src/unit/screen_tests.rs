@@ -10,6 +10,7 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 
@@ -91,6 +92,8 @@ fn create_new_screen(size: Size) -> Screen {
     let mode_info = ModeInfo::default();
     let draw_pane_frames = false;
     let session_is_mirrored = true;
+    let copy_command = None;
+    let copy_clipboard = Clipboard::default();
     Screen::new(
         bus,
         &client_attributes,
@@ -98,6 +101,8 @@ fn create_new_screen(size: Size) -> Screen {
         mode_info,
         draw_pane_frames,
         session_is_mirrored,
+        copy_command,
+        copy_clipboard,
     )
 }
 

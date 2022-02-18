@@ -283,6 +283,7 @@ pub enum PtyContext {
     SpawnTerminalVertically,
     SpawnTerminalHorizontally,
     UpdateActivePane,
+    GoToTab,
     NewTab,
     ClosePane,
     CloseTab,

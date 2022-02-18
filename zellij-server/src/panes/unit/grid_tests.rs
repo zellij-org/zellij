@@ -1093,3 +1093,31 @@ pub fn ring_bell() {
     }
     assert!(grid.ring_bell);
 }
+
+#[test]
+pub fn alternate_screen_change_size() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(20, 20, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
+    let fixture_name = "alternate_screen_change_size";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    // no scrollback in alternate screen
+    assert_eq!(grid.scrollback_position_and_length(), (0, 0));
+    grid.change_size(10, 10);
+    assert_snapshot!(format!("{:?}", grid));
+    assert_eq!(grid.scrollback_position_and_length(), (0, 0))
+}
+
+#[test]
+pub fn fzf_fullscreen() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(51, 112, Palette::default(), Rc::new(RefCell::new(LinkHandler::new())));
+    let fixture_name = "fzf_fullscreen";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}

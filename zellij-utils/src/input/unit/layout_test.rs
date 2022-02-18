@@ -41,11 +41,13 @@ fn default_layout_merged_correctly() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: true,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -57,6 +59,7 @@ fn default_layout_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -65,6 +68,7 @@ fn default_layout_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: true,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -89,11 +93,13 @@ fn default_layout_new_tab_correct() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: true,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -105,6 +111,7 @@ fn default_layout_new_tab_correct() {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -113,6 +120,7 @@ fn default_layout_new_tab_correct() {
                 direction: Direction::Vertical,
                 borderless: true,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -177,15 +185,18 @@ fn three_panes_with_tab_merged_correctly() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![Layout {
             direction: Direction::Vertical,
             borderless: false,
             pane_name: None,
+            focus: None,
             parts: vec![
                 Layout {
                     direction: Direction::Horizontal,
                     borderless: false,
                     pane_name: None,
+                    focus: None,
                     parts: vec![],
                     split_size: Some(SplitSize::Percent(50.0)),
                     run: None,
@@ -194,11 +205,13 @@ fn three_panes_with_tab_merged_correctly() {
                     direction: Direction::Horizontal,
                     borderless: false,
                     pane_name: None,
+                    focus: None,
                     parts: vec![
                         Layout {
                             direction: Direction::Vertical,
                             borderless: false,
                             pane_name: None,
+                            focus: None,
                             parts: vec![],
                             split_size: Some(SplitSize::Percent(50.0)),
                             run: None,
@@ -207,6 +220,7 @@ fn three_panes_with_tab_merged_correctly() {
                             direction: Direction::Vertical,
                             borderless: false,
                             pane_name: None,
+                            focus: None,
                             parts: vec![],
                             split_size: Some(SplitSize::Percent(50.0)),
                             run: None,
@@ -235,10 +249,12 @@ fn three_panes_with_tab_new_tab_is_correct() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![Layout {
             direction: Direction::Horizontal,
             borderless: false,
             pane_name: None,
+            focus: None,
             parts: vec![],
             split_size: None,
             run: None,
@@ -277,11 +293,13 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -293,11 +311,13 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: Some(SplitSize::Percent(50.0)),
                         run: None,
@@ -306,11 +326,13 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![
                             Layout {
                                 direction: Direction::Vertical,
                                 borderless: false,
                                 pane_name: None,
+                                focus: None,
                                 parts: vec![],
                                 split_size: Some(SplitSize::Percent(50.0)),
                                 run: None,
@@ -319,6 +341,7 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                                 direction: Direction::Vertical,
                                 borderless: false,
                                 pane_name: None,
+                                focus: None,
                                 parts: vec![],
                                 split_size: Some(SplitSize::Percent(50.0)),
                                 run: None,
@@ -335,6 +358,7 @@ fn three_panes_with_tab_and_default_plugins_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -359,11 +383,13 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(1)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -375,6 +401,7 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -383,6 +410,7 @@ fn three_panes_with_tab_and_default_plugins_new_tab_is_correct() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Fixed(2)),
                 run: Some(Run::Plugin(RunPlugin {
@@ -425,16 +453,19 @@ fn deeply_nested_tab_merged_correctly() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: Some(SplitSize::Percent(21.0)),
                         run: None,
@@ -443,11 +474,13 @@ fn deeply_nested_tab_merged_correctly() {
                         direction: Direction::Vertical,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![
                             Layout {
                                 direction: Direction::Horizontal,
                                 borderless: false,
                                 pane_name: None,
+                                focus: None,
                                 parts: vec![],
                                 split_size: Some(SplitSize::Percent(22.0)),
                                 run: None,
@@ -456,11 +489,13 @@ fn deeply_nested_tab_merged_correctly() {
                                 direction: Direction::Horizontal,
                                 borderless: false,
                                 pane_name: None,
+                                focus: None,
                                 parts: vec![
                                     Layout {
                                         direction: Direction::Horizontal,
                                         borderless: false,
                                         pane_name: None,
+                                        focus: None,
                                         parts: vec![],
                                         split_size: Some(SplitSize::Percent(23.0)),
                                         run: None,
@@ -469,6 +504,7 @@ fn deeply_nested_tab_merged_correctly() {
                                         direction: Direction::Horizontal,
                                         borderless: false,
                                         pane_name: None,
+                                        focus: None,
                                         parts: vec![],
                                         split_size: Some(SplitSize::Percent(24.0)),
                                         run: None,
@@ -489,6 +525,7 @@ fn deeply_nested_tab_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Percent(15.0)),
                 run: None,
@@ -497,6 +534,7 @@ fn deeply_nested_tab_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Percent(15.0)),
                 run: None,
@@ -505,6 +543,7 @@ fn deeply_nested_tab_merged_correctly() {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Percent(15.0)),
                 run: None,
@@ -544,11 +583,13 @@ fn three_tabs_tab_one_merged_correctly() {
         direction: Direction::Vertical,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: Some(SplitSize::Percent(50.0)),
                 run: None,
@@ -557,6 +598,7 @@ fn three_tabs_tab_one_merged_correctly() {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -582,16 +624,19 @@ fn three_tabs_tab_two_merged_correctly() {
         direction: Direction::Vertical,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![
                     Layout {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: Some(SplitSize::Percent(50.0)),
                         run: None,
@@ -600,6 +645,7 @@ fn three_tabs_tab_two_merged_correctly() {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: None,
                         run: None,
@@ -612,6 +658,7 @@ fn three_tabs_tab_two_merged_correctly() {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -637,16 +684,19 @@ fn three_tabs_tab_three_merged_correctly() {
         direction: Direction::Vertical,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![
             Layout {
                 direction: Direction::Vertical,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![
                     Layout {
                         direction: Direction::Vertical,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: Some(SplitSize::Percent(50.0)),
                         run: None,
@@ -655,6 +705,7 @@ fn three_tabs_tab_three_merged_correctly() {
                         direction: Direction::Horizontal,
                         borderless: false,
                         pane_name: None,
+                        focus: None,
                         parts: vec![],
                         split_size: None,
                         run: None,
@@ -667,6 +718,7 @@ fn three_tabs_tab_three_merged_correctly() {
                 direction: Direction::Horizontal,
                 borderless: false,
                 pane_name: None,
+                focus: None,
                 parts: vec![],
                 split_size: None,
                 run: None,
@@ -703,10 +755,12 @@ fn no_tabs_merged_correctly() {
         direction: Direction::Horizontal,
         borderless: false,
         pane_name: None,
+        focus: None,
         parts: vec![Layout {
             direction: Direction::Horizontal,
             borderless: false,
             pane_name: None,
+            focus: None,
             parts: vec![],
             split_size: None,
             run: None,
@@ -754,6 +808,7 @@ fn no_layout_template_merged_correctly() {
                     run: None,
                     borderless: false,
                     pane_name: None,
+                    focus: None,
                 },
                 Layout {
                     direction: Direction::Horizontal,
@@ -762,17 +817,20 @@ fn no_layout_template_merged_correctly() {
                     run: None,
                     borderless: false,
                     pane_name: None,
+                    focus: None,
                 },
             ],
             split_size: None,
             run: None,
             borderless: false,
             pane_name: None,
+            focus: None,
         }],
         split_size: None,
         run: None,
         borderless: false,
         pane_name: None,
+        focus: None,
     };
 
     assert_eq!(merged_layout, tab_layout.try_into().unwrap());

@@ -8,6 +8,7 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::position::Position;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -98,6 +99,8 @@ fn create_new_tab(size: Size) -> Tab {
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let copy_command = None;
+    let clipboard = Clipboard::default();
     let mut tab = Tab::new(
         index,
         position,
@@ -112,6 +115,8 @@ fn create_new_tab(size: Size) -> Tab {
         connected_clients,
         session_is_mirrored,
         client_id,
+        copy_command,
+        clipboard,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),

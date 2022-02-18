@@ -944,7 +944,7 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(77, 2) {
+                if remote_terminal.cursor_position_is(3, 2) {
                     // we're back inside the session
                     step_is_complete = true;
                 }
@@ -1697,6 +1697,43 @@ pub fn toggle_floating_panes() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
                     // cursor is in the newly opened second pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn focus_tab_with_layout() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let layout_file_name = "focus-tab-layout.yaml";
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_with_layout(fake_win_size, layout_file_name);
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.tip_appears()
+                    && remote_terminal.snapshot_contains("Tab #3")
+                    && remote_terminal.cursor_position_is(63, 2)
+                {
                     step_is_complete = true;
                 }
                 step_is_complete
