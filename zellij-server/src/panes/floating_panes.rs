@@ -1,7 +1,7 @@
 use zellij_utils::{position::Position, zellij_tile};
 
 use crate::tab::Pane;
-use crate::tab::pane_grid::FloatingPaneGrid;
+use crate::tab::floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -114,7 +114,6 @@ impl FloatingPanes {
         self.panes.contains_key(pane_id)
     }
     pub fn find_room_for_new_pane(&mut self) -> Option<PaneGeom> {
-        // TODO: move display_area and viewport to RC on the state
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let floating_pane_grid =
@@ -158,12 +157,8 @@ impl FloatingPanes {
     ) {
         // TODO: move args to state?
 
-
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
-        // let z_indices = self.floating_z_indices.clone();
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
-            // TODO: fix a bug here: open a few floating panes, focus non-floating pane with
-            // mouse and do alt-s again
             self.z_indices
                 .iter()
                 .position(|id| id == *a_id)
