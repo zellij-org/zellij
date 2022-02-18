@@ -1,0 +1,8 @@
+---
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      body: true
+tabs:
+  - direction: Vertical

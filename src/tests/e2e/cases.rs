@@ -24,6 +24,7 @@ pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
 pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
 pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
 pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
+pub const TOGGLE_FLOATING_PANES: [u8; 1] = [119]; // w
 pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
 pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
 pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
@@ -1649,6 +1650,53 @@ pub fn bracketed_paste() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(9, 2) {
                     // text has been entered into the only terminal pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn toggle_floating_panes() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Toggle floating panes",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                    // back to normal mode after split
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for new pane to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
                 step_is_complete

@@ -10,7 +10,7 @@ pub struct LinkHandler {
     link_index: u16,
 }
 #[derive(Debug, Clone)]
-struct Link {
+pub struct Link {
     id: Option<String>,
     uri: String,
 }
@@ -49,8 +49,8 @@ impl LinkHandler {
         }
     }
 
-    pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> String {
-        link_anchor.map_or("".to_string(), |link| match link {
+    pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {
+        link_anchor.map(|link| match link {
             LinkAnchor::Start(index) => {
                 let link = self.links.get(&index).unwrap();
                 let id = link
@@ -93,7 +93,7 @@ mod tests {
         }
 
         let expected = format!("\u{1b}]8;id=test;http://test.com{}", TERMINATOR);
-        assert_eq!(link_handler.output_osc8(anchor), expected);
+        assert_eq!(link_handler.output_osc8(anchor).unwrap(), expected);
     }
 
     #[test]
@@ -106,6 +106,6 @@ mod tests {
         assert_eq!(anchor, Some(LinkAnchor::End));
 
         let expected = format!("\u{1b}]8;;{}", TERMINATOR);
-        assert_eq!(link_handler.output_osc8(anchor), expected);
+        assert_eq!(link_handler.output_osc8(anchor).unwrap(), expected);
     }
 }

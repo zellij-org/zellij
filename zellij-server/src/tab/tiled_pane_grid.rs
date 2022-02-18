@@ -1,5 +1,5 @@
 use super::pane_resizer::PaneResizer;
-use crate::tab::is_inside_viewport;
+use crate::tab::{is_inside_viewport, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -14,26 +14,22 @@ use std::rc::Rc;
 const RESIZE_PERCENT: f64 = 5.0;
 const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
 
-// FIXME: This should be replaced by `RESIZE_PERCENT` at some point
-const MIN_TERMINAL_HEIGHT: usize = 5;
-const MIN_TERMINAL_WIDTH: usize = 5;
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
-pub struct PaneGrid<'a> {
-    // panes: HashMap<&'a PaneId, &'a mut Box<dyn Pane>>,
+pub struct TiledPaneGrid<'a> {
     panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
     display_area: Size, // includes all panes (including eg. the status bar and tab bar in the default layout)
     viewport: Viewport, // includes all non-UI panes
 }
 
-impl<'a> PaneGrid<'a> {
+impl<'a> TiledPaneGrid<'a> {
     pub fn new(
         panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
         display_area: Size,
         viewport: Viewport,
     ) -> Self {
         let panes: HashMap<_, _> = panes.into_iter().map(|(p_id, p)| (*p_id, p)).collect();
-        PaneGrid {
+        TiledPaneGrid {
             panes: Rc::new(RefCell::new(panes)),
             display_area,
             viewport,
@@ -1643,7 +1639,6 @@ impl<'a> PaneGrid<'a> {
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
         // true => successfully filled space over pane
         // false => didn't succeed, so didn't do anything
-        log::info!("fill_space_over_pane");
         let (freed_width, freed_height) = {
             let panes = self.panes.borrow_mut();
             let pane_to_close = panes.get(&id).unwrap();

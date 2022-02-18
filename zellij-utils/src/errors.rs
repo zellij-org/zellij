@@ -207,6 +207,8 @@ pub enum ScreenContext {
     HandlePtyBytes,
     Render,
     NewPane,
+    ToggleFloatingPanes,
+    TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
     WriteCharacter,

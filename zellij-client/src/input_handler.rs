@@ -199,6 +199,8 @@ impl InputHandler {
             }
             Action::CloseFocus
             | Action::NewPane(_)
+            | Action::ToggleFloatingPanes
+            | Action::TogglePaneEmbedOrFloating
             | Action::NewTab(_)
             | Action::GoToNextTab
             | Action::GoToPreviousTab

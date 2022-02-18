@@ -75,4 +75,4 @@ jobs:
     - name: Install cargo-make
       run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Check Lints
-      run: cargo make clippy -D clippy::all
+      run: cargo make clippy

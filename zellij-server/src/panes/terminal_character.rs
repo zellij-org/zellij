@@ -1,6 +1,7 @@
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+use unicode_width::UnicodeWidthChar;
 
 use zellij_utils::vte::ParamsIter;
 
@@ -702,6 +703,16 @@ pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
     pub width: usize,
+}
+
+impl TerminalCharacter {
+    pub fn new(character: char) -> Self {
+        TerminalCharacter {
+            character,
+            styles: CharacterStyles::default(),
+            width: character.width().unwrap_or(0),
+        }
+    }
 }
 
 impl ::std::fmt::Debug for TerminalCharacter {

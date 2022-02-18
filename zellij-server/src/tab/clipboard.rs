@@ -29,9 +29,9 @@ impl ClipboardProvider {
                     Clipboard::Primary => 'c',
                     Clipboard::System => 'c',
                 };
-                output.push_str_to_multiple_clients(
-                    &format!("\u{1b}]52;{};{}\u{1b}\\", dest, base64::encode(content)),
+                output.add_pre_vte_instruction_to_multiple_clients(
                     client_ids,
+                    &format!("\u{1b}]52;{};{}\u{1b}\\", dest, base64::encode(content)),
                 );
             }
         };
