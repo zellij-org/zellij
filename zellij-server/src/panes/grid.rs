@@ -1,6 +1,6 @@
-use unicode_width::UnicodeWidthChar;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
+use unicode_width::UnicodeWidthChar;
 
 use std::{
     cmp::Ordering,
@@ -22,10 +22,10 @@ use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
+use crate::output::{CharacterChunk, OutputBuffer};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::selection::Selection;
-use crate::output::{CharacterChunk, OutputBuffer};
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
@@ -322,7 +322,12 @@ impl Debug for Grid {
 }
 
 impl Grid {
-    pub fn new(rows: usize, columns: usize, colors: Palette, link_handler: Rc<RefCell<LinkHandler>>) -> Self {
+    pub fn new(
+        rows: usize,
+        columns: usize,
+        colors: Palette,
+        link_handler: Rc<RefCell<LinkHandler>>,
+    ) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(
                 // .get_or_init() is used instead of .get().unwrap() to prevent
@@ -768,9 +773,13 @@ impl Grid {
         lines
     }
     pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> Vec<CharacterChunk> {
-        let changes =
-            self.output_buffer
-                .changed_chunks_in_viewport(&self.viewport, self.width, self.height, x_offset, y_offset);
+        let changes = self.output_buffer.changed_chunks_in_viewport(
+            &self.viewport,
+            self.width,
+            self.height,
+            x_offset,
+            y_offset,
+        );
         self.output_buffer.clear();
         changes
     }
@@ -975,12 +984,12 @@ impl Grid {
                 self.selection.move_up(1);
                 self.output_buffer.update_all_lines();
             } else {
-               self.cursor.y += 1;
-               if self.viewport.len() <= self.cursor.y {
-                   let line_wrapped_row = Row::new(self.width);
-                   self.viewport.push(line_wrapped_row);
-                   self.output_buffer.update_line(self.cursor.y);
-               }
+                self.cursor.y += 1;
+                if self.viewport.len() <= self.cursor.y {
+                    let line_wrapped_row = Row::new(self.width);
+                    self.viewport.push(line_wrapped_row);
+                    self.output_buffer.update_line(self.cursor.y);
+                }
             }
         }
         self.add_character_at_cursor_position(terminal_character);
@@ -1515,7 +1524,8 @@ impl Perform for Grid {
                 if params.len() < 3 {
                     return;
                 }
-                self.cursor.pending_styles.link_anchor = self.link_handler.borrow_mut().dispatch_osc8(params);
+                self.cursor.pending_styles.link_anchor =
+                    self.link_handler.borrow_mut().dispatch_osc8(params);
             }
 
             // Get/set Foreground, Background, Cursor colors.

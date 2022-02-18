@@ -1,5 +1,5 @@
 use super::pane_resizer::PaneResizer;
-use crate::tab::{MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT};
+use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -89,7 +89,8 @@ impl<'a> FloatingPaneGrid<'a> {
         // account for the difference between the viewport (including non-ui pane items which we
         // do not want to override) and the display_area, which is the area we can go over
         let display_size_row_difference = self.display_area.rows.saturating_sub(self.viewport.rows);
-        let display_size_column_difference = self.display_area.cols.saturating_sub(self.viewport.cols);
+        let display_size_column_difference =
+            self.display_area.cols.saturating_sub(self.viewport.cols);
 
         let mut new_viewport = self.viewport;
         new_viewport.cols = space.cols.saturating_sub(display_size_column_difference);
@@ -98,7 +99,8 @@ impl<'a> FloatingPaneGrid<'a> {
         for (pane_id, pane) in panes.iter_mut() {
             let mut new_pane_geom = pane.current_geom();
             let desired_pane_geom = desired_pane_positions.get(pane_id).unwrap();
-            let desired_pane_geom_is_inside_viewport = pane_geom_is_inside_viewport(&new_viewport, &desired_pane_geom);
+            let desired_pane_geom_is_inside_viewport =
+                pane_geom_is_inside_viewport(&new_viewport, &desired_pane_geom);
             let pane_is_in_desired_position = new_pane_geom == *desired_pane_geom;
             if pane_is_in_desired_position && desired_pane_geom_is_inside_viewport {
                 continue;
@@ -115,81 +117,122 @@ impl<'a> FloatingPaneGrid<'a> {
                 let extra_height = viewport_bottom_side.saturating_sub(pane_bottom_side);
 
                 // handle shrink width
-                if excess_width > 0 && new_pane_geom.x.saturating_sub(excess_width) > new_viewport.x {
+                if excess_width > 0 && new_pane_geom.x.saturating_sub(excess_width) > new_viewport.x
+                {
                     new_pane_geom.x = new_pane_geom.x.saturating_sub(excess_width);
-                } else if excess_width > 0 && new_pane_geom.cols.as_usize().saturating_sub(excess_width) > MIN_TERMINAL_WIDTH {
-                    new_pane_geom.cols.set_inner(new_pane_geom.cols.as_usize().saturating_sub(excess_width));
+                } else if excess_width > 0
+                    && new_pane_geom.cols.as_usize().saturating_sub(excess_width)
+                        > MIN_TERMINAL_WIDTH
+                {
+                    new_pane_geom
+                        .cols
+                        .set_inner(new_pane_geom.cols.as_usize().saturating_sub(excess_width));
                 } else if excess_width > 0 {
                     let reduce_x_by = new_pane_geom.x.saturating_sub(new_viewport.x);
-                    let reduced_width = new_pane_geom.cols
+                    let reduced_width = new_pane_geom
+                        .cols
                         .as_usize()
                         .saturating_sub(excess_width.saturating_sub(reduce_x_by));
                     new_pane_geom.x = new_viewport.x;
-                    new_pane_geom.cols.set_inner(std::cmp::max(
-                        reduced_width,
-                        MIN_TERMINAL_WIDTH,
-                    ));
+                    new_pane_geom
+                        .cols
+                        .set_inner(std::cmp::max(reduced_width, MIN_TERMINAL_WIDTH));
                 }
 
                 // handle shrink height
-                if excess_height > 0 && new_pane_geom.y.saturating_sub(excess_height) > new_viewport.y {
+                if excess_height > 0
+                    && new_pane_geom.y.saturating_sub(excess_height) > new_viewport.y
+                {
                     new_pane_geom.y = new_pane_geom.y.saturating_sub(excess_height);
-                } else if excess_height > 0 && new_pane_geom.rows.as_usize().saturating_sub(excess_height) > MIN_TERMINAL_HEIGHT {
-                    new_pane_geom.rows.set_inner(new_pane_geom.rows.as_usize().saturating_sub(excess_height));
+                } else if excess_height > 0
+                    && new_pane_geom.rows.as_usize().saturating_sub(excess_height)
+                        > MIN_TERMINAL_HEIGHT
+                {
+                    new_pane_geom
+                        .rows
+                        .set_inner(new_pane_geom.rows.as_usize().saturating_sub(excess_height));
                 } else if excess_height > 0 {
                     let reduce_y_by = new_pane_geom.y.saturating_sub(new_viewport.y);
-                    let reduced_height = new_pane_geom.rows
+                    let reduced_height = new_pane_geom
+                        .rows
                         .as_usize()
                         .saturating_sub(excess_height.saturating_sub(reduce_y_by));
                     new_pane_geom.y = new_viewport.y;
-                    new_pane_geom.rows.set_inner(std::cmp::max(
-                        reduced_height,
-                        MIN_TERMINAL_HEIGHT,
-                    ));
+                    new_pane_geom
+                        .rows
+                        .set_inner(std::cmp::max(reduced_height, MIN_TERMINAL_HEIGHT));
                 }
 
                 // handle expand width
-                if extra_width > 0  {
+                if extra_width > 0 {
                     let max_right_coords = new_viewport.x + new_viewport.cols;
                     if new_pane_geom.x < desired_pane_geom.x {
                         if desired_pane_geom.x + new_pane_geom.cols.as_usize() <= max_right_coords {
                             new_pane_geom.x = desired_pane_geom.x
-                        } else if new_pane_geom.x + new_pane_geom.cols.as_usize() + extra_width < max_right_coords {
+                        } else if new_pane_geom.x + new_pane_geom.cols.as_usize() + extra_width
+                            < max_right_coords
+                        {
                             new_pane_geom.x = new_pane_geom.x + extra_width;
                         } else {
-                            new_pane_geom.x = max_right_coords.saturating_sub(new_pane_geom.cols.as_usize());
+                            new_pane_geom.x =
+                                max_right_coords.saturating_sub(new_pane_geom.cols.as_usize());
                         }
                     }
                     if new_pane_geom.cols.as_usize() < desired_pane_geom.cols.as_usize() {
                         if new_pane_geom.x + desired_pane_geom.cols.as_usize() <= max_right_coords {
-                            new_pane_geom.cols.set_inner(desired_pane_geom.cols.as_usize());
-                        } else if new_pane_geom.x + new_pane_geom.cols.as_usize() + extra_width < max_right_coords {
-                            new_pane_geom.cols.set_inner(new_pane_geom.cols.as_usize() + extra_width);
+                            new_pane_geom
+                                .cols
+                                .set_inner(desired_pane_geom.cols.as_usize());
+                        } else if new_pane_geom.x + new_pane_geom.cols.as_usize() + extra_width
+                            < max_right_coords
+                        {
+                            new_pane_geom
+                                .cols
+                                .set_inner(new_pane_geom.cols.as_usize() + extra_width);
                         } else {
-                            new_pane_geom.cols.set_inner(new_pane_geom.cols.as_usize() + (max_right_coords - (new_pane_geom.x + new_pane_geom.cols.as_usize())));
+                            new_pane_geom.cols.set_inner(
+                                new_pane_geom.cols.as_usize()
+                                    + (max_right_coords
+                                        - (new_pane_geom.x + new_pane_geom.cols.as_usize())),
+                            );
                         }
                     }
                 }
 
                 // handle expand height
-                if extra_height > 0  {
+                if extra_height > 0 {
                     let max_bottom_coords = new_viewport.y + new_viewport.rows;
                     if new_pane_geom.y < desired_pane_geom.y {
-                        if desired_pane_geom.y + new_pane_geom.rows.as_usize() <= max_bottom_coords {
+                        if desired_pane_geom.y + new_pane_geom.rows.as_usize() <= max_bottom_coords
+                        {
                             new_pane_geom.y = desired_pane_geom.y
-                        } else if new_pane_geom.y + new_pane_geom.rows.as_usize() + extra_height < max_bottom_coords {
+                        } else if new_pane_geom.y + new_pane_geom.rows.as_usize() + extra_height
+                            < max_bottom_coords
+                        {
                             new_pane_geom.y = new_pane_geom.y + extra_height;
                         } else {
-                            new_pane_geom.y = max_bottom_coords.saturating_sub(new_pane_geom.rows.as_usize());
+                            new_pane_geom.y =
+                                max_bottom_coords.saturating_sub(new_pane_geom.rows.as_usize());
                         }
                     }
                     if new_pane_geom.rows.as_usize() < desired_pane_geom.rows.as_usize() {
-                        if new_pane_geom.y + desired_pane_geom.rows.as_usize() <= max_bottom_coords {
-                            new_pane_geom.rows.set_inner(desired_pane_geom.rows.as_usize());
-                        } else if new_pane_geom.y + new_pane_geom.rows.as_usize() + extra_height < max_bottom_coords {
-                            new_pane_geom.rows.set_inner(new_pane_geom.rows.as_usize() + extra_height);
+                        if new_pane_geom.y + desired_pane_geom.rows.as_usize() <= max_bottom_coords
+                        {
+                            new_pane_geom
+                                .rows
+                                .set_inner(desired_pane_geom.rows.as_usize());
+                        } else if new_pane_geom.y + new_pane_geom.rows.as_usize() + extra_height
+                            < max_bottom_coords
+                        {
+                            new_pane_geom
+                                .rows
+                                .set_inner(new_pane_geom.rows.as_usize() + extra_height);
                         } else {
-                            new_pane_geom.rows.set_inner(new_pane_geom.rows.as_usize() + (max_bottom_coords - (new_pane_geom.y + new_pane_geom.rows.as_usize())));
+                            new_pane_geom.rows.set_inner(
+                                new_pane_geom.rows.as_usize()
+                                    + (max_bottom_coords
+                                        - (new_pane_geom.y + new_pane_geom.rows.as_usize())),
+                            );
                         }
                     }
                 }
@@ -538,12 +581,12 @@ impl<'a> FloatingPaneGrid<'a> {
     fn increase_pane_size_left(&mut self, id: &PaneId, increase_by: usize) {
         let new_pane_geom = {
             let mut panes = self.panes.borrow_mut();
-                let pane = panes.get_mut(id).unwrap();
-                let mut current_geom = pane.position_and_size();
-                current_geom.x -= increase_by;
-                current_geom
-                    .cols
-                    .set_inner(current_geom.cols.as_usize() + increase_by);
+            let pane = panes.get_mut(id).unwrap();
+            let mut current_geom = pane.position_and_size();
+            current_geom.x -= increase_by;
+            current_geom
+                .cols
+                .set_inner(current_geom.cols.as_usize() + increase_by);
             current_geom
         };
         self.set_pane_geom(*id, new_pane_geom);
@@ -1073,15 +1116,45 @@ impl<'a> FloatingPaneGrid<'a> {
             let half_size_top_right_geom = half_size_top_right_geom(&self.viewport, offset);
             let half_size_bottom_left_geom = half_size_bottom_left_geom(&self.viewport, offset);
             let half_size_bottom_right_geom = half_size_bottom_right_geom(&self.viewport, offset);
-            if pane_geom_is_big_enough(&half_size_middle_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_middle_geom, &pane_geoms) {
+            if pane_geom_is_big_enough(&half_size_middle_geom)
+                && pane_geom_is_unoccupied_and_inside_viewport(
+                    &self.viewport,
+                    &half_size_middle_geom,
+                    &pane_geoms,
+                )
+            {
                 return Some(half_size_middle_geom);
-            } else if pane_geom_is_big_enough(&half_size_top_left_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_top_left_geom, &pane_geoms) {
+            } else if pane_geom_is_big_enough(&half_size_top_left_geom)
+                && pane_geom_is_unoccupied_and_inside_viewport(
+                    &self.viewport,
+                    &half_size_top_left_geom,
+                    &pane_geoms,
+                )
+            {
                 return Some(half_size_top_left_geom);
-            } else if pane_geom_is_big_enough(&half_size_top_right_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_top_right_geom, &pane_geoms) {
+            } else if pane_geom_is_big_enough(&half_size_top_right_geom)
+                && pane_geom_is_unoccupied_and_inside_viewport(
+                    &self.viewport,
+                    &half_size_top_right_geom,
+                    &pane_geoms,
+                )
+            {
                 return Some(half_size_top_right_geom);
-            } else if pane_geom_is_big_enough(&half_size_bottom_left_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_bottom_left_geom, &pane_geoms) {
+            } else if pane_geom_is_big_enough(&half_size_bottom_left_geom)
+                && pane_geom_is_unoccupied_and_inside_viewport(
+                    &self.viewport,
+                    &half_size_bottom_left_geom,
+                    &pane_geoms,
+                )
+            {
                 return Some(half_size_bottom_left_geom);
-            } else if pane_geom_is_big_enough(&half_size_bottom_right_geom) && pane_geom_is_unoccupied_and_inside_viewport(&self.viewport, &half_size_bottom_right_geom, &pane_geoms) {
+            } else if pane_geom_is_big_enough(&half_size_bottom_right_geom)
+                && pane_geom_is_unoccupied_and_inside_viewport(
+                    &self.viewport,
+                    &half_size_bottom_right_geom,
+                    &pane_geoms,
+                )
+            {
                 return Some(half_size_bottom_right_geom);
             }
         }
@@ -1160,7 +1233,11 @@ fn pane_geom_is_big_enough(geom: &PaneGeom) -> bool {
     geom.rows.as_usize() >= MIN_TERMINAL_HEIGHT && geom.cols.as_usize() >= MIN_TERMINAL_WIDTH
 }
 
-fn pane_geom_is_unoccupied_and_inside_viewport(viewport: &Viewport, geom: &PaneGeom, existing_geoms: &[PaneGeom]) -> bool {
-    pane_geom_is_inside_viewport(viewport, geom) &&
-        !existing_geoms.iter().find(|p| *p == geom).is_some()
+fn pane_geom_is_unoccupied_and_inside_viewport(
+    viewport: &Viewport,
+    geom: &PaneGeom,
+    existing_geoms: &[PaneGeom],
+) -> bool {
+    pane_geom_is_inside_viewport(viewport, geom)
+        && !existing_geoms.iter().find(|p| *p == geom).is_some()
 }

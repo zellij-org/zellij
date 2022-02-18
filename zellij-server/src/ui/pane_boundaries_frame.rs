@@ -1,7 +1,7 @@
+use crate::output::CharacterChunk;
+use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
-use crate::panes::{TerminalCharacter, CharacterStyles, AnsiCode, EMPTY_TERMINAL_CHARACTER};
-use crate::output::CharacterChunk;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
 use zellij_utils::{envs::get_session_name, pane_size::Viewport};
 
@@ -14,8 +14,10 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             Some(palette_color) => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
-                styles.foreground(Some(AnsiCode::from(palette_color))).bold(Some(AnsiCode::On))
-            },
+                styles
+                    .foreground(Some(AnsiCode::from(palette_color)))
+                    .bold(Some(AnsiCode::On))
+            }
             None => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
@@ -25,7 +27,7 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
         let terminal_character = TerminalCharacter {
             character,
             styles,
-            width: character.width().unwrap_or(0)
+            width: character.width().unwrap_or(0),
         };
         colored_string.push(terminal_character);
     }
@@ -39,8 +41,10 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             Some(palette_color) => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
-                styles.background(Some(AnsiCode::from(palette_color))).bold(Some(AnsiCode::On))
-            },
+                styles
+                    .background(Some(AnsiCode::from(palette_color)))
+                    .bold(Some(AnsiCode::On))
+            }
             None => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
@@ -50,7 +54,7 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
         let terminal_character = TerminalCharacter {
             character,
             styles,
-            width: character.width().unwrap_or(0)
+            width: character.width().unwrap_or(0),
         };
         colored_string.push(terminal_character);
     }
@@ -102,7 +106,10 @@ impl PaneFrame {
         let color = client_id_to_colors(client_id, self.colors);
         background_color(" ", color.map(|c| c.0))
     }
-    fn render_title_right_side(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn render_title_right_side(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         // string and length because of color
         if self.scroll_position.0 > 0 || self.scroll_position.1 > 0 {
             let prefix = " SCROLL: ";
@@ -161,7 +168,10 @@ impl PaneFrame {
             None
         }
     }
-    fn render_my_and_others_focus(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn render_my_and_others_focus(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
         let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS AND:";
@@ -186,10 +196,7 @@ impl PaneFrame {
             ret.append(&mut full_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
-            Some((
-                ret,
-                full_indication_len + 4,
-            ))
+            Some((ret, full_indication_len + 4))
         } else if short_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
             let mut ret = vec![];
@@ -198,15 +205,15 @@ impl PaneFrame {
             ret.append(&mut short_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
-            Some((
-                ret,
-                short_indication_len + 4,
-            ))
+            Some((ret, short_indication_len + 4))
         } else {
             None
         }
     }
-    fn render_other_focused_users(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
+    fn render_other_focused_users(
+        &self,
+        max_length: usize,
+    ) -> Option<(Vec<TerminalCharacter>, usize)> {
         let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
         let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = if self.other_focused_clients.len() == 1 {
@@ -241,10 +248,7 @@ impl PaneFrame {
             ret.append(&mut full_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
-            Some((
-                ret,
-                full_indication_len + 4,
-            ))
+            Some((ret, full_indication_len + 4))
         } else if middle_indication_len + 4 <= max_length {
             // 2 for separators, 2 for padding
             let mut ret = vec![];
@@ -253,10 +257,7 @@ impl PaneFrame {
             ret.append(&mut middle_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
-            Some((
-                ret,
-                middle_indication_len + 4,
-            ))
+            Some((ret, middle_indication_len + 4))
         } else if short_indication_len + 3 <= max_length {
             // 2 for separators, 1 for padding
             let mut ret = vec![];
@@ -265,10 +266,7 @@ impl PaneFrame {
             ret.append(&mut short_indication);
             ret.push(EMPTY_TERMINAL_CHARACTER);
             ret.append(&mut right_separator);
-            Some((
-                ret,
-                short_indication_len + 3,
-            ))
+            Some((ret, short_indication_len + 3))
         } else {
             None
         }
@@ -325,29 +323,26 @@ impl PaneFrame {
                 }
             }
 
-            let (title_left_side, title_length) =
-                if first_part.width() + middle_truncated_sign.width() + second_part.width()
-                    < max_length
-                {
-                    // this means we lost 1 character when dividing the total length into halves
-                    (
-                        format!(
-                            "{}{}{}",
-                            first_part, middle_truncated_sign_long, second_part
-                        ),
-                        first_part.width() + middle_truncated_sign_long.width() + second_part.width()
-                    )
-
-                } else {
-                    (
-                        format!("{}{}{}", first_part, middle_truncated_sign, second_part),
-                        first_part.width() + middle_truncated_sign.width() + second_part.width()
-                    )
-                };
-            Some((
-                foreground_color(&title_left_side, self.color),
-                title_length,
-            ))
+            let (title_left_side, title_length) = if first_part.width()
+                + middle_truncated_sign.width()
+                + second_part.width()
+                < max_length
+            {
+                // this means we lost 1 character when dividing the total length into halves
+                (
+                    format!(
+                        "{}{}{}",
+                        first_part, middle_truncated_sign_long, second_part
+                    ),
+                    first_part.width() + middle_truncated_sign_long.width() + second_part.width(),
+                )
+            } else {
+                (
+                    format!("{}{}{}", first_part, middle_truncated_sign, second_part),
+                    first_part.width() + middle_truncated_sign.width() + second_part.width(),
+                )
+            };
+            Some((foreground_color(&title_left_side, self.color), title_length))
         }
     }
     fn three_part_title_line(
@@ -430,7 +425,11 @@ impl PaneFrame {
         }
         title_line
     }
-    fn middle_only_title_line(&self, mut middle: Vec<TerminalCharacter>, middle_len: &usize) -> Vec<TerminalCharacter> {
+    fn middle_only_title_line(
+        &self,
+        mut middle: Vec<TerminalCharacter>,
+        middle_len: &usize,
+    ) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut title_line = vec![];
         let middle_start_position = self.geom.x + (total_title_length / 2) - (*middle_len / 2) + 1;
@@ -477,7 +476,11 @@ impl PaneFrame {
         ret.append(&mut right_boundary);
         ret
     }
-    fn left_only_title_line(&self, mut left_side: Vec<TerminalCharacter>, left_side_len: &usize) ->  Vec<TerminalCharacter> {
+    fn left_only_title_line(
+        &self,
+        mut left_side: Vec<TerminalCharacter>,
+        left_side_len: &usize,
+    ) -> Vec<TerminalCharacter> {
         let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
         let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
@@ -506,7 +509,11 @@ impl PaneFrame {
         ret.append(&mut right_boundary);
         ret
     }
-    fn title_line_with_middle(&self, middle: Vec<TerminalCharacter>, middle_len: &usize) -> Vec<TerminalCharacter> {
+    fn title_line_with_middle(
+        &self,
+        middle: Vec<TerminalCharacter>,
+        middle_len: &usize,
+    ) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let length_of_each_side = total_title_length.saturating_sub(*middle_len + 2) / 2;
         let left_side = self.render_title_left_side(length_of_each_side);
@@ -584,7 +591,8 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(bottom_row, x, y));
             } else {
                 let boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
-                let boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
+                let boundary_character_right =
+                    foreground_color(boundary_type::VERTICAL, self.color);
 
                 let x = self.geom.x;
                 let y = self.geom.y + row;

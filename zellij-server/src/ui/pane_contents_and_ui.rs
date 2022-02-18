@@ -1,6 +1,6 @@
+use crate::output::Output;
 use crate::panes::PaneId;
 use crate::tab::Pane;
-use crate::output::Output;
 use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
@@ -47,7 +47,11 @@ impl<'a> PaneContentsAndUi<'a> {
     ) {
         if let Some((character_chunks, raw_vte_output)) = self.pane.render(None) {
             let clients: Vec<ClientId> = clients.collect();
-            self.output.add_character_chunks_to_multiple_clients(character_chunks, clients.iter().copied(), self.z_index);
+            self.output.add_character_chunks_to_multiple_clients(
+                character_chunks,
+                clients.iter().copied(),
+                self.z_index,
+            );
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.add_post_vte_instruction_to_multiple_clients(
                     clients.iter().copied(),
@@ -63,7 +67,8 @@ impl<'a> PaneContentsAndUi<'a> {
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
         if let Some((character_chunks, raw_vte_output)) = self.pane.render(Some(client_id)) {
-            self.output.add_character_chunks_to_client(client_id, character_chunks, self.z_index);
+            self.output
+                .add_character_chunks_to_client(client_id, character_chunks, self.z_index);
             if let Some(raw_vte_output) = raw_vte_output {
                 self.output.add_post_vte_instruction_to_client(
                     client_id,
@@ -148,10 +153,17 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
             }
         };
-        if let Some((frame_terminal_characters, vte_output)) = self.pane.render_frame(client_id, frame_params, client_mode) {
-            self.output.add_character_chunks_to_client(client_id ,frame_terminal_characters, self.z_index);
+        if let Some((frame_terminal_characters, vte_output)) =
+            self.pane.render_frame(client_id, frame_params, client_mode)
+        {
+            self.output.add_character_chunks_to_client(
+                client_id,
+                frame_terminal_characters,
+                self.z_index,
+            );
             if let Some(vte_output) = vte_output {
-                self.output.add_post_vte_instruction_to_client(client_id, &vte_output);
+                self.output
+                    .add_post_vte_instruction_to_client(client_id, &vte_output);
             }
         }
     }

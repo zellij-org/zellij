@@ -1,19 +1,17 @@
-use crate::panes::{AnsiCode, LinkHandler};
 use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{
-        CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
-    },
+    terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
-use std::rc::Rc;
-use std::cell::RefCell;
+use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
@@ -187,7 +185,10 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, _client_id: Option<ClientId>) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    fn render(
+        &mut self,
+        _client_id: Option<ClientId>,
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
@@ -196,12 +197,21 @@ impl Pane for TerminalPane {
             let mut character_chunks = self.grid.read_changes(content_x, content_y);
             for character_chunk in character_chunks.iter_mut() {
                 character_chunk.add_changed_colors(self.grid.changed_colors);
-                if self.grid.selection.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                if self
+                    .grid
+                    .selection
+                    .contains_row(character_chunk.y.saturating_sub(content_y))
+                {
                     let background_color = match self.colors.bg {
                         PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                         PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                     };
-                    character_chunk.add_selection_and_background(self.grid.selection, background_color, content_x, content_y);
+                    character_chunk.add_selection_and_background(
+                        self.grid.selection,
+                        background_color,
+                        content_x,
+                        content_y,
+                    );
                 }
             }
             if self.grid.ring_bell {

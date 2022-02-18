@@ -1,5 +1,5 @@
 use super::pane_resizer::PaneResizer;
-use crate::tab::{is_inside_viewport, MIN_TERMINAL_WIDTH, MIN_TERMINAL_HEIGHT};
+use crate::tab::{is_inside_viewport, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};

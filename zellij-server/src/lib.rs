@@ -1,7 +1,7 @@
 pub mod os_input_output;
+pub mod output;
 pub mod panes;
 pub mod tab;
-pub mod output;
 
 mod logging_pipe;
 mod pty;
@@ -497,8 +497,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
-                    for (client_id, client_render_instruction) in output.iter()
-                    {
+                    for (client_id, client_render_instruction) in output.iter() {
                         os_input.send_to_client(
                             *client_id,
                             ServerToClientMsg::Render(client_render_instruction.clone()),

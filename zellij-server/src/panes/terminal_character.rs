@@ -1,7 +1,7 @@
-use unicode_width::UnicodeWidthChar;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
+use unicode_width::UnicodeWidthChar;
 
 use zellij_utils::vte::ParamsIter;
 
@@ -710,7 +710,7 @@ impl TerminalCharacter {
         TerminalCharacter {
             character,
             styles: CharacterStyles::default(),
-            width: character.width().unwrap_or(0)
+            width: character.width().unwrap_or(0),
         }
     }
 }

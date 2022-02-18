@@ -1,8 +1,8 @@
 use zellij_utils::{pane_size::Viewport, zellij_tile};
 
-use crate::tab::Pane;
-use crate::panes::terminal_character::{TerminalCharacter, RESET_STYLES, EMPTY_TERMINAL_CHARACTER};
 use crate::output::CharacterChunk;
+use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, RESET_STYLES};
+use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
 use zellij_tile::data::PaletteColor;
@@ -52,7 +52,8 @@ impl BoundarySymbol {
             TerminalCharacter {
                 character,
                 width: 1,
-                styles: RESET_STYLES.foreground(self.color.map(|palette_color| palette_color.into())),
+                styles: RESET_STYLES
+                    .foreground(self.color.map(|palette_color| palette_color.into())),
             }
         }
     }
@@ -527,7 +528,11 @@ impl Boundaries {
     pub fn render(&self) -> Vec<CharacterChunk> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
-            character_chunks.push(CharacterChunk::new(vec![boundary_character.as_terminal_character()], coordinates.x, coordinates.y));
+            character_chunks.push(CharacterChunk::new(
+                vec![boundary_character.as_terminal_character()],
+                coordinates.x,
+                coordinates.y,
+            ));
         }
         character_chunks
     }

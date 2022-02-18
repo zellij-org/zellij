@@ -235,7 +235,10 @@ fn route_action(
         Action::ToggleFloatingPanes => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ToggleFloatingPanes(client_id, session.default_shell.clone()))
+                .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
+                    client_id,
+                    session.default_shell.clone(),
+                ))
                 .unwrap();
         }
         Action::PaneNameInput(c) => {

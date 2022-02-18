@@ -4,11 +4,9 @@ use crate::panes::selection::Selection;
 use crate::panes::Row;
 
 use crate::{
-    panes::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, LinkHandler},
+    panes::terminal_character::{AnsiCode, CharacterStyles},
+    panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
     ClientId,
-    panes::terminal_character::{
-        CharacterStyles, AnsiCode,
-    },
 };
 use std::cell::RefCell;
 use std::fmt::Write;
@@ -33,15 +31,17 @@ fn adjust_styles_for_possible_selection(
     chunk_selection_and_background_color: Option<(Selection, AnsiCode)>,
     character_styles: CharacterStyles,
     chunk_y: usize,
-    chunk_width: usize
+    chunk_width: usize,
 ) -> CharacterStyles {
-    chunk_selection_and_background_color.and_then(|(selection, background_color)| {
-        if selection.contains(chunk_y, chunk_width) {
-            Some(character_styles.background(Some(background_color)))
-        } else {
-            None
-        }
-    }).unwrap_or(character_styles)
+    chunk_selection_and_background_color
+        .and_then(|(selection, background_color)| {
+            if selection.contains(chunk_y, chunk_width) {
+                Some(character_styles.background(Some(background_color)))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(character_styles)
 }
 
 fn write_changed_styles(
@@ -49,20 +49,26 @@ fn write_changed_styles(
     current_character_styles: CharacterStyles,
     chunk_changed_colors: Option<[Option<AnsiCode>; 256]>,
     link_handler: Option<&std::cell::Ref<LinkHandler>>,
-    vte_output: &mut String
+    vte_output: &mut String,
 ) {
-    if let Some(new_styles) = character_styles.update_and_return_diff(&current_character_styles, chunk_changed_colors) {
+    if let Some(new_styles) =
+        character_styles.update_and_return_diff(&current_character_styles, chunk_changed_colors)
+    {
         // if let Some(osc8_link) = link_handler.as_ref().and_then(|l_h| l_h.borrow().output_osc8(new_styles.link_anchor)) {
-        if let Some(osc8_link) = link_handler.and_then(|l_h| l_h.output_osc8(new_styles.link_anchor)) {
+        if let Some(osc8_link) =
+            link_handler.and_then(|l_h| l_h.output_osc8(new_styles.link_anchor))
+        {
             write!(vte_output, "{}{}", new_styles, osc8_link).unwrap();
         } else {
             write!(vte_output, "{}", new_styles).unwrap();
         }
-
     }
 }
 
-fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handler: Option<&mut Rc<RefCell<LinkHandler>>>) -> String {
+fn serialize_character_chunks(
+    character_chunks: Vec<CharacterChunk>,
+    link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
+) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
@@ -76,14 +82,14 @@ fn serialize_character_chunks(character_chunks: Vec<CharacterChunk>, link_handle
                 chunk_selection_and_background_color,
                 t_character.styles,
                 character_chunk.y,
-                chunk_width
+                chunk_width,
             );
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
                 chunk_changed_colors,
                 link_handler.as_ref(),
-                &mut vte_output
+                &mut vte_output,
             );
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
@@ -97,7 +103,16 @@ type AbsoluteMiddleStart = usize;
 type AbsoluteMiddleEnd = usize;
 type PadLeftEndBy = usize;
 type PadRightStartBy = usize;
-fn adjust_middle_segment_for_wide_chars(middle_start: usize, middle_end: usize, terminal_characters: &[TerminalCharacter]) -> (AbsoluteMiddleStart, AbsoluteMiddleEnd, PadLeftEndBy, PadRightStartBy) {
+fn adjust_middle_segment_for_wide_chars(
+    middle_start: usize,
+    middle_end: usize,
+    terminal_characters: &[TerminalCharacter],
+) -> (
+    AbsoluteMiddleStart,
+    AbsoluteMiddleEnd,
+    PadLeftEndBy,
+    PadRightStartBy,
+) {
     let mut absolute_middle_start_index = None;
     let mut absolute_middle_end_index = None;
     let mut current_x = 0;
@@ -120,9 +135,13 @@ fn adjust_middle_segment_for_wide_chars(middle_start: usize, middle_end: usize, 
             }
         }
     }
-    (absolute_middle_start_index.unwrap(), absolute_middle_end_index.unwrap(), pad_left_end_by, pad_right_start_by)
+    (
+        absolute_middle_start_index.unwrap(),
+        absolute_middle_end_index.unwrap(),
+        pad_left_end_by,
+        pad_right_start_by,
+    )
 }
-
 
 #[derive(Clone, Debug, Default)]
 pub struct Output {
@@ -134,46 +153,84 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn add_clients(&mut self, client_ids: &HashSet<ClientId>, link_handler: Rc<RefCell<LinkHandler>>, floating_panes_stack: Option<FloatingPanesStack>) {
+    pub fn add_clients(
+        &mut self,
+        client_ids: &HashSet<ClientId>,
+        link_handler: Rc<RefCell<LinkHandler>>,
+        floating_panes_stack: Option<FloatingPanesStack>,
+    ) {
         self.link_handler = Some(link_handler);
         self.floating_panes_stack = floating_panes_stack;
         for client_id in client_ids {
-            self.client_character_chunks
-                .insert(*client_id, vec![]);
+            self.client_character_chunks.insert(*client_id, vec![]);
         }
     }
-    pub fn add_character_chunks_to_client(&mut self, client_id: ClientId, mut character_chunks: Vec<CharacterChunk>, z_index: Option<usize>) {
+    pub fn add_character_chunks_to_client(
+        &mut self,
+        client_id: ClientId,
+        mut character_chunks: Vec<CharacterChunk>,
+        z_index: Option<usize>,
+    ) {
         if let Some(client_character_chunks) = self.client_character_chunks.get_mut(&client_id) {
             if let Some(floating_panes_stack) = &self.floating_panes_stack {
-                let mut visible_character_chunks = floating_panes_stack.visible_character_chunks(character_chunks, z_index);
+                let mut visible_character_chunks =
+                    floating_panes_stack.visible_character_chunks(character_chunks, z_index);
                 client_character_chunks.append(&mut visible_character_chunks);
             } else {
                 client_character_chunks.append(&mut character_chunks);
             }
         }
     }
-    pub fn add_character_chunks_to_multiple_clients(&mut self, character_chunks: Vec<CharacterChunk>, client_ids: impl Iterator<Item = ClientId>, z_index: Option<usize>) {
+    pub fn add_character_chunks_to_multiple_clients(
+        &mut self,
+        character_chunks: Vec<CharacterChunk>,
+        client_ids: impl Iterator<Item = ClientId>,
+        z_index: Option<usize>,
+    ) {
         for client_id in client_ids {
-            self.add_character_chunks_to_client(client_id, character_chunks.clone(), z_index); // TODO: forgo clone by adding an all_clients thing?
+            self.add_character_chunks_to_client(client_id, character_chunks.clone(), z_index);
+            // TODO: forgo clone by adding an all_clients thing?
         }
     }
-    pub fn add_post_vte_instruction_to_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>, vte_instruction: &str) {
+    pub fn add_post_vte_instruction_to_multiple_clients(
+        &mut self,
+        client_ids: impl Iterator<Item = ClientId>,
+        vte_instruction: &str,
+    ) {
         for client_id in client_ids {
-            let entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
+            let entry = self
+                .post_vte_instructions
+                .entry(client_id)
+                .or_insert(vec![]);
             entry.push(String::from(vte_instruction));
         }
     }
-    pub fn add_pre_vte_instruction_to_multiple_clients(&mut self, client_ids: impl Iterator<Item = ClientId>, vte_instruction: &str) {
+    pub fn add_pre_vte_instruction_to_multiple_clients(
+        &mut self,
+        client_ids: impl Iterator<Item = ClientId>,
+        vte_instruction: &str,
+    ) {
         for client_id in client_ids {
             let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
             entry.push(String::from(vte_instruction));
         }
     }
-    pub fn add_post_vte_instruction_to_client(&mut self, client_id: ClientId, vte_instruction: &str) {
-        let entry = self.post_vte_instructions.entry(client_id).or_insert(vec![]);
+    pub fn add_post_vte_instruction_to_client(
+        &mut self,
+        client_id: ClientId,
+        vte_instruction: &str,
+    ) {
+        let entry = self
+            .post_vte_instructions
+            .entry(client_id)
+            .or_insert(vec![]);
         entry.push(String::from(vte_instruction));
     }
-    pub fn add_pre_vte_instruction_to_client(&mut self, client_id: ClientId, vte_instruction: &str) {
+    pub fn add_pre_vte_instruction_to_client(
+        &mut self,
+        client_id: ClientId,
+        vte_instruction: &str,
+    ) {
         let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
         entry.push(String::from(vte_instruction));
     }
@@ -184,17 +241,24 @@ impl Output {
             let mut client_serialized_render_instructions = String::new();
 
             // append pre-vte instructions for this client
-            if let Some(pre_vte_instructions_for_client) = self.pre_vte_instructions.remove(&client_id) {
+            if let Some(pre_vte_instructions_for_client) =
+                self.pre_vte_instructions.remove(&client_id)
+            {
                 for vte_instruction in pre_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
             }
 
             // append the actual vte
-            client_serialized_render_instructions.push_str(&serialize_character_chunks(client_character_chunks, self.link_handler.as_mut())); // TODO: less allocations?
+            client_serialized_render_instructions.push_str(&serialize_character_chunks(
+                client_character_chunks,
+                self.link_handler.as_mut(),
+            )); // TODO: less allocations?
 
             // append post-vte instructions for this client
-            if let Some(post_vte_instructions_for_client) = self.post_vte_instructions.remove(&client_id) {
+            if let Some(post_vte_instructions_for_client) =
+                self.post_vte_instructions.remove(&client_id)
+            {
                 for vte_instruction in post_vte_instructions_for_client {
                     client_serialized_render_instructions.push_str(&vte_instruction);
                 }
@@ -216,7 +280,11 @@ pub struct FloatingPanesStack {
 }
 
 impl FloatingPanesStack {
-    pub fn visible_character_chunks(&self, mut character_chunks: Vec<CharacterChunk>, z_index: Option<usize>) -> Vec<CharacterChunk> {
+    pub fn visible_character_chunks(
+        &self,
+        mut character_chunks: Vec<CharacterChunk>,
+        z_index: Option<usize>,
+    ) -> Vec<CharacterChunk> {
         let z_index = z_index.unwrap_or(0);
         let mut chunks_to_check: Vec<CharacterChunk> = character_chunks.drain(..).collect();
         let mut visible_chunks = vec![];
@@ -237,7 +305,7 @@ impl FloatingPanesStack {
                         }
                     }
                     visible_chunks.push(c_chunk);
-                },
+                }
                 None => {
                     break 'chunk_loop;
                 }
@@ -245,7 +313,11 @@ impl FloatingPanesStack {
         }
         visible_chunks
     }
-    fn remove_covered_parts(&self, pane_geom: &PaneGeom, c_chunk: &mut CharacterChunk) -> Option<CharacterChunk> {
+    fn remove_covered_parts(
+        &self,
+        pane_geom: &PaneGeom,
+        c_chunk: &mut CharacterChunk,
+    ) -> Option<CharacterChunk> {
         let pane_top_edge = pane_geom.y;
         let pane_left_edge = pane_geom.x;
         let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
@@ -257,22 +329,32 @@ impl FloatingPanesStack {
                 // pane covers chunk completely
                 drop(c_chunk.terminal_characters.drain(..));
                 return None;
-            } else if pane_right_edge > c_chunk_left_side && pane_right_edge < c_chunk_right_side && pane_left_edge <= c_chunk_left_side {
+            } else if pane_right_edge > c_chunk_left_side
+                && pane_right_edge < c_chunk_right_side
+                && pane_left_edge <= c_chunk_left_side
+            {
                 // pane covers chunk partially to the left
                 let covered_part = c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side);
                 drop(covered_part);
                 c_chunk.x = pane_right_edge + 1;
                 return None;
-            } else if pane_left_edge > c_chunk_left_side && pane_left_edge < c_chunk_right_side && pane_right_edge >= c_chunk_right_side {
+            } else if pane_left_edge > c_chunk_left_side
+                && pane_left_edge < c_chunk_right_side
+                && pane_right_edge >= c_chunk_right_side
+            {
                 // pane covers chunk partially to the right
                 c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
                 return None;
             } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
                 // pane covers chunk middle
-                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(pane_left_edge - c_chunk_left_side, (pane_right_edge + 1) - c_chunk_left_side);
+                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(
+                    pane_left_edge - c_chunk_left_side,
+                    (pane_right_edge + 1) - c_chunk_left_side,
+                );
                 let left_chunk_x = c_chunk_left_side;
                 let right_chunk_x = pane_right_edge + 1;
-                let left_chunk = CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
+                let left_chunk =
+                    CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
                 c_chunk.x = right_chunk_x;
                 c_chunk.terminal_characters = right_chunk_characters;
                 return Some(left_chunk);
@@ -300,8 +382,15 @@ impl CharacterChunk {
             ..Default::default()
         }
     }
-    pub fn add_selection_and_background(&mut self, selection: Selection, background_color: AnsiCode, offset_x: usize, offset_y: usize) {
-        self.selection_and_background_color = Some((selection.offset(offset_x, offset_y), background_color));
+    pub fn add_selection_and_background(
+        &mut self,
+        selection: Selection,
+        background_color: AnsiCode,
+        offset_x: usize,
+        offset_y: usize,
+    ) {
+        self.selection_and_background_color =
+            Some((selection.offset(offset_x, offset_y), background_color));
     }
     pub fn selection_and_background_color(&self) -> Option<(Selection, AnsiCode)> {
         self.selection_and_background_color
@@ -319,7 +408,7 @@ impl CharacterChunk {
         }
         width
     }
-    pub fn drain_by_width(&mut self, x: usize) -> impl Iterator<Item=TerminalCharacter> {
+    pub fn drain_by_width(&mut self, x: usize) -> impl Iterator<Item = TerminalCharacter> {
         let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
         loop {
@@ -348,16 +437,29 @@ impl CharacterChunk {
         let part_to_retain = self.drain_by_width(x);
         self.terminal_characters = part_to_retain.collect();
     }
-    pub fn cut_middle_out(&mut self, middle_start: usize, middle_end: usize) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
+    pub fn cut_middle_out(
+        &mut self,
+        middle_start: usize,
+        middle_end: usize,
+    ) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
         let (
             absolute_middle_start_index,
             absolute_middle_end_index,
             pad_left_end_by,
-            pad_right_start_by
-        ) = adjust_middle_segment_for_wide_chars(middle_start, middle_end, &self.terminal_characters);
-        let mut terminal_characters: Vec<TerminalCharacter> = self.terminal_characters.drain(..).collect();
-        let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters.drain(absolute_middle_end_index..).collect();
-        let mut characters_on_the_left: Vec<TerminalCharacter>  = terminal_characters.drain(..absolute_middle_start_index).collect();
+            pad_right_start_by,
+        ) = adjust_middle_segment_for_wide_chars(
+            middle_start,
+            middle_end,
+            &self.terminal_characters,
+        );
+        let mut terminal_characters: Vec<TerminalCharacter> =
+            self.terminal_characters.drain(..).collect();
+        let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters
+            .drain(absolute_middle_end_index..)
+            .collect();
+        let mut characters_on_the_left: Vec<TerminalCharacter> = terminal_characters
+            .drain(..absolute_middle_start_index)
+            .collect();
         if pad_left_end_by > 0 {
             for _ in 0..pad_left_end_by {
                 characters_on_the_left.push(EMPTY_TERMINAL_CHARACTER);

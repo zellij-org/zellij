@@ -8,13 +8,15 @@ use std::str;
 
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::Size;
-use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile};
+use zellij_utils::{
+    input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
+};
 
 use crate::{
+    output::Output,
     panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
-    output::Output,
     thread_bus::Bus,
     ui::overlay::{Overlay, OverlayWindow, Overlayable},
     wasm_vm::PluginInstruction,
