@@ -5,7 +5,6 @@ use crate::panes::terminal_character::{TerminalCharacter, RESET_STYLES, EMPTY_TE
 use crate::output::CharacterChunk;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
-use std::fmt::Write;
 use zellij_tile::data::PaletteColor;
 use zellij_utils::shared::colors;
 

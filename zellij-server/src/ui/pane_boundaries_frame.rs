@@ -509,8 +509,8 @@ impl PaneFrame {
     fn title_line_with_middle(&self, middle: Vec<TerminalCharacter>, middle_len: &usize) -> Vec<TerminalCharacter> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let length_of_each_side = total_title_length.saturating_sub(*middle_len + 2) / 2;
-        let mut left_side = self.render_title_left_side(length_of_each_side);
-        let mut right_side = self.render_title_right_side(length_of_each_side);
+        let left_side = self.render_title_left_side(length_of_each_side);
+        let right_side = self.render_title_right_side(length_of_each_side);
 
         match (left_side, right_side) {
             (Some((left_side, left_side_len)), Some((right_side, right_side_len))) => self
@@ -583,8 +583,8 @@ impl PaneFrame {
                 let y = self.geom.y + row;
                 character_chunks.push(CharacterChunk::new(bottom_row, x, y));
             } else {
-                let mut boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
-                let mut boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
+                let boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
+                let boundary_character_right = foreground_color(boundary_type::VERTICAL, self.color);
 
                 let x = self.geom.x;
                 let y = self.geom.y + row;

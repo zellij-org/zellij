@@ -24,7 +24,6 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
-        options::Options,
     },
     logging::debug_to_file,
 };

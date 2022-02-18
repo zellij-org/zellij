@@ -3,7 +3,7 @@ use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
     terminal_character::{
-        CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
+        CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
     },
 };
 use std::rc::Rc;
@@ -51,7 +51,6 @@ pub struct TerminalPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
-    link_handler: Rc<RefCell<LinkHandler>>,
 }
 
 impl Pane for TerminalPane {
@@ -191,7 +190,6 @@ impl Pane for TerminalPane {
     fn render(&mut self, _client_id: Option<ClientId>) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
-            let mut character_styles = CharacterStyles::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
 
@@ -390,7 +388,7 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+    fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
     }
@@ -474,7 +472,6 @@ impl TerminalPane {
             pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
-            link_handler,
         }
     }
     pub fn get_x(&self) -> usize {
