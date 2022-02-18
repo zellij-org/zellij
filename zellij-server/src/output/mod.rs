@@ -201,7 +201,7 @@ impl Output {
             let entry = self
                 .post_vte_instructions
                 .entry(client_id)
-                .or_insert(vec![]);
+                .or_insert_with(Vec::new);
             entry.push(String::from(vte_instruction));
         }
     }
@@ -211,7 +211,7 @@ impl Output {
         vte_instruction: &str,
     ) {
         for client_id in client_ids {
-            let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
+            let entry = self.pre_vte_instructions.entry(client_id).or_insert_with(Vec::new);
             entry.push(String::from(vte_instruction));
         }
     }
@@ -223,7 +223,7 @@ impl Output {
         let entry = self
             .post_vte_instructions
             .entry(client_id)
-            .or_insert(vec![]);
+            .or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
     pub fn add_pre_vte_instruction_to_client(
@@ -231,7 +231,7 @@ impl Output {
         client_id: ClientId,
         vte_instruction: &str,
     ) {
-        let entry = self.pre_vte_instructions.entry(client_id).or_insert(vec![]);
+        let entry = self.pre_vte_instructions.entry(client_id).or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
     pub fn serialize(&mut self) -> HashMap<ClientId, String> {
@@ -461,9 +461,7 @@ impl CharacterChunk {
             .drain(..absolute_middle_start_index)
             .collect();
         if pad_left_end_by > 0 {
-            for _ in 0..pad_left_end_by {
-                characters_on_the_left.push(EMPTY_TERMINAL_CHARACTER);
-            }
+            characters_on_the_left.resize(pad_left_end_by, EMPTY_TERMINAL_CHARACTER);
         }
         if pad_right_start_by > 0 {
             for _ in 0..pad_right_start_by {
@@ -516,7 +514,7 @@ impl OutputBuffer {
             for line_index in 0..viewport_height {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
-                let x = 0 + x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
+                let x = x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
                 let y = line_index + y_offset;
                 changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
             }
@@ -529,7 +527,7 @@ impl OutputBuffer {
             for line_index in line_changes {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
-                let x = 0 + x_offset;
+                let x = x_offset;
                 let y = line_index + y_offset;
                 changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
             }

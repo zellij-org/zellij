@@ -2568,12 +2568,10 @@ impl Tab {
                 let relative_position = active_pane.relative_position(position_on_screen);
                 active_pane.update_selection(&relative_position, client_id);
             });
-        } else {
-            if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-                if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
-                    let relative_position = active_pane.relative_position(position_on_screen);
-                    active_pane.update_selection(&relative_position, client_id);
-                }
+        } else if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
+            if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
+                let relative_position = active_pane.relative_position(position_on_screen);
+                active_pane.update_selection(&relative_position, client_id);
             }
         }
     }

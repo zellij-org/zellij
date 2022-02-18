@@ -41,6 +41,7 @@ pub struct FloatingPanes {
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
 }
 
+#[allow(clippy::borrowed_box)]
 impl FloatingPanes {
     pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>) -> Self {
         FloatingPanes {
@@ -149,6 +150,7 @@ impl FloatingPanes {
             resize_pty!(pane, os_api);
         }
     }
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         connected_clients_in_app: &Rc<RefCell<HashSet<ClientId>>>,
@@ -159,8 +161,6 @@ impl FloatingPanes {
         output: &mut Output,
         colors: Palette,
     ) {
-        // TODO: move args to state?
-
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             self.z_indices
@@ -225,14 +225,14 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_left(&active_floating_pane_id);
+            floating_pane_grid.resize_pane_left(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     pub fn resize_active_pane_right(
         &mut self,
@@ -256,7 +256,7 @@ impl FloatingPanes {
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     pub fn resize_active_pane_down(
         &mut self,
