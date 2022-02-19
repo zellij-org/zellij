@@ -1,0 +1,10 @@
+Welcome to fish, the friendly interactive shell
+Type `help` for instructions on how to use fish
+[?2004h]0;fish /home/thomas/Projects/zellij[30m(B[m[K[J[K
+[1;36mzellij[0m on [1;35m main[0m [1;31m[$!?][0m is [1;38;5;208m📦 v0.25.0[0m via [1;31m🦀 v1.58.1 [0m
+[1;32m❯[0m [K[C[C[C[Cc[J[3C[38;2;255;0;0mc[3C[30m(B[m[38;2;85;85;85margo make run --debug[3C[30m(B[m[38;2;255;0;0ma[38;2;85;85;85mrgo make run --debug[4C[30m(B[m[38;2;255;0;0mt[30m(B[m[K[5C[38;2;0;95;215mcat[5C[30m(B[m[38;2;85;85;85m lorem.txt[5C[30m(B[m[38;2;0;95;215m lorem.txt[15C[30m(B[m[10D [38;2;0;175;255m[4mlorem.txt[15C[30m(B[m[15C
+[30m(B[m[?2004l]0;cat lorem.txt /home/thomas/Projects/zellij[30m(B[mLorem ipsum dolor sit amet,                                                                                                                          consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+[2m⏎(B[m                                                                        ⏎ [K[?2004h]0;fish /home/thomas/Projects/zellij[30m(B[m[K[J[K
+[1;36mzellij[0m on [1;35m main[0m [1;31m[$!?][0m is [1;38;5;208m📦 v0.25.0[0m via [1;31m🦀 v1.58.1 [0m
+[1;32m❯[0m [K[C[C
+[30m(B[m[30m(B[m[?2004l
