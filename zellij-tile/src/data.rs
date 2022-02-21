@@ -120,6 +120,9 @@ pub enum InputMode {
     /// `Prompt` mode allows interacting with active prompts.
     #[serde(alias = "prompt")]
     Prompt,
+    /// `Tmux` mode allows for basic tmux keybindings functionality
+    #[serde(alias = "tmux")]
+    Tmux,
 }
 
 impl Default for InputMode {
@@ -164,6 +167,7 @@ impl FromStr for InputMode {
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),
+            "tmux" => Ok(InputMode::Tmux),
             "prompt" => Ok(InputMode::Prompt),
             "renamepane" => Ok(InputMode::RenamePane),
             e => Err(e.to_string().into()),
