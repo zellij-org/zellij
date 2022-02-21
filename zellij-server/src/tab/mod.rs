@@ -1324,11 +1324,13 @@ impl Tab {
         all_terminals.next().is_some()
     }
     fn next_active_pane(&self, panes: &[PaneId]) -> Option<PaneId> {
-        panes
+        let mut panes: Vec<_> = panes
             .iter()
-            .rev()
-            .find(|pid| self.panes.get(pid).unwrap().selectable())
-            .copied()
+            .map(|p_id| self.panes.get(p_id).unwrap())
+            .collect();
+        panes.sort_by(|a, b| b.active_at().cmp(&a.active_at()));
+
+        panes.iter().find(|pane| pane.selectable()).map(|p| p.pid())
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
         let mut pane_grid = TiledPaneGrid::new(
@@ -1511,6 +1513,11 @@ impl Tab {
             }
         }
     }
+    fn set_pane_active_at(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            pane.set_active_at(Instant::now());
+        }
+    }
 
     pub fn move_focus(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
@@ -1530,6 +1537,7 @@ impl Tab {
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
         }
+        self.set_pane_active_at(next_active_pane_id);
     }
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
@@ -1549,6 +1557,7 @@ impl Tab {
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
         }
+        self.set_pane_active_at(next_active_pane_id);
     }
     pub fn focus_previous_pane(&mut self, client_id: ClientId) {
         if !self.has_selectable_panes() {
@@ -1568,6 +1577,7 @@ impl Tab {
         for client_id in connected_clients {
             self.active_panes.insert(client_id, next_active_pane_id);
         }
+        self.set_pane_active_at(next_active_pane_id);
     }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
@@ -1619,6 +1629,7 @@ impl Tab {
                         } else {
                             self.active_panes.insert(client_id, p);
                         }
+                        self.set_pane_active_at(p);
 
                         return true;
                     }
@@ -1634,6 +1645,7 @@ impl Tab {
                     for client_id in connected_clients {
                         self.active_panes.insert(client_id, updated_active_pane);
                     }
+                    self.set_pane_active_at(updated_active_pane);
                 }
                 None => {
                     // TODO: can this happen?
@@ -1697,8 +1709,10 @@ impl Tab {
                         for client_id in connected_clients {
                             self.active_panes.insert(client_id, updated_active_pane);
                         }
+                        self.set_pane_active_at(updated_active_pane);
                     } else {
                         self.active_panes.insert(client_id, updated_active_pane);
+                        self.set_pane_active_at(updated_active_pane);
                     }
                 }
                 None => {
@@ -1761,8 +1775,10 @@ impl Tab {
                         for client_id in connected_clients {
                             self.active_panes.insert(client_id, updated_active_pane);
                         }
+                        self.set_pane_active_at(updated_active_pane);
                     } else {
                         self.active_panes.insert(client_id, updated_active_pane);
+                        self.set_pane_active_at(updated_active_pane);
                     }
                 }
                 None => {
@@ -1820,6 +1836,7 @@ impl Tab {
                         } else {
                             self.active_panes.insert(client_id, p);
                         }
+                        self.set_pane_active_at(p);
                         return true;
                     }
                     None => Some(active_pane_id),
@@ -1836,8 +1853,10 @@ impl Tab {
                         for client_id in connected_clients {
                             self.active_panes.insert(client_id, updated_active_pane);
                         }
+                        self.set_pane_active_at(updated_active_pane);
                     } else {
                         self.active_panes.insert(client_id, updated_active_pane);
+                        self.set_pane_active_at(updated_active_pane);
                     }
                 }
                 None => {
@@ -2468,6 +2487,7 @@ impl Tab {
                 for client_id in connected_clients {
                     self.floating_panes.focus_pane(clicked_pane, client_id);
                 }
+                self.set_pane_active_at(clicked_pane);
                 return;
             }
         }
@@ -2482,6 +2502,7 @@ impl Tab {
             } else {
                 self.active_panes.insert(client_id, clicked_pane);
             }
+            self.set_pane_active_at(clicked_pane);
             if self.floating_panes.panes_are_visible() {
                 self.floating_panes.toggle_show_panes(false);
                 self.set_force_render();
