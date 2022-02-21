@@ -13,6 +13,7 @@ use crate::{
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
+use std::time::Instant;
 use zellij_tile::data::{ModeInfo, Palette};
 use zellij_utils::pane_size::{Offset, PaneGeom, Size, Viewport};
 
@@ -354,6 +355,11 @@ impl FloatingPanes {
         }
         return false;
     }
+    fn set_pane_active_at(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self.panes.get_mut(&pane_id) {
+            pane.set_active_at(Instant::now());
+        }
+    }
     pub fn move_focus_left(
         &mut self,
         client_id: ClientId,
@@ -398,6 +404,7 @@ impl FloatingPanes {
                     for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
+                    self.set_pane_active_at(p);
 
                     self.set_force_render();
                     return true;
@@ -413,6 +420,7 @@ impl FloatingPanes {
                 for client_id in connected_clients {
                     self.focus_pane(updated_active_pane, client_id);
                 }
+                self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
             }
             None => {
@@ -468,6 +476,7 @@ impl FloatingPanes {
                         self.focus_pane(p, client_id);
                     }
 
+                    self.set_pane_active_at(p);
                     self.set_force_render();
                     return true;
                 }
@@ -482,6 +491,7 @@ impl FloatingPanes {
                 for client_id in connected_clients {
                     self.focus_pane(updated_active_pane, client_id);
                 }
+                self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
             }
             None => {
@@ -537,6 +547,7 @@ impl FloatingPanes {
                     }
 
                     self.set_force_render();
+                    self.set_pane_active_at(p);
                     return true;
                 }
                 None => Some(active_pane_id),
@@ -550,6 +561,7 @@ impl FloatingPanes {
                 for client_id in connected_clients {
                     self.focus_pane(updated_active_pane, client_id);
                 }
+                self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
             }
             None => {
@@ -603,6 +615,7 @@ impl FloatingPanes {
                     for client_id in connected_clients {
                         self.focus_pane(p, client_id);
                     }
+                    self.set_pane_active_at(p);
 
                     self.set_force_render();
                     return true;
@@ -618,6 +631,7 @@ impl FloatingPanes {
                 for client_id in connected_clients {
                     self.focus_pane(updated_active_pane, client_id);
                 }
+                self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
             }
             None => {
@@ -709,6 +723,7 @@ impl FloatingPanes {
         self.active_panes.insert(client_id, pane_id);
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
+        self.set_pane_active_at(pane_id);
         self.set_force_render();
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
