@@ -1,7 +1,6 @@
 use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
-use std::unimplemented;
 
 use crate::output::CharacterChunk;
 use crate::panes::PaneId;
@@ -106,13 +105,14 @@ impl Pane for PluginPane {
         self.should_render = true;
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {
-        unimplemented!()
+        // noop
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
     fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
-        unimplemented!()
+        // noop
+        vec![]
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
