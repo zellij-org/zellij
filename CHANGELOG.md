@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: bump up internal `autocfg` dependency to `1.1.0` (https://github.com/zellij-org/zellij/pull/1071)
 * Feature: add tmux mode (https://github.com/zellij-org/zellij/pull/1073)
 * Fix: improve copy of wrapped lines (https://github.com/zellij-org/zellij/pull/1069)
+* Fix: prefer last active pane when changing focus (https://github.com/zellij-org/zellij/pull/1076)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
