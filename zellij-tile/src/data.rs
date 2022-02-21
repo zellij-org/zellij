@@ -120,7 +120,7 @@ pub enum InputMode {
     /// `Prompt` mode allows interacting with active prompts.
     #[serde(alias = "prompt")]
     Prompt,
-    /// `Tmux` mode supports basic tmux keybindings
+    /// `Tmux` mode allows for basic tmux keybindings functionality
     #[serde(alias = "tmux")]
     Tmux,
 }

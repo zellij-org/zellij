@@ -329,7 +329,7 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn clear_scroll(&mut self) {
-        unimplemented!();
+        // noop
     }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         self.send_plugin_instructions

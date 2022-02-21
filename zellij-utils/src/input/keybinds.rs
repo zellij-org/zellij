@@ -199,10 +199,6 @@ impl Keybinds {
                 .0
                 .get(mode)
                 .unwrap_or({
-                    log::warn!(
-                        "The following mode has no action associated with it: {:?}",
-                        mode
-                    );
                     // create a dummy mode to recover from
                     &ModeKeybinds::new()
                 })
