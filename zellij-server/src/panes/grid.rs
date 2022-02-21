@@ -1291,27 +1291,27 @@ impl Grid {
         self.preceding_char = Some(terminal_character);
     }
     pub fn start_selection(&mut self, start: &Position) {
-        let old_selection = self.selection.clone();
+        let old_selection = self.selection;
         self.selection.start(*start);
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
     pub fn update_selection(&mut self, to: &Position) {
-        let old_selection = self.selection.clone();
+        let old_selection = self.selection;
         self.selection.to(*to);
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
 
     pub fn end_selection(&mut self, end: Option<&Position>) {
-        let old_selection = self.selection.clone();
+        let old_selection = self.selection;
         self.selection.end(end);
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
 
     pub fn reset_selection(&mut self) {
-        let old_selection = self.selection.clone();
+        let old_selection = self.selection;
         self.selection.reset();
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
@@ -1366,24 +1366,30 @@ impl Grid {
                 continue;
             };
 
-            let excess_width = row.excess_width();
-            let mut line: Vec<TerminalCharacter> = row.columns.iter().copied().collect();
-            // pad line
-            line.resize(
-                self.width.saturating_sub(excess_width),
-                EMPTY_TERMINAL_CHARACTER,
-            );
-
             let mut terminal_col = 0;
-            for terminal_character in line {
+            for terminal_character in &row.columns {
                 if (start_column..end_column).contains(&terminal_col) {
                     line_selection.push(terminal_character.character);
                 }
 
                 terminal_col += terminal_character.width;
             }
-            selection.push(String::from(line_selection.trim_end()));
+
+            if row.is_canonical {
+                selection.push(line_selection);
+            } else {
+                // rejoin wrapped lines if possible
+                match selection.last_mut() {
+                    Some(previous_line) => previous_line.push_str(&line_selection),
+                    None => selection.push(line_selection),
+                }
+            }
         }
+
+        // TODO: distinguish whitespace that was output explicitly vs implicitly (e.g add_newline)
+        // for example: echo "     " vs empty lines
+        // for now trim after building the selection to handle whitespace in wrapped lines
+        let selection: Vec<_> = selection.iter().map(|l| l.trim_end()).collect();
 
         Some(selection.join("\n"))
     }

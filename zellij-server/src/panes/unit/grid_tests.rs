@@ -860,6 +860,30 @@ fn copy_selected_text_from_viewport() {
 }
 
 #[test]
+fn copy_wrapped_selected_text_from_viewport() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        22,
+        73,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+    );
+    let fixture_name = "grid_copy_wrapped";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    grid.start_selection(&Position::new(5, 0));
+    grid.end_selection(Some(&Position::new(8, 42)));
+    let text = grid.get_selected_text();
+    assert_eq!(
+        text.unwrap(),
+        "Lorem ipsum dolor sit amet,                                                                                                                          consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+    );
+}
+
+#[test]
 fn copy_selected_text_from_lines_above() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = Grid::new(
