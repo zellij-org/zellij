@@ -1324,13 +1324,13 @@ impl Tab {
         all_terminals.next().is_some()
     }
     fn next_active_pane(&self, panes: &[PaneId]) -> Option<PaneId> {
-        let mut panes: Vec<_> = panes.iter().map(|p_id| self.panes.get(p_id).unwrap()).collect();
+        let mut panes: Vec<_> = panes
+            .iter()
+            .map(|p_id| self.panes.get(p_id).unwrap())
+            .collect();
         panes.sort_by(|a, b| b.active_at().cmp(&a.active_at()));
 
-        panes
-            .iter()
-            .find(|pane| pane.selectable())
-            .map(|p| p.pid())
+        panes.iter().find(|pane| pane.selectable()).map(|p| p.pid())
     }
     pub fn relayout_tab(&mut self, direction: Direction) {
         let mut pane_grid = TiledPaneGrid::new(
