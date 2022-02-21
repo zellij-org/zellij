@@ -230,6 +230,7 @@ pub struct TabInfo {
     pub panes_to_hide: usize,
     pub is_fullscreen_active: bool,
     pub is_sync_panes_active: bool,
+    pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
 }
 
