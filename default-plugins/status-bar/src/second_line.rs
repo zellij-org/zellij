@@ -586,8 +586,7 @@ pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let floating_panes = "FLOATING PANES VISIBLE";
 
-    let len = locked_text.chars().count()
-        + floating_panes.chars().count();
+    let len = locked_text.chars().count() + floating_panes.chars().count();
     LinePart {
         part: format!(
             "{}{}{}{}",
