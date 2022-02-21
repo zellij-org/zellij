@@ -396,6 +396,57 @@ pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> Line
     }
 }
 
+pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let green_color = match palette.green {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let floating_panes = "FLOATING PANES VISIBLE";
+    let press = "Press ";
+    let ctrl = "Ctrl-p ";
+    let plus = "+ ";
+    let p_left_separator = "<";
+    let p = "w";
+    let p_right_separator = "> ";
+    let to_hide = "to hide.";
+
+    let len = floating_panes.chars().count()
+        + press.chars().count()
+        + ctrl.chars().count()
+        + plus.chars().count()
+        + p_left_separator.chars().count()
+        + p.chars().count()
+        + p_right_separator.chars().count()
+        + to_hide.chars().count()
+        + 5; // 3 for ():'s around floating_panes, 2 for the space
+    LinePart {
+        part: format!(
+            "{}{}{}{}{}{}{}{}{}{}",
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(floating_panes),
+            shortcut_right_separator,
+            Style::new().fg(white_color).bold().paint(press),
+            Style::new().fg(green_color).bold().paint(ctrl),
+            Style::new().fg(white_color).bold().paint(plus),
+            Style::new().fg(white_color).bold().paint(p_left_separator),
+            Style::new().fg(green_color).bold().paint(p),
+            Style::new().fg(white_color).bold().paint(p_right_separator),
+            Style::new().fg(white_color).bold().paint(to_hide),
+        ),
+        len,
+    }
+}
+
 pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
     let white_color = match help.palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
@@ -516,6 +567,34 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) 
             Style::new().fg(white_color).bold().paint(puls),
             Style::new().fg(green_color).bold().paint(panes),
             Style::new().fg(white_color).bold().paint(hide)
+        ),
+        len,
+    }
+}
+
+pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint(")");
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let floating_panes = "FLOATING PANES VISIBLE";
+
+    let len = locked_text.chars().count()
+        + floating_panes.chars().count();
+    LinePart {
+        part: format!(
+            "{}{}{}{}",
+            Style::new().fg(white_color).bold().paint(locked_text),
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(floating_panes),
+            shortcut_right_separator,
         ),
         len,
     }

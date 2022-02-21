@@ -1086,6 +1086,9 @@ impl Tab {
     pub fn is_fullscreen_active(&self) -> bool {
         self.fullscreen_is_active
     }
+    pub fn are_floating_panes_visible(&self) -> bool {
+        self.floating_panes.panes_are_visible()
+    }
     pub fn toggle_fullscreen_is_active(&mut self) {
         self.fullscreen_is_active = !self.fullscreen_is_active;
     }

@@ -605,6 +605,7 @@ impl Screen {
                     panes_to_hide: tab.panes_to_hide.len(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
+                    are_floating_panes_visible: tab.are_floating_panes_visible(),
                     other_focused_clients,
                 });
             }
@@ -768,6 +769,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
                 screen.render();
             }
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
@@ -780,6 +782,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
                 screen.render();
             }
             ScreenInstruction::HorizontalSplit(pid, client_id) => {
