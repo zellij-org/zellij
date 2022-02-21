@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: add `copy-clipboard` option (https://github.com/zellij-org/zellij/pull/1022)
 * Fix: update the confusing tips on `RenamePane` (https://github.com/zellij-org/zellij/pull/1045)
 * Feature: add floating panes (https://github.com/zellij-org/zellij/pull/1066)
+* Feature: bump up internal `autocfg` dependency to `1.1.0` (https://github.com/zellij-org/zellij/pull/1071)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)
