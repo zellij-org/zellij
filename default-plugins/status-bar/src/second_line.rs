@@ -302,9 +302,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
                 LinePart::default()
             }
         }
-        InputMode::Tmux => {
-            best_effort_tmux_shortcut_list(help, max_len)
-        }
+        InputMode::Tmux => best_effort_tmux_shortcut_list(help, max_len),
         InputMode::RenamePane => {
             best_effort_shortcut_list_nonstandard_mode(select_pane_shortcut)(help, max_len)
         }
@@ -413,8 +411,11 @@ pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
     let tmux_mode_text = "TMUX MODE";
     let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
     let line_part = LinePart {
-        part: format!("{}{}{}", shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator),
-        len: tmux_mode_text.chars().count() + 5 // 2 for the separators, 3 for the colon and following space
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
     };
     line_part
 }
@@ -434,10 +435,13 @@ pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
     let tmux_mode_text = "TMUX MODE";
     let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
     let mut line_part = LinePart {
-        part: format!("{}{}{}", shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator),
-        len: tmux_mode_text.chars().count() + 5 // 2 for the separators, 3 for the colon and following space
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
     };
-    
+
     for (i, (letter, description)) in help.keybinds.iter().enumerate() {
         let shortcut = full_length_shortcut(i == 0, letter, description, help.palette);
         line_part.len += shortcut.len;
@@ -461,10 +465,13 @@ pub fn short_tmux_mode_indication(help: &ModeInfo) -> LinePart {
     let tmux_mode_text = "TMUX MODE";
     let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
     let mut line_part = LinePart {
-        part: format!("{}{}{}", shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator),
-        len: tmux_mode_text.chars().count() + 5 // 2 for the separators, 3 for the colon and following space
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
     };
-    
+
     for (i, (letter, description)) in help.keybinds.iter().enumerate() {
         let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
         line_part.len += shortcut.len;
