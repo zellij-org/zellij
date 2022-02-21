@@ -19,10 +19,12 @@ pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
 pub const MOVE_FOCUS_RIGHT_IN_NORMAL_MODE: [u8; 2] = [27, 108]; // alt-l
 
 pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
+pub const TMUX_MODE: [u8; 1] = [2]; // ctrl-b
 pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
 pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
 pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
 pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
+pub const SPLIT_RIGHT_IN_TMUX_MODE: [u8; 1] = [37]; // %
 pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
 pub const TOGGLE_FLOATING_PANES: [u8; 1] = [119]; // w
 pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
@@ -1734,6 +1736,53 @@ pub fn focus_tab_with_layout() {
                     && remote_terminal.snapshot_contains("Tab #3")
                     && remote_terminal.cursor_position_is(63, 2)
                 {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn tmux_mode() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&TMUX_MODE);
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_TMUX_MODE);
+                    // back to normal mode after split
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for new pane to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
                 step_is_complete

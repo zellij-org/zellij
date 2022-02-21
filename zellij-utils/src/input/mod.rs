@@ -60,7 +60,16 @@ pub fn get_mode_info(
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
-        InputMode::Tmux => vec![],
+        InputMode::Tmux => vec![
+            ("←↓↑→".to_string(), "Move focus".to_string()),
+            ("\"".to_string(), "Split Down".to_string()),
+            ("%".to_string(), "Split Right".to_string()),
+            ("z".to_string(), "Fullscreen".to_string()),
+            ("c".to_string(), "New Tab".to_string()),
+            (",".to_string(), "Rename Tab".to_string()),
+            ("p".to_string(), "Previous Tab".to_string()),
+            ("n".to_string(), "Next Tab".to_string()),
+        ],
     };
 
     let session_name = envs::get_session_name().ok();

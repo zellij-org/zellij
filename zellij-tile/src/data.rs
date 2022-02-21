@@ -167,6 +167,7 @@ impl FromStr for InputMode {
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),
+            "tmux" => Ok(InputMode::Tmux),
             "prompt" => Ok(InputMode::Prompt),
             "renamepane" => Ok(InputMode::RenamePane),
             e => Err(e.to_string().into()),
