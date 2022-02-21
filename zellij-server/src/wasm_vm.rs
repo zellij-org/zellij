@@ -183,13 +183,12 @@ pub(crate) fn wasm_thread_main(
                 for (&(plugin_id, _), (instance, plugin_env)) in &plugin_map {
                     if seen.contains(&plugin_id) {
                         continue;
-                    } else {
-                        seen.insert(plugin_id);
-                        let mut new_plugin_env = plugin_env.clone();
-
-                        new_plugin_env.client_id = client_id;
-                        new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
                     }
+                    seen.insert(plugin_id);
+                    let mut new_plugin_env = plugin_env.clone();
+
+                    new_plugin_env.client_id = client_id;
+                    new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
                 }
                 for (plugin_id, (module, mut new_plugin_env)) in new_plugins.drain() {
                     let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
