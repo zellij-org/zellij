@@ -11,11 +11,6 @@
   <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
 
-### With Multiple Users:
-<p align="center">
-  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/multiplayer-sessions.gif" alt="demo">
-</p>
-
 <p align="center">
   <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=%235865F2%20&label=chat%3A%20discord&style=flat-square"></a>
   <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=%230FBD8C&label=chat%3A%20matrix&style=flat-square"></a>
