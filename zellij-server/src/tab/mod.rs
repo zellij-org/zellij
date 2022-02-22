@@ -30,6 +30,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
+use std::cmp::Reverse;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
@@ -1328,7 +1329,7 @@ impl Tab {
             .iter()
             .map(|p_id| self.panes.get(p_id).unwrap())
             .collect();
-        panes.sort_by(|a, b| b.active_at().cmp(&a.active_at()));
+        panes.sort_by_key(|b| Reverse(b.active_at()));
 
         panes.iter().find(|pane| pane.selectable()).map(|p| p.pid())
     }
