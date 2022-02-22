@@ -69,7 +69,7 @@ pub enum ClientToServerMsg {
     Action(Action),
     ClientExited,
     KillSession,
-    Ping,
+    ConnStatus,
 }
 
 // Types of messages sent from the server to the client
@@ -83,7 +83,7 @@ pub enum ServerToClientMsg {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
-    Pong,
+    Connected,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

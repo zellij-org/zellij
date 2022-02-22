@@ -57,11 +57,11 @@ fn assert_socket(name: &str) -> bool {
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             let mut sender = IpcSenderWithContext::new(stream);
-            sender.send(ClientToServerMsg::Ping);
+            sender.send(ClientToServerMsg::ConnStatus);
 
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             let (instruction, _) = receiver.recv();
-            matches!(instruction, ServerToClientMsg::Pong)
+            matches!(instruction, ServerToClientMsg::Connected)
         }
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));

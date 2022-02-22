@@ -35,7 +35,7 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
-    Pong,
+    Connected,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -47,7 +47,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             }
-            ServerToClientMsg::Pong => ClientInstruction::Pong,
+            ServerToClientMsg::Connected => ClientInstruction::Connected,
         }
     }
 }
@@ -60,7 +60,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
-            ClientInstruction::Pong => ClientContext::Pong,
+            ClientInstruction::Connected => ClientContext::Connected,
         }
     }
 }

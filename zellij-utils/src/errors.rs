@@ -309,7 +309,7 @@ pub enum ClientContext {
     Render,
     ServerError,
     SwitchToMode,
-    Pong,
+    Connected,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -324,5 +324,5 @@ pub enum ServerContext {
     KillSession,
     DetachSession,
     AttachClient,
-    Ping,
+    ConnStatus,
 }
