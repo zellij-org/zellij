@@ -62,6 +62,9 @@ pub(crate) fn stdin_loop(
     let adjusted_keys = keys_to_adjust();
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
+
+        log::info!("read from stdin: {stdin_buffer:?}");
+
         if pasting
             || (stdin_buffer.len() > bracketed_paste_start.len()
                 && stdin_buffer
@@ -120,6 +123,7 @@ pub(crate) fn stdin_loop(
         }
         for key_result in stdin_buffer.events_and_raw() {
             let (key_event, raw_bytes) = key_result.unwrap();
+            log::info!("event: {key_event:?}");
             let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
             if let termion::event::Event::Mouse(me) = key_event {
                 let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
