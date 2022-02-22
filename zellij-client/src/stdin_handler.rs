@@ -60,10 +60,26 @@ pub(crate) fn stdin_loop(
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     let csi_mouse_sgr_start = vec![27, 91, 60];
     let adjusted_keys = keys_to_adjust();
+    let mut incomplete_mouse_sequence = false;
+
     loop {
         let mut stdin_buffer = os_input.read_from_stdin();
 
         log::info!("read from stdin: {stdin_buffer:?}");
+
+        if stdin_buffer == csi_mouse_sgr_start {
+            log::info!("found mouse sequence start");
+            incomplete_mouse_sequence = true;
+            continue;
+        }
+
+        if incomplete_mouse_sequence {
+            log::info!("completing mouse sequence");
+            let mut b = csi_mouse_sgr_start.clone();
+            b.extend(stdin_buffer);
+            stdin_buffer = b;
+            incomplete_mouse_sequence = false;
+        }
 
         if pasting
             || (stdin_buffer.len() > bracketed_paste_start.len()
