@@ -464,7 +464,7 @@ impl TerminalPane {
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
             palette,
-            link_handler.clone(),
+            link_handler,
         );
         TerminalPane {
             frame: HashMap::new(),

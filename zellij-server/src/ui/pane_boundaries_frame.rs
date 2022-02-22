@@ -142,23 +142,23 @@ impl PaneFrame {
         }
     }
     fn render_my_focus(&self, max_length: usize) -> Option<(Vec<TerminalCharacter>, usize)> {
-        let left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
-        let right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
+        let mut left_separator = foreground_color(boundary_type::VERTICAL_LEFT, self.color);
+        let mut right_separator = foreground_color(boundary_type::VERTICAL_RIGHT, self.color);
         let full_indication_text = "MY FOCUS";
         let mut full_indication = vec![];
-        full_indication.append(&mut left_separator.clone());
+        full_indication.append(&mut left_separator);
         full_indication.push(EMPTY_TERMINAL_CHARACTER);
         full_indication.append(&mut foreground_color(full_indication_text, self.color));
         full_indication.push(EMPTY_TERMINAL_CHARACTER);
-        full_indication.append(&mut right_separator.clone());
+        full_indication.append(&mut right_separator);
         let full_indication_len = full_indication_text.width() + 4; // 2 for separators 2 for padding
         let short_indication_text = "ME";
         let mut short_indication = vec![];
-        short_indication.append(&mut left_separator.clone());
+        short_indication.append(&mut left_separator);
         short_indication.push(EMPTY_TERMINAL_CHARACTER);
         short_indication.append(&mut foreground_color(short_indication_text, self.color));
         short_indication.push(EMPTY_TERMINAL_CHARACTER);
-        short_indication.append(&mut right_separator.clone());
+        short_indication.append(&mut right_separator);
         let short_indication_len = short_indication_text.width() + 4; // 2 for separators 2 for padding
         if full_indication_len <= max_length {
             Some((full_indication, full_indication_len))
