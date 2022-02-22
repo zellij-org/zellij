@@ -281,7 +281,7 @@ impl FloatingPanes {
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     pub fn resize_active_pane_up(
         &mut self,
@@ -305,7 +305,7 @@ impl FloatingPanes {
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     pub fn resize_active_pane_increase(
         &mut self,
@@ -329,7 +329,7 @@ impl FloatingPanes {
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     pub fn resize_active_pane_decrease(
         &mut self,
@@ -353,7 +353,7 @@ impl FloatingPanes {
             self.set_force_render();
             return true;
         }
-        return false;
+        false
     }
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.panes.get_mut(&pane_id) {
@@ -816,7 +816,7 @@ impl FloatingPanes {
                 return true;
             }
         };
-        return false;
+        false
     }
     pub fn stop_moving_pane_with_mouse(&mut self, position: Position) {
         if self.pane_being_moved_with_mouse.is_some() {
