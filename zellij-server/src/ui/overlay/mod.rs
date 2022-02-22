@@ -22,6 +22,7 @@ pub trait Overlayable {
     fn generate_overlay(&self, size: Size) -> String;
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct Padding {
     rows: usize,
