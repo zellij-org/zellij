@@ -15,7 +15,7 @@ struct Theme {
 }
 
 /// Intermediate deserialization struct
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub struct PaletteFromYaml {
     pub fg: PaletteColorFromYaml,
     pub bg: PaletteColorFromYaml,
@@ -33,10 +33,11 @@ pub struct PaletteFromYaml {
 
 /// Intermediate deserialization enum
 // This is here in order to make the untagged enum work
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum PaletteColorFromYaml {
     Rgb((u8, u8, u8)),
+    RgbHex(String),
     EightBit(u8),
 }
 
@@ -99,6 +100,29 @@ impl From<PaletteColorFromYaml> for PaletteColor {
         match yaml {
             PaletteColorFromYaml::Rgb(color) => PaletteColor::Rgb(color),
             PaletteColorFromYaml::EightBit(color) => PaletteColor::EightBit(color),
+            PaletteColorFromYaml::RgbHex(hex_string) => {
+                PaletteColor::Rgb(if hex_string.len() == 7 {
+                    let red = u8::from_str_radix(hex_string.get(1..3).unwrap(), 16);
+                    let green = u8::from_str_radix(hex_string.get(3..5).unwrap(), 16);
+                    let blue = u8::from_str_radix(hex_string.get(5..7).unwrap(), 16);
+                    (
+                        red.unwrap_or(255),
+                        green.unwrap_or(255),
+                        blue.unwrap_or(255),
+                    )
+                } else if hex_string.len() == 4 {
+                    let red = u8::from_str_radix(hex_string.get(1..2).unwrap(), 16);
+                    let green = u8::from_str_radix(hex_string.get(2..3).unwrap(), 16);
+                    let blue = u8::from_str_radix(hex_string.get(3..4).unwrap(), 16);
+                    (
+                        red.unwrap_or(15) * 16,
+                        green.unwrap_or(15) * 16,
+                        blue.unwrap_or(15) * 16,
+                    )
+                } else {
+                    panic!("Invalid hex string");
+                })
+            }
         }
     }
 }
