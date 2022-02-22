@@ -828,13 +828,13 @@ fn mark_text_inside_floating_pane() {
     tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_left_click(&Position::new(9, 71), client_id);
-    assert_eq!(
-        tab.selecting_with_mouse, true,
+    assert!(
+        tab.selecting_with_mouse,
         "started selecting with mouse on click"
     );
     tab.handle_mouse_release(&Position::new(8, 50), client_id);
-    assert_eq!(
-        tab.selecting_with_mouse, false,
+    assert!(
+        !tab.selecting_with_mouse,
         "stopped selecting with mouse on release"
     );
     tab.render(&mut output, None);
