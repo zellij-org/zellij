@@ -62,130 +62,131 @@ pub(crate) fn stdin_loop(
     let adjusted_keys = keys_to_adjust();
     let mut incomplete_mouse_sequence = false;
 
-    loop {
-        let mut stdin_buffer = os_input.read_from_stdin();
+    // loop {
+    //     let
 
-        log::info!("read from stdin: {stdin_buffer:?}");
+    //     log::info!("read from stdin: {stdin_buffer:?}");
 
-        if stdin_buffer == csi_mouse_sgr_start {
-            log::info!("found mouse sequence start");
-            incomplete_mouse_sequence = true;
-            continue;
-        }
+    //     if stdin_buffer == csi_mouse_sgr_start {
+    //         log::info!("found mouse sequence start");
+    //         incomplete_mouse_sequence = true;
+    //         continue;
+    //     }
 
-        if incomplete_mouse_sequence {
-            log::info!("completing mouse sequence");
-            let mut b = csi_mouse_sgr_start.clone();
-            b.extend(stdin_buffer);
-            stdin_buffer = b;
-            incomplete_mouse_sequence = false;
-        }
+    //     if incomplete_mouse_sequence {
+    //         log::info!("completing mouse sequence");
+    //         let mut b = csi_mouse_sgr_start.clone();
+    //         b.extend(stdin_buffer);
+    //         stdin_buffer = b;
+    //         incomplete_mouse_sequence = false;
+    //     }
 
-        if pasting
-            || (stdin_buffer.len() > bracketed_paste_start.len()
-                && stdin_buffer
-                    .iter()
-                    .take(bracketed_paste_start.len())
-                    .eq(&bracketed_paste_start))
-        {
-            match bracketed_paste_end_position(&stdin_buffer) {
-                Some(paste_end_position) => {
-                    let starts_with_bracketed_paste_start = stdin_buffer
-                        .iter()
-                        .take(bracketed_paste_start.len())
-                        .eq(&bracketed_paste_start);
+    //     if pasting
+    //         || (stdin_buffer.len() > bracketed_paste_start.len()
+    //             && stdin_buffer
+    //                 .iter()
+    //                 .take(bracketed_paste_start.len())
+    //                 .eq(&bracketed_paste_start))
+    //     {
+    //         match bracketed_paste_end_position(&stdin_buffer) {
+    //             Some(paste_end_position) => {
+    //                 let starts_with_bracketed_paste_start = stdin_buffer
+    //                     .iter()
+    //                     .take(bracketed_paste_start.len())
+    //                     .eq(&bracketed_paste_start);
 
-                    let ends_with_bracketed_paste_end = true;
+    //                 let ends_with_bracketed_paste_end = true;
 
-                    let mut pasted_input: Vec<u8> =
-                        stdin_buffer.drain(..=paste_end_position).collect();
-                    if starts_with_bracketed_paste_start {
-                        drop(pasted_input.drain(..6)); // bracketed paste start
+    //                 let mut pasted_input: Vec<u8> =
+    //                     stdin_buffer.drain(..=paste_end_position).collect();
+    //                 if starts_with_bracketed_paste_start {
+    //                     drop(pasted_input.drain(..6)); // bracketed paste start
+    //                 }
+    //                 drop(pasted_input.drain(pasted_input.len() - 6..)); // bracketed paste end
+
+    //                 send_input_instructions
+    //                     .send(InputInstruction::PastedText((
+    //                         starts_with_bracketed_paste_start,
+    //                         pasted_input,
+    //                         ends_with_bracketed_paste_end,
+    //                     )))
+    //                     .unwrap();
+    //                 pasting = false;
+    //             }
+    //             None => {
+    //                 let starts_with_bracketed_paste_start = stdin_buffer
+    //                     .iter()
+    //                     .take(bracketed_paste_start.len())
+    //                     .eq(&bracketed_paste_start);
+    //                 if starts_with_bracketed_paste_start {
+    //                     drop(stdin_buffer.drain(..6)); // bracketed paste start
+    //                 }
+
+    //                 send_input_instructions
+    //                     .send(InputInstruction::PastedText((
+    //                         starts_with_bracketed_paste_start,
+    //                         stdin_buffer,
+    //                         false,
+    //                     )))
+    //                     .unwrap();
+    //                 pasting = true;
+    //                 continue;
+    //             }
+    //         }
+    //     }
+    //     if stdin_buffer.is_empty() {
+    //         continue;
+    //     }
+    for key_result in os_input.get_stdin_reader().events_and_raw() {
+        let (key_event, raw_bytes) = key_result.unwrap();
+        log::info!("event: {key_event:?}");
+        log::info!("raw_bytes: {raw_bytes:?}");
+        let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
+        if let termion::event::Event::Mouse(me) = key_event {
+            let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+            if let MouseEvent::Hold(_) = mouse_event {
+                // as long as the user is holding the mouse down (no other stdin, eg.
+                // MouseRelease) we need to keep sending this instruction to the app,
+                // because the app itself doesn't have an event loop in the proper
+                // place
+                let mut poller = os_input.stdin_poller();
+                send_input_instructions
+                    .send(InputInstruction::KeyEvent(
+                        key_event.clone(),
+                        raw_bytes.clone(),
+                    ))
+                    .unwrap();
+                loop {
+                    let ready = poller.ready();
+                    if ready {
+                        break;
                     }
-                    drop(pasted_input.drain(pasted_input.len() - 6..)); // bracketed paste end
-
-                    send_input_instructions
-                        .send(InputInstruction::PastedText((
-                            starts_with_bracketed_paste_start,
-                            pasted_input,
-                            ends_with_bracketed_paste_end,
-                        )))
-                        .unwrap();
-                    pasting = false;
-                }
-                None => {
-                    let starts_with_bracketed_paste_start = stdin_buffer
-                        .iter()
-                        .take(bracketed_paste_start.len())
-                        .eq(&bracketed_paste_start);
-                    if starts_with_bracketed_paste_start {
-                        drop(stdin_buffer.drain(..6)); // bracketed paste start
-                    }
-
-                    send_input_instructions
-                        .send(InputInstruction::PastedText((
-                            starts_with_bracketed_paste_start,
-                            stdin_buffer,
-                            false,
-                        )))
-                        .unwrap();
-                    pasting = true;
-                    continue;
-                }
-            }
-        }
-        if stdin_buffer.is_empty() {
-            continue;
-        }
-        for key_result in stdin_buffer.events_and_raw() {
-            let (key_event, raw_bytes) = key_result.unwrap();
-            log::info!("event: {key_event:?}");
-            let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
-            if let termion::event::Event::Mouse(me) = key_event {
-                let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
-                if let MouseEvent::Hold(_) = mouse_event {
-                    // as long as the user is holding the mouse down (no other stdin, eg.
-                    // MouseRelease) we need to keep sending this instruction to the app,
-                    // because the app itself doesn't have an event loop in the proper
-                    // place
-                    let mut poller = os_input.stdin_poller();
                     send_input_instructions
                         .send(InputInstruction::KeyEvent(
                             key_event.clone(),
                             raw_bytes.clone(),
                         ))
                         .unwrap();
-                    loop {
-                        let ready = poller.ready();
-                        if ready {
-                            break;
-                        }
-                        send_input_instructions
-                            .send(InputInstruction::KeyEvent(
-                                key_event.clone(),
-                                raw_bytes.clone(),
-                            ))
-                            .unwrap();
-                    }
-                    continue;
                 }
+                continue;
             }
-
-            // FIXME: termion does not properly parse some csi sgr mouse sequences
-            // like ctrl + click.
-            // As a workaround, to avoid writing these sequences to tty stdin,
-            // we discard them.
-            if let termion::event::Event::Unsupported(_) = key_event {
-                if raw_bytes.len() > csi_mouse_sgr_start.len()
-                    && raw_bytes[0..csi_mouse_sgr_start.len()] == csi_mouse_sgr_start
-                {
-                    continue;
-                }
-            }
-
-            send_input_instructions
-                .send(InputInstruction::KeyEvent(key_event, raw_bytes))
-                .unwrap();
         }
+
+        // FIXME: termion does not properly parse some csi sgr mouse sequences
+        // like ctrl + click.
+        // As a workaround, to avoid writing these sequences to tty stdin,
+        // we discard them.
+        if let termion::event::Event::Unsupported(_) = key_event {
+            if raw_bytes.len() > csi_mouse_sgr_start.len()
+                && raw_bytes[0..csi_mouse_sgr_start.len()] == csi_mouse_sgr_start
+            {
+                continue;
+            }
+        }
+
+        send_input_instructions
+            .send(InputInstruction::KeyEvent(key_event, raw_bytes))
+            .unwrap();
     }
+    // }
 }
