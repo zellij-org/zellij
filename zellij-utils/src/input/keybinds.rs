@@ -15,7 +15,8 @@ pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
 pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
 
 /// Intermediate struct used for deserialisation
-/// Used in the config file.
+///
+/// Used in the config file. Contains the contents of the whole `keybinds` block.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct KeybindsFromYaml {
     #[serde(flatten)]
@@ -25,6 +26,9 @@ pub struct KeybindsFromYaml {
 }
 
 /// Intermediate enum used for deserialisation
+///
+/// An individual entry in the keybindings, consisting either of a group of `action: [...], key:
+/// [...]`, or an `unbind [...]`. Hence the name.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(untagged)]
 enum KeyActionUnbind {
@@ -33,13 +37,8 @@ enum KeyActionUnbind {
 }
 
 /// Intermediate struct used for deserialisation
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-struct KeyActionUnbindFromYaml {
-    keybinds: Vec<KeyActionFromYaml>,
-    unbind: Unbind,
-}
-
-/// Intermediate struct used for deserialisation
+///
+/// A group of `action [...], key [...]` read from the config file for an input mode.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct KeyActionFromYaml {
     action: Vec<Action>,
@@ -47,12 +46,15 @@ pub struct KeyActionFromYaml {
 }
 
 /// Intermediate struct used for deserialisation
+///
+/// A single `unbind [...]` entry for an input mode.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 struct UnbindFromYaml {
     unbind: Unbind,
 }
 
-/// List of keys, for which to disable their respective default actions
+/// List of keys, for which to disable their respective default actions.
+///
 /// `All` is a catch all, and will disable the default actions for all keys.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
@@ -65,6 +67,7 @@ enum Unbind {
     All(bool),
 }
 
+/// Reads keybindings from the default `config.yaml`
 impl Default for Keybinds {
     // Use once per codepath
     // TODO investigate why
@@ -74,6 +77,7 @@ impl Default for Keybinds {
 }
 
 impl Keybinds {
+    /// Create an empty hashmap for keybindings.
     pub fn new() -> Keybinds {
         Keybinds(HashMap::<InputMode, ModeKeybinds>::new())
     }
@@ -84,7 +88,10 @@ impl Keybinds {
             .keybinds
     }
 
-    /// Entrypoint from the config module
+    /// Entrypoint from the config module.
+    ///
+    /// Loads the default keybindings from assets, and overwrites them as requested by the user
+    /// configuration file.
     pub fn get_default_keybinds_with_config(from_yaml: Option<KeybindsFromYaml>) -> Keybinds {
         let default_keybinds = match from_yaml.clone() {
             Some(keybinds) => match keybinds.unbind {
@@ -223,7 +230,9 @@ impl ModeKeybinds {
         ModeKeybinds(HashMap::<Key, Vec<Action>>::new())
     }
 
-    /// Merges `self` with `other`, if keys are the same, `other` overwrites.
+    /// Merges `self` with `other`.
+    ///
+    /// If keys are the same, `other` overwrites. Consumes `other` in the process.
     fn merge(self, other: ModeKeybinds) -> ModeKeybinds {
         let mut merged = self;
         merged.0.extend(other.0);
