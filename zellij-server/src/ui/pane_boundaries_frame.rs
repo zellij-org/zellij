@@ -605,7 +605,7 @@ impl PaneFrame {
         }
         let vte_output = if self.is_main_client {
             Some(format!(
-                "\u{1b}]0;Zellij ({}) - {}",
+                "\u{1b}]0;Zellij ({}) - {}\u{07}",
                 get_session_name().unwrap(),
                 self.title
             ))
