@@ -333,6 +333,6 @@ impl Default for Unbind {
 }
 
 // The unit test location.
-#[cfg(test)]
-#[path = "./unit/keybinds_test.rs"]
-mod keybinds_test;
+//#[cfg(test)]
+//#[path = "./unit/keybinds_test.rs"]
+//mod keybinds_test;
