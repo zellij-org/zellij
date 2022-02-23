@@ -72,7 +72,9 @@ impl Default for Keybinds {
     // Use once per codepath
     // TODO investigate why
     fn default() -> Keybinds {
-        Self::from_default_assets()
+        config::Config::from_default_assets()
+            .expect("Keybinds from default assets Error!")
+            .keybinds
     }
 }
 
@@ -80,12 +82,6 @@ impl Keybinds {
     /// Create an empty hashmap for keybindings.
     pub fn new() -> Keybinds {
         Keybinds(HashMap::<InputMode, ModeKeybinds>::new())
-    }
-
-    fn from_default_assets() -> Keybinds {
-        config::Config::from_default_assets()
-            .expect("Keybinds from default assets Error!")
-            .keybinds
     }
 
     /// Entrypoint from the config module.
