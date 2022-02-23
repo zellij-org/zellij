@@ -461,6 +461,10 @@ pub(crate) fn route_thread_main(
             ClientToServerMsg::KillSession => {
                 to_server.send(ServerInstruction::KillSession).unwrap();
             }
+            ClientToServerMsg::ConnStatus => {
+                let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                break;
+            }
         }
     }
 }

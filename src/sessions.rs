@@ -6,7 +6,7 @@ use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
     interprocess::local_socket::LocalSocketStream,
-    ipc::{ClientToServerMsg, IpcSenderWithContext},
+    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
 };
 
 pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
@@ -56,14 +56,18 @@ fn assert_socket(name: &str) -> bool {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            IpcSenderWithContext::new(stream).send(ClientToServerMsg::ClientExited);
-            true
+            let mut sender = IpcSenderWithContext::new(stream);
+            sender.send(ClientToServerMsg::ConnStatus);
+
+            let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
+            let (instruction, _) = receiver.recv();
+            matches!(instruction, ServerToClientMsg::Connected)
         }
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
             false
         }
-        Err(_) => true,
+        Err(_) => false,
     }
 }
 
