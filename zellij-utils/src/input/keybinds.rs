@@ -249,8 +249,34 @@ impl From<KeybindsFromYaml> for Keybinds {
     fn from(keybinds_from_yaml: KeybindsFromYaml) -> Keybinds {
         let mut keybinds = Keybinds::new();
 
+        // Read in global keybindings
+        let global_binds = match keybinds_from_yaml.keybinds.get(&InputMode::Normal) {
+            Some(key_action) => {
+                let mut kbinds = ModeKeybinds::new();
+
+                for ka in key_action {
+                    kbinds = kbinds.merge(ModeKeybinds::from(ka.clone()));
+                }
+                
+                kbinds
+            },
+            None => {
+                let Keybinds(hmap) = Keybinds::default();
+                hmap.get(&InputMode::Normal).unwrap().clone()
+            },
+        };
+
         for mode in InputMode::iter() {
             let mut mode_keybinds = ModeKeybinds::new();
+
+            // See https://github.com/rust-lang/rfcs/issues/2616
+            // FIXME: This should respect `unbind` settings!
+            if let InputMode::Locked = mode {
+            } else {
+                // Add global keybindings
+                mode_keybinds = mode_keybinds.merge(global_binds.clone());
+            }
+
             if let Some(key_action) = keybinds_from_yaml.keybinds.get(&mode) {
                 for keybind in key_action {
                     mode_keybinds = mode_keybinds.merge(ModeKeybinds::from(keybind.clone()));
