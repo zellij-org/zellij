@@ -1,6 +1,6 @@
 # Contributing to Zellij
 
-Thanks for considering to contribute to Zellij!
+Thanks for considering contributing to Zellij!
 
 **First**: if you're unsure of anything, feel free to ask on our [Discord
 server](https://discord.gg/MHV3n76PDq). We're a friendly and welcoming bunch!
