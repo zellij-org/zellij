@@ -172,7 +172,7 @@ impl<'a> FloatingPaneGrid<'a> {
                         } else if new_pane_geom.x + new_pane_geom.cols.as_usize() + extra_width
                             < max_right_coords
                         {
-                            new_pane_geom.x = new_pane_geom.x + extra_width;
+                            new_pane_geom.x += extra_width;
                         } else {
                             new_pane_geom.x =
                                 max_right_coords.saturating_sub(new_pane_geom.cols.as_usize());
@@ -209,7 +209,7 @@ impl<'a> FloatingPaneGrid<'a> {
                         } else if new_pane_geom.y + new_pane_geom.rows.as_usize() + extra_height
                             < max_bottom_coords
                         {
-                            new_pane_geom.y = new_pane_geom.y + extra_height;
+                            new_pane_geom.y += extra_height;
                         } else {
                             new_pane_geom.y =
                                 max_bottom_coords.saturating_sub(new_pane_geom.rows.as_usize());
@@ -1238,6 +1238,5 @@ fn pane_geom_is_unoccupied_and_inside_viewport(
     geom: &PaneGeom,
     existing_geoms: &[PaneGeom],
 ) -> bool {
-    pane_geom_is_inside_viewport(viewport, geom)
-        && !existing_geoms.iter().find(|p| *p == geom).is_some()
+    pane_geom_is_inside_viewport(viewport, geom) && !existing_geoms.iter().any(|p| p == geom)
 }
