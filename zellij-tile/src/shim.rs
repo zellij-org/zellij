@@ -18,7 +18,7 @@ pub fn unsubscribe(event_types: &[EventType]) {
 // Plugin Settings
 
 pub fn set_selectable(selectable: bool) {
-    unsafe { host_set_selectable(if selectable { 1 } else { 0 }) };
+    unsafe { host_set_selectable(selectable as i32) };
 }
 
 // Query Functions
