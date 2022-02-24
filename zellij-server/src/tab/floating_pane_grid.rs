@@ -100,7 +100,7 @@ impl<'a> FloatingPaneGrid<'a> {
             let mut new_pane_geom = pane.current_geom();
             let desired_pane_geom = desired_pane_positions.get(pane_id).unwrap();
             let desired_pane_geom_is_inside_viewport =
-                pane_geom_is_inside_viewport(&new_viewport, &desired_pane_geom);
+                pane_geom_is_inside_viewport(&new_viewport, desired_pane_geom);
             let pane_is_in_desired_position = new_pane_geom == *desired_pane_geom;
             if pane_is_in_desired_position && desired_pane_geom_is_inside_viewport {
                 continue;

@@ -250,7 +250,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_right(&active_floating_pane_id);
+            floating_pane_grid.resize_pane_right(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -274,7 +274,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_down(&active_floating_pane_id);
+            floating_pane_grid.resize_pane_down(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -298,7 +298,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_up(&active_floating_pane_id);
+            floating_pane_grid.resize_pane_up(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -322,7 +322,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_increase(&active_floating_pane_id);
+            floating_pane_grid.resize_increase(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -346,7 +346,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_decrease(&active_floating_pane_id);
+            floating_pane_grid.resize_decrease(active_floating_pane_id);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -652,7 +652,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_down(&active_pane_id);
+            floating_pane_grid.move_pane_down(active_pane_id);
             self.set_force_render();
         }
     }
@@ -666,7 +666,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_up(&active_pane_id);
+            floating_pane_grid.move_pane_up(active_pane_id);
             self.set_force_render();
         }
     }
@@ -680,7 +680,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_left(&active_pane_id);
+            floating_pane_grid.move_pane_left(active_pane_id);
             self.set_force_render();
         }
     }
@@ -694,7 +694,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_right(&active_pane_id);
+            floating_pane_grid.move_pane_right(active_pane_id);
             self.set_force_render();
         }
     }
