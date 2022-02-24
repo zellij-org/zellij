@@ -793,7 +793,7 @@ impl FloatingPanes {
             viewport,
         );
         floating_pane_grid.move_pane_by(pane_id, move_x_by, move_y_by);
-        self.set_pane_being_moved_with_mouse(pane_id, click_position.clone());
+        self.set_pane_being_moved_with_mouse(pane_id, *click_position);
         self.set_force_render();
         true
     }
@@ -809,7 +809,7 @@ impl FloatingPanes {
             if show_panes && clicked_on_frame {
                 let pid = pane.pid();
                 if self.pane_being_moved_with_mouse.is_none() {
-                    self.set_pane_being_moved_with_mouse(pid, position.clone());
+                    self.set_pane_being_moved_with_mouse(pid, position);
                 }
                 self.move_pane_to_position(&position);
                 self.set_force_render();
