@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use zellij_tile::data::{
     client_id_to_colors, single_client_color, InputMode, Palette, PaletteColor,
 };
-
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -110,6 +109,14 @@ impl<'a> PaneContentsAndUi<'a> {
                 }
             }
         }
+    }
+    pub fn render_terminal_title_if_needed(&mut self, client_id: ClientId, client_mode: InputMode) {
+        if !self.focused_clients.contains(&client_id) {
+            return;
+        }
+        let vte_output = self.pane.render_terminal_title(client_mode);
+        self.output
+            .add_post_vte_instruction_to_client(client_id, &vte_output);
     }
     pub fn render_pane_frame(
         &mut self,

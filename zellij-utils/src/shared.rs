@@ -2,6 +2,7 @@
 
 use std::{iter, str::from_utf8};
 
+use crate::envs::get_session_name;
 use colorsys::Rgb;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -38,6 +39,14 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .take(rows)
         .collect::<Vec<_>>()
         .join("\n\r")
+}
+
+pub fn make_terminal_title(pane_title: &str) -> String {
+    format!(
+        "\u{1b}]0;Zellij ({}) - {}\u{07}",
+        get_session_name().unwrap(),
+        pane_title,
+    )
 }
 
 // Colors

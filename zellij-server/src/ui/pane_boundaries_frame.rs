@@ -2,8 +2,8 @@ use crate::output::CharacterChunk;
 use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
+use zellij_utils::pane_size::Viewport;
 use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
-use zellij_utils::{envs::get_session_name, pane_size::Viewport};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -603,15 +603,6 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
             }
         }
-        let vte_output = if self.is_main_client {
-            Some(format!(
-                "\u{1b}]0;Zellij ({}) - {}\u{07}",
-                get_session_name().unwrap(),
-                self.title
-            ))
-        } else {
-            None
-        };
-        (character_chunks, vte_output)
+        (character_chunks, None)
     }
 }
