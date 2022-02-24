@@ -448,6 +448,8 @@ keybinds:
           key: [Ctrl: 's']
         - action: [Quit,]
           key: [Ctrl: 'q',]
+        - action: [Write: [2,], SwitchToMode: Normal]
+          key: [Ctrl: 'b']
         - action: [NewPane: Down, SwitchToMode: Normal,]
           key: [Char: "\"",]
         - action: [NewPane: Right, SwitchToMode: Normal,]
