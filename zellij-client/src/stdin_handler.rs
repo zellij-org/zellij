@@ -29,29 +29,6 @@ fn keys_to_adjust() -> HashMap<Vec<u8>, Vec<u8>> {
     keys_to_adjust
 }
 
-fn bracketed_paste_end_position(stdin_buffer: &[u8]) -> Option<usize> {
-    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
-    let mut bp_position = 0;
-    let mut position = None;
-    for (i, byte) in stdin_buffer.iter().enumerate() {
-        if Some(byte) == bracketed_paste_end.get(bp_position) {
-            position = Some(i);
-            bp_position += 1;
-            if bp_position == bracketed_paste_end.len() {
-                break;
-            }
-        } else {
-            bp_position = 0;
-            position = None;
-        }
-    }
-    if bp_position == bracketed_paste_end.len() {
-        position
-    } else {
-        None
-    }
-}
-
 pub(crate) fn stdin_loop(
     os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
@@ -129,5 +106,4 @@ pub(crate) fn stdin_loop(
             .send(InputInstruction::KeyEvent(key_event, raw_bytes))
             .unwrap();
     }
-    // }
 }
