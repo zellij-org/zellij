@@ -1802,6 +1802,7 @@ impl Perform for Grid {
                             Some((current_lines_above, current_viewport, current_cursor));
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+                        self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
                     }
                     Some(1) => {
                         self.cursor_key_mode = true;
