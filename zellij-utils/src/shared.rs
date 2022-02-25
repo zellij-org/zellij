@@ -43,8 +43,10 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
 
 pub fn make_terminal_title(pane_title: &str) -> String {
     format!(
-        "\u{1b}]0;Zellij ({}) - {}\u{07}",
-        get_session_name().unwrap(),
+        "\u{1b}]0;Zellij {}- {}\u{07}",
+        get_session_name()
+            .map(|n| format!("({}) ", n))
+            .unwrap_or_default(),
         pane_title,
     )
 }
