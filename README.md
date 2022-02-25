@@ -75,7 +75,7 @@ This section contains an ever-changing list of the major features that are eithe
 
 | Feature | Description | Status |
 | :-----: | ----------- | :----: |
-| **Share sessions with others** | See the focused window and cursor of other users, work on a problem or a code base together in real time. | :white_check_mark:<br>*(implemented in `0.23.0`)* |
+| **Share sessions with others** | See the focused window and cursor of other users, work on a problem or a code base together in real time. | :white_check_mark:<br>*(implemented in [`0.23.0`](https://github.com/zellij-org/zellij/releases/tag/v0.23.0))* |
 | **A web client/server** | Connect to Zellij through the browser instead of opening a terminal window. Either on a local or remote machine. |  |
 | **Support for multiple terminal windows across screens** | Transfer panes across different windows and screens by having them all belong to the same session. |  |
 | **Smart layouts** | Expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed. |  |
