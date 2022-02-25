@@ -57,90 +57,31 @@ pub(crate) fn stdin_loop(
     send_input_instructions: SenderWithContext<InputInstruction>,
 ) {
     let mut pasting = false;
-    let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let mut pasted_text = vec![];
+    let bracketed_paste_start = termion::event::Event::Unsupported(vec![27, 91, 50, 48, 48, 126]); // \u{1b}[200~
+    let bracketed_paste_end = termion::event::Event::Unsupported(vec![27, 91, 50, 48, 49, 126]); // \u{1b}[201~
     let csi_mouse_sgr_start = vec![27, 91, 60];
     let adjusted_keys = keys_to_adjust();
-    let mut incomplete_mouse_sequence = false;
-
-    // loop {
-    //     let
-
-    //     log::info!("read from stdin: {stdin_buffer:?}");
-
-    //     if stdin_buffer == csi_mouse_sgr_start {
-    //         log::info!("found mouse sequence start");
-    //         incomplete_mouse_sequence = true;
-    //         continue;
-    //     }
-
-    //     if incomplete_mouse_sequence {
-    //         log::info!("completing mouse sequence");
-    //         let mut b = csi_mouse_sgr_start.clone();
-    //         b.extend(stdin_buffer);
-    //         stdin_buffer = b;
-    //         incomplete_mouse_sequence = false;
-    //     }
-
-    //     if pasting
-    //         || (stdin_buffer.len() > bracketed_paste_start.len()
-    //             && stdin_buffer
-    //                 .iter()
-    //                 .take(bracketed_paste_start.len())
-    //                 .eq(&bracketed_paste_start))
-    //     {
-    //         match bracketed_paste_end_position(&stdin_buffer) {
-    //             Some(paste_end_position) => {
-    //                 let starts_with_bracketed_paste_start = stdin_buffer
-    //                     .iter()
-    //                     .take(bracketed_paste_start.len())
-    //                     .eq(&bracketed_paste_start);
-
-    //                 let ends_with_bracketed_paste_end = true;
-
-    //                 let mut pasted_input: Vec<u8> =
-    //                     stdin_buffer.drain(..=paste_end_position).collect();
-    //                 if starts_with_bracketed_paste_start {
-    //                     drop(pasted_input.drain(..6)); // bracketed paste start
-    //                 }
-    //                 drop(pasted_input.drain(pasted_input.len() - 6..)); // bracketed paste end
-
-    //                 send_input_instructions
-    //                     .send(InputInstruction::PastedText((
-    //                         starts_with_bracketed_paste_start,
-    //                         pasted_input,
-    //                         ends_with_bracketed_paste_end,
-    //                     )))
-    //                     .unwrap();
-    //                 pasting = false;
-    //             }
-    //             None => {
-    //                 let starts_with_bracketed_paste_start = stdin_buffer
-    //                     .iter()
-    //                     .take(bracketed_paste_start.len())
-    //                     .eq(&bracketed_paste_start);
-    //                 if starts_with_bracketed_paste_start {
-    //                     drop(stdin_buffer.drain(..6)); // bracketed paste start
-    //                 }
-
-    //                 send_input_instructions
-    //                     .send(InputInstruction::PastedText((
-    //                         starts_with_bracketed_paste_start,
-    //                         stdin_buffer,
-    //                         false,
-    //                     )))
-    //                     .unwrap();
-    //                 pasting = true;
-    //                 continue;
-    //             }
-    //         }
-    //     }
-    //     if stdin_buffer.is_empty() {
-    //         continue;
-    //     }
     for key_result in os_input.get_stdin_reader().events_and_raw() {
-        let (key_event, raw_bytes) = key_result.unwrap();
-        log::info!("event: {key_event:?}");
-        log::info!("raw_bytes: {raw_bytes:?}");
+        let (key_event, mut raw_bytes) = key_result.unwrap();
+
+        if key_event == bracketed_paste_start {
+            pasting = true;
+            pasted_text.append(&mut raw_bytes);
+            continue;
+        } else if pasting && key_event == bracketed_paste_end {
+            pasting = false;
+            let mut pasted_text: Vec<u8> = pasted_text.drain(..).collect();
+            pasted_text.append(&mut raw_bytes);
+            send_input_instructions
+                .send(InputInstruction::PastedText(pasted_text))
+                .unwrap();
+            continue;
+        } else if pasting {
+            pasted_text.append(&mut raw_bytes);
+            continue;
+        }
+
         let raw_bytes = adjusted_keys.get(&raw_bytes).cloned().unwrap_or(raw_bytes);
         if let termion::event::Event::Mouse(me) = key_event {
             let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
