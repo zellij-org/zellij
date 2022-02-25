@@ -106,6 +106,9 @@ impl ClientOsApi for FakeClientOsApi {
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
         unimplemented!()
     }
+    fn get_stdin_reader(&self) -> Box<dyn io::Read> {
+        unimplemented!()
+    }
     fn read_from_stdin(&self) -> Vec<u8> {
         unimplemented!()
     }

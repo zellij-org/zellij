@@ -82,6 +82,7 @@ pub trait ClientOsApi: Send + Sync {
     fn unset_raw_mode(&self, fd: RawFd);
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    fn get_stdin_reader(&self) -> Box<dyn io::Read>;
     /// Returns the raw contents of standard input.
     fn read_from_stdin(&self) -> Vec<u8>;
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
@@ -128,6 +129,11 @@ impl ClientOsApi for ClientOsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
+    fn get_stdin_reader(&self) -> Box<dyn io::Read> {
+        let stdin = ::std::io::stdin();
+        Box::new(stdin)
+    }
+
     fn send_to_server(&self, msg: ClientToServerMsg) {
         self.send_instructions_to_server
             .lock()

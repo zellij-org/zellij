@@ -95,29 +95,9 @@ impl InputHandler {
                         }
                     }
                 }
-                Ok((
-                    InputInstruction::PastedText((
-                        send_bracketed_paste_start,
-                        raw_bytes,
-                        send_bracketed_paste_end,
-                    )),
-                    _error_context,
-                )) => {
+                Ok((InputInstruction::PastedText(raw_bytes), _error_context)) => {
                     if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-                        if send_bracketed_paste_start {
-                            let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
-                            let paste_start_action = Action::Write(bracketed_paste_start);
-                            self.dispatch_action(paste_start_action);
-                        }
-
-                        let pasted_text_action = Action::Write(raw_bytes);
-                        self.dispatch_action(pasted_text_action);
-
-                        if send_bracketed_paste_end {
-                            let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
-                            let paste_end_action = Action::Write(bracketed_paste_end);
-                            self.dispatch_action(paste_end_action);
-                        }
+                        self.dispatch_action(Action::Write(raw_bytes));
                     }
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
