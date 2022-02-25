@@ -72,7 +72,8 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Check Lints
-      run: cargo make clippy
+      uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-features
