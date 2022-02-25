@@ -1733,7 +1733,7 @@ pub fn focus_tab_with_layout() {
                 let mut step_is_complete = false;
                 if remote_terminal.status_bar_appears()
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #3")
+                    && remote_terminal.snapshot_contains("Tab #9")
                     && remote_terminal.cursor_position_is(63, 2)
                 {
                     step_is_complete = true;
