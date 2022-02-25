@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: various action bindings to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1098)
 * Terminal compatibility: set terminal title properly (https://github.com/zellij-org/zellij/pull/1094)
 * Fix: handle discontiguous STDIN input (https://github.com/zellij-org/zellij/issues/1117)
+* Terminal compatibility: fix alternate screen clearing (https://github.com/zellij-org/zellij/pull/1120)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
