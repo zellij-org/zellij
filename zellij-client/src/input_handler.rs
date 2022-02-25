@@ -95,10 +95,7 @@ impl InputHandler {
                         }
                     }
                 }
-                Ok((
-                    InputInstruction::PastedText(raw_bytes),
-                    _error_context,
-                )) => {
+                Ok((InputInstruction::PastedText(raw_bytes), _error_context)) => {
                     if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                         self.dispatch_action(Action::Write(raw_bytes));
                     }
