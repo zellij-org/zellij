@@ -1,69 +1,125 @@
 {
-    description = "Zellij, a terminal workspace with batteries included";
+  description = "Zellij, a terminal workspace with batteries included";
 
-    inputs = {
+  inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    rust-overlay.url = "github:oxalica/rust-overlay";
-    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
-
     flake-utils.url = "github:numtide/flake-utils";
     flake-utils.inputs.nixpkgs.follows = "nixpkgs";
-};
+    rust-overlay.url = "github:oxalica/rust-overlay";
+    rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
+    rust-overlay.inputs.flake-utils.follows = "flake-utils";
+  };
 
   outputs = { self, rust-overlay, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-  let
-    overlays = [ (import rust-overlay) ];
+    flake-utils.lib.eachSystem [
+      "aarch64-linux"
+      "aarch64-darwin"
+      "i686-linux"
+      "x86_64-darwin"
+      "x86_64-linux"
+    ]
+      (system:
+        let
+          overlays = [ (import rust-overlay) ];
 
-    pkgs = import nixpkgs {
-      inherit system overlays;
-    };
+          pkgs = import nixpkgs {
+            inherit system overlays;
+          };
 
-    # The root directory of this project
-    ZELLIJ_ROOT = toString ./.;
+          name = "zellij";
+          pname = name;
+          root = toString ./.;
 
-    rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
+          ignoreSource = [ ".git" "target" ];
 
-      buildInputs = [
-      rustToolchainToml
-      pkgs.cargo-make
-      pkgs.rust-analyzer
-      pkgs.mkdocs
+          src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-      # in order to run tests
-      pkgs.openssl
-      pkgs.pkg-config
-      pkgs.binaryen
-    ];
+          rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
+          cargoLock = { lockFile = ./Cargo.lock; };
+          cargo = rustToolchainToml;
+          rustc = rustToolchainToml;
 
-    in rec {
+          buildInputs = [
+            rustToolchainToml
 
-      packages.zellij = (pkgs.makeRustPlatform {
-        cargo = rustToolchainToml;
-        rustc = rustToolchainToml;
-      }).buildRustPackage {
-        pname = "zellij";
-        name = "zellij";
+            # in order to run tests
+            pkgs.openssl
+          ];
 
-        src = pkgs.nix-gitignore.gitignoreSource  [ ".git" "target" "/*.nix" ] ./.;
+          nativeBuildInputs = [
+            pkgs.installShellFiles
+            pkgs.copyDesktopItems
 
-        cargoLock = {
-          lockFile = ./Cargo.lock;
-        };
+            pkgs.cargo-make
+            # for openssl/openssl-sys
+            pkgs.pkg-config
+            # generates manpages
+            pkgs.mandown
+            # optimizing of wasm binaries
+            pkgs.binaryen
+          ];
 
-        outputs = [ "bin" "out" "man" "info" ];
+          devInputs = [
+            pkgs.rust-analyzer
+          ];
 
-        inherit buildInputs;
-        nativeBuildInputs = buildInputs;
-      };
+        in
+        rec {
 
-      defaultPackage = packages.zellij;
+          packages.zellij = (pkgs.makeRustPlatform {
+            inherit cargo rustc;
+          }).buildRustPackage {
+            inherit src name cargoLock buildInputs nativeBuildInputs;
 
-      devShell = pkgs.mkShell {
-        name = "zellij-dev";
-        inherit buildInputs;
-      };
+            preCheck = ''
+              HOME=$TMPDIR
+            '';
 
-    }
-    );
+            postInstall = ''
+
+              # explicit behavior
+              $out/bin/zellij setup --generate-completion bash > ./completions.bash
+              installShellCompletion --bash --name ${pname}.bash ./completions.bash
+              $out/bin/zellij setup --generate-completion fish > ./completions.fish
+              installShellCompletion --fish --name ${pname}.fish ./completions.fish
+              $out/bin/zellij setup --generate-completion zsh > ./completions.zsh
+              installShellCompletion --zsh --name _${pname} ./completions.zsh
+
+              install -Dm644  ./assets/logo.png $out/share/icons/hicolor/scalable/apps/zellij.png
+
+              copyDesktopItems
+            '';
+
+            desktopItems = [
+              (pkgs.makeDesktopItem {
+                type = "Application";
+                inherit name;
+                desktopName = "zellij";
+                terminal = true;
+                genericName = "Terminal multiplexer";
+                comment = "Manage your terminal applications";
+                exec = "zellij";
+                icon = "zellij";
+                categories = "ConsoleOnly;System";
+                extraEntries = "Keywords=terminal;";
+              })
+            ];
+
+            meta = with pkgs.lib; {
+              homepage = "https://github.com/zellij-org/zellij/";
+              description = "A terminal workspace with batteries included";
+              license = [ licenses.mit ];
+            };
+          };
+
+          defaultPackage = packages.zellij;
+
+          devShell = pkgs.mkShell {
+            name = "zellij-dev";
+            inherit buildInputs;
+            nativeBuildInputs = nativeBuildInputs ++ devInputs;
+          };
+
+        }
+      );
 }
