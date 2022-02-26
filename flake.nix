@@ -42,7 +42,6 @@
           rustc = rustToolchainToml;
 
           #env
-          RUSTFLAGS = "-Z macro-backtrace";
           RUST_BACKTRACE = 1;
 
           buildInputs = [
@@ -129,7 +128,7 @@
 
           devShell = pkgs.mkShell {
             name = "zellij-dev";
-            inherit buildInputs RUST_BACKTRACE RUSTFLAGS;
+            inherit buildInputs RUST_BACKTRACE;
             nativeBuildInputs = nativeBuildInputs ++ devInputs;
           };
 
