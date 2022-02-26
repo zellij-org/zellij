@@ -8,9 +8,11 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
     rust-overlay.inputs.nixpkgs.follows = "nixpkgs";
     rust-overlay.inputs.flake-utils.follows = "flake-utils";
+    flake-compat.url = "github:edolstra/flake-compat";
+    flake-compat.flake = false;
   };
 
-  outputs = { self, rust-overlay, nixpkgs, flake-utils }:
+  outputs = { self, rust-overlay, nixpkgs, flake-utils, flake-compat }:
     flake-utils.lib.eachSystem [
       "aarch64-linux"
       "aarch64-darwin"
@@ -39,6 +41,10 @@
           cargo = rustToolchainToml;
           rustc = rustToolchainToml;
 
+          #env
+          RUSTFLAGS = "-Z macro-backtrace";
+          RUST_BACKTRACE = 1;
+
           buildInputs = [
             rustToolchainToml
 
@@ -61,6 +67,7 @@
 
           devInputs = [
             pkgs.rust-analyzer
+            pkgs.nixpkgs-fmt
           ];
 
         in
@@ -114,9 +121,15 @@
 
           defaultPackage = packages.zellij;
 
+          # nix run
+          apps.zellij = flake-utils.lib.mkApp {
+            drv = packages.zellij;
+          };
+          defaultApp = apps.zellij;
+
           devShell = pkgs.mkShell {
             name = "zellij-dev";
-            inherit buildInputs;
+            inherit buildInputs RUST_BACKTRACE RUSTFLAGS;
             nativeBuildInputs = nativeBuildInputs ++ devInputs;
           };
 
