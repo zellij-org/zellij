@@ -51,9 +51,7 @@
           lockFile = ./Cargo.lock;
         };
 
-        outputs = [ "man" ];
-
-        #unpackPhase = ":";
+        outputs = [ "bin" "out" "man" "info" ];
 
         inherit buildInputs;
         nativeBuildInputs = buildInputs;
