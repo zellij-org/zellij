@@ -106,7 +106,7 @@
                 comment = "Manage your terminal applications";
                 exec = "zellij";
                 icon = "zellij";
-                categories = ["ConsoleOnly" "System"];
+                categories = ["ConsoleOnly;System"];
               })
             ];
 
