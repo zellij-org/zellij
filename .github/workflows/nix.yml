@@ -1,0 +1,27 @@
+name: nix
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  nix:
+    runs-on: ubuntu-latest
+    name: nix-build
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v2.4.0
+        with:
+          # Nix Flakes doesn't work on shallow clones
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v16
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+          fetch-depth: 0
+      - run: nix flake check --print-build-logs --show-trace
+      - run: nix build
