@@ -19,62 +19,61 @@
       "i686-linux"
       "x86_64-darwin"
       "x86_64-linux"
-    ]
-      (system:
-        let
-          overlays = [ (import rust-overlay) ];
+    ] (system:
+      let
+        overlays = [ (import rust-overlay) ];
 
-          pkgs = import nixpkgs {
-            inherit system overlays;
-          };
+        pkgs = import nixpkgs { inherit system overlays; };
 
-          name = "zellij";
-          pname = name;
-          root = toString ./.;
+        name = "zellij";
+        pname = name;
+        root = toString ./.;
 
-          ignoreSource = [ ".git" "target" ];
+        ignoreSource = [ ".git" "target" ];
 
-          src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
+        src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-          rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
-          cargoLock = { lockFile = ./Cargo.lock; };
-          cargo = rustToolchainToml;
-          rustc = rustToolchainToml;
+        rustToolchainToml =
+          pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
+        cargoLock = { lockFile = ./Cargo.lock; };
+        cargo = rustToolchainToml;
+        rustc = rustToolchainToml;
 
-          #env
-          RUST_BACKTRACE = 1;
+        #env
+        RUST_BACKTRACE = 1;
 
-          buildInputs = [
-            rustToolchainToml
+        buildInputs = [
+          rustToolchainToml
 
-            # in order to run tests
-            pkgs.openssl
-          ];
+          # in order to run tests
+          pkgs.openssl
+        ];
 
-          nativeBuildInputs = [
-            pkgs.installShellFiles
-            pkgs.copyDesktopItems
+        nativeBuildInputs = [
+          pkgs.installShellFiles
+          pkgs.copyDesktopItems
 
-            # for openssl/openssl-sys
-            pkgs.pkg-config
-          ];
+          # for openssl/openssl-sys
+          pkgs.pkg-config
+        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+          pkgs.libiconv
+          pkgs.Foundation
+        ];
 
-          devInputs = [
-            pkgs.cargo-make
-            pkgs.rust-analyzer
-            pkgs.nixpkgs-fmt
-            # generates manpages
-            pkgs.mandown
-            # optimizes wasm binaries
-            pkgs.binaryen
-          ];
+        devInputs = [
+          pkgs.cargo-make
+          pkgs.rust-analyzer
+          pkgs.nixpkgs-fmt
+          # generates manpages
+          pkgs.mandown
+          # optimizes wasm binaries
+          pkgs.binaryen
+        ];
 
-        in
-        rec {
+      in rec {
 
-          packages.zellij = (pkgs.makeRustPlatform {
-            inherit cargo rustc;
-          }).buildRustPackage {
+        packages.zellij =
+          (pkgs.makeRustPlatform { inherit cargo rustc; }).buildRustPackage {
             inherit src name cargoLock buildInputs nativeBuildInputs;
 
             preCheck = ''
@@ -106,7 +105,7 @@
                 comment = "Manage your terminal applications";
                 exec = "zellij";
                 icon = "zellij";
-                categories = ["ConsoleOnly;System"];
+                categories = [ "ConsoleOnly;System" ];
               })
             ];
 
@@ -117,20 +116,17 @@
             };
           };
 
-          defaultPackage = packages.zellij;
+        defaultPackage = packages.zellij;
 
-          # nix run
-          apps.zellij = flake-utils.lib.mkApp {
-            drv = packages.zellij;
-          };
-          defaultApp = apps.zellij;
+        # nix run
+        apps.zellij = flake-utils.lib.mkApp { drv = packages.zellij; };
+        defaultApp = apps.zellij;
 
-          devShell = pkgs.mkShell {
-            name = "zellij-dev";
-            inherit buildInputs RUST_BACKTRACE;
-            nativeBuildInputs = nativeBuildInputs ++ devInputs;
-          };
+        devShell = pkgs.mkShell {
+          name = "zellij-dev";
+          inherit buildInputs RUST_BACKTRACE;
+          nativeBuildInputs = nativeBuildInputs ++ devInputs;
+        };
 
-        }
-      );
+      });
 }
