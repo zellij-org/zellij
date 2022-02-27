@@ -1158,9 +1158,9 @@ checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "lev_distance"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d234d89ecf5621c935b69a4c7266c9a634a95e465081682be47358617ce825b"
+checksum = "72d9d1bd215936bc8647ad92986bb56f3f216550b53c44ab785e3217ae33625e"
 
 [[package]]
 name = "libc"
@@ -2115,9 +2115,9 @@ dependencies = [
 
 [[package]]
 name = "suggestion"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "015336207b7660be204f5012fcdb84b3ff35442b26cea77ebe6103929a56e54b"
+checksum = "64d6669311fea55a1f867fdc61afc8690e9f1d93829179a617575cc6083136e3"
 dependencies = [
  "lev_distance",
 ]
