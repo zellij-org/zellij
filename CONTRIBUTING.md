@@ -59,7 +59,7 @@ These tests work by running a docker container which contains the Zellij binary,
 5. `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC_x86_64_unknown_linux_musl`
 </details>
 
-To run these tests locally, you'll need to have both `docker` and `docker-compose` installed.
+To run these tests locally, you'll need to have either `docker` or `podman` and also `docker-compose` installed.
 Once you do, in the repository root:
 
 1. `docker-compose up -d` will start up the docker container
