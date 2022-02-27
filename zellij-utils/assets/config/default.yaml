@@ -504,6 +504,8 @@ keybinds:
           key: [ Alt: '+']
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
+        - action: [Detach,]
+          key: [Char: 'd',]
 plugins:
     - path: tab-bar
       tag: tab-bar
