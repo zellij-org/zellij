@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Bump `suggestion` dependency (https://github.com/zellij-org/zellij/pull/1124)
 * Add: detach `action` to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1116)
 * Add: initial `nix` support (https://github.com/zellij-org/zellij/pull/1131)
+* Fix: unused code warnings (https://github.com/zellij-org/zellij/pull/1087)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
