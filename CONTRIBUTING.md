@@ -68,6 +68,13 @@ Once you do, in the repository root:
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
 
+## How we treat clippy lints
+
+We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij/blob/main/.github/workflows/rust.yml) with the default settings that report only [`clippy::correctness`](https://github.com/rust-lang/rust-clippy#readme) as errors and other lints as warnings because Zellij is still unstable. This means that all warnings can be ignored depending on the situation at that time, even though they are also helpful to keep the code quality.
+Since we just cannot afford to manage them, we are always welcome to fix them!
+
+Here is [the detailed discussion](https://github.com/zellij-org/zellij/pull/1090) if you want to see it.
+
 ## Looking for something to work on?
 
 If you are new contributor to `Zellij` going through
