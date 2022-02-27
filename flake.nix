@@ -57,7 +57,6 @@
           pkgs.pkg-config
         ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
           pkgs.libiconv
-          pkgs.Foundation
         ];
 
         devInputs = [
