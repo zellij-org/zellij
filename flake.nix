@@ -55,18 +55,18 @@
             pkgs.installShellFiles
             pkgs.copyDesktopItems
 
-            pkgs.cargo-make
             # for openssl/openssl-sys
             pkgs.pkg-config
-            # generates manpages
-            pkgs.mandown
-            # optimizing of wasm binaries
-            pkgs.binaryen
           ];
 
           devInputs = [
+            pkgs.cargo-make
             pkgs.rust-analyzer
             pkgs.nixpkgs-fmt
+            # generates manpages
+            pkgs.mandown
+            # optimizes wasm binaries
+            pkgs.binaryen
           ];
 
         in
@@ -106,8 +106,7 @@
                 comment = "Manage your terminal applications";
                 exec = "zellij";
                 icon = "zellij";
-                categories = "ConsoleOnly;System";
-                extraEntries = "Keywords=terminal;";
+                categories = ["ConsoleOnly" "System"];
               })
             ];
 
