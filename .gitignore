@@ -7,4 +7,5 @@ target/
 
 # nix
 .direnv/
-result/
+result
+result-*
