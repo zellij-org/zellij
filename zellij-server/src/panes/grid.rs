@@ -1686,16 +1686,14 @@ impl Perform for Grid {
             };
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
-            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-            char_to_replace.styles = self.cursor.pending_styles;
 
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
-                    self.clear_all_after_cursor(char_to_replace);
+                    self.clear_all_after_cursor(EMPTY_TERMINAL_CHARACTER);
                 } else if clear_type == 1 {
-                    self.clear_all_before_cursor(char_to_replace);
+                    self.clear_all_before_cursor(EMPTY_TERMINAL_CHARACTER);
                 } else if clear_type == 2 {
-                    self.fill_viewport(char_to_replace);
+                    self.fill_viewport(EMPTY_TERMINAL_CHARACTER);
                 } else if clear_type == 3 {
                     self.clear_lines_above();
                 }
