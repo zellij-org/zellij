@@ -59,5 +59,10 @@ assets = [
   ["assets/completions/_zellij", "usr/share/zsh/vendor-completions/_zellij", "644"],
 ]
 
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
 [features]
 disable_automatic_asset_installation = []
