@@ -73,6 +73,7 @@ pub(crate) struct PluginEnv {
     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
     pub tab_index: usize,
     pub client_id: ClientId,
+    #[allow(dead_code)]
     plugin_own_data_dir: PathBuf,
 }
 
