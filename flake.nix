@@ -19,114 +19,116 @@
       "i686-linux"
       "x86_64-darwin"
       "x86_64-linux"
-    ] (system:
-      let
-        overlays = [ (import rust-overlay) ];
+    ]
+      (system:
+        let
+          overlays = [ (import rust-overlay) ];
 
-        pkgs = import nixpkgs { inherit system overlays; };
+          pkgs = import nixpkgs { inherit system overlays; };
 
-        name = "zellij";
-        pname = name;
-        root = toString ./.;
+          name = "zellij";
+          pname = name;
+          root = toString ./.;
 
-        ignoreSource = [ ".git" "target" ];
+          ignoreSource = [ ".git" "target" ];
 
-        src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
+          src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-        rustToolchainToml =
-          pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
-        cargoLock = { lockFile = ./Cargo.lock; };
-        cargo = rustToolchainToml;
-        rustc = rustToolchainToml;
+          rustToolchainToml =
+            pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
+          cargoLock = { lockFile = ./Cargo.lock; };
+          cargo = rustToolchainToml;
+          rustc = rustToolchainToml;
 
-        #env
-        RUST_BACKTRACE = 1;
+          #env
+          RUST_BACKTRACE = 1;
 
-        buildInputs = [
-          rustToolchainToml
+          buildInputs = [
+            rustToolchainToml
 
-          # in order to run tests
-          pkgs.openssl
-        ];
+            # in order to run tests
+            pkgs.openssl
+          ];
 
-        nativeBuildInputs = [
-          # generates manpages
-          pkgs.mandown
+          nativeBuildInputs = [
+            # generates manpages
+            pkgs.mandown
 
-          pkgs.installShellFiles
-          pkgs.copyDesktopItems
+            pkgs.installShellFiles
+            pkgs.copyDesktopItems
 
-          # for openssl/openssl-sys
-          pkgs.pkg-config
-        ];
+            # for openssl/openssl-sys
+            pkgs.pkg-config
+          ];
 
-        devInputs = [
-          pkgs.cargo-make
-          pkgs.rust-analyzer
-          pkgs.nixpkgs-fmt
-          # optimizes wasm binaries
-          pkgs.binaryen
-        ];
+          devInputs = [
+            pkgs.cargo-make
+            pkgs.rust-analyzer
+            pkgs.nixpkgs-fmt
+            # optimizes wasm binaries
+            pkgs.binaryen
+          ];
 
-      in rec {
+        in
+        rec {
 
-        packages.zellij =
-          (pkgs.makeRustPlatform { inherit cargo rustc; }).buildRustPackage {
-            inherit src name cargoLock buildInputs nativeBuildInputs;
+          packages.zellij =
+            (pkgs.makeRustPlatform { inherit cargo rustc; }).buildRustPackage {
+              inherit src name cargoLock buildInputs nativeBuildInputs;
 
-            preCheck = ''
-              HOME=$TMPDIR
-            '';
+              preCheck = ''
+                HOME=$TMPDIR
+              '';
 
-            postInstall = ''
-              mandown ./docs/MANPAGE.md > ./zellij.1
-              installManPage ./zellij.1
+              postInstall = ''
+                mandown ./docs/MANPAGE.md > ./zellij.1
+                installManPage ./zellij.1
 
-              # explicit behavior
-              $out/bin/zellij setup --generate-completion bash > ./completions.bash
-              installShellCompletion --bash --name ${pname}.bash ./completions.bash
-              $out/bin/zellij setup --generate-completion fish > ./completions.fish
-              installShellCompletion --fish --name ${pname}.fish ./completions.fish
-              $out/bin/zellij setup --generate-completion zsh > ./completions.zsh
-              installShellCompletion --zsh --name _${pname} ./completions.zsh
+                # explicit behavior
+                $out/bin/zellij setup --generate-completion bash > ./completions.bash
+                installShellCompletion --bash --name ${pname}.bash ./completions.bash
+                $out/bin/zellij setup --generate-completion fish > ./completions.fish
+                installShellCompletion --fish --name ${pname}.fish ./completions.fish
+                $out/bin/zellij setup --generate-completion zsh > ./completions.zsh
+                installShellCompletion --zsh --name _${pname} ./completions.zsh
 
-              install -Dm644  ./assets/logo.png $out/share/icons/hicolor/scalable/apps/zellij.png
+                install -Dm644  ./assets/logo.png $out/share/icons/hicolor/scalable/apps/zellij.png
 
-              copyDesktopItems
-            '';
+                copyDesktopItems
+              '';
 
-            desktopItems = [
-              (pkgs.makeDesktopItem {
-                type = "Application";
-                inherit name;
-                desktopName = "zellij";
-                terminal = true;
-                genericName = "Terminal multiplexer";
-                comment = "Manage your terminal applications";
-                exec = "zellij";
-                icon = "zellij";
-                categories = [ "ConsoleOnly;System" ];
-              })
-            ];
+              desktopItems = [
+                (pkgs.makeDesktopItem {
+                  type = "Application";
+                  inherit name;
+                  desktopName = "zellij";
+                  terminal = true;
+                  genericName = "Terminal multiplexer";
+                  comment = "Manage your terminal applications";
+                  exec = "zellij";
+                  icon = "zellij";
+                  categories = [ "ConsoleOnly;System" ];
+                })
+              ];
 
-            meta = with pkgs.lib; {
-              homepage = "https://github.com/zellij-org/zellij/";
-              description = "A terminal workspace with batteries included";
-              license = [ licenses.mit ];
+              meta = with pkgs.lib; {
+                homepage = "https://github.com/zellij-org/zellij/";
+                description = "A terminal workspace with batteries included";
+                license = [ licenses.mit ];
+              };
             };
+
+          defaultPackage = packages.zellij;
+
+          # nix run
+          apps.zellij = flake-utils.lib.mkApp { drv = packages.zellij; };
+          defaultApp = apps.zellij;
+
+          devShell = pkgs.mkShell {
+            name = "zellij-dev";
+            inherit buildInputs RUST_BACKTRACE;
+            nativeBuildInputs = nativeBuildInputs ++ devInputs;
           };
 
-        defaultPackage = packages.zellij;
-
-        # nix run
-        apps.zellij = flake-utils.lib.mkApp { drv = packages.zellij; };
-        defaultApp = apps.zellij;
-
-        devShell = pkgs.mkShell {
-          name = "zellij-dev";
-          inherit buildInputs RUST_BACKTRACE;
-          nativeBuildInputs = nativeBuildInputs ++ devInputs;
-        };
-
-      });
+        });
 }
