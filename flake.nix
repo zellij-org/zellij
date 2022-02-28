@@ -55,8 +55,6 @@
 
           # for openssl/openssl-sys
           pkgs.pkg-config
-        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.libiconv
         ];
 
         devInputs = [
