@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: support `cargo-binstall` (https://github.com/zellij-org/zellij/pull/1129)
 * Fix: do not use current cursor style in csi erase display (solve `btm` rendering issue) (https://github.com/zellij-org/zellij/pull/1142)
 * Fix: ensure e2e tests use current plugins (https://github.com/zellij-org/zellij/pull/1047)
+* Add: manpage to nix package (https://github.com/zellij-org/zellij/pull/1148)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
