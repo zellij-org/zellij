@@ -100,7 +100,7 @@ impl Display for ExitReason {
             Self::Normal => write!(f, "Bye from Zellij!"),
             Self::ForceDetached => write!(
                 f,
-                "Session was detach from this client (possibly because another client connected)"
+                "Session was detached from this client (possibly because another client connected)"
             ),
             Self::CannotAttach => write!(
                 f,
