@@ -17,6 +17,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
+    shared::make_terminal_title,
     vte,
     zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
@@ -302,6 +303,16 @@ impl Pane for TerminalPane {
             vte_output = Some(fake_cursor);
         }
         vte_output
+    }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            self.grid.title.as_deref().unwrap_or(&self.pane_title)
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
     }
     fn update_name(&mut self, name: &str) {
         match name {

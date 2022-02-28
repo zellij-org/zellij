@@ -169,6 +169,7 @@ pub trait Pane {
         cursor_color: PaletteColor,
         text_color: PaletteColor,
     ) -> Option<String>;
+    fn render_terminal_title(&mut self, _input_mode: InputMode) -> String;
     fn update_name(&mut self, name: &str);
     fn pid(&self) -> PaneId;
     fn reduce_height(&mut self, percent: f64);
@@ -1225,6 +1226,7 @@ impl Tab {
                             self.session_is_mirrored,
                         );
                     }
+                    pane_contents_and_ui.render_terminal_title_if_needed(client_id, client_mode);
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
                     pane_contents_and_ui.render_fake_cursor_if_needed(client_id);

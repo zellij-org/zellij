@@ -16,6 +16,7 @@ use zellij_utils::zellij_tile::prelude::{Event, InputMode, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
+    shared::make_terminal_title,
 };
 
 pub(crate) struct PluginPane {
@@ -252,6 +253,16 @@ impl Pane for PluginPane {
         _text_color: PaletteColor,
     ) -> Option<String> {
         None
+    }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            &self.pane_title
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
     }
     fn update_name(&mut self, name: &str) {
         match name {
