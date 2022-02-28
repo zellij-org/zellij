@@ -50,6 +50,9 @@
         ];
 
         nativeBuildInputs = [
+          # generates manpages
+          pkgs.mandown
+
           pkgs.installShellFiles
           pkgs.copyDesktopItems
 
@@ -61,8 +64,6 @@
           pkgs.cargo-make
           pkgs.rust-analyzer
           pkgs.nixpkgs-fmt
-          # generates manpages
-          pkgs.mandown
           # optimizes wasm binaries
           pkgs.binaryen
         ];
@@ -78,6 +79,8 @@
             '';
 
             postInstall = ''
+              mandown ./docs/MANPAGE.md > ./zellij.1
+              installManPage ./zellij.1
 
               # explicit behavior
               $out/bin/zellij setup --generate-completion bash > ./completions.bash
