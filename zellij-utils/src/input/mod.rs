@@ -33,7 +33,6 @@ pub fn get_mode_info(
         ],
         InputMode::Pane => vec![
             ("←↓↑→".to_string(), "Move focus".to_string()),
-            ("p".to_string(), "Next".to_string()),
             ("n".to_string(), "New".to_string()),
             ("d".to_string(), "Down split".to_string()),
             ("r".to_string(), "Right split".to_string()),
@@ -41,6 +40,9 @@ pub fn get_mode_info(
             ("f".to_string(), "Fullscreen".to_string()),
             ("z".to_string(), "Frames".to_string()),
             ("c".to_string(), "Rename".to_string()),
+            ("w".to_string(), "Floating Toggle".to_string()),
+            ("e".to_string(), "Embed Pane".to_string()),
+            ("p".to_string(), "Next".to_string()),
         ],
         InputMode::Tab => vec![
             ("←↓↑→".to_string(), "Move focus".to_string()),
@@ -58,6 +60,16 @@ pub fn get_mode_info(
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::Session => vec![("d".to_string(), "Detach".to_string())],
+        InputMode::Tmux => vec![
+            ("←↓↑→".to_string(), "Move focus".to_string()),
+            ("\"".to_string(), "Split Down".to_string()),
+            ("%".to_string(), "Split Right".to_string()),
+            ("z".to_string(), "Fullscreen".to_string()),
+            ("c".to_string(), "New Tab".to_string()),
+            (",".to_string(), "Rename Tab".to_string()),
+            ("p".to_string(), "Previous Tab".to_string()),
+            ("n".to_string(), "Next Tab".to_string()),
+        ],
     };
 
     let session_name = envs::get_session_name().ok();

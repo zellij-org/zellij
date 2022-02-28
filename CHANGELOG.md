@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* Fix: invalid assignment of `client_id` (https://github.com/zellij-org/zellij/pull/1052)
+* Add: action to send `^b` in `tmux-mode` (https://github.com/zellij-org/zellij/pull/1106)
+* Add: various action bindings to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1098)
+* Terminal compatibility: set terminal title properly (https://github.com/zellij-org/zellij/pull/1094)
+* Fix: handle discontiguous STDIN input (https://github.com/zellij-org/zellij/issues/1117)
+* Terminal compatibility: fix alternate screen clearing (https://github.com/zellij-org/zellij/pull/1120)
+* Add: information about clippy lints (https://github.com/zellij-org/zellij/pull/1126)
+* Bump `suggestion` dependency (https://github.com/zellij-org/zellij/pull/1124)
+* Add: detach `action` to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1116)
+* Add: initial `nix` support (https://github.com/zellij-org/zellij/pull/1131)
+* Fix: unused code warnings (https://github.com/zellij-org/zellij/pull/1087)
+* Add: support `cargo-binstall` (https://github.com/zellij-org/zellij/pull/1129)
+* Fix: do not use current cursor style in csi erase display (solve `btm` rendering issue) (https://github.com/zellij-org/zellij/pull/1142)
+* Fix: ensure e2e tests use current plugins (https://github.com/zellij-org/zellij/pull/1047)
+* Add: manpage to nix package (https://github.com/zellij-org/zellij/pull/1148)
+
+## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
 * Fix: crash when opening pane in non-existent cwd (https://github.com/zellij-org/zellij/pull/995)
 * Feature: add `copy-command` option (https://github.com/zellij-org/zellij/pull/996)
@@ -17,6 +34,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Feature: add focus attribute in layout (https://github.com/zellij-org/zellij/pull/958)
 * Compatibility: disable scrollback in alternate screen (https://github.com/zellij-org/zellij/pull/1032)
 * Feature: add `copy-clipboard` option (https://github.com/zellij-org/zellij/pull/1022)
+* Fix: update the confusing tips on `RenamePane` (https://github.com/zellij-org/zellij/pull/1045)
+* Feature: add floating panes (https://github.com/zellij-org/zellij/pull/1066)
+* Fix: bump up internal `autocfg` dependency to `1.1.0` (https://github.com/zellij-org/zellij/pull/1071)
+* Feature: add tmux mode (https://github.com/zellij-org/zellij/pull/1073)
+* Fix: improve copy of wrapped lines (https://github.com/zellij-org/zellij/pull/1069)
+* Fix: prefer last active pane when changing focus (https://github.com/zellij-org/zellij/pull/1076)
 
 ## [0.24.0] - 2022-01-05
 * Terminal compatibility: properly handle insertion of characters in a line with wide characters (https://github.com/zellij-org/zellij/pull/964)

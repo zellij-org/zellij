@@ -1,6 +1,6 @@
 # Contributing to Zellij
 
-Thanks for considering to contribute to Zellij!
+Thanks for considering contributing to Zellij!
 
 **First**: if you're unsure of anything, feel free to ask on our [Discord
 server](https://discord.gg/MHV3n76PDq). We're a friendly and welcoming bunch!
@@ -59,7 +59,7 @@ These tests work by running a docker container which contains the Zellij binary,
 5. `export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC_x86_64_unknown_linux_musl`
 </details>
 
-To run these tests locally, you'll need to have both `docker` and `docker-compose` installed.
+To run these tests locally, you'll need to have either `docker` or `podman` and also `docker-compose` installed.
 Once you do, in the repository root:
 
 1. `docker-compose up -d` will start up the docker container
@@ -67,6 +67,13 @@ Once you do, in the repository root:
 3. `cargo make e2e-test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
+
+## How we treat clippy lints
+
+We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij/blob/main/.github/workflows/rust.yml) with the default settings that report only [`clippy::correctness`](https://github.com/rust-lang/rust-clippy#readme) as errors and other lints as warnings because Zellij is still unstable. This means that all warnings can be ignored depending on the situation at that time, even though they are also helpful to keep the code quality.
+Since we just cannot afford to manage them, we are always welcome to fix them!
+
+Here is [the detailed discussion](https://github.com/zellij-org/zellij/pull/1090) if you want to see it.
 
 ## Looking for something to work on?
 

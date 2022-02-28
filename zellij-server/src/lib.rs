@@ -1,4 +1,5 @@
 pub mod os_input_output;
+pub mod output;
 pub mod panes;
 pub mod tab;
 
@@ -29,7 +30,6 @@ use crate::{
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
-    tab::Output,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
@@ -63,7 +63,7 @@ pub enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<Output>),
+    Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -71,6 +71,7 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
+    ConnStatus(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -85,6 +86,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
+            ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
         }
     }
 }
@@ -492,14 +494,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
             }
-            ServerInstruction::Render(mut output) => {
+            ServerInstruction::Render(serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
-                // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(op) = &mut output {
-                    for (client_id, client_render_instruction) in &mut op.client_render_instructions
-                    {
+                if let Some(output) = &serialized_output {
+                    for (client_id, client_render_instruction) in output.iter() {
                         os_input.send_to_client(
                             *client_id,
                             ServerToClientMsg::Render(client_render_instruction.clone()),
@@ -524,6 +524,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
+            }
+            ServerInstruction::ConnStatus(client_id) => {
+                os_input.send_to_client(client_id, ServerToClientMsg::Connected);
+                remove_client!(client_id, os_input, session_state);
             }
         }
     }

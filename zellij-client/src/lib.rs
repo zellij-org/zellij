@@ -35,6 +35,7 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    Connected,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -46,6 +47,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             }
+            ServerToClientMsg::Connected => ClientInstruction::Connected,
         }
     }
 }
@@ -58,6 +60,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
+            ClientInstruction::Connected => ClientContext::Connected,
         }
     }
 }
@@ -104,7 +107,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(termion::event::Event, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText((bool, Vec<u8>, bool)), // (send_brackted_paste_start, pasted_text, send_bracketed_paste_end)
+    PastedText(Vec<u8>),
 }
 
 pub fn start_client(
@@ -325,6 +328,7 @@ pub fn start_client(
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
             }
+            _ => {}
         }
     }
 

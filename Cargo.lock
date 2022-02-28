@@ -212,9 +212,9 @@ dependencies = [
 
 [[package]]
 name = "autocfg"
-version = "1.0.1"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
+checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "backtrace"
@@ -2115,9 +2115,9 @@ dependencies = [
 
 [[package]]
 name = "suggestion"
-version = "0.1.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7267425b32a49c02c8840cecd513903e9ecb69487c7d43e564679a3da521aff"
+checksum = "64d6669311fea55a1f867fdc61afc8690e9f1d93829179a617575cc6083136e3"
 dependencies = [
  "lev_distance",
 ]
@@ -2880,7 +2880,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "dialoguer",
@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-client"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "insta",
  "log",
@@ -2909,7 +2909,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-server"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "ansi_term",
  "async-trait",
@@ -2935,7 +2935,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "clap",
  "serde",
@@ -2946,14 +2946,14 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "ansi_term",
 ]
 
 [[package]]
 name = "zellij-utils"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "anyhow",
  "async-std",

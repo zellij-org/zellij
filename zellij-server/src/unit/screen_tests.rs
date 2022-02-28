@@ -204,23 +204,8 @@ pub fn close_the_middle_tab() {
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
     new_tab(&mut screen, 3);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
     screen.switch_tab_prev(1);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
     screen.close_tab(1);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(

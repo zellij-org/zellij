@@ -226,6 +226,21 @@ fn route_action(
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         }
+        Action::TogglePaneEmbedOrFloating => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(client_id))
+                .unwrap();
+        }
+        Action::ToggleFloatingPanes => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
+                    client_id,
+                    session.default_shell.clone(),
+                ))
+                .unwrap();
+        }
         Action::PaneNameInput(c) => {
             session
                 .senders
@@ -445,6 +460,10 @@ pub(crate) fn route_thread_main(
             }
             ClientToServerMsg::KillSession => {
                 to_server.send(ServerInstruction::KillSession).unwrap();
+            }
+            ClientToServerMsg::ConnStatus => {
+                let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                break;
             }
         }
     }

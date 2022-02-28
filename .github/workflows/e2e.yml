@@ -18,7 +18,7 @@ jobs:
       ssh:
         image: ghcr.io/linuxserver/openssh-server
         env:
-          PUID: 1000
+          PUID: 1001
           PGID: 1000
           TZ: Europe/Vienna
           PASSWORD_ACCESS: true

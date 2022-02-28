@@ -1,9 +1,10 @@
 use zellij_utils::{pane_size::Viewport, zellij_tile};
 
+use crate::output::CharacterChunk;
+use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, RESET_STYLES};
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
-use std::fmt::Write;
 use zellij_tile::data::PaletteColor;
 use zellij_utils::shared::colors;
 
@@ -42,6 +43,19 @@ impl BoundarySymbol {
     pub fn color(&mut self, color: Option<PaletteColor>) -> Self {
         self.color = color;
         *self
+    }
+    pub fn as_terminal_character(&self) -> TerminalCharacter {
+        if self.invisible {
+            EMPTY_TERMINAL_CHARACTER
+        } else {
+            let character = self.boundary_type.chars().next().unwrap();
+            TerminalCharacter {
+                character,
+                width: 1,
+                styles: RESET_STYLES
+                    .foreground(self.color.map(|palette_color| palette_color.into())),
+            }
+        }
     }
 }
 
@@ -511,19 +525,16 @@ impl Boundaries {
             }
         }
     }
-    pub fn vte_output(&self) -> String {
-        let mut vte_output = String::new();
+    pub fn render(&self) -> Vec<CharacterChunk> {
+        let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
-            write!(
-                &mut vte_output,
-                "\u{1b}[{};{}H\u{1b}[m{}",
-                coordinates.y + 1,
-                coordinates.x + 1,
-                boundary_character
-            )
-            .unwrap(); // goto row/col + boundary character
+            character_chunks.push(CharacterChunk::new(
+                vec![boundary_character.as_terminal_character()],
+                coordinates.x,
+                coordinates.y,
+            ));
         }
-        vte_output
+        character_chunks
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.x() + rect.cols() < self.viewport.cols

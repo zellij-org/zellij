@@ -4,7 +4,7 @@ use zellij_utils::position::Position;
 
 // The selection is empty when start == end
 // it includes the character at start, and everything before end.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Selection {
     pub start: Position,
     pub end: Position,
@@ -59,6 +59,16 @@ impl Selection {
         end.line.0 == row && col < end.column.0
     }
 
+    pub fn contains_row(&self, row: usize) -> bool {
+        let row = row as isize;
+        let (start, end) = if self.start <= self.end {
+            (self.start, self.end)
+        } else {
+            (self.end, self.start)
+        };
+        start.line.0 <= row && end.line.0 >= row
+    }
+
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
@@ -98,6 +108,13 @@ impl Selection {
         if !self.active {
             self.end.line.0 += lines as isize;
         }
+    }
+    pub fn offset(mut self, offset_x: usize, offset_y: usize) -> Self {
+        self.start.line.0 += offset_y as isize;
+        self.end.line.0 += offset_y as isize;
+        self.start.column.0 += offset_x;
+        self.end.column.0 += offset_x;
+        self
     }
 
     /// Return an iterator over the line indices, up to max, that are not present in both self and other,
