@@ -133,6 +133,7 @@ pub fn start_client(
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     envs::set_zellij("0".to_string());
+    config.env.set_vars();
 
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
