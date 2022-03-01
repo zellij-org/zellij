@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: ensure e2e tests use current plugins (https://github.com/zellij-org/zellij/pull/1047)
 * Add: manpage to nix package (https://github.com/zellij-org/zellij/pull/1148)
 * Fix: terminal title passthrough on not showing pane frames (https://github.com/zellij-org/zellij/pull/1113)
+* Add: ability to set `ENVIRONMENT VARIABLES` inside of the config and layout's (https://github.com/zellij-org/zellij/pull/1154)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
