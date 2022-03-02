@@ -12,6 +12,7 @@ jobs:
   nix:
     runs-on: ubuntu-latest
     name: nix-build
+    environment: cachix
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v2.4.0
@@ -23,5 +24,11 @@ jobs:
           extra_nix_config: |
             experimental-features = nix-command flakes
           fetch-depth: 0
+      - uses: cachix/cachix-action@v10
+        with:
+          name: zellij
+          # If you chose API tokens for write access OR if you have a private cache
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - run: nix flake check --print-build-logs --show-trace
       - run: nix build
+      - run: nix develop --profile devShell
