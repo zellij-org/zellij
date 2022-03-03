@@ -567,7 +567,7 @@ impl Screen {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.tabs.iter_mut().for_each(|(_, tab)| {
-            if let Some(_) = tab.active_panes.get(&client_id) {
+            if tab.active_panes.get(&client_id).is_some() {
                 tab.remove_client(client_id);
                 if tab.has_no_connected_clients() {
                     tab.visible(false);
