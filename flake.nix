@@ -67,8 +67,6 @@
             pkgs.nixpkgs-fmt
             # optimizes wasm binaries
             pkgs.binaryen
-
-            pkgs.jq
           ];
 
         in
