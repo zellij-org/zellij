@@ -577,6 +577,7 @@ impl Tab {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.focus_pane_id = None;
+        self.active_panes.remove(&client_id);
         self.connected_clients.remove(&client_id);
         self.set_force_render();
     }
