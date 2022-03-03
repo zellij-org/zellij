@@ -65,8 +65,12 @@
             pkgs.cargo-make
             pkgs.rust-analyzer
             pkgs.nixpkgs-fmt
+
             # optimizes wasm binaries
             pkgs.binaryen
+
+            # used for snapshotting the e2e tests
+            pkgs.cargo-insta
           ];
 
         in
