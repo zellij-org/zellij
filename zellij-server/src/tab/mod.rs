@@ -1,6 +1,7 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
+mod active_terminal_scroll;
 mod clipboard;
 mod copy_command;
 pub mod floating_pane_grid;
@@ -28,6 +29,7 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
+use active_terminal_scroll::ActiveTerminalScroll;
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::os::unix::io::RawFd;
@@ -2197,50 +2199,13 @@ impl Tab {
         }
     }
 
-    fn operate_active_terminal_scroll<ClosureT>(
-        &mut self,
-        client_id: ClientId,
-        action: ClosureT,
-        process_pending_vte_events: bool,
-    ) where
-        ClosureT: Fn(&mut Box<dyn Pane>),
-    {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            if let Some(active_pane) = self.floating_panes.get_active_pane_mut(client_id) {
-                action(active_pane);
-                if process_pending_vte_events && !active_pane.is_scrolled() {
-                    if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                        self.process_pending_vte_events(raw_fd);
-                    }
-                }
-            }
-        } else if let Some(active_pane) = self
-            .active_panes
-            .get(&client_id)
-            .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-        {
-            action(active_pane);
-            if process_pending_vte_events && !active_pane.is_scrolled() {
-                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
-                }
-            }
-        }
-    }
-
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| active_pane.scroll_up(1, client_id),
-            false,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).up(1);
     }
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| active_pane.scroll_down(1, client_id),
-            true,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).down(1);
     }
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
@@ -2260,50 +2225,25 @@ impl Tab {
         }
     }
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| {
-                let scroll_rows = active_pane.get_content_rows();
-                active_pane.scroll_down(scroll_rows, client_id);
-            },
-            true,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).down_page();
     }
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| {
-                // prevent overflow when row == 0
-                let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                active_pane.scroll_up(scroll_rows, client_id);
-            },
-            false,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).up_half_page();
     }
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| {
-                let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                active_pane.scroll_down(scroll_rows, client_id);
-            },
-            true,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).down_half_page();
     }
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) {
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| active_pane.clear_scroll(),
-            true,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).clear();
     }
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) {
         // TODO: is this a thing?
-        self.operate_active_terminal_scroll(
-            client_id,
-            |active_pane| active_pane.clear_scroll(),
-            true,
-        );
+        let boxed_tab = Box::new(self);
+        ActiveTerminalScroll::new(client_id, boxed_tab).clear();
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
