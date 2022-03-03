@@ -16,7 +16,7 @@ updates:
       # Allow only direct updates
       - dependency-name: "log"
   - package-ecosystem: "cargo"
-    directory: "/zellij-utils"
+    directory: "/zellij-utils/"
     schedule:
       interval: "weekly"
     allow:
