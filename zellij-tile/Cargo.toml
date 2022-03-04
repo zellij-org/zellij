@@ -5,6 +5,7 @@ authors = ["Brooks J Rady <b.j.rady@gmail.com>"]
 edition = "2021"
 description = "A small client-side library for writing Zellij plugins"
 license = "MIT"
+edition = "2021"
 
 [dependencies]
 clap = { version = "3.0", features = ["derive"] }
