@@ -46,7 +46,7 @@ version `wasm-opt --version` > 97, for it's command `wasm-opt`.
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
 <details>
-<summary>Should you be a nix (linux/macOs) user, you can use the following
+<summary>Should you be a `nix` (linux/macOs) user, you can use the following
 commands in order to get set up: (expand)</summary>
 
 - `nix develop`
