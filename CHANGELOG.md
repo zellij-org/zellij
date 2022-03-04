@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: binary cache to zellij `cachix use zellij` (https://github.com/zellij-org/zellij/pull/1157)
 * Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
 * Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
+* Fix: `list-session` to stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
