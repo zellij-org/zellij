@@ -30,13 +30,14 @@
           pname = name;
           root = toString ./.;
 
-          ignoreSource = [ ".git" "target" ];
+          ignoreSource = [ ".git" "target" "example" ];
 
           src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-          rustToolchainToml =
-            pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
-          cargoLock = { lockFile = ./Cargo.lock; };
+          rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain;
+          cargoLock = {
+              lockFile = (builtins.path { path = ./Cargo.lock; name = "Cargo.lock"; });
+          };
           cargo = rustToolchainToml;
           rustc = rustToolchainToml;
 
