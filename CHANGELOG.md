@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
 * Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
 * Fix: `list-session` to stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+* Add: dynamic completions for `fish` shell (https://github.com/zellij-org/zellij/pull/1176)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
