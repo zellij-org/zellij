@@ -289,6 +289,7 @@ pub trait Pane {
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
+    fn mouse_mode(&self) -> bool;
 }
 
 impl Tab {
