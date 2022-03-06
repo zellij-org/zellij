@@ -887,6 +887,20 @@ impl Tab {
         self.get_active_pane_id(client_id)
             .and_then(|ap| self.panes.get(&ap).map(Box::as_ref))
     }
+    pub fn get_active_pane_mut(&mut self, client_id: ClientId) -> Option<&mut Box<dyn Pane>> {
+        self.get_active_pane_id(client_id)
+            .and_then(|ap| self.panes.get_mut(&ap))
+    }
+    pub fn get_active_pane_or_floating_pane_mut(
+        &mut self,
+        client_id: ClientId,
+    ) -> Option<&mut Box<dyn Pane>> {
+        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
+            self.floating_panes.get_active_pane_mut(client_id)
+        } else {
+            self.get_active_pane_mut(client_id)
+        }
+    }
     fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         // TODO: why do we need this?
         self.active_panes.get(&client_id).copied()
@@ -2200,210 +2214,75 @@ impl Tab {
         }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .map(|active_pane| active_pane.scroll_up(1, client_id));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .map(|active_pane| active_pane.scroll_up(1, client_id));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.scroll_up(1, client_id);
         }
     }
     pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .and_then(|active_pane| {
-                    active_pane.scroll_down(1, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .and_then(|active_pane| {
-                    active_pane.scroll_down(1, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.scroll_down(1, client_id);
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd);
+                }
+            }
         }
     }
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .map(|active_pane| {
-                    // prevent overflow when row == 0
-                    let scroll_rows = active_pane.rows().max(1) - 1;
-                    active_pane.scroll_up(scroll_rows, client_id);
-                });
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .map(|active_pane| {
-                    // prevent overflow when row == 0
-                    let scroll_rows = active_pane.get_content_rows();
-                    active_pane.scroll_up(scroll_rows, client_id);
-                });
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            // prevent overflow when row == 0
+            let scroll_rows = active_pane.rows().max(1) - 1;
+            active_pane.scroll_up(scroll_rows, client_id);
         }
     }
     pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .and_then(|active_pane| {
-                    let scroll_rows = active_pane.get_content_rows();
-                    active_pane.scroll_down(scroll_rows, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .and_then(|active_pane| {
-                    let scroll_rows = active_pane.get_content_rows();
-                    active_pane.scroll_down(scroll_rows, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let scroll_rows = active_pane.get_content_rows();
+            active_pane.scroll_down(scroll_rows, client_id);
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd);
+                }
+            }
         }
     }
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .map(|active_pane| {
-                    // prevent overflow when row == 0
-                    let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                    active_pane.scroll_up(scroll_rows, client_id);
-                });
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .map(|active_pane| {
-                    // prevent overflow when row == 0
-                    let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                    active_pane.scroll_up(scroll_rows, client_id);
-                });
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            // prevent overflow when row == 0
+            let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
+            active_pane.scroll_up(scroll_rows, client_id);
         }
     }
     pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .and_then(|active_pane| {
-                    let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                    active_pane.scroll_down(scroll_rows, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .and_then(|active_pane| {
-                    let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
-                    active_pane.scroll_down(scroll_rows, client_id);
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
+            active_pane.scroll_down(scroll_rows, client_id);
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd);
+                }
+            }
         }
     }
     pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .and_then(|active_pane| {
-                    active_pane.clear_scroll();
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .and_then(|active_pane| {
-                    active_pane.clear_scroll();
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_scroll();
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd);
+                }
+            }
         }
     }
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) {
         // TODO: is this a thing?
-        if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes
-                .get_active_pane_mut(client_id)
-                .and_then(|active_pane| {
-                    active_pane.clear_scroll();
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
-        } else {
-            self.active_panes
-                .get(&client_id)
-                .and_then(|active_pane_id| self.panes.get_mut(active_pane_id))
-                .and_then(|active_pane| {
-                    active_pane.clear_scroll();
-                    if !active_pane.is_scrolled() {
-                        if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                            return Some(raw_fd);
-                        }
-                    }
-                    None
-                })
-                .map(|raw_fd| self.process_pending_vte_events(raw_fd));
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_scroll();
+            if !active_pane.is_scrolled() {
+                if let PaneId::Terminal(raw_fd) = active_pane.pid() {
+                    self.process_pending_vte_events(raw_fd);
+                }
+            }
         }
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
