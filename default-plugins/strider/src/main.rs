@@ -58,14 +58,12 @@ impl ZellijPlugin for State {
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 }
-                Mouse::Release(Some((line, _))) => {
+                Mouse::Release(line, _) => {
                     if line < 0 {
                         return;
                     }
                     let mut should_select = true;
-                    if let Some((Event::Mouse(Mouse::Release(Some((prev_line, _)))), t)) =
-                        prev_event
-                    {
+                    if let Some((Event::Mouse(Mouse::Release(prev_line, _)), t)) = prev_event {
                         if prev_line == line
                             && Instant::now().saturating_duration_since(t).as_millis() < 400
                         {

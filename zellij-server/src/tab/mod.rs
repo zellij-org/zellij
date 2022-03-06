@@ -199,7 +199,7 @@ pub trait Pane {
     }
     fn start_selection(&mut self, _start: &Position, _client_id: ClientId) {}
     fn update_selection(&mut self, _position: &Position, _client_id: ClientId) {}
-    fn end_selection(&mut self, _end: Option<&Position>, _client_id: ClientId) {}
+    fn end_selection(&mut self, _end: &Position, _client_id: ClientId) {}
     fn reset_selection(&mut self) {}
     fn get_selected_text(&self) -> Option<String> {
         None
@@ -2401,57 +2401,12 @@ impl Tab {
         }
 
         let mut selected_text = None;
-        if self.floating_panes.panes_are_visible() {
-            let active_pane_id = self
-                .floating_panes
-                .active_pane_id(client_id)
-                .or_else(|| self.active_panes.get(&client_id).copied());
-            // on release, get the selected text from the active pane, and reset it's selection
-            let pane_id_at_position = self
-                .floating_panes
-                .get_pane_id_at(position, true)
-                .or_else(|| self.get_pane_id_at(position, true));
-            if active_pane_id != pane_id_at_position {
-                // release happened outside of pane
-                if let Some(active_pane_id) = active_pane_id {
-                    if let Some(active_pane) = self
-                        .floating_panes
-                        .get_mut(&active_pane_id)
-                        .or_else(|| self.panes.get_mut(&active_pane_id))
-                    {
-                        active_pane.end_selection(None, client_id);
-                        selected_text = active_pane.get_selected_text();
-                        active_pane.reset_selection();
-                    }
-                }
-            } else if let Some(pane) = pane_id_at_position.and_then(|pane_id_at_position| {
-                self.floating_panes
-                    .get_mut(&pane_id_at_position)
-                    .or_else(|| self.panes.get_mut(&pane_id_at_position))
-            }) {
-                // release happened inside of pane
-                let relative_position = pane.relative_position(position);
-                pane.end_selection(Some(&relative_position), client_id);
-                selected_text = pane.get_selected_text();
-                pane.reset_selection();
-            }
-        } else {
-            let active_pane_id = self.active_panes.get(&client_id);
-            // on release, get the selected text from the active pane, and reset it's selection
-            if active_pane_id != self.get_pane_id_at(position, true).as_ref() {
-                if let Some(active_pane_id) = active_pane_id {
-                    if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
-                        active_pane.end_selection(None, client_id);
-                        selected_text = active_pane.get_selected_text();
-                        active_pane.reset_selection();
-                    }
-                }
-            } else if let Some(pane) = self.get_pane_at(position, true) {
-                let relative_position = pane.relative_position(position);
-                pane.end_selection(Some(&relative_position), client_id);
-                selected_text = pane.get_selected_text();
-                pane.reset_selection();
-            }
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let relative_position = active_pane.relative_position(position);
+            active_pane.end_selection(&relative_position, client_id);
+            selected_text = active_pane.get_selected_text();
+            active_pane.reset_selection();
         }
 
         if let Some(selected_text) = selected_text {
@@ -2466,24 +2421,13 @@ impl Tab {
             .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
-        } else if self.floating_panes.panes_are_visible() {
-            let active_pane = self
-                .floating_panes
-                .get_active_pane_mut(client_id)
-                .or_else(|| {
-                    self.active_panes
-                        .get(&client_id)
-                        .and_then(|pane_id| self.panes.get_mut(pane_id))
-                });
-            active_pane.map(|active_pane| {
-                let relative_position = active_pane.relative_position(position_on_screen);
-                active_pane.update_selection(&relative_position, client_id);
-            });
-        } else if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            if let Some(active_pane) = self.panes.get_mut(&active_pane_id) {
-                let relative_position = active_pane.relative_position(position_on_screen);
-                active_pane.update_selection(&relative_position, client_id);
-            }
+            return;
+        }
+
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let relative_position = active_pane.relative_position(position_on_screen);
+            active_pane.update_selection(&relative_position, client_id);
         }
     }
 

@@ -851,7 +851,7 @@ fn copy_selected_text_from_viewport() {
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(25, 35)));
+    grid.end_selection(&Position::new(25, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -875,7 +875,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     }
 
     grid.start_selection(&Position::new(5, 0));
-    grid.end_selection(Some(&Position::new(8, 42)));
+    grid.end_selection(&Position::new(8, 42));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -900,7 +900,7 @@ fn copy_selected_text_from_lines_above() {
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(2, 8)));
+    grid.end_selection(&Position::new(2, 8));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -927,7 +927,7 @@ fn copy_selected_text_from_lines_below() {
 
     grid.start_selection(&Position::new(63, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(65, 35)));
+    grid.end_selection(&Position::new(65, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),

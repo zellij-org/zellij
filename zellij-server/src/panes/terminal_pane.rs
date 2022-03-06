@@ -431,7 +431,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: Option<&Position>, _client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }

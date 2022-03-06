@@ -1303,9 +1303,9 @@ impl Grid {
         self.mark_for_rerender();
     }
 
-    pub fn end_selection(&mut self, end: Option<&Position>) {
+    pub fn end_selection(&mut self, end: &Position) {
         let old_selection = self.selection;
-        self.selection.end(end);
+        self.selection.end(*end);
         self.update_selected_lines(&old_selection, &self.selection.clone());
         self.mark_for_rerender();
     }
