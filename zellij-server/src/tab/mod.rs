@@ -2393,41 +2393,37 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
+        if self.selecting_with_mouse {
+            let mut selected_text = None;
+            let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+            if let Some(active_pane) = active_pane {
+                let relative_position = active_pane.relative_position(position);
+                active_pane.end_selection(&relative_position, client_id);
+                selected_text = active_pane.get_selected_text();
+                active_pane.reset_selection();
+            }
+
+            if let Some(selected_text) = selected_text {
+                self.write_selection_to_clipboard(&selected_text);
+            }
+            self.selecting_with_mouse = false;
+        } else if self.floating_panes.panes_are_visible() {
             self.floating_panes.stop_moving_pane_with_mouse(*position);
         }
-        if !self.selecting_with_mouse {
-            return;
-        }
-
-        let mut selected_text = None;
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(position);
-            active_pane.end_selection(&relative_position, client_id);
-            selected_text = active_pane.get_selected_text();
-            active_pane.reset_selection();
-        }
-
-        if let Some(selected_text) = selected_text {
-            self.write_selection_to_clipboard(&selected_text);
-        }
-        self.selecting_with_mouse = false;
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
         let search_selectable = true;
-        if self
+        if self.selecting_with_mouse {
+            let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+            if let Some(active_pane) = active_pane {
+                let relative_position = active_pane.relative_position(position_on_screen);
+                active_pane.update_selection(&relative_position, client_id);
+            }
+        } else if self
             .floating_panes
             .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
-            return;
-        }
-
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-        if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(position_on_screen);
-            active_pane.update_selection(&relative_position, client_id);
         }
     }
 
