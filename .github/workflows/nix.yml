@@ -33,7 +33,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    name: "build"
+    name: "nix build"
     environment: cachix
     timeout-minutes: 25
     steps:
@@ -54,7 +54,7 @@ jobs:
       - run: nix build
   develop:
     runs-on: ubuntu-latest
-    name: develop
+    name: "nix develop"
     environment: cachix
     timeout-minutes: 10
     steps:
