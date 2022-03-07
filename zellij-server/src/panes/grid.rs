@@ -1391,7 +1391,11 @@ impl Grid {
         // for now trim after building the selection to handle whitespace in wrapped lines
         let selection: Vec<_> = selection.iter().map(|l| l.trim_end()).collect();
 
-        Some(selection.join("\n"))
+        if selection.is_empty() {
+            None
+        } else {
+            Some(selection.join("\n"))
+        }
     }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
