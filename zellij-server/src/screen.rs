@@ -1209,6 +1209,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_left_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::RightClick(point, client_id) => {
@@ -1217,6 +1218,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_right_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::MouseRelease(point, client_id) => {
