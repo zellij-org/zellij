@@ -2336,17 +2336,16 @@ impl Tab {
     pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) {
         self.focus_pane_at(position, client_id);
 
-        let show_floating_panes = self.floating_panes.panes_are_visible();
-        if show_floating_panes {
-            let search_selectable = false;
-            if self
+        let search_selectable = false;
+        if self.floating_panes.panes_are_visible()
+            && self
                 .floating_panes
                 .move_pane_with_mouse(*position, search_selectable)
-            {
-                self.set_force_render();
-                return;
-            }
+        {
+            self.set_force_render();
+            return;
         }
+
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             pane.start_selection(&relative_position, client_id);
@@ -2419,9 +2418,10 @@ impl Tab {
                 let relative_position = active_pane.relative_position(position_on_screen);
                 active_pane.update_selection(&relative_position, client_id);
             }
-        } else if self
-            .floating_panes
-            .move_pane_with_mouse(*position_on_screen, search_selectable)
+        } else if self.floating_panes.panes_are_visible()
+            && self
+                .floating_panes
+                .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
         }
