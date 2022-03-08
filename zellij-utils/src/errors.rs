@@ -20,7 +20,7 @@ pub trait ErrorInstruction {
 
 #[derive(Debug, ThisError, Diagnostic)]
 #[error("{0}{}", self.show_backtrace())]
-#[diagnostic(help("set the `RUST_BACKTRACE=1` environment variable to display a backtrace."))]
+#[diagnostic(help("{}", self.show_help()))]
 struct Panic(String);
 
 impl Panic {
@@ -31,6 +31,15 @@ impl Panic {
             }
         }
         "".into()
+    }
+
+    fn show_help(&self) -> String {
+        r#"If you are seeing this message, it means that something went wrong.
+Please report this error to the github issue.
+(https://github.com/zellij-org/zellij/issues)
+
+Also, if you want to see the backtrace, you can set the `RUST_BACKTRACE` environment variable to `1`.
+"#.into()
     }
 }
 
@@ -54,15 +63,12 @@ where
     let msg = match info.payload().downcast_ref::<&'static str>() {
         Some(s) => Some(*s),
         None => info.payload().downcast_ref::<String>().map(|s| &**s),
-    };
+    }
+    .unwrap_or("An unexpected error occurred!");
 
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
-    let mut report: Report = Panic(format!(
-        "\u{1b}[0;31m{}\u{1b}[0;0m",
-        msg.unwrap_or("Unexpected Error")
-    ))
-    .into();
+    let mut report: Report = Panic(format!("\u{1b}[0;31m{}\u{1b}[0;0m", msg)).into();
 
     if let Some(location) = info.location() {
         report = report.wrap_err(format!(
