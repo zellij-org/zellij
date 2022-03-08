@@ -138,6 +138,19 @@ impl Pane for TerminalPane {
                     return "OA".as_bytes().to_vec();
                 }
             }
+
+            [27, 91, 72] => {
+                // home key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 72]; // ESC O H
+                }
+            }
+            [27, 91, 70] => {
+                // end key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 70]; // ESC O F
+                }
+            }
             [27, 91, 66] => {
                 // down arrow
                 if self.grid.cursor_key_mode {
