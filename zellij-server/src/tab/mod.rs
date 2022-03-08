@@ -976,6 +976,12 @@ impl Tab {
         };
         self.write_to_pane_id(input_bytes, pane_id);
     }
+    pub fn write_to_terminal_at(&mut self, input_bytes: Vec<u8>, position: &Position) {
+        let pane_id = self.get_pane_id_at(position, false);
+        if let Some(pane_id) = pane_id {
+            self.write_to_pane_id(input_bytes, pane_id);
+        }
+    }
     pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
@@ -2289,15 +2295,36 @@ impl Tab {
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            pane.scroll_up(lines, client_id);
+            if pane.mouse_mode() {
+                let relative_position = pane.relative_position(point);
+                let mouse_event = format!(
+                    "\u{1b}[<64;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                log::info!("scroll up event: {mouse_event}");
+                self.write_to_terminal_at(mouse_event.into_bytes(), point);
+            } else {
+                pane.scroll_up(lines, client_id);
+            }
         }
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            pane.scroll_down(lines, client_id);
-            if !pane.is_scrolled() {
-                if let PaneId::Terminal(pid) = pane.pid() {
-                    self.process_pending_vte_events(pid);
+            if pane.mouse_mode() {
+                let relative_position = pane.relative_position(point);
+                let mouse_event = format!(
+                    "\u{1b}[<65;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_terminal_at(mouse_event.into_bytes(), point);
+            } else {
+                pane.scroll_down(lines, client_id);
+                if !pane.is_scrolled() {
+                    if let PaneId::Terminal(pid) = pane.pid() {
+                        self.process_pending_vte_events(pid);
+                    }
                 }
             }
         }
@@ -2349,8 +2376,18 @@ impl Tab {
 
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
-            pane.start_selection(&relative_position, client_id);
-            self.selecting_with_mouse = true;
+
+            if pane.mouse_mode() {
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            } else {
+                pane.start_selection(&relative_position, client_id);
+                self.selecting_with_mouse = true;
+            }
         };
     }
     pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) {
@@ -2358,7 +2395,16 @@ impl Tab {
 
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
-            pane.handle_right_click(&relative_position, client_id);
+            if pane.mouse_mode() {
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            } else {
+                pane.handle_right_click(&relative_position, client_id);
+            }
         };
     }
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
@@ -2393,33 +2439,53 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
-        if self.selecting_with_mouse {
-            let mut selected_text = None;
-            let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-            if let Some(active_pane) = active_pane {
-                let relative_position = active_pane.relative_position(position);
-                active_pane.end_selection(&relative_position, client_id);
-                selected_text = active_pane.get_selected_text();
-                active_pane.reset_selection();
-            }
+        let selecting = self.selecting_with_mouse;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
-            if let Some(selected_text) = selected_text {
-                self.write_selection_to_clipboard(&selected_text);
+        if let Some(active_pane) = active_pane {
+            let relative_position = active_pane.relative_position(position);
+            if active_pane.mouse_mode() {
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}m",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            } else if selecting {
+                active_pane.end_selection(&relative_position, client_id);
+                let selected_text = active_pane.get_selected_text();
+                active_pane.reset_selection();
+                if let Some(selected_text) = selected_text {
+                    self.write_selection_to_clipboard(&selected_text);
+                }
+                self.selecting_with_mouse = false;
             }
-            self.selecting_with_mouse = false;
-        } else if self.floating_panes.panes_are_visible() {
+        }
+
+        if self.floating_panes.panes_are_visible() {
             self.floating_panes.stop_moving_pane_with_mouse(*position);
         }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+        let selecting = self.selecting_with_mouse;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         let search_selectable = true;
-        if self.selecting_with_mouse {
-            let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
-            if let Some(active_pane) = active_pane {
-                let relative_position = active_pane.relative_position(position_on_screen);
+
+        if let Some(active_pane) = active_pane {
+            let relative_position = active_pane.relative_position(position_on_screen);
+            if active_pane.mouse_mode() {
+                let mouse_event = format!(
+                    "\u{1b}[<32;{:?};{:?}M",
+                    relative_position.column.0 + 1,
+                    relative_position.line.0 + 1
+                );
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            } else if selecting {
                 active_pane.update_selection(&relative_position, client_id);
             }
-        } else if self.floating_panes.panes_are_visible()
+        }
+
+        if self.floating_panes.panes_are_visible()
             && self
                 .floating_panes
                 .move_pane_with_mouse(*position_on_screen, search_selectable)
