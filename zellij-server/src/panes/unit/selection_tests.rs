@@ -22,24 +22,13 @@ fn selection_to() {
 }
 
 #[test]
-fn selection_end_with_position() {
+fn selection_end() {
     let mut selection = Selection::default();
     selection.start(Position::new(10, 10));
-    selection.end(Some(&Position::new(20, 30)));
+    selection.end(Position::new(20, 30));
 
     assert!(!selection.active);
     assert_eq!(selection.end, Position::new(20, 30));
-}
-
-#[test]
-fn selection_end_without_position() {
-    let mut selection = Selection::default();
-    selection.start(Position::new(10, 10));
-    selection.to(Position::new(15, 100));
-    selection.end(None);
-
-    assert!(!selection.active);
-    assert_eq!(selection.end, Position::new(15, 100));
 }
 
 #[test]
