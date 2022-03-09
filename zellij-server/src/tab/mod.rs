@@ -2446,17 +2446,28 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible()
+            && self.floating_panes.pane_is_being_moved_with_mouse()
+        {
+            self.floating_panes.stop_moving_pane_with_mouse(*position);
+            return;
+        }
+
         let selecting = self.selecting_with_mouse;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
             let relative_position = active_pane.relative_position(position);
             if active_pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<0;{:?};{:?}m",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
+                // ensure that coordinates are valid
+                let col = (relative_position.column.0 + 1)
+                    .max(1)
+                    .min(active_pane.get_content_columns());
+
+                let line = (relative_position.line.0 + 1)
+                    .max(1)
+                    .min(active_pane.get_content_rows() as isize);
+                let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else if selecting {
                 active_pane.end_selection(&relative_position, client_id);
@@ -2468,36 +2479,40 @@ impl Tab {
                 self.selecting_with_mouse = false;
             }
         }
-
-        if self.floating_panes.panes_are_visible() {
-            self.floating_panes.stop_moving_pane_with_mouse(*position);
-        }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
-        let selecting = self.selecting_with_mouse;
-        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         let search_selectable = true;
 
-        if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<32;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else if selecting {
-                active_pane.update_selection(&relative_position, client_id);
-            }
-        }
-
         if self.floating_panes.panes_are_visible()
+            && self.floating_panes.pane_is_being_moved_with_mouse()
             && self
                 .floating_panes
                 .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
+            return;
+        }
+
+        let selecting = self.selecting_with_mouse;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+
+        if let Some(active_pane) = active_pane {
+            let relative_position = active_pane.relative_position(position_on_screen);
+            if active_pane.mouse_mode() {
+                // ensure that coordinates are valid
+                let col = (relative_position.column.0 + 1)
+                    .max(1)
+                    .min(active_pane.get_content_columns());
+
+                let line = (relative_position.line.0 + 1)
+                    .max(1)
+                    .min(active_pane.get_content_rows() as isize);
+
+                let mouse_event = format!("\u{1b}[<32;{:?};{:?}M", col, line);
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            } else if selecting {
+                active_pane.update_selection(&relative_position, client_id);
+            }
         }
     }
 
