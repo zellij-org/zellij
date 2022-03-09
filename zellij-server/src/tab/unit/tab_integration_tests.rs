@@ -1080,10 +1080,7 @@ fn replacing_existing_wide_characters() {
     let mut tab = create_new_tab(size);
     let mut output = Output::default();
     let pane_content = read_fixture("ncmpcpp-wide-chars");
-    tab.handle_pty_bytes(
-        1,
-        pane_content,
-    );
+    tab.handle_pty_bytes(1, pane_content);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),

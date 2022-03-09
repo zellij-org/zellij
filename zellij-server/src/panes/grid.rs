@@ -2229,7 +2229,8 @@ impl Row {
                             if removed.width > 1 {
                                 // the character we removed is a wide character itself, so we add
                                 // padding
-                                self.columns.insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
+                                self.columns
+                                    .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
                             }
                         }
                     }
