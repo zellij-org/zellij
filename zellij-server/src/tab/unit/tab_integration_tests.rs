@@ -129,6 +129,16 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
+fn read_fixture(fixture_name: &str) -> Vec<u8> {
+    let mut path_to_file = std::path::PathBuf::new();
+    path_to_file.push("../src");
+    path_to_file.push("tests");
+    path_to_file.push("fixtures");
+    path_to_file.push(fixture_name);
+    std::fs::read(path_to_file)
+        .unwrap_or_else(|_| panic!("could not read fixture {:?}", &fixture_name))
+}
+
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
@@ -1047,6 +1057,33 @@ fn cannot_float_only_embedded_pane() {
         Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
     );
     tab.toggle_pane_embed_or_floating(client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn replacing_existing_wide_characters() {
+    // this is a real world use case using ncmpcpp with wide characters and scrolling
+    // the reason we don't break it down is that it exposes quite a few edge cases with wide
+    // characters that we should handle properly
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("ncmpcpp-wide-chars");
+    tab.handle_pty_bytes(
+        1,
+        pane_content,
+    );
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
