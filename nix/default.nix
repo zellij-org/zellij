@@ -103,7 +103,8 @@ flake-utils.lib.eachSystem [
 
       # crate2nix - better incremental builds, but uses ifd
       packages.zellij = pkgs.callPackage ./crate2nix.nix {
-        inherit crate2nix name src desktopItems postInstall meta;
+          inherit crate2nix name src desktopItems postInstall
+          meta nativeBuildInputs;
       };
 
       # native nixpkgs support - keep supported
