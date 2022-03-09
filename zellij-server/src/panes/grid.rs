@@ -947,6 +947,7 @@ impl Grid {
                     row.insert_character_at(terminal_character, self.cursor.x);
                 } else {
                     row.add_character_at(terminal_character, self.cursor.x);
+                    // self.move_cursor_forward_until_edge(count_to_move_cursor);
                 }
                 self.output_buffer.update_line(self.cursor.y);
             }
@@ -967,6 +968,9 @@ impl Grid {
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
         // TODO: try to separate adding characters from moving the cursors in this function
         let character_width = terminal_character.width;
+        if character_width == 0 {
+            return;
+        }
         if self.cursor.x + character_width > self.width {
             if self.disable_linewrap {
                 return;
@@ -1060,7 +1064,7 @@ impl Grid {
 
     fn pad_current_line_until(&mut self, position: usize) {
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
-        for _ in current_row.len()..position {
+        for _ in current_row.width()..position {
             current_row.push(EMPTY_TERMINAL_CHARACTER);
         }
         self.output_buffer.update_line(self.cursor.y);
@@ -2175,14 +2179,34 @@ impl Row {
         }
         absolute_index
     }
+    pub fn absolute_character_index_and_position_in_char(&self, x: usize) -> (usize, usize) {
+        // returns x's width aware index as well as its position inside the wide char (eg. 1 if
+        // it's in the middle of a 2-char wide character)
+        let mut accumulated_width = 0;
+        let mut absolute_index = x;
+        let mut position_inside_character = 0;
+        for (i, terminal_character) in self.columns.iter().enumerate() {
+            accumulated_width += terminal_character.width;
+            absolute_index = i;
+            if accumulated_width > x {
+                let character_start_position = accumulated_width - terminal_character.width;
+                position_inside_character = x - character_start_position;
+                break;
+            }
+        }
+        (absolute_index, position_inside_character)
+    }
     pub fn add_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
         match self.width_cached().cmp(&x) {
             Ordering::Equal => {
+                // adding the character at the end of the current line
                 self.columns.push_back(terminal_character);
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width;
             }
             Ordering::Less => {
+                // adding the character after the end of the current line
+                // we pad the line up to the character and then add it
                 let width_offset = self.excess_width_until(x);
                 self.columns
                     .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
@@ -2190,25 +2214,38 @@ impl Row {
                 self.width = None;
             }
             Ordering::Greater => {
-                // wide-character-aware index, where each character is counted once
-                let absolute_x_index = self.absolute_character_index(x);
+                // adding the character in the middle of the line
+                // we replace the character at its position
+                let (absolute_x_index, position_inside_character) =
+                    self.absolute_character_index_and_position_in_char(x);
                 let character_width = terminal_character.width;
                 let replaced_character =
                     std::mem::replace(&mut self.columns[absolute_x_index], terminal_character);
                 match character_width.cmp(&replaced_character.width) {
                     Ordering::Greater => {
-                        // this is done in a verbose manner because of performance
-                        let width_difference = character_width - replaced_character.width;
-                        for _ in 0..width_difference {
-                            let position_to_remove = absolute_x_index + 1;
-                            if self.columns.get(position_to_remove).is_some() {
-                                self.columns.remove(position_to_remove);
+                        // the replaced character is narrower than the current character
+                        // (eg. we added a wide emoji in place of an English character)
+                        // we remove the character after it to make room
+                        let position_to_remove = absolute_x_index + 1;
+                        if let Some(removed) = self.columns.remove(position_to_remove) {
+                            if removed.width > 1 {
+                                // the character we removed is a wide character itself, so we add
+                                // padding
+                                self.columns
+                                    .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
                             }
                         }
                     }
                     Ordering::Less => {
-                        let width_difference = replaced_character.width - character_width;
-                        for _ in 0..width_difference {
+                        // the replaced character is wider than the current character
+                        // (eg. we added an English character in place of a wide emoji)
+                        // we must make sure to add padding either before the character we added
+                        // or after it, depending on our position inside said removed wide character
+                        // TODO: support characters wider than 2
+                        if position_inside_character > 0 {
+                            self.columns
+                                .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+                        } else {
                             self.columns
                                 .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                         }
@@ -2235,14 +2272,14 @@ impl Row {
         self.width = None;
     }
     pub fn replace_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
-        // this is much more performant than remove/insert
-        if x < self.columns.len() {
+        let absolute_x_index = self.absolute_character_index(x);
+        if absolute_x_index < self.columns.len() {
             self.columns.push_back(terminal_character);
-            // let character = self.columns.swap_remove_back(x);
-            let character = self.columns.swap_remove_back(x).unwrap(); // TODO: if let?
+            // this is much more performant than remove/insert
+            let character = self.columns.swap_remove_back(absolute_x_index).unwrap();
             let excess_width = character.width.saturating_sub(1);
             for _ in 0..excess_width {
-                self.columns.insert(x, terminal_character);
+                self.columns.insert(absolute_x_index, terminal_character);
             }
         }
         self.width = None;
