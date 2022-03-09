@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: update tooltip after hiding floating panes with mouse (https://github.com/zellij-org/zellij/pull/1186)
 * Fix: do not start move floating pane when selecting with mouse and cursor leaves pane (https://github.com/zellij-org/zellij/pull/1186)
 * Terminal compatibility: replace wide-characters under cursor properly (https://github.com/zellij-org/zellij/pull/1196)
+* Terminal compatibility: only adjust home and end keys in cursor keys mode (https://github.com/zellij-org/zellij/pull/1190)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
