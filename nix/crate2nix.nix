@@ -3,6 +3,7 @@
 , name
 , src
 , postInstall
+, nativeBuildInputs
 , desktopItems
 , meta
 }:
@@ -20,8 +21,11 @@ let
       buildRustCrateForPkgs = pkgs:
         pkgs.buildRustCrate.override {
           defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-              inherit postInstall desktopItems meta;
             # Crate dependency overrides go here
+            zellij = attrs: {
+              inherit postInstall desktopItems meta name nativeBuildInputs;
+
+            };
           };
         };
     };
