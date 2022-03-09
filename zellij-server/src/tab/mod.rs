@@ -977,6 +977,14 @@ impl Tab {
         self.write_to_pane_id(input_bytes, pane_id);
     }
     pub fn write_to_terminal_at(&mut self, input_bytes: Vec<u8>, position: &Position) {
+        if self.floating_panes.panes_are_visible() {
+            let pane_id = self.floating_panes.get_pane_id_at(position, false);
+            if let Some(pane_id) = pane_id {
+                self.write_to_pane_id(input_bytes, pane_id);
+                return;
+            }
+        }
+
         let pane_id = self.get_pane_id_at(position, false);
         if let Some(pane_id) = pane_id {
             self.write_to_pane_id(input_bytes, pane_id);
@@ -2302,7 +2310,6 @@ impl Tab {
                     relative_position.column.0 + 1,
                     relative_position.line.0 + 1
                 );
-                log::info!("scroll up event: {mouse_event}");
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
             } else {
                 pane.scroll_up(lines, client_id);
