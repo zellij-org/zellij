@@ -25,7 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: binary cache to zellij `cachix use zellij` (https://github.com/zellij-org/zellij/pull/1157)
 * Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
 * Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
-* Fix: `list-session` to stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+* Fix: `list-session` to error and stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+  This is a BREAKING CHANGE for people that relied on the
+  error code and the stdout of this command on fail.
 * Add: dynamic completions for `fish` shell (https://github.com/zellij-org/zellij/pull/1176)
 * Fix: typo in completion (https://github.com/zellij-org/zellij/pull/1183)
 * Fix: improve detach instruction (https://github.com/zellij-org/zellij/pull/1161)
