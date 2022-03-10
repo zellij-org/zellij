@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: replace wide-characters under cursor properly (https://github.com/zellij-org/zellij/pull/1196)
 * Terminal compatibility: only adjust home and end keys in cursor keys mode (https://github.com/zellij-org/zellij/pull/1190)
 * Add: initial support for forwarding mouse events to applications (`SGR` format only) (https://github.com/zellij-org/zellij/pull/1191)
+* Fix: allow `POSIX` style overrides for most config flags (https://github.com/zellij-org/zellij/pull/1205)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
