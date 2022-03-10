@@ -11,7 +11,7 @@
 use crate::{
     input::{
         command::RunCommand,
-        config::{ConfigError, LayoutNameInTabError},
+        config::{ConfigError, LayoutPaneNameError},
     },
     pane_size::{Dimension, PaneGeom},
     setup,
@@ -464,6 +464,9 @@ impl LayoutTemplate {
 pub struct TabLayout {
     #[serde(default)]
     pub direction: Direction,
+    // TODO remove pane_name and it's check function
+    // still here in order to provide a deprecation warning.
+    #[serde(default)]
     pub pane_name: Option<String>,
     #[serde(default)]
     pub borderless: bool,
@@ -480,8 +483,8 @@ impl TabLayout {
     fn check(&self) -> Result<TabLayout, ConfigError> {
         for part in &self.parts {
             part.check()?;
-            if !part.name.is_empty() {
-                return Err(ConfigError::LayoutNameInTab(LayoutNameInTabError));
+            if !part.pane_name.is_none() {
+                return Err(ConfigError::LayoutPaneName(LayoutPaneNameError));
             }
         }
         Ok(self.clone())
@@ -715,7 +718,7 @@ impl TryFrom<TabLayout> for Layout {
     fn try_from(tab: TabLayout) -> Result<Self, Self::Error> {
         Ok(Layout {
             direction: tab.direction,
-            pane_name: tab.pane_name,
+            pane_name: Some(tab.name),
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
@@ -729,7 +732,7 @@ impl From<TabLayout> for LayoutTemplate {
     fn from(tab: TabLayout) -> Self {
         Self {
             direction: tab.direction,
-            pane_name: tab.pane_name,
+            pane_name: Some(tab.name),
             borderless: tab.borderless,
             parts: Self::from_vec_tab_layout(tab.parts),
             body: false,
@@ -770,8 +773,8 @@ impl Default for TabLayout {
             split_size: None,
             run: None,
             name: String::new(),
-            pane_name: None,
             focus: None,
+            pane_name: None,
         }
     }
 }

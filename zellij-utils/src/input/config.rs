@@ -59,7 +59,7 @@ pub enum ConfigError {
     FromUtf8(#[from] std::string::FromUtf8Error),
     // Naming a part in a tab is unsupported
     #[error("There was an error in the layout file, {0}")]
-    LayoutNameInTab(#[from] LayoutNameInTabError),
+    LayoutPaneName(#[from] LayoutPaneNameError),
     // Plugins have a semantic error, usually trying to parse two of the same tag
     #[error("PluginsError: {0}")]
     PluginsError(#[from] PluginsConfigError),
@@ -191,32 +191,45 @@ impl TryFrom<ConfigFromYaml> for Config {
     }
 }
 
-// TODO: Split errors up into separate modules
 #[derive(Debug, Clone)]
-pub struct LayoutNameInTabError;
+pub struct LayoutPaneNameError;
 
-impl fmt::Display for LayoutNameInTabError {
+impl fmt::Display for LayoutPaneNameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "LayoutNameInTabError:
-The `parts` inside the `tabs` can't be named. For example:
+            "LayoutPaneNameError:
+The `pane_name` attribute has been deprecated in favor of `name`.
+For example the following:
+```
 ---
 tabs:
   - direction: Vertical
     name: main
-    parts:
-      - direction: Vertical
-        name: section # <== The part section can't be named.
-      - direction: Vertical
   - direction: Vertical
     name: test
+    parts:
+      - pane_name: pane_1 # <== This attribute should be called `name`
+      - pane_name: pane_2 # <== This attribute should be called `name`
+```
+Should now be specified as:
+```
+---
+tabs:
+  - direction: Vertical
+    name: main
+  - direction: Vertical
+    name: test
+    parts:
+      - name: pane_1
+      - name: pane_2
+```
 "
         )
     }
 }
 
-impl std::error::Error for LayoutNameInTabError {
+impl std::error::Error for LayoutPaneNameError {
     fn description(&self) -> &str {
         "The `parts` inside the `tabs` can't be named."
     }
