@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: binary cache to zellij `cachix use zellij` (https://github.com/zellij-org/zellij/pull/1157)
 * Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
 * Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
-* Fix: `list-session` to error and stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+* (BREAKING CHANGE) Fix: `list-session` to error and stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
   This is a BREAKING CHANGE for people that relied on the
   error code and the stdout of this command on fail.
 * Add: dynamic completions for `fish` shell (https://github.com/zellij-org/zellij/pull/1176)
@@ -33,6 +33,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: improve detach instruction (https://github.com/zellij-org/zellij/pull/1161)
 * Fix: update tooltip after hiding floating panes with mouse (https://github.com/zellij-org/zellij/pull/1186)
 * Fix: do not start move floating pane when selecting with mouse and cursor leaves pane (https://github.com/zellij-org/zellij/pull/1186)
+* Terminal compatibility: replace wide-characters under cursor properly (https://github.com/zellij-org/zellij/pull/1196)
+* Terminal compatibility: only adjust home and end keys in cursor keys mode (https://github.com/zellij-org/zellij/pull/1190)
+* Add: initial support for forwarding mouse events to applications (`SGR` format only) (https://github.com/zellij-org/zellij/pull/1191)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)
