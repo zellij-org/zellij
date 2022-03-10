@@ -18,6 +18,16 @@ flake-utils.lib.eachSystem [
 
   pkgs = import nixpkgs {inherit system overlays;};
 
+  crate2nixPkgs = import nixpkgs {
+    inherit system;
+    overlays = [
+      (self: _: {
+        rustc = rustToolchainToml;
+        cargo = rustToolchainToml;
+      })
+    ];
+  };
+
   name = "zellij";
   pname = name;
   root = toString ../.;
@@ -107,7 +117,7 @@ flake-utils.lib.eachSystem [
   };
 in rec {
   # crate2nix - better incremental builds, but uses ifd
-  packages.zellij = pkgs.callPackage ./crate2nix.nix {
+  packages.zellij = crate2nixPkgs.callPackage ./crate2nix.nix {
     inherit
       name
       src
