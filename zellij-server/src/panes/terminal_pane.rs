@@ -472,6 +472,10 @@ impl Pane for TerminalPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+
+    fn mouse_mode(&self) -> bool {
+        self.grid.mouse_mode
+    }
 }
 
 impl TerminalPane {

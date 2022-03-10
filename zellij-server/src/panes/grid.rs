@@ -306,6 +306,7 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_buffer_lines: usize,
+    pub mouse_mode: bool,
 }
 
 impl Debug for Grid {
@@ -363,6 +364,7 @@ impl Grid {
             link_handler,
             ring_bell: false,
             scrollback_buffer_lines: 0,
+            mouse_mode: false,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1773,6 +1775,9 @@ impl Perform for Grid {
                     Some(7) => {
                         self.disable_linewrap = true;
                     }
+                    Some(1006) => {
+                        self.mouse_mode = false;
+                    }
                     _ => {}
                 };
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
@@ -1825,6 +1830,9 @@ impl Perform for Grid {
                     }
                     Some(7) => {
                         self.disable_linewrap = false;
+                    }
+                    Some(1006) => {
+                        self.mouse_mode = true;
                     }
                     _ => {}
                 };

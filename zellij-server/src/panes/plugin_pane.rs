@@ -401,4 +401,7 @@ impl Pane for PluginPane {
             ))
             .unwrap();
     }
+    fn mouse_mode(&self) -> bool {
+        false
+    }
 }
