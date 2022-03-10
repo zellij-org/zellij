@@ -1,8 +1,8 @@
-{ mkShell
-, buildInputs
-, nativeBuildInputs
+{
+  mkShell,
+  buildInputs,
+  nativeBuildInputs,
 }:
-
 mkShell {
   name = "zj-dev-env";
   inherit buildInputs nativeBuildInputs;
