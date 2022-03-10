@@ -11,7 +11,7 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    name: "flake check"
+    name: "nix check"
     environment: cachix
     timeout-minutes: 5
     steps:
