@@ -2686,7 +2686,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "dialoguer",
@@ -2703,7 +2703,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-client"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "insta",
  "log",
@@ -2714,7 +2714,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-server"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "ansi_term",
  "async-trait",
@@ -2740,7 +2740,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "clap",
  "serde",
@@ -2751,14 +2751,14 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "ansi_term",
 ]
 
 [[package]]
 name = "zellij-utils"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "async-std",
