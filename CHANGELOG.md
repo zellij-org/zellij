@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.26.0] - 2022-03-11
 * Fix: invalid assignment of `client_id` (https://github.com/zellij-org/zellij/pull/1052)
 * Add: action to send `^b` in `tmux-mode` (https://github.com/zellij-org/zellij/pull/1106)
 * Add: various action bindings to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1098)
