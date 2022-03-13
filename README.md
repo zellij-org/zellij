@@ -37,7 +37,13 @@ You can install with `cargo`:
 cargo install zellij
 ```
 
-Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases), or use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
+Or if want to a prebuilt binary, you can download it from our [Releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
+
+```
+cargo-binstall zellij
+```
+
+Or you can also use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
 The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
 To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui true`, or putting `simplified_ui: true` in the config file.
