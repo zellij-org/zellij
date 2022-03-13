@@ -13,23 +13,24 @@
     generatedCargoNix
     ;
 
-  project = import
-  (generatedCargoNix {
-    inherit name src;
-  })
-  {
-    inherit pkgs;
-    buildRustCrateForPkgs = pkgs:
-      pkgs.buildRustCrate.override {
-        defaultCrateOverrides =
-          pkgs.defaultCrateOverrides
-          // {
-            # Crate dependency overrides go here
-            zellij = attrs: {
-              inherit postInstall desktopItems meta name nativeBuildInputs;
+  project =
+    import
+    (generatedCargoNix {
+      inherit name src;
+    })
+    {
+      inherit pkgs;
+      buildRustCrateForPkgs = pkgs:
+        pkgs.buildRustCrate.override {
+          defaultCrateOverrides =
+            pkgs.defaultCrateOverrides
+            // {
+              # Crate dependency overrides go here
+              zellij = attrs: {
+                inherit postInstall desktopItems meta name nativeBuildInputs;
+              };
             };
-          };
-      };
-  };
+        };
+    };
 in
   project.workspaceMembers.zellij.build

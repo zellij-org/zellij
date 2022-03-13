@@ -38,10 +38,10 @@ flake-utils.lib.eachSystem [
 
   rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain;
   cargoLock = {
-    lockFile = (builtins.path {
+    lockFile = builtins.path {
       path = ../Cargo.lock;
       name = "Cargo.lock";
-    });
+    };
   };
   cargo = rustToolchainToml;
   rustc = rustToolchainToml;
@@ -107,7 +107,7 @@ flake-utils.lib.eachSystem [
       comment = "Manage your terminal applications";
       exec = "zellij";
       icon = "zellij";
-      categories = ["ConsoleOnly;System"];
+      categories = ["ConsoleOnly"];
     })
   ];
   meta = with pkgs.lib; {
@@ -130,19 +130,18 @@ in rec {
   };
 
   # native nixpkgs support - keep supported
-  packages.zellij-native =
-    (pkgs.makeRustPlatform {inherit cargo rustc;}).buildRustPackage {
-      inherit
-        src
-        name
-        cargoLock
-        buildInputs
-        nativeBuildInputs
-        postInstall
-        desktopItems
-        meta
-        ;
-    };
+  packages.zellij-native = (pkgs.makeRustPlatform {inherit cargo rustc;}).buildRustPackage {
+    inherit
+      src
+      name
+      cargoLock
+      buildInputs
+      nativeBuildInputs
+      postInstall
+      desktopItems
+      meta
+      ;
+  };
 
   defaultPackage = packages.zellij;
 
