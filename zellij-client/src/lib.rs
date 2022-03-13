@@ -194,7 +194,9 @@ pub fn start_client(
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
+        let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.unset_raw_mode(0);
             handle_panic(info, &send_client_instructions);
         })
     });
