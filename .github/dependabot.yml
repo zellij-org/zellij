@@ -4,3 +4,26 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # We want to be more sure in our e2e-test, before committing to
+  # update all of our dependencies.
+  # Only add packages very sporadically here for now.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    allow:
+      # Allow only direct updates
+      - dependency-name: "log"
+  - package-ecosystem: "cargo"
+    directory: "/zellij-utils/"
+    schedule:
+      interval: "weekly"
+    allow:
+      # Allow only direct updates
+      - dependency-name: "log"
+      - dependency-name: "log4rs"
+      - dependency-name: "clap"
+      - dependency-name: "clap_complete"
+
+

@@ -17,6 +17,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
+    shared::make_terminal_title,
     vte,
     zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
@@ -135,6 +136,19 @@ impl Pane for TerminalPane {
                     // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
                     // some editors will not show this
                     return "OA".as_bytes().to_vec();
+                }
+            }
+
+            [27, 91, 72] => {
+                // home key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 72]; // ESC O H
+                }
+            }
+            [27, 91, 70] => {
+                // end key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 70]; // ESC O F
                 }
             }
             [27, 91, 66] => {
@@ -303,6 +317,16 @@ impl Pane for TerminalPane {
         }
         vte_output
     }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            self.grid.title.as_deref().unwrap_or(&self.pane_title)
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
+    }
     fn update_name(&mut self, name: &str) {
         match name {
             "\0" => {
@@ -420,7 +444,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: Option<&Position>, _client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }
@@ -447,6 +471,10 @@ impl Pane for TerminalPane {
     }
     fn borderless(&self) -> bool {
         self.borderless
+    }
+
+    fn mouse_mode(&self) -> bool {
+        self.grid.mouse_mode
     }
 }
 

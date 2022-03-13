@@ -37,7 +37,9 @@ use url::Url;
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
 #[serde(crate = "self::serde")]
 pub enum Direction {
+    #[serde(alias = "horizontal")]
     Horizontal,
+    #[serde(alias = "vertical")]
     Vertical,
 }
 
@@ -55,7 +57,9 @@ impl Not for Direction {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
 #[serde(crate = "self::serde")]
 pub enum SplitSize {
+    #[serde(alias = "percent")]
     Percent(f64), // 1 to 100
+    #[serde(alias = "fixed")]
     Fixed(usize), // An absolute number of columns or rows
 }
 

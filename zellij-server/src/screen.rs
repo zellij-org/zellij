@@ -566,12 +566,14 @@ impl Screen {
             .add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        if let Some(client_tab) = self.get_active_tab_mut(client_id) {
-            client_tab.remove_client(client_id);
-            if client_tab.has_no_connected_clients() {
-                client_tab.visible(false);
+        self.tabs.iter_mut().for_each(|(_, tab)| {
+            if tab.active_panes.get(&client_id).is_some() {
+                tab.remove_client(client_id);
+                if tab.has_no_connected_clients() {
+                    tab.visible(false);
+                }
             }
-        }
+        });
         if self.active_tab_indices.contains_key(&client_id) {
             self.active_tab_indices.remove(&client_id);
         }
@@ -1209,6 +1211,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_left_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::RightClick(point, client_id) => {
@@ -1217,6 +1220,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_right_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::MouseRelease(point, client_id) => {

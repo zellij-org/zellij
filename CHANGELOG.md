@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.26.0] - 2022-03-11
 * Fix: invalid assignment of `client_id` (https://github.com/zellij-org/zellij/pull/1052)
 * Add: action to send `^b` in `tmux-mode` (https://github.com/zellij-org/zellij/pull/1106)
 * Add: various action bindings to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1098)
@@ -20,6 +22,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: do not use current cursor style in csi erase display (solve `btm` rendering issue) (https://github.com/zellij-org/zellij/pull/1142)
 * Fix: ensure e2e tests use current plugins (https://github.com/zellij-org/zellij/pull/1047)
 * Add: manpage to nix package (https://github.com/zellij-org/zellij/pull/1148)
+* Fix: terminal title passthrough on not showing pane frames (https://github.com/zellij-org/zellij/pull/1113)
+* Add: ability to set `ENVIRONMENT VARIABLES` inside of the config and layout's (https://github.com/zellij-org/zellij/pull/1154)
+* Add: binary cache to zellij `cachix use zellij` (https://github.com/zellij-org/zellij/pull/1157)
+* Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
+* Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
+* (BREAKING CHANGE) Fix: `list-session` to error and stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+  This is a BREAKING CHANGE for people that relied on the
+  error code and the stdout of this command on fail.
+* Add: dynamic completions for `fish` shell (https://github.com/zellij-org/zellij/pull/1176)
+* Fix: typo in completion (https://github.com/zellij-org/zellij/pull/1183)
+* Fix: improve detach instruction (https://github.com/zellij-org/zellij/pull/1161)
+* Fix: update tooltip after hiding floating panes with mouse (https://github.com/zellij-org/zellij/pull/1186)
+* Fix: do not start move floating pane when selecting with mouse and cursor leaves pane (https://github.com/zellij-org/zellij/pull/1186)
+* Terminal compatibility: replace wide-characters under cursor properly (https://github.com/zellij-org/zellij/pull/1196)
+* Terminal compatibility: only adjust home and end keys in cursor keys mode (https://github.com/zellij-org/zellij/pull/1190)
+* Add: initial support for forwarding mouse events to applications (`SGR` format only) (https://github.com/zellij-org/zellij/pull/1191)
+* Fix: allow `POSIX` style overrides for most config flags (https://github.com/zellij-org/zellij/pull/1205)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)

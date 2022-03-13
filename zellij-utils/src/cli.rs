@@ -15,31 +15,31 @@ pub struct CliArgs {
     pub max_panes: Option<usize>,
 
     /// Change where zellij looks for layouts and plugins
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str), overrides_with = "data_dir")]
     pub data_dir: Option<PathBuf>,
 
     /// Run server listening at the specified socket path
-    #[clap(long, parse(from_os_str), hide = true)]
+    #[clap(long, parse(from_os_str), hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
     /// Specify name of a new session
-    #[clap(long, short)]
+    #[clap(long, short, overrides_with = "session")]
     pub session: Option<String>,
 
     /// Name of a layout file in the layout directory
-    #[clap(short, long, parse(from_os_str))]
+    #[clap(short, long, parse(from_os_str), overrides_with = "layout")]
     pub layout: Option<PathBuf>,
 
     /// Path to a layout yaml file
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, parse(from_os_str), overrides_with = "layout_path")]
     pub layout_path: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration file
-    #[clap(short, long, env = ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
+    #[clap(short, long, overrides_with = "config", env = ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
     pub config: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration directory
-    #[clap(long, env = ZELLIJ_CONFIG_DIR_ENV, parse(from_os_str))]
+    #[clap(long, overrides_with = "config_dir", env = ZELLIJ_CONFIG_DIR_ENV, parse(from_os_str))]
     pub config_dir: Option<PathBuf>,
 
     #[clap(subcommand)]

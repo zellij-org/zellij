@@ -133,8 +133,8 @@ pub(crate) fn list_sessions() {
             0
         }
         Ok(_) => {
-            println!("No active zellij sessions found.");
-            0
+            eprintln!("No active zellij sessions found.");
+            1
         }
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);

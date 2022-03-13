@@ -16,6 +16,7 @@ use zellij_utils::zellij_tile::prelude::{Event, InputMode, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
+    shared::make_terminal_title,
 };
 
 pub(crate) struct PluginPane {
@@ -253,6 +254,16 @@ impl Pane for PluginPane {
     ) -> Option<String> {
         None
     }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            &self.pane_title
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
+    }
     fn update_name(&mut self, name: &str) {
         match name {
             "\0" => {
@@ -349,14 +360,12 @@ impl Pane for PluginPane {
             ))
             .unwrap();
     }
-    fn end_selection(&mut self, end: Option<&Position>, client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
                 Some(client_id),
-                Event::Mouse(Mouse::Release(
-                    end.map(|Position { line, column }| (line.0, column.0)),
-                )),
+                Event::Mouse(Mouse::Release(end.line(), end.column())),
             ))
             .unwrap();
     }
@@ -391,5 +400,8 @@ impl Pane for PluginPane {
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();
+    }
+    fn mouse_mode(&self) -> bool {
+        false
     }
 }

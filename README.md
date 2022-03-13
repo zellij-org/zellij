@@ -8,14 +8,15 @@
 </h1>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
+  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=%235865F2%20&label=chat%3A%20discord&style=flat-square"></a>
+  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=%230FBD8C&label=chat%3A%20matrix&style=flat-square&logo=matrix"></a>
+  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=%235865F2%20&label=chat%3A%20discord&style=flat-square"></a>
-  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=%230FBD8C&label=chat%3A%20matrix&style=flat-square"></a>
-  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
+  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
+
 
 # What is this?
 
@@ -36,7 +37,7 @@ You can install with `cargo`:
 cargo install zellij
 ```
 
-Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases), or use [Third Party Repositories](THIRD_PARTY_INSTALL.md).
+Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases), or use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
 The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
 To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui true`, or putting `simplified_ui: true` in the config file.

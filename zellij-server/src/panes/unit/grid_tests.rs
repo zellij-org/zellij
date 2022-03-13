@@ -851,7 +851,7 @@ fn copy_selected_text_from_viewport() {
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(25, 35)));
+    grid.end_selection(&Position::new(25, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -875,7 +875,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     }
 
     grid.start_selection(&Position::new(5, 0));
-    grid.end_selection(Some(&Position::new(8, 42)));
+    grid.end_selection(&Position::new(8, 42));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -900,7 +900,7 @@ fn copy_selected_text_from_lines_above() {
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(2, 8)));
+    grid.end_selection(&Position::new(2, 8));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -927,7 +927,7 @@ fn copy_selected_text_from_lines_below() {
 
     grid.start_selection(&Position::new(63, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(65, 35)));
+    grid.end_selection(&Position::new(65, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -1554,6 +1554,48 @@ pub fn fzf_fullscreen() {
         Rc::new(RefCell::new(LinkHandler::new())),
     );
     let fixture_name = "fzf_fullscreen";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn replace_multiple_wide_characters_under_cursor() {
+    // this test makes sure that if we replace a wide character with a non-wide character, it
+    // properly pads the excess width in the proper place (either before the replaced non-wide
+    // character if the cursor was "in the middle" of the wide character, or after the character if
+    // it was "in the beginning" of the wide character)
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+    );
+    let fixture_name = "replace_multiple_wide_characters";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn replace_non_wide_characters_with_wide_characters() {
+    // this test makes sure that if we replace a wide character with a non-wide character, it
+    // properly pads the excess width in the proper place (either before the replaced non-wide
+    // character if the cursor was "in the middle" of the wide character, or after the character if
+    // it was "in the beginning" of the wide character)
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+    );
+    let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
     for byte in content {
         vte_parser.advance(&mut grid, byte);

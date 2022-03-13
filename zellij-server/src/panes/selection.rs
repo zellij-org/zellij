@@ -32,11 +32,9 @@ impl Selection {
         self.end = to
     }
 
-    pub fn end(&mut self, to: Option<&Position>) {
+    pub fn end(&mut self, end: Position) {
         self.active = false;
-        if let Some(to) = to {
-            self.end = *to
-        }
+        self.end = end;
     }
 
     pub fn contains(&self, row: usize, col: usize) -> bool {

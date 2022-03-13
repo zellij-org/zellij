@@ -44,3 +44,9 @@ Or install with [MacPorts](https://ports.macports.org/port/zellij/details/):
 ```
 port install zellij
 ```
+
+### Void Linux
+
+```
+sudo xbps-install zellij
+```
