@@ -733,6 +733,7 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        self.active_panes.insert(client_id, pane_id);
         self.focus_pane_for_all_clients(pane_id);
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {

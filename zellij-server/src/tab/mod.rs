@@ -117,7 +117,7 @@ impl TiledPanes {
     pub fn add_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
         self.panes.insert(pane_id, pane);
     }
-    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>) {
+    pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>) {
         // the difference between add_pane and insert_pane is that insert_pane also takes care of
         // adjusting the pane's geom as well as the geom of the panes around it
         // TODO: ideally we should only be doing this and not allowing outsiders to dictate our
@@ -146,7 +146,7 @@ impl TiledPanes {
             }
         }
     }
-    pub fn has_room_for_new_pane(&self) -> bool {
+    pub fn has_room_for_new_pane(&mut self) -> bool {
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             *self.display_area.borrow(),
@@ -228,25 +228,32 @@ impl TiledPanes {
             resize_pty!(pane, os_api);
         }
     }
-    pub fn can_split_pane_horizontally(&self, client_id: ClientId) -> bool {
+    pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
                 let full_pane_size = active_pane.position_and_size();
-                return split(Direction::Horizontal, &full_pane_size).is_some();
+                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
+                    return false;
+                } else {
+                    return split(Direction::Horizontal, &full_pane_size).is_some();
+                }
             }
         }
         false
     }
-    pub fn can_split_pane_vertically(&self, client_id: ClientId) -> bool {
+    pub fn can_split_pane_vertically(&mut self, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
                 let full_pane_size = active_pane.position_and_size();
+                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
+                    return false;
+                }
                 return split(Direction::Vertical, &full_pane_size).is_some();
             }
         }
         false
     }
-    pub fn split_pane_horizontally(&mut self, pid: PaneId, new_pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
+    pub fn split_pane_horizontally(&mut self, pid: PaneId, mut new_pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
@@ -257,7 +264,7 @@ impl TiledPanes {
             self.relayout(Direction::Vertical, os_api);
         }
     }
-    pub fn split_pane_vertically(&mut self, pid: PaneId, new_pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
+    pub fn split_pane_vertically(&mut self, pid: PaneId, mut new_pane: Box<dyn Pane>, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
@@ -265,18 +272,17 @@ impl TiledPanes {
             active_pane.set_geom(left_winsize);
             new_pane.set_geom(right_winsize);
             self.panes.insert(pid, new_pane);
-            self.relayout(Direction::Vertical, os_api);
+            self.relayout(Direction::Horizontal, os_api);
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        self.active_panes.insert(client_id, pane_id);
         if self.session_is_mirrored {
             // move all clients
             let connected_clients: Vec<ClientId> = self.connected_clients.borrow().iter().copied().collect();
             for client_id in connected_clients {
                 self.active_panes.insert(client_id, pane_id);
             }
-        } else {
-            self.active_panes.insert(client_id, pane_id);
         }
     }
     pub fn clear_active_panes(&mut self) {
@@ -323,48 +329,53 @@ impl TiledPanes {
         output: &mut Output,
         colors: Palette,
         multiple_users_exist_in_session: bool,
+        do_not_color_active_panes: bool,
     ) {
         let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
+        let active_panes = self.active_panes.iter().filter(|(client_id, _pane_id)| connected_clients.contains(client_id)).map(|(client_id, pane_id)| (*client_id, *pane_id)).collect();
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
                     colors,
-                    &self.active_panes,
+                    &active_panes,
                     multiple_users_exist_in_session,
                     None,
                 );
-                for client_id in connected_clients {
+                if do_not_color_active_panes {
+                    pane_contents_and_ui.clear_focused_clients();
+                }
+                for client_id in &connected_clients {
                     let client_mode = mode_info
                         .get(&client_id)
                         .unwrap_or(default_mode_info)
                         .mode;
                     if let PaneId::Plugin(..) = kind {
-                        pane_contents_and_ui.render_pane_contents_for_client(client_id);
+                        pane_contents_and_ui.render_pane_contents_for_client(*client_id);
                     }
                     if self.draw_pane_frames {
                         pane_contents_and_ui.render_pane_frame(
-                            client_id,
+                            *client_id,
                             client_mode,
                             self.session_is_mirrored,
                         );
                     } else {
                         let boundaries = client_id_to_boundaries
-                            .entry(client_id)
+                            .entry(*client_id)
                             .or_insert_with(|| Boundaries::new(*self.viewport.borrow()));
                         pane_contents_and_ui.render_pane_boundaries(
-                            client_id,
+                            *client_id,
                             client_mode,
                             boundaries,
                             self.session_is_mirrored,
                         );
                     }
-                    pane_contents_and_ui.render_terminal_title_if_needed(client_id, client_mode);
+                    pane_contents_and_ui.render_terminal_title_if_needed(*client_id, client_mode);
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
-                    pane_contents_and_ui.render_fake_cursor_if_needed(client_id);
+                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
                 }
                 if let PaneId::Terminal(..) = kind {
                     pane_contents_and_ui.render_pane_contents_to_multiple_clients(
@@ -384,30 +395,31 @@ impl TiledPanes {
     }
     pub fn resize(&mut self, new_screen_size: Size, os_api: &mut Box<dyn ServerOsApi>) {
         // this is blocked out to appease the borrow checker
-        let mut display_area = self.display_area.borrow_mut();
-        let mut viewport = self.viewport.borrow_mut();
-        let panes = self
-            .panes
-            .iter_mut()
-            .filter(|(pid, _)| !self.panes_to_hide.contains(pid));
-        let Size { rows, cols } = new_screen_size;
-        let mut pane_grid = TiledPaneGrid::new(panes, *display_area, *viewport);
-        if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
-            let column_difference = cols as isize - display_area.cols as isize;
-            // FIXME: Should the viewport be an Offset?
-            viewport.cols = (viewport.cols as isize + column_difference) as usize;
-            display_area.cols = cols;
-        } else {
-            log::error!("Failed to horizontally resize the tab!!!");
+        {
+            let mut display_area = self.display_area.borrow_mut();
+            let mut viewport = self.viewport.borrow_mut();
+            let panes = self
+                .panes
+                .iter_mut()
+                .filter(|(pid, _)| !self.panes_to_hide.contains(pid));
+            let Size { rows, cols } = new_screen_size;
+            let mut pane_grid = TiledPaneGrid::new(panes, *display_area, *viewport);
+            if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
+                let column_difference = cols as isize - display_area.cols as isize;
+                // FIXME: Should the viewport be an Offset?
+                viewport.cols = (viewport.cols as isize + column_difference) as usize;
+                display_area.cols = cols;
+            } else {
+                log::error!("Failed to horizontally resize the tab!!!");
+            }
+            if pane_grid.layout(Direction::Vertical, rows).is_ok() {
+                let row_difference = rows as isize - display_area.rows as isize;
+                viewport.rows = (viewport.rows as isize + row_difference) as usize;
+                display_area.rows = rows;
+            } else {
+                log::error!("Failed to vertically resize the tab!!!");
+            }
         }
-        if pane_grid.layout(Direction::Vertical, rows).is_ok() {
-            let row_difference = rows as isize - display_area.rows as isize;
-            viewport.rows = (viewport.rows as isize + row_difference) as usize;
-            display_area.rows = rows;
-        } else {
-            log::error!("Failed to vertically resize the tab!!!");
-        }
-
         self.set_pane_frames(self.draw_pane_frames, os_api);
     }
     pub fn resize_active_pane_left(&mut self, client_id: ClientId, os_api: &mut Box<dyn ServerOsApi>) {
@@ -915,22 +927,24 @@ impl TiledPanes {
         if self.fullscreen_is_active {
             let first_client_id = {
                 let connected_clients = self.connected_clients.borrow();
-                connected_clients.iter().next().unwrap()
+                *connected_clients.iter().next().unwrap()
             };
-            let active_pane_id = self.get_active_pane_id(*first_client_id).unwrap();
-            for pane_id in &self.panes_to_hide {
-                let pane = self.get_pane_mut(*pane_id).unwrap();
+            let active_pane_id = self.get_active_pane_id(first_client_id).unwrap();
+            let panes_to_hide: Vec<_> = self.panes_to_hide.iter().copied().collect();
+            for pane_id in panes_to_hide {
+                let pane = self.get_pane_mut(pane_id).unwrap();
                 pane.set_should_render(true);
                 pane.set_should_render_boundaries(true);
             }
             let viewport_pane_ids: Vec<_> = self
                 .panes
                 .keys()
+                .copied()
                 .into_iter()
-                .filter(|id| !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(**id).unwrap()))
+                .filter(|id| !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap()))
                 .collect();
             for pid in viewport_pane_ids {
-                let viewport_pane = self.get_pane_mut(*pid).unwrap();
+                let viewport_pane = self.get_pane_mut(pid).unwrap();
                 viewport_pane.reset_size_and_position_override();
             }
             self.panes_to_hide.clear();
@@ -965,15 +979,16 @@ impl TiledPanes {
                     let viewport_pane_ids: Vec<_> = self
                         .panes
                         .keys()
+                        .copied()
                         .into_iter()
-                        .filter(|id| !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(**id).unwrap()))
+                        .filter(|id| !is_inside_viewport(&*self.viewport.borrow(), self.get_pane(*id).unwrap()))
                         .collect();
                     for pid in viewport_pane_ids {
-                        let viewport_pane = self.get_pane_mut(*pid).unwrap();
+                        let viewport_pane = self.get_pane_mut(pid).unwrap();
                         viewport_pane.get_geom_override(viewport_pane.position_and_size());
                     }
-                    let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
                     let viewport = { *self.viewport.borrow() };
+                    let active_terminal = self.get_pane_mut(active_pane_id).unwrap();
                     let full_screen_geom = PaneGeom {
                         x: viewport.x,
                         y: viewport.y,
@@ -1484,6 +1499,7 @@ impl Tab {
         &mut self,
         clients_to_drain: Option<Vec<ClientId>>,
     ) -> Vec<(ClientId, ModeInfo)> {
+        log::info!("drain_connected_clients");
         // None => all clients
         let mut client_ids_to_mode_infos = vec![];
         let clients_to_drain =
@@ -1491,6 +1507,7 @@ impl Tab {
         for client_id in clients_to_drain {
             client_ids_to_mode_infos.push(self.drain_single_client(client_id));
         }
+        log::info!("connected_clients after: {:?}", self.connected_clients);
         client_ids_to_mode_infos
     }
     pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
@@ -1628,6 +1645,9 @@ impl Tab {
         }
     }
     pub fn horizontal_split(&mut self, pid: PaneId, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
         self.close_down_to_max_terminals();
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
@@ -1650,6 +1670,9 @@ impl Tab {
         }
     }
     pub fn vertical_split(&mut self, pid: PaneId, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible() {
+            return;
+        }
         self.close_down_to_max_terminals();
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
@@ -1705,7 +1728,7 @@ impl Tab {
             self.get_active_pane_mut(client_id)
         }
     }
-    fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
+    pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.get_active_pane_id(client_id)
         } else {
@@ -1844,6 +1867,9 @@ impl Tab {
             })
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible(){
+            return;
+        }
         self.tiled_panes.toggle_active_pane_fullscreen(client_id, &mut self.os_api);
     }
     pub fn is_fullscreen_active(&self) -> bool {
@@ -1909,6 +1935,7 @@ impl Tab {
             output,
             self.colors,
             multiple_users_exist_in_session,
+            self.floating_panes.panes_are_visible(),
         );
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.render(
@@ -1953,7 +1980,7 @@ impl Tab {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let show_cursor = "\u{1b}[?25h";
                     let change_cursor_shape =
-                        self.get_active_pane(client_id).unwrap().cursor_shape_csi();
+                        self.get_active_pane(client_id).map(|ap| ap.cursor_shape_csi()).unwrap_or_default();
                     let goto_cursor_position = &format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         cursor_position_y + 1,
@@ -2448,8 +2475,8 @@ impl Tab {
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.tiled_panes.fullscreen_is_active() && self.is_position_inside_viewport(point) {
-            let first_client_id = { self.connected_clients.borrow().iter().next().unwrap() }; // TODO: instead of doing this, record the pane that is in fullscreen
-            return self.tiled_panes.get_active_pane_id(*first_client_id);
+            let first_client_id = { self.connected_clients.borrow().iter().copied().next().unwrap() }; // TODO: instead of doing this, record the pane that is in fullscreen
+            return self.tiled_panes.get_active_pane_id(first_client_id);
         }
         if search_selectable {
             self.get_selectable_tiled_panes()

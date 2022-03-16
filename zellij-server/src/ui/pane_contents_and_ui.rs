@@ -184,6 +184,9 @@ impl<'a> PaneContentsAndUi<'a> {
         let color = self.frame_color(client_id, client_mode, session_is_mirrored);
         boundaries.add_rect(self.pane.as_ref(), color);
     }
+    pub fn clear_focused_clients(&mut self) {
+        self.focused_clients.clear();
+    }
     fn frame_color(
         &self,
         client_id: ClientId,

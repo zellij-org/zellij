@@ -1219,6 +1219,7 @@ pub fn mirrored_sessions() {
                         if remote_terminal.status_bar_appears()
                             && remote_terminal.cursor_position_is(3, 2)
                         {
+                            println!("step 1 runner 1 is complete");
                             step_is_complete = true;
                         }
                         step_is_complete
@@ -1231,10 +1232,15 @@ pub fn mirrored_sessions() {
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("step 1 runner 2");
+                    println!("step 1 runner 2, current_snapshot: {}", remote_terminal.current_snapshot());
+                    println!("step 1 runner 2, status_bar_appears: {}", remote_terminal.status_bar_appears());
+                    println!("step 1 runner 2, cursor_position : {}", remote_terminal.current_cursor_position());
                     let mut step_is_complete = false;
                     if remote_terminal.status_bar_appears()
                         && remote_terminal.cursor_position_is(3, 2)
                     {
+                        println!("step 1 runner 2 is complete");
                         remote_terminal.send_key(&PANE_MODE);
                         remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                         step_is_complete = true;
@@ -1245,6 +1251,7 @@ pub fn mirrored_sessions() {
             .add_step(Step {
                 name: "Open new tab (second user)",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("step 2 runner 2");
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
@@ -1258,6 +1265,7 @@ pub fn mirrored_sessions() {
             .add_step(Step {
                 name: "Wait for new tab to open",
                 instruction: |remote_terminal: RemoteTerminal| -> bool {
+                    println!("step 3 runner 2");
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
@@ -1273,6 +1281,7 @@ pub fn mirrored_sessions() {
             .add_step(Step {
                 name: "Switch to previous tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("step 4 runner 2");
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
@@ -1288,6 +1297,7 @@ pub fn mirrored_sessions() {
             .add_step(Step {
                 name: "Wait for text to appear on screen",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("step 5 runner 2");
                     let mut step_is_complete = false;
                     if remote_terminal.snapshot_contains("some text") {
                         remote_terminal.send_key(&TAB_MODE);
@@ -1306,6 +1316,7 @@ pub fn mirrored_sessions() {
         let second_runner_snapshot = second_runner.take_snapshot_after(Step {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
+                println!("take snapshot after");
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.snapshot_contains("┐┌")
@@ -1319,6 +1330,7 @@ pub fn mirrored_sessions() {
         let first_runner_snapshot = first_runner.take_snapshot_after(Step {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
+                println!("take snapshot after first runner");
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.snapshot_contains("┐┌")
