@@ -392,7 +392,7 @@ impl Setup {
             }
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::into_app(), "zellij", &mut out);
+        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
             Shell::Bash => {}
