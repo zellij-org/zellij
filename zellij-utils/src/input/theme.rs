@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::shared::default_palette;
-
 use super::options::Options;
 use zellij_tile::{
     data::{Palette, PaletteColor},
@@ -17,7 +15,8 @@ pub struct ThemesFromYaml(HashMap<String, Theme>);
 struct Theme {
     #[serde(default)]
     rounded_corners: bool,
-    palette: Option<PaletteFromYaml>,
+    #[serde(flatten)]
+    palette: PaletteFromYaml,
 }
 
 /// Intermediate deserialization struct
@@ -68,7 +67,7 @@ impl ThemesFromYaml {
     fn from_default_theme(&mut self, theme: String) -> Option<Style> {
         self.clone().get_theme(theme).map(|t| Style {
             rounded_corners: t.rounded_corners,
-            colors: t.palette.map_or_else(default_palette, Palette::from),
+            colors: Palette::from(t.palette),
         })
     }
 
