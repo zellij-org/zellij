@@ -35,6 +35,7 @@ pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
+    connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
     active_panes: HashMap<ClientId, PaneId>,
@@ -44,11 +45,12 @@ pub struct FloatingPanes {
 
 #[allow(clippy::borrowed_box)]
 impl FloatingPanes {
-    pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>) -> Self {
+    pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>, connected_clients: Rc<RefCell<HashSet<ClientId>>>) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
             display_area,
             viewport,
+            connected_clients,
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
@@ -719,17 +721,30 @@ impl FloatingPanes {
             }
         }
     }
-    pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.active_panes.insert(client_id, pane_id);
+    pub fn focus_pane_for_all_clients(&mut self, pane_id: PaneId) {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        for client_id in connected_clients {
+            self.active_panes.insert(client_id, pane_id);
+        }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
         self.set_pane_active_at(pane_id);
         self.set_force_render();
     }
+    pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        self.focus_pane_for_all_clients(pane_id);
+    }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.active_panes.remove(&client_id);
         self.set_force_render();
+    }
+    pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
+        self.panes.get(&pane_id)
+    }
+    pub fn get_pane_mut(&mut self, pane_id: PaneId) -> Option<&mut Box<dyn Pane>> {
+        self.panes.get_mut(&pane_id)
     }
     pub fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if search_selectable {
@@ -824,5 +839,11 @@ impl FloatingPanes {
             self.set_force_render();
         };
         self.pane_being_moved_with_mouse = None;
+    }
+    pub fn get_active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
+        self.active_panes.get(&client_id).copied()
+    }
+    pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
+        self.panes.iter()
     }
 }
