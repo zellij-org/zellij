@@ -237,7 +237,7 @@ args = ["commit", "-aem", "chore(release): v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.tag-release]
 command = "git"
-args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
+args = ["tag", "--annotate", "--message", "Version ${CARGO_MAKE_CRATE_VERSION}", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.publish-zellij-tile]
 ignore_errors = true
