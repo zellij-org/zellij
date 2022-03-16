@@ -64,4 +64,4 @@ bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 
 [features]
-disable_automatic_asset_installation = []
+disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]

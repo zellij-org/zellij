@@ -46,3 +46,5 @@ features = ["unstable"]
 [dev-dependencies]
 tempfile = "3.2.0"
 
+[features]
+disable_automatic_asset_installation = [ ]

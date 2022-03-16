@@ -92,7 +92,9 @@ pub(crate) fn wasm_thread_main(
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-    fs::create_dir_all(&plugin_global_data_dir).unwrap();
+
+    #[cfg(not(feature = "disable_automatic_asset_installation"))]
+    fs::create_dir_all(&plugin_global_data_dir).unwrap_or_else(|e| log::error!("{:?}", e));
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
