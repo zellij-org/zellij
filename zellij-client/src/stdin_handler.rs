@@ -19,12 +19,10 @@ pub(crate) fn stdin_loop(
 
         if key_event == bracketed_paste_start {
             pasting = true;
-            pasted_text.append(&mut raw_bytes);
             continue;
         } else if pasting && key_event == bracketed_paste_end {
             pasting = false;
-            let mut pasted_text: Vec<u8> = pasted_text.drain(..).collect();
-            pasted_text.append(&mut raw_bytes);
+            let pasted_text: Vec<u8> = pasted_text.drain(..).collect();
             send_input_instructions
                 .send(InputInstruction::PastedText(pasted_text))
                 .unwrap();

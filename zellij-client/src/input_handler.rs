@@ -63,6 +63,8 @@ impl InputHandler {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
         let alt_left_bracket = vec![27, 91];
+        let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
@@ -97,7 +99,9 @@ impl InputHandler {
                 }
                 Ok((InputInstruction::PastedText(raw_bytes), _error_context)) => {
                     if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+                        self.dispatch_action(Action::Write(bracketed_paste_start.clone()));
                         self.dispatch_action(Action::Write(raw_bytes));
+                        self.dispatch_action(Action::Write(bracketed_paste_end.clone()));
                     }
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
