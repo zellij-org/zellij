@@ -69,6 +69,7 @@ pub enum ClientToServerMsg {
     Action(Action),
     ClientExited,
     KillSession,
+    ConnStatus,
 }
 
 // Types of messages sent from the server to the client
@@ -82,6 +83,7 @@ pub enum ServerToClientMsg {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    Connected,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,7 +100,7 @@ impl Display for ExitReason {
             Self::Normal => write!(f, "Bye from Zellij!"),
             Self::ForceDetached => write!(
                 f,
-                "Session was detach from this client (possibly because another client connected)"
+                "Session was detached from this client (possibly because another client connected)"
             ),
             Self::CannotAttach => write!(
                 f,

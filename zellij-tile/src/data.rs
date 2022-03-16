@@ -58,12 +58,12 @@ pub enum Key {
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),                 // number of lines
-    ScrollDown(usize),               // number of lines
-    LeftClick(isize, usize),         // line and column
-    RightClick(isize, usize),        // line and column
-    Hold(isize, usize),              // line and column
-    Release(Option<(isize, usize)>), // line and column
+    ScrollUp(usize),          // number of lines
+    ScrollDown(usize),        // number of lines
+    LeftClick(isize, usize),  // line and column
+    RightClick(isize, usize), // line and column
+    Hold(isize, usize),       // line and column
+    Release(isize, usize),    // line and column
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -120,6 +120,9 @@ pub enum InputMode {
     /// `Prompt` mode allows interacting with active prompts.
     #[serde(alias = "prompt")]
     Prompt,
+    /// `Tmux` mode allows for basic tmux keybindings functionality
+    #[serde(alias = "tmux")]
+    Tmux,
 }
 
 impl Default for InputMode {
@@ -164,6 +167,7 @@ impl FromStr for InputMode {
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),
+            "tmux" => Ok(InputMode::Tmux),
             "prompt" => Ok(InputMode::Prompt),
             "renamepane" => Ok(InputMode::RenamePane),
             e => Err(e.to_string().into()),
@@ -226,6 +230,7 @@ pub struct TabInfo {
     pub panes_to_hide: usize,
     pub is_fullscreen_active: bool,
     pub is_sync_panes_active: bool,
+    pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
 }
 

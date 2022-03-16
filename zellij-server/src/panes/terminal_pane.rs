@@ -1,21 +1,23 @@
-use crate::panes::AnsiCode;
+use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{
-        CharacterStyles, CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
-    },
+    terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
+use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Write};
+use std::fmt::Debug;
 use std::os::unix::io::RawFd;
+use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
+    shared::make_terminal_title,
     vte,
     zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
@@ -136,6 +138,19 @@ impl Pane for TerminalPane {
                     return "OA".as_bytes().to_vec();
                 }
             }
+
+            [27, 91, 72] => {
+                // home key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 72]; // ESC O H
+                }
+            }
+            [27, 91, 70] => {
+                // end key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 70]; // ESC O F
+                }
+            }
             [27, 91, 66] => {
                 // down arrow
                 if self.grid.cursor_key_mode {
@@ -184,102 +199,42 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, _client_id: Option<ClientId>) -> Option<String> {
-        // we don't use client_id because terminal panes render the same for all users
+    fn render(
+        &mut self,
+        _client_id: Option<ClientId>,
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         if self.should_render() {
-            let mut vte_output = String::new();
-            let mut character_styles = CharacterStyles::new();
+            let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
-            if self.grid.clear_viewport_before_rendering {
-                for line_index in 0..self.grid.height {
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m",
-                        content_y + line_index + 1,
-                        content_x + 1
-                    )
-                    .unwrap(); // goto row/col and reset styles
-                    for _col_index in 0..self.grid.width {
-                        vte_output.push(EMPTY_TERMINAL_CHARACTER.character);
-                    }
+
+            let mut character_chunks = self.grid.read_changes(content_x, content_y);
+            for character_chunk in character_chunks.iter_mut() {
+                character_chunk.add_changed_colors(self.grid.changed_colors);
+                if self
+                    .grid
+                    .selection
+                    .contains_row(character_chunk.y.saturating_sub(content_y))
+                {
+                    let background_color = match self.colors.bg {
+                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                    };
+                    character_chunk.add_selection_and_background(
+                        self.grid.selection,
+                        background_color,
+                        content_x,
+                        content_y,
+                    );
                 }
-                self.grid.clear_viewport_before_rendering = false;
-            }
-            // here we clear the previous cursor locations by adding an empty style-less character
-            // in their location, this is done before the main rendering logic so that if there
-            // actually is another character there, it will be overwritten
-            for (y, x) in self.fake_cursor_locations.drain() {
-                // we need to make sure to update the line in the line buffer so that if there's
-                // another character there it'll override it and we won't create holes with our
-                // empty character
-                self.grid.update_line_for_rendering(y);
-                let x = content_x + x;
-                let y = content_y + y;
-                write!(
-                    &mut vte_output,
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    y + 1,
-                    x + 1,
-                    EMPTY_TERMINAL_CHARACTER.character
-                )
-                .unwrap();
-            }
-            let max_width = self.get_content_columns();
-            for character_chunk in self.grid.read_changes() {
-                let pane_x = self.get_content_x();
-                let pane_y = self.get_content_y();
-                let chunk_absolute_x = pane_x + character_chunk.x;
-                let chunk_absolute_y = pane_y + character_chunk.y;
-                let terminal_characters = character_chunk.terminal_characters;
-                write!(
-                    &mut vte_output,
-                    "\u{1b}[{};{}H\u{1b}[m",
-                    chunk_absolute_y + 1,
-                    chunk_absolute_x + 1
-                )
-                .unwrap(); // goto row/col and reset styles
-
-                let mut chunk_width = character_chunk.x;
-                for mut t_character in terminal_characters {
-                    // adjust the background of currently selected characters
-                    // doing it here is much easier than in grid
-                    if self.grid.selection.contains(character_chunk.y, chunk_width) {
-                        let color = match self.colors.bg {
-                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
-                        };
-
-                        t_character.styles = t_character.styles.background(Some(color));
-                    }
-                    chunk_width += t_character.width;
-                    if chunk_width > max_width {
-                        break;
-                    }
-
-                    if let Some(new_styles) = character_styles
-                        .update_and_return_diff(&t_character.styles, self.grid.changed_colors)
-                    {
-                        write!(
-                            &mut vte_output,
-                            "{}{}",
-                            new_styles,
-                            self.grid.link_handler.output_osc8(new_styles.link_anchor)
-                        )
-                        .unwrap();
-                    }
-
-                    vte_output.push(t_character.character);
-                }
-                character_styles.clear();
             }
             if self.grid.ring_bell {
                 let ring_bell = '\u{7}';
-                vte_output.push(ring_bell);
+                raw_vte_output.push(ring_bell);
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Some(vte_output)
+            Some((character_chunks, Some(raw_vte_output)))
         } else {
             None
         }
@@ -289,9 +244,8 @@ impl Pane for TerminalPane {
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<String> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let mut vte_output = None;
         let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
@@ -316,18 +270,24 @@ impl Pane for TerminalPane {
             Some(last_frame) => {
                 if &frame != last_frame {
                     if !self.borderless {
-                        vte_output = Some(frame.render());
+                        let frame_output = frame.render();
+                        self.frame.insert(client_id, frame);
+                        Some(frame_output)
+                    } else {
+                        None
                     }
-                    self.frame.insert(client_id, frame);
+                } else {
+                    None
                 }
-                vte_output
             }
             None => {
                 if !self.borderless {
-                    vte_output = Some(frame.render());
+                    let frame_output = frame.render();
+                    self.frame.insert(client_id, frame);
+                    Some(frame_output)
+                } else {
+                    None
                 }
-                self.frame.insert(client_id, frame);
-                vte_output
             }
         }
     }
@@ -356,6 +316,16 @@ impl Pane for TerminalPane {
             vte_output = Some(fake_cursor);
         }
         vte_output
+    }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            self.grid.title.as_deref().unwrap_or(&self.pane_title)
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
     }
     fn update_name(&mut self, name: &str) {
         match name {
@@ -452,7 +422,7 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
-    fn start_selection(&mut self, start: &Position, client_id: ClientId) {
+    fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
     }
@@ -474,7 +444,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: Option<&Position>, _client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }
@@ -502,6 +472,10 @@ impl Pane for TerminalPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+
+    fn mouse_mode(&self) -> bool {
+        self.grid.mouse_mode
+    }
 }
 
 impl TerminalPane {
@@ -511,12 +485,14 @@ impl TerminalPane {
         palette: Palette,
         pane_index: usize,
         pane_name: String,
+        link_handler: Rc<RefCell<LinkHandler>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
             palette,
+            link_handler,
         );
         TerminalPane {
             frame: HashMap::new(),

@@ -10,7 +10,8 @@ use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
 use second_line::{
-    fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, system_clipboard_error,
+    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
+    locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
     text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
@@ -220,6 +221,12 @@ impl State {
                         &self.mode_info.palette,
                         active_tab.panes_to_hide,
                     ),
+                    _ => keybinds(&self.mode_info, &self.tip_name, cols),
+                }
+            } else if active_tab.are_floating_panes_visible {
+                match self.mode_info.mode {
+                    InputMode::Normal => floating_panes_are_visible(&self.mode_info.palette),
+                    InputMode::Locked => locked_floating_panes_are_visible(&self.mode_info.palette),
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
             } else {

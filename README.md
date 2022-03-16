@@ -8,19 +8,16 @@
 </h1>
 
 <p align="center">
+  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=5865F2&label=discord&style=flat-square"></a>
+  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=1d7e64&label=matrix%20chat&style=flat-square&logo=matrix"></a>
+  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
+  <a href="https://builtwithnix.org"><img alt="Built with nix" src="https://img.shields.io/static/v1?label=built%20with&message=nix&color=5277C3&logo=nixos&style=flat-square&logoColor=ffffff"></a>
+</p>
+
+<p align="center">
   <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
 
-### With Multiple Users:
-<p align="center">
-  <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/multiplayer-sessions.gif" alt="demo">
-</p>
-
-<p align="center">
-  <a href="https://discord.gg/CrUAFH3"><img alt="Discord Chat" src="https://img.shields.io/discord/771367133715628073?color=%235865F2%20&label=chat%3A%20discord&style=flat-square"></a>
-  <a href="https://matrix.to/#/#zellij_general:matrix.org"><img alt="Matrix Chat" src="https://img.shields.io/matrix/zellij_general:matrix.org?color=%230FBD8C&label=chat%3A%20matrix&style=flat-square"></a>
-  <a href="https://zellij.dev/documentation/"><img alt="Zellij documentation" src="https://img.shields.io/badge/zellij-documentation-fc0060?style=flat-square"></a>
-</p>
 
 # What is this?
 
@@ -41,7 +38,13 @@ You can install with `cargo`:
 cargo install zellij
 ```
 
-Or you can download a prebuilt binary from our [Releases](https://github.com/zellij-org/zellij/releases), or use [Third Party Repositories](THIRD_PARTY_INSTALL.md).
+Or if want to a prebuilt binary, you can download it from our [Releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
+
+```
+cargo-binstall zellij
+```
+
+Or you can also use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
 The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
 To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui true`, or putting `simplified_ui: true` in the config file.
@@ -77,10 +80,13 @@ Zellij should be ready for everyday use, but it's still classified as a beta. Th
 
 ## Roadmap
 This section contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.
-  * <strike>**Share sessions with others** - See the focused window and cursor of other users, work on a problem or a code base together in real time.</strike> - *implemented in `0.23.0`*
-  * **A web client/server** - Connect to Zellij through the browser instead of opening a terminal window. Either on a local or remote machine.
-  * **Support for multiple terminal windows across screens** - Transfer panes across different windows and screens by having them all belong to the same session.
-  * **Smart layouts** - expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed.
+
+| Feature | Description | Status |
+| :-----: | ----------- | :----: |
+| **Share sessions with others** | See the focused window and cursor of other users, work on a problem or a code base together in real time. | :white_check_mark:<br>*(implemented in [`0.23.0`](https://github.com/zellij-org/zellij/releases/tag/v0.23.0))* |
+| **A web client/server** | Connect to Zellij through the browser instead of opening a terminal window. Either on a local or remote machine. |  |
+| **Support for multiple terminal windows across screens** | Transfer panes across different windows and screens by having them all belong to the same session. |  |
+| **Smart layouts** | Expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed. |  |
 
 ## License
 

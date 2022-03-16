@@ -35,6 +35,7 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    Connected,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -46,6 +47,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             }
+            ServerToClientMsg::Connected => ClientInstruction::Connected,
         }
     }
 }
@@ -58,6 +60,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
+            ClientInstruction::Connected => ClientContext::Connected,
         }
     }
 }
@@ -104,7 +107,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(termion::event::Event, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText((bool, Vec<u8>, bool)), // (send_brackted_paste_start, pasted_text, send_bracketed_paste_end)
+    PastedText(Vec<u8>),
 }
 
 pub fn start_client(
@@ -130,6 +133,7 @@ pub fn start_client(
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     envs::set_zellij("0".to_string());
+    config.env.set_vars();
 
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
@@ -190,7 +194,9 @@ pub fn start_client(
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
+        let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.unset_raw_mode(0);
             handle_panic(info, &send_client_instructions);
         })
     });
@@ -323,6 +329,7 @@ pub fn start_client(
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
             }
+            _ => {}
         }
     }
 

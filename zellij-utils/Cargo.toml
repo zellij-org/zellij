@@ -1,6 +1,6 @@
 [package]
 name = "zellij-utils"
-version = "0.25.0"
+version = "0.27.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
@@ -33,10 +33,11 @@ termion = "1.5.0"
 thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
 vte = "0.10.1"
-zellij-tile = { path = "../zellij-tile/", version = "0.25.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.27.0" }
 log = "0.4.14"
 log4rs = "1.0.0"
 unicode-width = "0.1.8"
+miette = { version = "3.3.0", features = ["fancy"] }
 
 [dependencies.async-std]
 version = "1.3.0"

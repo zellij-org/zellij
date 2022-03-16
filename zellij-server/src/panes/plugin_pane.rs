@@ -1,8 +1,8 @@
 use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
-use std::unimplemented;
 
+use crate::output::CharacterChunk;
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -16,6 +16,7 @@ use zellij_utils::zellij_tile::prelude::{Event, InputMode, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
     pane_size::{Dimension, PaneGeom},
+    shared::make_terminal_title,
 };
 
 pub(crate) struct PluginPane {
@@ -105,13 +106,14 @@ impl Pane for PluginPane {
         self.should_render = true;
     }
     fn handle_pty_bytes(&mut self, _event: VteBytes) {
-        unimplemented!()
+        // noop
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
     fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
-        unimplemented!()
+        // noop
+        vec![]
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
@@ -134,7 +136,10 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(&mut self, client_id: Option<ClientId>) -> Option<String> {
+    fn render(
+        &mut self,
+        client_id: Option<ClientId>,
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;
         let client_id = client_id.unwrap();
@@ -207,7 +212,7 @@ impl Pane for PluginPane {
                     }
                 }
             }
-            Some(vte_output)
+            Some((vec![], Some(vte_output))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
         } else {
             None
         }
@@ -217,7 +222,7 @@ impl Pane for PluginPane {
         _client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<String> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
@@ -248,6 +253,16 @@ impl Pane for PluginPane {
         _text_color: PaletteColor,
     ) -> Option<String> {
         None
+    }
+    fn render_terminal_title(&mut self, input_mode: InputMode) -> String {
+        let pane_title = if self.pane_name.is_empty() && input_mode == InputMode::RenamePane {
+            "Enter name..."
+        } else if self.pane_name.is_empty() {
+            &self.pane_title
+        } else {
+            &self.pane_name
+        };
+        make_terminal_title(pane_title)
     }
     fn update_name(&mut self, name: &str) {
         match name {
@@ -325,10 +340,9 @@ impl Pane for PluginPane {
             .unwrap();
     }
     fn clear_scroll(&mut self) {
-        unimplemented!();
+        // noop
     }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
-        log::info!("plugin pane send left click plugin instruction");
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
@@ -346,14 +360,12 @@ impl Pane for PluginPane {
             ))
             .unwrap();
     }
-    fn end_selection(&mut self, end: Option<&Position>, client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
                 Some(client_id),
-                Event::Mouse(Mouse::Release(
-                    end.map(|Position { line, column }| (line.0, column.0)),
-                )),
+                Event::Mouse(Mouse::Release(end.line(), end.column())),
             ))
             .unwrap();
     }
@@ -388,5 +400,8 @@ impl Pane for PluginPane {
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();
+    }
+    fn mouse_mode(&self) -> bool {
+        false
     }
 }

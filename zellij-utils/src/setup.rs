@@ -109,6 +109,12 @@ pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/disable-status-bar.yaml"
 ));
 
+pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/completions/comp.fish"
+));
+
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
 }
@@ -386,7 +392,18 @@ impl Setup {
             }
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::into_app(), "zellij", &mut out);
+        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
+        // add shell dependent extra completion
+        match shell {
+            Shell::Bash => {}
+            Shell::Elvish => {}
+            Shell::Fish => {
+                let _ = out.write_all(&FISH_EXTRA_COMPLETION);
+            }
+            Shell::PowerShell => {}
+            Shell::Zsh => {}
+            _ => {}
+        };
     }
 }
 

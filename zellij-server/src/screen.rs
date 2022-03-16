@@ -8,12 +8,15 @@ use std::str;
 
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::Size;
-use zellij_utils::{input::layout::Layout, position::Position, zellij_tile};
+use zellij_utils::{
+    input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
+};
 
 use crate::{
+    output::Output,
     panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
-    tab::{Output, Tab},
+    tab::Tab,
     thread_bus::Bus,
     ui::overlay::{Overlay, OverlayWindow, Overlayable},
     wasm_vm::PluginInstruction,
@@ -32,6 +35,8 @@ pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
+    TogglePaneEmbedOrFloating(ClientId),
+    ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, ClientId),
     VerticalSplit(PaneId, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
@@ -101,6 +106,10 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
+            ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
+                ScreenContext::TogglePaneEmbedOrFloating
+            }
+            ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
@@ -364,7 +373,7 @@ impl Screen {
 
     fn close_tab_at_index(&mut self, tab_index: usize) {
         let mut tab_to_close = self.tabs.remove(&tab_index).unwrap();
-        let pane_ids = tab_to_close.get_pane_ids();
+        let pane_ids = tab_to_close.get_all_pane_ids();
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
         // has already closed and this would result in an error
@@ -429,9 +438,10 @@ impl Screen {
         for tab_index in tabs_to_close {
             self.close_tab_at_index(tab_index);
         }
+        let serialized_output = output.serialize();
         self.bus
             .senders
-            .send_to_server(ServerInstruction::Render(Some(output)))
+            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
             .unwrap();
     }
 
@@ -556,12 +566,14 @@ impl Screen {
             .add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        if let Some(client_tab) = self.get_active_tab_mut(client_id) {
-            client_tab.remove_client(client_id);
-            if client_tab.has_no_connected_clients() {
-                client_tab.visible(false);
+        self.tabs.iter_mut().for_each(|(_, tab)| {
+            if tab.active_panes.get(&client_id).is_some() {
+                tab.remove_client(client_id);
+                if tab.has_no_connected_clients() {
+                    tab.visible(false);
+                }
             }
-        }
+        });
         if self.active_tab_indices.contains_key(&client_id) {
             self.active_tab_indices.remove(&client_id);
         }
@@ -595,6 +607,7 @@ impl Screen {
                     panes_to_hide: tab.panes_to_hide.len(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
+                    are_floating_panes_visible: tab.are_floating_panes_visible(),
                     other_focused_clients,
                 });
             }
@@ -746,6 +759,32 @@ pub(crate) fn screen_thread_main(
                     .unwrap();
                 screen.update_tabs();
 
+                screen.render();
+            }
+            ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .toggle_pane_embed_or_floating(client_id);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
+                screen.render();
+            }
+            ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
+                screen
+                    .get_active_tab_mut(client_id)
+                    .unwrap()
+                    .toggle_floating_panes(client_id, default_shell);
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
                 screen.render();
             }
             ScreenInstruction::HorizontalSplit(pid, client_id) => {
@@ -1055,7 +1094,7 @@ pub(crate) fn screen_thread_main(
                     }
                     None => {
                         for tab in screen.tabs.values_mut() {
-                            if tab.get_pane_ids().contains(&id) {
+                            if tab.get_all_pane_ids().contains(&id) {
                                 tab.close_pane(id);
                                 break;
                             }
@@ -1172,6 +1211,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_left_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::RightClick(point, client_id) => {
@@ -1180,6 +1220,7 @@ pub(crate) fn screen_thread_main(
                     .unwrap()
                     .handle_right_click(&point, client_id);
 
+                screen.update_tabs();
                 screen.render();
             }
             ScreenInstruction::MouseRelease(point, client_id) => {

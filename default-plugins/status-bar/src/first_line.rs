@@ -369,5 +369,20 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             colored_elements,
             separator,
         ),
+        InputMode::Tmux => key_indicators(
+            max_len,
+            &[
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
+                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+            ],
+            colored_elements,
+            separator,
+        ),
     }
 }

@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;
 
+use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, Report};
+use thiserror::Error as ThisError;
+
 /// The maximum amount of calls an [`ErrorContext`] will keep track
 /// of in its stack representation. This is a per-thread maximum.
 const MAX_THREAD_CALL_STACK: usize = 6;
@@ -15,86 +18,84 @@ pub trait ErrorInstruction {
     fn error(err: String) -> Self;
 }
 
+#[derive(Debug, ThisError, Diagnostic)]
+#[error("{0}{}", self.show_backtrace())]
+#[diagnostic(help("{}", self.show_help()))]
+struct Panic(String);
+
+impl Panic {
+    fn show_backtrace(&self) -> String {
+        if let Ok(var) = std::env::var("RUST_BACKTRACE") {
+            if !var.is_empty() && var != "0" {
+                return format!("\n{:?}", backtrace::Backtrace::new());
+            }
+        }
+        "".into()
+    }
+
+    fn show_help(&self) -> String {
+        r#"If you are seeing this message, it means that something went wrong.
+Please report this error to the github issue.
+(https://github.com/zellij-org/zellij/issues)
+
+Also, if you want to see the backtrace, you can set the `RUST_BACKTRACE` environment variable to `1`.
+"#.into()
+    }
+}
+
+fn fmt_report(diag: Report) -> String {
+    let mut out = String::new();
+    GraphicalReportHandler::new_themed(GraphicalTheme::unicode())
+        .render_report(&mut out, diag.as_ref())
+        .unwrap();
+    out
+}
+
 /// Custom panic handler/hook. Prints the [`ErrorContext`].
 pub fn handle_panic<T>(info: &PanicInfo<'_>, sender: &SenderWithContext<T>)
 where
     T: ErrorInstruction + Clone,
 {
-    use backtrace::Backtrace;
     use std::{process, thread};
-    let backtrace = Backtrace::new();
     let thread = thread::current();
     let thread = thread.name().unwrap_or("unnamed");
 
     let msg = match info.payload().downcast_ref::<&'static str>() {
         Some(s) => Some(*s),
         None => info.payload().downcast_ref::<String>().map(|s| &**s),
-    };
+    }
+    .unwrap_or("An unexpected error occurred!");
 
     let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
 
-    let backtrace = match (info.location(), msg) {
-        (Some(location), Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m{:?}",
-            err_ctx,
-            thread,
-            msg,
-            location.file(),
-            location.line(),
-            backtrace,
-        ),
-        (Some(location), None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m{:?}",
-            err_ctx,
-            thread,
-            location.file(),
-            location.line(),
-            backtrace
-        ),
-        (None, Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m{:?}",
-            err_ctx, thread, msg, backtrace
-        ),
-        (None, None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m{:?}",
-            err_ctx, thread, backtrace
-        ),
-    };
+    let mut report: Report = Panic(format!("\u{1b}[0;31m{}\u{1b}[0;0m", msg)).into();
 
-    let one_line_backtrace = match (info.location(), msg) {
-        (Some(location), Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}': {}:{}\n\u{1b}[0;0m",
-            err_ctx,
-            thread,
-            msg,
+    if let Some(location) = info.location() {
+        report = report.wrap_err(format!(
+            "At {}:{}:{}",
             location.file(),
             location.line(),
-        ),
-        (Some(location), None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked: {}:{}\n\u{1b}[0;0m",
-            err_ctx,
-            thread,
-            location.file(),
-            location.line(),
-        ),
-        (None, Some(msg)) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked at '{}'\n\u{1b}[0;0m",
-            err_ctx, thread, msg
-        ),
-        (None, None) => format!(
-            "{}\n\u{1b}[0;0mError: \u{1b}[0;31mthread '{}' panicked\n\u{1b}[0;0m",
-            err_ctx, thread
-        ),
-    };
+            location.column()
+        ));
+    }
+
+    if !err_ctx.is_empty() {
+        report = report.wrap_err(format!("{}", err_ctx));
+    }
+
+    report = report.wrap_err(format!(
+        "Thread '\u{1b}[0;31m{}\u{1b}[0;0m' panicked.",
+        thread
+    ));
 
     if thread == "main" {
         // here we only show the first line because the backtrace is not readable otherwise
         // a better solution would be to escape raw mode before we do this, but it's not trivial
         // to get os_input here
-        println!("\u{1b}[2J{}", one_line_backtrace);
+        println!("\u{1b}[2J{}", fmt_report(report));
         process::exit(1);
     } else {
-        let _ = sender.send(T::error(backtrace));
+        let _ = sender.send(T::error(format!("{}", fmt_report(report))));
     }
 }
 
@@ -117,6 +118,11 @@ impl ErrorContext {
         Self {
             calls: [ContextType::Empty; MAX_THREAD_CALL_STACK],
         }
+    }
+
+    /// Returns `true` if the calls has all [`Empty`](ContextType::Empty) calls.
+    pub fn is_empty(&self) -> bool {
+        self.calls.iter().all(|c| c == &ContextType::Empty)
     }
 
     /// Adds a call to this [`ErrorContext`]'s call stack representation.
@@ -146,12 +152,12 @@ impl Default for ErrorContext {
 
 impl Display for ErrorContext {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        writeln!(f, "Originating Thread(s):")?;
+        writeln!(f, "Originating Thread(s)")?;
         for (index, ctx) in self.calls.iter().enumerate() {
             if *ctx == ContextType::Empty {
                 break;
             }
-            writeln!(f, "\u{1b}[0;0m{}. {}", index + 1, ctx)?;
+            writeln!(f, "\t\u{1b}[0;0m{}. {}", index + 1, ctx)?;
         }
         Ok(())
     }
@@ -207,6 +213,8 @@ pub enum ScreenContext {
     HandlePtyBytes,
     Render,
     NewPane,
+    ToggleFloatingPanes,
+    TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
     WriteCharacter,
@@ -309,6 +317,7 @@ pub enum ClientContext {
     Render,
     ServerError,
     SwitchToMode,
+    Connected,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -323,4 +332,5 @@ pub enum ServerContext {
     KillSession,
     DetachSession,
     AttachClient,
+    ConnStatus,
 }
