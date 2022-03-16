@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Add: add error reporting system (https://github.com/zellij-org/zellij/pull/1038)
+* Fix: switch to annotated release tags (https://github.com/zellij-org/zellij/pull/1223)
 
 ## [0.26.0] - 2022-03-11
 * Fix: invalid assignment of `client_id` (https://github.com/zellij-org/zellij/pull/1052)
