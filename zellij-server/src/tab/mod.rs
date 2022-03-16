@@ -8,6 +8,7 @@ pub mod pane_resizer;
 pub mod tiled_pane_grid;
 
 use copy_command::CopyCommand;
+use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
@@ -106,7 +107,7 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     mode_info: HashMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo,
-    pub colors: Palette,
+    pub style: Style,
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>, // TODO: combine this and connected_clients
     connected_clients: HashSet<ClientId>,
     draw_pane_frames: bool,
@@ -304,7 +305,7 @@ impl Tab {
         senders: ThreadSenders,
         max_panes: Option<usize>,
         mode_info: ModeInfo,
-        colors: Palette,
+        style: Style,
         draw_pane_frames: bool,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
@@ -350,7 +351,7 @@ impl Tab {
             should_clear_display_before_rendering: false,
             mode_info: HashMap::new(),
             default_mode_info: mode_info,
-            colors,
+            style,
             draw_pane_frames,
             session_is_mirrored,
             pending_vte_events: HashMap::new(),
@@ -434,7 +435,7 @@ impl Tab {
                 let mut new_pane = TerminalPane::new(
                     *pid,
                     *position_and_size,
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
@@ -725,7 +726,7 @@ impl Tab {
                     let mut new_pane = TerminalPane::new(
                         term_pid,
                         new_pane_geom,
-                        self.colors,
+                        self.style,
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
@@ -762,7 +763,7 @@ impl Tab {
                         let new_terminal = TerminalPane::new(
                             term_pid,
                             second_winsize,
-                            self.colors,
+                            self.style,
                             next_terminal_position,
                             String::new(),
                             self.link_handler.clone(),
@@ -813,7 +814,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     bottom_winsize,
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -857,7 +858,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     right_winsize,
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1225,7 +1226,7 @@ impl Tab {
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
-                    self.colors,
+                    self.style,
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,
@@ -1276,7 +1277,7 @@ impl Tab {
                 &self.default_mode_info,
                 self.session_is_mirrored,
                 output,
-                self.colors,
+                self.style,
             );
         }
         // render boundaries if needed

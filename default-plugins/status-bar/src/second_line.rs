@@ -193,11 +193,11 @@ fn full_shortcut_list_nonstandard_mode(
     move |help| {
         let mut line_part = LinePart::default();
         for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = full_length_shortcut(i == 0, letter, description, help.palette);
+            let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
             line_part.len += shortcut.len;
             line_part.part = format!("{}{}", line_part.part, shortcut,);
         }
-        let select_pane_shortcut = extra_hint_producing_function(help.palette);
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
         line_part.len += select_pane_shortcut.len;
         line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
         line_part
@@ -206,8 +206,8 @@ fn full_shortcut_list_nonstandard_mode(
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.palette),
-        InputMode::Locked => locked_interface_indication(help.palette),
+        InputMode::Normal => tip(help.style.colors),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         InputMode::Tmux => full_tmux_mode_indication(help),
         InputMode::RenamePane => full_shortcut_list_nonstandard_mode(select_pane_shortcut)(help),
         _ => full_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
@@ -220,11 +220,11 @@ fn shortened_shortcut_list_nonstandard_mode(
     move |help| {
         let mut line_part = LinePart::default();
         for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
+            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
             line_part.len += shortcut.len;
             line_part.part = format!("{}{}", line_part.part, shortcut,);
         }
-        let select_pane_shortcut = extra_hint_producing_function(help.palette);
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
         line_part.len += select_pane_shortcut.len;
         line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
         line_part
@@ -233,8 +233,8 @@ fn shortened_shortcut_list_nonstandard_mode(
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.palette),
-        InputMode::Locked => locked_interface_indication(help.palette),
+        InputMode::Normal => tip(help.style.colors),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
         InputMode::Tmux => short_tmux_mode_indication(help),
         InputMode::RenamePane => {
             shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
@@ -249,7 +249,7 @@ fn best_effort_shortcut_list_nonstandard_mode(
     move |help, max_len| {
         let mut line_part = LinePart::default();
         for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
+            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
             if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
                 // TODO: better
                 line_part.part = format!("{}{}", line_part.part, MORE_MSG);
@@ -259,7 +259,7 @@ fn best_effort_shortcut_list_nonstandard_mode(
             line_part.len += shortcut.len;
             line_part.part = format!("{}{}", line_part.part, shortcut);
         }
-        let select_pane_shortcut = extra_hint_producing_function(help.palette);
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
         if line_part.len + select_pane_shortcut.len <= max_len {
             line_part.len += select_pane_shortcut.len;
             line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
@@ -271,7 +271,7 @@ fn best_effort_shortcut_list_nonstandard_mode(
 fn best_effort_tmux_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
     let mut line_part = tmux_mode_indication(help);
     for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
+        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
         if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
             // TODO: better
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
@@ -287,7 +287,7 @@ fn best_effort_tmux_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = tip(help.palette);
+            let line_part = tip(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -295,7 +295,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             }
         }
         InputMode::Locked => {
-            let line_part = locked_interface_indication(help.palette);
+            let line_part = locked_interface_indication(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -448,11 +448,11 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
 }
 
 pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.palette.white {
+    let white_color = match help.style.colors.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
-    let orange_color = match help.palette.orange {
+    let orange_color = match help.style.colors.orange {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
@@ -472,11 +472,11 @@ pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
 }
 
 pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.palette.white {
+    let white_color = match help.style.colors.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
-    let orange_color = match help.palette.orange {
+    let orange_color = match help.style.colors.orange {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
@@ -494,7 +494,7 @@ pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
     };
 
     for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = full_length_shortcut(i == 0, letter, description, help.palette);
+        let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
         line_part.len += shortcut.len;
         line_part.part = format!("{}{}", line_part.part, shortcut,);
     }
@@ -502,11 +502,11 @@ pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
 }
 
 pub fn short_tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.palette.white {
+    let white_color = match help.style.colors.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
-    let orange_color = match help.palette.orange {
+    let orange_color = match help.style.colors.orange {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
@@ -524,7 +524,7 @@ pub fn short_tmux_mode_indication(help: &ModeInfo) -> LinePart {
     };
 
     for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
+        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
         line_part.len += shortcut.len;
         line_part.part = format!("{}{}", line_part.part, shortcut);
     }

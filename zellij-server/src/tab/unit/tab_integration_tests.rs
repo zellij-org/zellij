@@ -8,6 +8,7 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
+use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::input::options::Clipboard;
@@ -94,7 +95,7 @@ fn create_new_tab(size: Size) -> Tab {
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
     let mode_info = ModeInfo::default();
-    let colors = Palette::default();
+    let style = Style::default();
     let draw_pane_frames = true;
     let client_id = 1;
     let session_is_mirrored = true;
@@ -112,7 +113,7 @@ fn create_new_tab(size: Size) -> Tab {
         senders,
         max_panes,
         mode_info,
-        colors,
+        style,
         draw_pane_frames,
         connected_clients,
         session_is_mirrored,

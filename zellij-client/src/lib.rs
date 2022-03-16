@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use zellij_tile::prelude::Style;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -135,18 +136,24 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let palette = config.themes.clone().map_or_else(
-        || os_input.load_palette(),
+    // FIXME: This might be the place to inject round corners!
+    let style = config.themes.clone().map_or_else(
+        || Style {
+            colors: os_input.load_palette(),
+            ..Default::default()
+        },
         |t| {
-            t.theme_config(&config_options)
-                .unwrap_or_else(|| os_input.load_palette())
+            t.theme_config(&config_options).unwrap_or_else(|| Style {
+                colors: os_input.load_palette(),
+                ..Default::default()
+            })
         },
     );
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
-        palette,
+        style,
     };
 
     let first_msg = match info {

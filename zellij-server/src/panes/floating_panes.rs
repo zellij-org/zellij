@@ -1,3 +1,4 @@
+use zellij_tile::prelude::Style;
 use zellij_utils::{position::Position, zellij_tile};
 
 use crate::tab::floating_pane_grid::FloatingPaneGrid;
@@ -14,7 +15,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
-use zellij_tile::data::{ModeInfo, Palette};
+use zellij_tile::data::ModeInfo;
 use zellij_utils::pane_size::{Offset, PaneGeom, Size, Viewport};
 
 macro_rules! resize_pty {
@@ -160,7 +161,7 @@ impl FloatingPanes {
         default_mode_info: &ModeInfo,
         session_is_mirrored: bool,
         output: &mut Output,
-        colors: Palette,
+        style: Style,
     ) {
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
@@ -178,7 +179,7 @@ impl FloatingPanes {
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
-                colors,
+                style,
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes

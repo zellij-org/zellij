@@ -16,7 +16,7 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-use zellij_tile::data::{InputMode, Palette};
+use zellij_tile::{data::InputMode, prelude::Style};
 
 type SessionId = u64;
 
@@ -40,7 +40,7 @@ pub enum ClientType {
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct ClientAttributes {
     pub size: Size,
-    pub palette: Palette,
+    pub style: Style,
 }
 
 // Types of messages sent from the client to the server

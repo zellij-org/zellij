@@ -95,7 +95,7 @@ where
         println!("\u{1b}[2J{}", fmt_report(report));
         process::exit(1);
     } else {
-        let _ = sender.send(T::error(format!("{}", fmt_report(report))));
+        let _ = sender.send(T::error(fmt_report(report)));
     }
 }
 
