@@ -7,6 +7,6 @@ description = "A simplified ranger clone written as a Zellij plugin"
 license = "MIT"
 
 [dependencies]
-colored = "2"
+colored = "2.0.0"
 zellij-tile = { path = "../../zellij-tile" }
-pretty-bytes = "0.2"
+pretty-bytes = "0.2.2"
