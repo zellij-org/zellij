@@ -89,7 +89,6 @@ fn create_new_client() -> ClientInfo {
 
 fn install_default_assets(opts: &CliArgs) {
     let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-    #[cfg(not(disable_automatic_asset_installation))]
     populate_data_dir(&data_dir);
 }
 
