@@ -7,6 +7,7 @@ on:
 jobs:
   lockfile:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -17,9 +18,9 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - name: install jq
-        run:  nix-env -i jq -f '<nixpkgs>'
+        run:  nix-env -ip pkgs.jq -f '<nixpkgs>'
       - name: install curl
-        run:  nix-env -if curl -f '<nixpkgs>'
+        run:  nix-env -ip pkgs.curl -f '<nixpkgs>'
       - name: update rust-toolchain
         run:  assets/scripts/update-toolchain.sh
       - name: Create Pull Request
