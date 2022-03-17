@@ -1,4 +1,4 @@
-name: update-flake-lock
+name: update-rust-toolchain
 on:
   workflow_dispatch: # allows manual triggering
   schedule:
