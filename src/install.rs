@@ -32,12 +32,17 @@ pub(crate) fn populate_data_dir(data_dir: &Path) {
 
     for (path, bytes) in assets {
         let path = data_dir.join(path);
-        let parent_path = path.parent().unwrap();
-        fs::create_dir_all(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
-        set_permissions(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
-        if out_of_date || !path.exists() {
-            fs::write(path, bytes)
-                .unwrap_or_else(|e| log::error!("Failed to install default assets! {:?}", e));
+        // TODO: Is the [path.parent()] really necessary here?
+        // We already have the path and the parent through `data_dir`
+        if let Some(parent_path) = path.parent() {
+            fs::create_dir_all(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
+            set_permissions(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
+            if out_of_date || !path.exists() {
+                fs::write(path, bytes)
+                    .unwrap_or_else(|e| log::error!("Failed to install default assets! {:?}", e));
+            }
+        } else {
+            log::error!("The path {:?} has no parent directory", path);
         }
     }
 }
