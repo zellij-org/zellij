@@ -1,5 +1,6 @@
 mod alacritty_functions;
 mod floating_panes;
+mod tiled_panes;
 pub mod grid;
 pub mod link_handler;
 mod plugin_pane;
@@ -9,6 +10,7 @@ mod terminal_pane;
 
 pub use alacritty_functions::*;
 pub use floating_panes::*;
+pub use tiled_panes::*;
 pub use grid::*;
 pub use link_handler::*;
 pub(crate) use plugin_pane::*;
