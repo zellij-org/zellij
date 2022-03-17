@@ -93,6 +93,10 @@ pub struct TiledPanes {
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
+    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+    mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+    default_mode_info: ModeInfo,
+    colors: Palette,
     session_is_mirrored: bool,
     active_panes: HashMap<ClientId, PaneId>,
     draw_pane_frames: bool,
@@ -101,12 +105,26 @@ pub struct TiledPanes {
 }
 
 impl TiledPanes {
-    pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>, connected_clients: Rc<RefCell<HashSet<ClientId>>>, session_is_mirrored: bool, draw_pane_frames: bool) -> Self {
+    pub fn new(
+        display_area: Rc<RefCell<Size>>,
+        viewport: Rc<RefCell<Viewport>>,
+        connected_clients: Rc<RefCell<HashSet<ClientId>>>,
+        connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+        mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+        session_is_mirrored: bool,
+        draw_pane_frames: bool,
+        default_mode_info: ModeInfo,
+        colors: Palette
+    ) -> Self {
         TiledPanes {
             panes: BTreeMap::new(),
             display_area,
             viewport,
             connected_clients,
+            connected_clients_in_app,
+            mode_info,
+            default_mode_info,
+            colors,
             session_is_mirrored,
             active_panes: HashMap::new(),
             draw_pane_frames,
@@ -318,39 +336,30 @@ impl TiledPanes {
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
     }
-    #[allow(clippy::too_many_arguments)]
-    pub fn render(
-        &mut self,
-        connected_clients_in_app: &Rc<RefCell<HashSet<ClientId>>>,
-        connected_clients: &HashSet<ClientId>,
-        mode_info: &HashMap<ClientId, ModeInfo>,
-        default_mode_info: &ModeInfo,
-        session_is_mirrored: bool,
-        output: &mut Output,
-        colors: Palette,
-        multiple_users_exist_in_session: bool,
-        do_not_color_active_panes: bool,
-    ) {
+    pub fn render(&mut self, output: &mut Output) {
         let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
-        let active_panes = self.active_panes.iter().filter(|(client_id, _pane_id)| connected_clients.contains(client_id)).map(|(client_id, pane_id)| (*client_id, *pane_id)).collect();
+        let active_panes = if self.session_is_mirrored {
+            HashMap::new()
+        } else {
+            self.active_panes.iter().filter(|(client_id, _pane_id)| connected_clients.contains(client_id)).map(|(client_id, pane_id)| (*client_id, *pane_id)).collect()
+        };
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
-                    colors,
+                    self.colors,
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,
                 );
-                if do_not_color_active_panes {
-                    pane_contents_and_ui.clear_focused_clients();
-                }
                 for client_id in &connected_clients {
-                    let client_mode = mode_info
+                    let client_mode = self.mode_info
+                        .borrow()
                         .get(&client_id)
-                        .unwrap_or(default_mode_info)
+                        .unwrap_or(&self.default_mode_info)
                         .mode;
                     if let PaneId::Plugin(..) = kind {
                         pane_contents_and_ui.render_pane_contents_for_client(*client_id);
@@ -1025,10 +1034,10 @@ pub(crate) struct Tab {
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
     should_clear_display_before_rendering: bool,
-    mode_info: HashMap<ClientId, ModeInfo>,
+    mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     default_mode_info: ModeInfo,
     pub colors: Palette,
-    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>, // TODO: combine this and connected_clients
+    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
@@ -1224,7 +1233,7 @@ impl Tab {
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
-        mode_info: ModeInfo,
+        default_mode_info: ModeInfo,
         colors: Palette,
         draw_pane_frames: bool,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
@@ -1246,8 +1255,29 @@ impl Tab {
         let viewport = Rc::new(RefCell::new(viewport));
         let display_area = Rc::new(RefCell::new(display_area));
         let connected_clients = Rc::new(RefCell::new(connected_clients));
-        let tiled_panes = TiledPanes::new(display_area.clone(), viewport.clone(), connected_clients.clone(), session_is_mirrored, draw_pane_frames);
-        let floating_panes = FloatingPanes::new(display_area.clone(), viewport.clone(), connected_clients.clone());
+        let mode_info = Rc::new(RefCell::new(HashMap::new()));
+
+        let tiled_panes = TiledPanes::new(
+            display_area.clone(),
+            viewport.clone(),
+            connected_clients.clone(),
+            connected_clients_in_app.clone(),
+            mode_info.clone(),
+            session_is_mirrored,
+            draw_pane_frames,
+            default_mode_info.clone(),
+            colors
+        );
+        let floating_panes = FloatingPanes::new(
+            display_area.clone(),
+            viewport.clone(),
+            connected_clients.clone(),
+            connected_clients_in_app.clone(),
+            mode_info.clone(),
+            session_is_mirrored,
+            default_mode_info.clone(),
+            colors
+        );
 
         let clipboard_provider = match copy_command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
@@ -1267,8 +1297,8 @@ impl Tab {
             os_api,
             senders,
             should_clear_display_before_rendering: false,
-            mode_info: HashMap::new(),
-            default_mode_info: mode_info,
+            mode_info,
+            default_mode_info,
             colors,
             draw_pane_frames,
             session_is_mirrored,
@@ -1417,9 +1447,9 @@ impl Tab {
     }
     pub fn update_input_modes(&mut self) {
         // this updates all plugins with the client's input mode
+        let mode_infos = self.mode_info.borrow();
         for client_id in self.connected_clients.borrow().iter() {
-            let mode_info = self
-                .mode_info
+            let mode_info = mode_infos
                 .get(client_id)
                 .unwrap_or(&self.default_mode_info);
             self.senders
@@ -1450,7 +1480,7 @@ impl Tab {
                 }
                 let mut connected_clients = self.connected_clients.borrow_mut();
                 connected_clients.insert(client_id);
-                self.mode_info.insert(
+                self.mode_info.borrow_mut().insert(
                     client_id,
                     mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
                 );
@@ -1470,7 +1500,7 @@ impl Tab {
                 self.tiled_panes.focus_pane(focus_pane_id, client_id);
                 let mut connected_clients = self.connected_clients.borrow_mut();
                 connected_clients.insert(client_id);
-                self.mode_info.insert(
+                self.mode_info.borrow_mut().insert(
                     client_id,
                     mode_info.unwrap_or_else(|| self.default_mode_info.clone()),
                 );
@@ -1482,12 +1512,12 @@ impl Tab {
         self.update_input_modes();
     }
     pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
-        self.mode_info.insert(client_id, mode_info);
+        self.mode_info.borrow_mut().insert(client_id, mode_info);
     }
     pub fn add_multiple_clients(&mut self, client_ids_to_mode_infos: Vec<(ClientId, ModeInfo)>) {
         for (client_id, client_mode_info) in client_ids_to_mode_infos {
             self.add_client(client_id, None);
-            self.mode_info.insert(client_id, client_mode_info);
+            self.mode_info.borrow_mut().insert(client_id, client_mode_info);
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
@@ -1513,6 +1543,7 @@ impl Tab {
     pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
         let client_mode_info = self
             .mode_info
+            .borrow_mut()
             .remove(&client_id)
             .unwrap_or_else(|| self.default_mode_info.clone());
         self.connected_clients.borrow_mut().remove(&client_id);
@@ -1912,42 +1943,16 @@ impl Tab {
             return;
         }
         self.update_active_panes_in_pty_thread();
-        let floating_panes_stack = if self.floating_panes.panes_are_visible() {
-            Some(self.floating_panes.stack())
-        } else {
-            None
-        };
-        output.add_clients(
-            &connected_clients,
-            self.link_handler.clone(),
-            floating_panes_stack,
-        );
-        self.hide_cursor_and_clear_display_as_needed(output);
 
-        let multiple_users_exist_in_session =
-            { self.connected_clients_in_app.borrow().len() > 1 };
-        self.tiled_panes.render(
-            &self.connected_clients_in_app,
-            &connected_clients,
-            &self.mode_info,
-            &self.default_mode_info,
-            self.session_is_mirrored,
-            output,
-            self.colors,
-            multiple_users_exist_in_session,
-            self.floating_panes.panes_are_visible(),
-        );
+        let floating_panes_stack = self.floating_panes.stack();
+        output.add_clients(&connected_clients, self.link_handler.clone(), floating_panes_stack);
+
+        self.hide_cursor_and_clear_display_as_needed(output);
+        self.tiled_panes.render(output);
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes.render(
-                &self.connected_clients_in_app,
-                &connected_clients,
-                &self.mode_info,
-                &self.default_mode_info,
-                self.session_is_mirrored,
-                output,
-                self.colors,
-            );
+            self.floating_panes.render(output);
         }
+
         // FIXME: Once clients can be distinguished
         if let Some(overlay_vte) = &overlay {
             output.add_post_vte_instruction_to_multiple_clients(
@@ -1955,6 +1960,7 @@ impl Tab {
                 overlay_vte,
             );
         }
+
         self.render_cursor(output);
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {

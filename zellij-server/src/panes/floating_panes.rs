@@ -36,6 +36,11 @@ pub struct FloatingPanes {
     display_area: Rc<RefCell<Size>>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
+    connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+    mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+    default_mode_info: ModeInfo,
+    colors: Palette,
+    session_is_mirrored: bool,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
     active_panes: HashMap<ClientId, PaneId>,
@@ -45,12 +50,26 @@ pub struct FloatingPanes {
 
 #[allow(clippy::borrowed_box)]
 impl FloatingPanes {
-    pub fn new(display_area: Rc<RefCell<Size>>, viewport: Rc<RefCell<Viewport>>, connected_clients: Rc<RefCell<HashSet<ClientId>>>) -> Self {
+    pub fn new(
+        display_area: Rc<RefCell<Size>>,
+        viewport: Rc<RefCell<Viewport>>,
+        connected_clients: Rc<RefCell<HashSet<ClientId>>>,
+        connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
+        mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+        session_is_mirrored: bool,
+        default_mode_info: ModeInfo,
+        colors: Palette
+    ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
             display_area,
             viewport,
             connected_clients,
+            connected_clients_in_app,
+            mode_info,
+            session_is_mirrored,
+            default_mode_info,
+            colors,
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
@@ -58,13 +77,17 @@ impl FloatingPanes {
             pane_being_moved_with_mouse: None,
         }
     }
-    pub fn stack(&self) -> FloatingPanesStack {
-        let layers = self
-            .z_indices
-            .iter()
-            .map(|pane_id| self.panes.get(pane_id).unwrap().position_and_size())
-            .collect();
-        FloatingPanesStack { layers }
+    pub fn stack(&self) -> Option<FloatingPanesStack> {
+        if self.panes_are_visible() {
+            let layers = self
+                .z_indices
+                .iter()
+                .map(|pane_id| self.panes.get(pane_id).unwrap().position_and_size())
+                .collect();
+            Some(FloatingPanesStack { layers })
+        } else {
+            None
+        }
     }
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
@@ -153,17 +176,8 @@ impl FloatingPanes {
             resize_pty!(pane, os_api);
         }
     }
-    #[allow(clippy::too_many_arguments)]
-    pub fn render(
-        &mut self,
-        connected_clients_in_app: &Rc<RefCell<HashSet<ClientId>>>,
-        connected_clients: &HashSet<ClientId>,
-        mode_info: &HashMap<ClientId, ModeInfo>,
-        default_mode_info: &ModeInfo,
-        session_is_mirrored: bool,
-        output: &mut Output,
-        colors: Palette,
-    ) {
+    pub fn render(&mut self, output: &mut Output) {
+        let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             self.z_indices
@@ -175,25 +189,25 @@ impl FloatingPanes {
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = self.active_panes.clone();
-            let multiple_users_exist_in_session = { connected_clients_in_app.borrow().len() > 1 };
-            active_panes.retain(|c_id, _| connected_clients.contains(c_id));
+            let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
+            active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
-                colors,
+                self.colors,
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes
             );
-            for &client_id in connected_clients {
-                let client_mode = mode_info.get(&client_id).unwrap_or(default_mode_info).mode;
-                pane_contents_and_ui.render_pane_frame(client_id, client_mode, session_is_mirrored);
+            for client_id in &connected_clients {
+                let client_mode = self.mode_info.borrow().get(&client_id).unwrap_or(&self.default_mode_info).mode;
+                pane_contents_and_ui.render_pane_frame(*client_id, client_mode, self.session_is_mirrored);
                 if let PaneId::Plugin(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_for_client(client_id);
+                    pane_contents_and_ui.render_pane_contents_for_client(*client_id);
                 }
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)
-                pane_contents_and_ui.render_fake_cursor_if_needed(client_id);
+                pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
             }
             if let PaneId::Terminal(..) = kind {
                 pane_contents_and_ui
