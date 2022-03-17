@@ -13,6 +13,7 @@ jobs:
   test:
     name: Build generic binary and run tests on it
     runs-on: ubuntu-latest
+    environment: cachix
 
     services:
       ssh:
@@ -30,6 +31,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: cachix/install-nix-action@v16
+    - uses: cachix/cachix-action@v10
+      with:
+        name: zellij
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
     - name: Add WASM target
       run: rustup target add wasm32-wasi
     - name: Install musl-tools
@@ -40,7 +45,6 @@ jobs:
       run: nix profile install nixpkgs#cargo-make
       #run: cargo install --debug cargo-make
     - name: Build asset
-      #run: nix develop .#e2eShell --command cargo make build-e2e
       run: cargo make build-e2e
       # we copy this manually into the target folder instead of mounting it because
       # github actions creates the service first, and if it has a mount that is part
@@ -54,5 +58,4 @@ jobs:
       with:
         args: docker restart ssh
     - name: Test
-      #run: nix develop .#e2eShell --command cargo make e2e-test
       run: cargo make e2e-test
