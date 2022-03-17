@@ -272,7 +272,14 @@ fn start_plugin(
     let input = Pipe::new();
     let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
     let plugin_own_data_dir = plugin_global_data_dir.join(Url::from(&plugin.location).to_string());
-    fs::create_dir_all(&plugin_own_data_dir).unwrap();
+    #[cfg(not(feature = "disable_automatic_asset_installation"))]
+    fs::create_dir_all(&plugin_own_data_dir).unwrap_or_else(|e| {
+        log::error!(
+            "Could not create plugin_own_data_dir in {:?} \n Error: {:?}",
+            &plugin_own_data_dir,
+            e
+        )
+    });
 
     let mut wasi_env = WasiState::new("Zellij")
         .env("CLICOLOR_FORCE", "1")
