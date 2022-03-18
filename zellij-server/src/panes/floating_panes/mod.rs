@@ -2,8 +2,8 @@ mod floating_pane_grid;
 
 use zellij_utils::{position::Position, zellij_tile};
 
-use floating_pane_grid::FloatingPaneGrid;
 use crate::tab::Pane;
+use floating_pane_grid::FloatingPaneGrid;
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -60,7 +60,7 @@ impl FloatingPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
-        colors: Palette
+        colors: Palette,
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
@@ -179,7 +179,8 @@ impl FloatingPanes {
         }
     }
     pub fn render(&mut self, output: &mut Output) {
-        let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
         floating_panes.sort_by(|(a_id, _a_pane), (b_id, _b_pane)| {
             self.z_indices
@@ -191,7 +192,8 @@ impl FloatingPanes {
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
             let mut active_panes = self.active_panes.clone();
-            let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
+            let multiple_users_exist_in_session =
+                { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
@@ -202,8 +204,17 @@ impl FloatingPanes {
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes
             );
             for client_id in &connected_clients {
-                let client_mode = self.mode_info.borrow().get(&client_id).unwrap_or(&self.default_mode_info).mode;
-                pane_contents_and_ui.render_pane_frame(*client_id, client_mode, self.session_is_mirrored);
+                let client_mode = self
+                    .mode_info
+                    .borrow()
+                    .get(&client_id)
+                    .unwrap_or(&self.default_mode_info)
+                    .mode;
+                pane_contents_and_ui.render_pane_frame(
+                    *client_id,
+                    client_mode,
+                    self.session_is_mirrored,
+                );
                 if let PaneId::Plugin(..) = kind {
                     pane_contents_and_ui.render_pane_contents_for_client(*client_id);
                 }

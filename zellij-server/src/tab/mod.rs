@@ -281,7 +281,6 @@ impl Tab {
         copy_command: Option<String>,
         copy_clipboard: Clipboard,
     ) -> Self {
-
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
         } else {
@@ -316,7 +315,7 @@ impl Tab {
             mode_info.clone(),
             session_is_mirrored,
             default_mode_info.clone(),
-            colors
+            colors,
         );
 
         let clipboard_provider = match copy_command {
@@ -358,7 +357,9 @@ impl Tab {
         client_id: ClientId,
     ) {
         if self.tiled_panes.has_panes() {
-            log::error!("Applying a layout to a tab with existing panes - this is not yet supported!");
+            log::error!(
+                "Applying a layout to a tab with existing panes - this is not yet supported!"
+            );
         }
         let (viewport_cols, viewport_rows) = {
             let viewport = self.viewport.borrow();
@@ -397,7 +398,8 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                 );
                 new_plugin.set_borderless(layout.borderless);
-                self.tiled_panes.add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
+                self.tiled_panes
+                    .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
@@ -460,9 +462,7 @@ impl Tab {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         for client_id in self.connected_clients.borrow().iter() {
-            let mode_info = mode_infos
-                .get(client_id)
-                .unwrap_or(&self.default_mode_info);
+            let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
             self.senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
@@ -475,11 +475,15 @@ impl Tab {
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
         let other_clients_exist_in_tab = { !self.connected_clients.borrow().is_empty() };
         if other_clients_exist_in_tab {
-            if let Some(first_active_floating_pane_id) = self.floating_panes.first_active_floating_pane_id() {
-                self.floating_panes.focus_pane(first_active_floating_pane_id, client_id);
+            if let Some(first_active_floating_pane_id) =
+                self.floating_panes.first_active_floating_pane_id()
+            {
+                self.floating_panes
+                    .focus_pane(first_active_floating_pane_id, client_id);
             }
             if let Some(first_active_tiled_pane_id) = self.tiled_panes.first_active_pane_id() {
-                self.tiled_panes.focus_pane(first_active_tiled_pane_id, client_id);
+                self.tiled_panes
+                    .focus_pane(first_active_tiled_pane_id, client_id);
             }
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
@@ -513,7 +517,9 @@ impl Tab {
     pub fn add_multiple_clients(&mut self, client_ids_to_mode_infos: Vec<(ClientId, ModeInfo)>) {
         for (client_id, client_mode_info) in client_ids_to_mode_infos {
             self.add_client(client_id, None);
-            self.mode_info.borrow_mut().insert(client_id, client_mode_info);
+            self.mode_info
+                .borrow_mut()
+                .insert(client_id, client_mode_info);
         }
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
@@ -525,15 +531,13 @@ impl Tab {
         &mut self,
         clients_to_drain: Option<Vec<ClientId>>,
     ) -> Vec<(ClientId, ModeInfo)> {
-        log::info!("drain_connected_clients");
         // None => all clients
         let mut client_ids_to_mode_infos = vec![];
-        let clients_to_drain =
-            clients_to_drain.unwrap_or_else(|| self.connected_clients.borrow_mut().drain().collect());
+        let clients_to_drain = clients_to_drain
+            .unwrap_or_else(|| self.connected_clients.borrow_mut().drain().collect());
         for client_id in clients_to_drain {
             client_ids_to_mode_infos.push(self.drain_single_client(client_id));
         }
-        log::info!("connected_clients after: {:?}", self.connected_clients);
         client_ids_to_mode_infos
     }
     pub fn drain_single_client(&mut self, client_id: ClientId) -> (ClientId, ModeInfo) {
@@ -554,9 +558,11 @@ impl Tab {
                 if self.tiled_panes.has_room_for_new_pane() {
                     // this unwrap is safe because floating panes should not be visible if there are no floating panes
                     let floating_pane_to_embed = self.close_pane(focused_floating_pane_id).unwrap();
-                    self.tiled_panes.insert_pane(focused_floating_pane_id, floating_pane_to_embed);
+                    self.tiled_panes
+                        .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
                     self.should_clear_display_before_rendering = true;
-                    self.tiled_panes.focus_pane(focused_floating_pane_id, client_id);
+                    self.tiled_panes
+                        .focus_pane(focused_floating_pane_id, client_id);
                     self.floating_panes.toggle_show_panes(false);
                 }
             }
@@ -680,7 +686,8 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                 );
-                self.tiled_panes.split_pane_horizontally(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes
+                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
@@ -705,7 +712,8 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                 );
-                self.tiled_panes.split_pane_vertically(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes
+                    .split_pane_vertically(pid, Box::new(new_terminal), client_id);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
@@ -878,7 +886,7 @@ impl Tab {
             })
     }
     pub fn toggle_active_pane_fullscreen(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible(){
+        if self.floating_panes.panes_are_visible() {
             return;
         }
         self.tiled_panes.toggle_active_pane_fullscreen(client_id);
@@ -907,7 +915,8 @@ impl Tab {
     fn update_active_panes_in_pty_thread(&self) {
         // this is a bit hacky and we should ideally not keep this state in two different places at
         // some point
-        let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
             self.senders
                 .send_to_pty(PtyInstruction::UpdateActivePane(
@@ -918,14 +927,19 @@ impl Tab {
         }
     }
     pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
-        let connected_clients: HashSet<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: HashSet<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
             return;
         }
         self.update_active_panes_in_pty_thread();
 
         let floating_panes_stack = self.floating_panes.stack();
-        output.add_clients(&connected_clients, self.link_handler.clone(), floating_panes_stack);
+        output.add_clients(
+            &connected_clients,
+            self.link_handler.clone(),
+            floating_panes_stack,
+        );
 
         self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes.render(output);
@@ -945,7 +959,8 @@ impl Tab {
     }
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
-        let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         output.add_pre_vte_instruction_to_multiple_clients(
             connected_clients.iter().copied(),
             hide_cursor,
@@ -960,13 +975,16 @@ impl Tab {
         }
     }
     fn render_cursor(&self, output: &mut Output) {
-        let connected_clients: Vec<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: Vec<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
             match self.get_active_terminal_cursor_position(client_id) {
                 Some((cursor_position_x, cursor_position_y)) => {
                     let show_cursor = "\u{1b}[?25h";
-                    let change_cursor_shape =
-                        self.get_active_pane(client_id).map(|ap| ap.cursor_shape_csi()).unwrap_or_default();
+                    let change_cursor_shape = self
+                        .get_active_pane(client_id)
+                        .map(|ap| ap.cursor_shape_csi())
+                        .unwrap_or_default();
                     let goto_cursor_position = &format!(
                         "\u{1b}[{};{}H\u{1b}[m{}",
                         cursor_position_y + 1,
@@ -990,14 +1008,16 @@ impl Tab {
         self.get_tiled_panes().filter(|(_, p)| p.selectable())
     }
     fn get_next_terminal_position(&self) -> usize {
-        let tiled_panes_count = self.tiled_panes
+        let tiled_panes_count = self
+            .tiled_panes
             .get_panes()
             .filter(|(k, _)| match k {
                 PaneId::Plugin(_) => false,
                 PaneId::Terminal(_) => true,
             })
             .count();
-        let floating_panes_count = self.floating_panes
+        let floating_panes_count = self
+            .floating_panes
             .get_panes()
             .filter(|(k, _)| match k {
                 PaneId::Plugin(_) => false,
@@ -1008,7 +1028,10 @@ impl Tab {
     }
     pub fn has_selectable_panes(&self) -> bool {
         let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
-        let selectable_floating_panes = self.floating_panes.get_panes().filter(|(_, p)| p.selectable());
+        let selectable_floating_panes = self
+            .floating_panes
+            .get_panes()
+            .filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0 || selectable_floating_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
@@ -1122,8 +1145,10 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes
-                .move_focus_left(client_id, &self.connected_clients.borrow().iter().copied().collect())
+            self.floating_panes.move_focus_left(
+                client_id,
+                &self.connected_clients.borrow().iter().copied().collect(),
+            )
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1136,8 +1161,10 @@ impl Tab {
     }
     pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes
-                .move_focus_down(client_id, &self.connected_clients.borrow().iter().copied().collect())
+            self.floating_panes.move_focus_down(
+                client_id,
+                &self.connected_clients.borrow().iter().copied().collect(),
+            )
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1150,8 +1177,10 @@ impl Tab {
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes
-                .move_focus_up(client_id, &self.connected_clients.borrow().iter().copied().collect())
+            self.floating_panes.move_focus_up(
+                client_id,
+                &self.connected_clients.borrow().iter().copied().collect(),
+            )
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1165,8 +1194,10 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes
-                .move_focus_right(client_id, &self.connected_clients.borrow().iter().copied().collect())
+            self.floating_panes.move_focus_right(
+                client_id,
+                &self.connected_clients.borrow().iter().copied().collect(),
+            )
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1449,7 +1480,14 @@ impl Tab {
 
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.tiled_panes.fullscreen_is_active() && self.is_position_inside_viewport(point) {
-            let first_client_id = { self.connected_clients.borrow().iter().copied().next().unwrap() }; // TODO: instead of doing this, record the pane that is in fullscreen
+            let first_client_id = {
+                self.connected_clients
+                    .borrow()
+                    .iter()
+                    .copied()
+                    .next()
+                    .unwrap()
+            }; // TODO: instead of doing this, record the pane that is in fullscreen
             return self.tiled_panes.get_active_pane_id(first_client_id);
         }
         if search_selectable {
@@ -1614,7 +1652,8 @@ impl Tab {
 
     fn write_selection_to_clipboard(&self, selection: &str) {
         let mut output = Output::default();
-        let connected_clients: HashSet<ClientId> = { self.connected_clients.borrow().iter().copied().collect() };
+        let connected_clients: HashSet<ClientId> =
+            { self.connected_clients.borrow().iter().copied().collect() };
         output.add_clients(&connected_clients, self.link_handler.clone(), None);
         let client_ids = connected_clients.iter().copied();
         let clipboard_event =
