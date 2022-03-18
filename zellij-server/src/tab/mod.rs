@@ -3,9 +3,6 @@
 
 mod clipboard;
 mod copy_command;
-pub mod floating_pane_grid;
-pub mod pane_resizer;
-pub mod tiled_pane_grid;
 
 use copy_command::CopyCommand;
 use zellij_utils::input::options::Clipboard;
@@ -1719,21 +1716,6 @@ impl Tab {
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
     }
-}
-
-#[allow(clippy::borrowed_box)]
-pub fn is_inside_viewport(viewport: &Viewport, pane: &Box<dyn Pane>) -> bool {
-    let pane_position_and_size = pane.current_geom();
-    pane_position_and_size.y >= viewport.y
-        && pane_position_and_size.y + pane_position_and_size.rows.as_usize()
-            <= viewport.y + viewport.rows
-}
-
-pub fn pane_geom_is_inside_viewport(viewport: &Viewport, geom: &PaneGeom) -> bool {
-    geom.y >= viewport.y
-        && geom.y + geom.rows.as_usize() <= viewport.y + viewport.rows
-        && geom.x >= viewport.x
-        && geom.x + geom.cols.as_usize() <= viewport.x + viewport.cols
 }
 
 #[cfg(test)]

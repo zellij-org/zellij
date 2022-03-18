@@ -1,6 +1,8 @@
+mod floating_pane_grid;
+
 use zellij_utils::{position::Position, zellij_tile};
 
-use crate::tab::floating_pane_grid::FloatingPaneGrid;
+use floating_pane_grid::FloatingPaneGrid;
 use crate::tab::Pane;
 
 use crate::{

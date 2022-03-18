@@ -1,7 +1,9 @@
+mod tiled_pane_grid;
+mod pane_resizer;
 
 use zellij_utils::{zellij_tile};
 
-use crate::tab::tiled_pane_grid::{split, TiledPaneGrid};
+use tiled_pane_grid::{split, TiledPaneGrid};
 use crate::tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 
 use crate::{
