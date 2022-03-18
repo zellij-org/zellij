@@ -5,9 +5,9 @@ expression: snapshot
 ---
 00 (C): ┌ Pane #1 ────────────────────┌ Pane #2 ─────────┐                                                                       
 01 (C): │                             │                  │                                                                       
-02 (C): │ ┌ Pane #┌ Pane #2 ─────────────── SCROLL:  0/1 ┐                                                                       
+02 (C): │ ┌ Pane #┌ Pane #4 ─────────────── SCROLL:  0/1 ┐                                                                       
 03 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-04 (C): │ ┌ Pane #┌ Pane #2 ─────────────── SCROLL:  0/1 ┐                                                                       
+04 (C): │ ┌ Pane #┌ Pane #6 ─────────────── SCROLL:  0/1 ┐                                                                       
 05 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
 06 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
 07 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       

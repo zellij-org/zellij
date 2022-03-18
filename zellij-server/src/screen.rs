@@ -428,7 +428,7 @@ impl Screen {
         let size = self.size;
         let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
-            if tab.has_active_panes() {
+            if tab.has_selectable_panes() {
                 let vte_overlay = overlay.generate_overlay(size);
                 tab.render(&mut output, Some(vte_overlay));
             } else {
@@ -567,11 +567,9 @@ impl Screen {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.tabs.iter_mut().for_each(|(_, tab)| {
-            if tab.active_panes.get(&client_id).is_some() {
-                tab.remove_client(client_id);
-                if tab.has_no_connected_clients() {
-                    tab.visible(false);
-                }
+            tab.remove_client(client_id);
+            if tab.has_no_connected_clients() {
+                tab.visible(false);
             }
         });
         if self.active_tab_indices.contains_key(&client_id) {
@@ -604,7 +602,7 @@ impl Screen {
                     position: tab.position,
                     name: tab.name.clone(),
                     active: *active_tab_index == tab.index,
-                    panes_to_hide: tab.panes_to_hide.len(),
+                    panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
@@ -874,7 +872,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus(client_id);
+                    .focus_next_pane(client_id);
 
                 screen.render();
             }

@@ -5,7 +5,7 @@ expression: snapshot
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 01 (C): │                                                                                                                       │
-02 (C): │ ┌ Pane #2 ─────────────── SCROLL:  0/1 ┐                                     ┌ Pane #2 ─────────────── SCROLL:  0/1 ┐ │
+02 (C): │ ┌ Pane #3 ─────────────── SCROLL:  0/1 ┐                                     ┌ Pane #4 ─────────────── SCROLL:  0/1 ┐ │
 03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
 04 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
 05 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE┌ Pane #2 ─────────────────────────────────────────────────┐EEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
@@ -15,7 +15,7 @@ expression: snapshot
 09 (C): │                             │                   I am scratch terminal                  │                              │
 10 (C): │                             │                                                          │                              │
 11 (C): │                             │                                                          │                              │
-12 (C): │ ┌ Pane #2 ─────────────── SC│                                                ┌ Pane #2 ─────────────── SCROLL:  0/1 ┐ │
+12 (C): │ ┌ Pane #5 ─────────────── SC│                                                ┌ Pane #6 ─────────────── SCROLL:  0/1 ┐ │
 13 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
 14 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE└────────────────────────────────────────────────│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
 15 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
