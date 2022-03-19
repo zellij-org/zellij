@@ -119,12 +119,7 @@ impl TiledPanes {
                 pane_to_split.set_geom(first_geom);
                 pane.set_geom(second_geom);
                 self.panes.insert(pane_id, pane);
-                // ¯\_(ツ)_/¯
-                let relayout_direction = match split_direction {
-                    Direction::Vertical => Direction::Horizontal,
-                    Direction::Horizontal => Direction::Vertical,
-                };
-                self.relayout(relayout_direction);
+                self.relayout(!split_direction);
             }
         }
     }

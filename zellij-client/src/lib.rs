@@ -148,7 +148,7 @@ pub fn start_client(
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
-            rounded_corners: true, // FIXME: Please don't leave this in...
+            rounded_corners: false, // FIXME: Please don't leave this in...
             colors: palette,
         },
     };
