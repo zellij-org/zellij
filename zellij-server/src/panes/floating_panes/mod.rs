@@ -51,6 +51,7 @@ pub struct FloatingPanes {
 }
 
 #[allow(clippy::borrowed_box)]
+#[allow(clippy::too_many_arguments)]
 impl FloatingPanes {
     pub fn new(
         display_area: Rc<RefCell<Size>>,
@@ -207,7 +208,7 @@ impl FloatingPanes {
                 let client_mode = self
                     .mode_info
                     .borrow()
-                    .get(&client_id)
+                    .get(client_id)
                     .unwrap_or(&self.default_mode_info)
                     .mode;
                 pane_contents_and_ui.render_pane_frame(
