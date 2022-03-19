@@ -6,6 +6,7 @@ mod plugin_pane;
 pub mod selection;
 pub mod terminal_character;
 mod terminal_pane;
+mod tiled_panes;
 
 pub use alacritty_functions::*;
 pub use floating_panes::*;
@@ -14,3 +15,4 @@ pub use link_handler::*;
 pub(crate) use plugin_pane::*;
 pub(crate) use terminal_character::*;
 pub use terminal_pane::*;
+pub use tiled_panes::*;

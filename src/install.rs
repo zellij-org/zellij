@@ -1,7 +1,10 @@
+#[cfg(not(feature = "disable_automatic_asset_installation"))]
 use std::fs;
 use std::path::Path;
+#[cfg(not(feature = "disable_automatic_asset_installation"))]
 use zellij_utils::{consts::VERSION, shared::set_permissions};
 
+#[cfg(not(feature = "disable_automatic_asset_installation"))]
 macro_rules! asset_map {
     ($($src:literal => $dst:literal),+ $(,)?) => {
         {
@@ -14,6 +17,7 @@ macro_rules! asset_map {
     }
 }
 
+#[cfg(not(feature = "disable_automatic_asset_installation"))]
 pub(crate) fn populate_data_dir(data_dir: &Path) {
     // First run installation of default plugins & layouts
     let mut assets = asset_map! {
@@ -28,11 +32,20 @@ pub(crate) fn populate_data_dir(data_dir: &Path) {
 
     for (path, bytes) in assets {
         let path = data_dir.join(path);
-        let parent_path = path.parent().unwrap();
-        fs::create_dir_all(parent_path).unwrap();
-        set_permissions(parent_path).unwrap();
-        if out_of_date || !path.exists() {
-            fs::write(path, bytes).expect("Failed to install default assets!");
+        // TODO: Is the [path.parent()] really necessary here?
+        // We already have the path and the parent through `data_dir`
+        if let Some(parent_path) = path.parent() {
+            fs::create_dir_all(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
+            set_permissions(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
+            if out_of_date || !path.exists() {
+                fs::write(path, bytes)
+                    .unwrap_or_else(|e| log::error!("Failed to install default assets! {:?}", e));
+            }
+        } else {
+            log::error!("The path {:?} has no parent directory", path);
         }
     }
 }
+
+#[cfg(feature = "disable_automatic_asset_installation")]
+pub(crate) fn populate_data_dir(_data_dir: &Path) {}

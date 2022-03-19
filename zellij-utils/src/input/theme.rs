@@ -2,10 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::options::Options;
-use zellij_tile::{
-    data::{Palette, PaletteColor},
-    prelude::Style,
-};
+use zellij_tile::data::{Palette, PaletteColor};
 
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -13,8 +10,6 @@ pub struct ThemesFromYaml(HashMap<String, Theme>);
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 struct Theme {
-    #[serde(default)]
-    rounded_corners: bool,
     #[serde(flatten)]
     palette: PaletteFromYaml,
 }
@@ -52,7 +47,7 @@ impl Default for PaletteColorFromYaml {
 }
 
 impl ThemesFromYaml {
-    pub fn theme_config(self, opts: &Options) -> Option<Style> {
+    pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {
             Some(theme) => from_yaml.from_default_theme(theme.to_owned()),
@@ -64,11 +59,10 @@ impl ThemesFromYaml {
         self.0.remove(&theme)
     }
 
-    fn from_default_theme(&mut self, theme: String) -> Option<Style> {
-        self.clone().get_theme(theme).map(|t| Style {
-            rounded_corners: t.rounded_corners,
-            colors: Palette::from(t.palette),
-        })
+    fn from_default_theme(&mut self, theme: String) -> Option<Palette> {
+        self.clone()
+            .get_theme(theme)
+            .map(|t| Palette::from(t.palette))
     }
 
     /// Merges two Theme structs into one Theme struct

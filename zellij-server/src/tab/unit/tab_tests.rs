@@ -108,8 +108,8 @@ fn create_new_tab(size: Size) -> Tab {
         os_api,
         senders,
         max_panes,
-        mode_info,
         style,
+        mode_info,
         draw_pane_frames,
         connected_clients,
         session_is_mirrored,
@@ -135,9 +135,10 @@ fn split_panes_vertically() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, 1);
-    assert_eq!(tab.panes.len(), 2, "The tab has two panes");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -146,7 +147,8 @@ fn split_panes_vertically() {
         "first pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -155,7 +157,8 @@ fn split_panes_vertically() {
         "first pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -165,7 +168,8 @@ fn split_panes_vertically() {
         "first pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -175,7 +179,8 @@ fn split_panes_vertically() {
         "first pane row count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -184,7 +189,8 @@ fn split_panes_vertically() {
         "second pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -193,7 +199,8 @@ fn split_panes_vertically() {
         "second pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -203,7 +210,8 @@ fn split_panes_vertically() {
         "second pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -223,10 +231,11 @@ fn split_panes_horizontally() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, 1);
-    assert_eq!(tab.panes.len(), 2, "The tab has two panes");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "The tab has two panes");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -235,7 +244,8 @@ fn split_panes_horizontally() {
         "first pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -244,7 +254,8 @@ fn split_panes_horizontally() {
         "first pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -254,7 +265,8 @@ fn split_panes_horizontally() {
         "first pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -265,7 +277,8 @@ fn split_panes_horizontally() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -274,7 +287,8 @@ fn split_panes_horizontally() {
         "second pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -283,7 +297,8 @@ fn split_panes_horizontally() {
         "second pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -293,7 +308,8 @@ fn split_panes_horizontally() {
         "second pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -315,10 +331,11 @@ fn split_largest_pane() {
         let new_pane_id = PaneId::Terminal(i);
         tab.new_pane(new_pane_id, Some(1));
     }
-    assert_eq!(tab.panes.len(), 4, "The tab has four panes");
+    assert_eq!(tab.tiled_panes.panes.len(), 4, "The tab has four panes");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -327,7 +344,8 @@ fn split_largest_pane() {
         "first pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -336,7 +354,8 @@ fn split_largest_pane() {
         "first pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -346,7 +365,8 @@ fn split_largest_pane() {
         "first pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -357,7 +377,8 @@ fn split_largest_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -366,7 +387,8 @@ fn split_largest_pane() {
         "second pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -375,7 +397,8 @@ fn split_largest_pane() {
         "second pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -385,7 +408,8 @@ fn split_largest_pane() {
         "second pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -396,7 +420,8 @@ fn split_largest_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -405,7 +430,8 @@ fn split_largest_pane() {
         "third pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -414,7 +440,8 @@ fn split_largest_pane() {
         "third pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -424,7 +451,8 @@ fn split_largest_pane() {
         "third pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -435,7 +463,8 @@ fn split_largest_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -444,7 +473,8 @@ fn split_largest_pane() {
         "fourth pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -453,7 +483,8 @@ fn split_largest_pane() {
         "fourth pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -463,7 +494,8 @@ fn split_largest_pane() {
         "fourth pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -479,7 +511,11 @@ pub fn cannot_split_panes_vertically_when_active_pane_is_too_small() {
     let size = Size { cols: 8, rows: 20 };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), 1);
-    assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        1,
+        "Tab still has only one pane"
+    );
 }
 
 #[test]
@@ -487,7 +523,11 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
     let size = Size { cols: 121, rows: 4 };
     let mut tab = create_new_tab(size);
     tab.horizontal_split(PaneId::Terminal(2), 1);
-    assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        1,
+        "Tab still has only one pane"
+    );
 }
 
 #[test]
@@ -495,7 +535,11 @@ pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let mut tab = create_new_tab(size);
     tab.new_pane(PaneId::Terminal(2), Some(1));
-    assert_eq!(tab.panes.len(), 1, "Tab still has only one pane");
+    assert_eq!(
+        tab.tiled_panes.panes.len(),
+        1,
+        "Tab still has only one pane"
+    );
 }
 
 #[test]
@@ -511,43 +555,59 @@ pub fn toggle_focused_pane_fullscreen() {
     }
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
         0,
         "Pane x is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
         0,
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
         121,
         "Pane cols match fullscreen cols"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().rows(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
         20,
         "Pane rows match fullscreen rows"
     );
     tab.toggle_active_pane_fullscreen(1);
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
         61,
         "Pane x is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
         10,
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
         60,
         "Pane cols match fullscreen cols"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().rows(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
         10,
         "Pane rows match fullscreen rows"
     );
@@ -569,22 +629,30 @@ pub fn move_focus_is_disabled_in_fullscreen() {
     tab.toggle_active_pane_fullscreen(1);
     tab.move_focus_left(1);
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().x(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
         0,
         "Pane x is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().y(),
+        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
         0,
         "Pane y is on screen edge"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().cols(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .cols(),
         121,
         "Pane cols match fullscreen cols"
     );
     assert_eq!(
-        tab.panes.get(&PaneId::Terminal(4)).unwrap().rows(),
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(4))
+            .unwrap()
+            .rows(),
         20,
         "Pane rows match fullscreen rows"
     );
@@ -609,10 +677,11 @@ pub fn close_pane_with_another_pane_above_it() {
     let new_pane_id = PaneId::Terminal(2);
     tab.horizontal_split(new_pane_id, 1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -621,7 +690,8 @@ pub fn close_pane_with_another_pane_above_it() {
         "remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -630,7 +700,8 @@ pub fn close_pane_with_another_pane_above_it() {
         "remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -640,7 +711,8 @@ pub fn close_pane_with_another_pane_above_it() {
         "remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -671,10 +743,11 @@ pub fn close_pane_with_another_pane_below_it() {
     tab.horizontal_split(new_pane_id, 1);
     tab.move_focus_up(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -683,7 +756,8 @@ pub fn close_pane_with_another_pane_below_it() {
         "remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -692,7 +766,8 @@ pub fn close_pane_with_another_pane_below_it() {
         "remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -702,7 +777,8 @@ pub fn close_pane_with_another_pane_below_it() {
         "remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -729,10 +805,11 @@ pub fn close_pane_with_another_pane_to_the_left() {
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, 1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -741,7 +818,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
         "remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -750,7 +828,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
         "remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -760,7 +839,8 @@ pub fn close_pane_with_another_pane_to_the_left() {
         "remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -788,10 +868,11 @@ pub fn close_pane_with_another_pane_to_the_right() {
     tab.vertical_split(new_pane_id, 1);
     tab.move_focus_left(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 1, "One pane left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -800,7 +881,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
         "remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -809,7 +891,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
         "remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -819,7 +902,8 @@ pub fn close_pane_with_another_pane_to_the_right() {
         "remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -852,10 +936,11 @@ pub fn close_pane_with_multiple_panes_above_it() {
     tab.vertical_split(new_pane_id_2, 1);
     tab.move_focus_down(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -864,7 +949,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -873,7 +959,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -883,7 +970,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -894,7 +982,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -903,7 +992,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -912,7 +1002,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -922,7 +1013,8 @@ pub fn close_pane_with_multiple_panes_above_it() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -954,10 +1046,11 @@ pub fn close_pane_with_multiple_panes_below_it() {
     tab.vertical_split(new_pane_id_2, 1);
     tab.move_focus_up(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -966,7 +1059,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -975,7 +1069,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -985,7 +1080,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -996,7 +1092,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1005,7 +1102,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1014,7 +1112,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1024,7 +1123,8 @@ pub fn close_pane_with_multiple_panes_below_it() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1057,10 +1157,11 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     tab.horizontal_split(new_pane_id_2, 1);
     tab.move_focus_right(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1069,7 +1170,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1078,7 +1180,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1088,7 +1191,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1099,7 +1203,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1108,7 +1213,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1117,7 +1223,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1127,7 +1234,8 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1159,10 +1267,11 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     tab.horizontal_split(new_pane_id_2, 1);
     tab.move_focus_left(1);
     tab.close_focused_pane(1);
-    assert_eq!(tab.panes.len(), 2, "Two panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1171,7 +1280,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1180,7 +1290,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1190,7 +1301,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1201,7 +1313,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1210,7 +1323,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1219,7 +1333,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1229,7 +1344,8 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1278,10 +1394,11 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     tab.move_focus_down(1);
     tab.close_focused_pane(1);
 
-    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1290,7 +1407,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1299,7 +1417,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1309,7 +1428,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1320,7 +1440,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1329,7 +1450,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1338,7 +1460,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1348,7 +1471,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1359,7 +1483,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1368,7 +1493,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "third remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1377,7 +1503,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "third remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1387,7 +1514,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "third remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1398,7 +1526,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1407,7 +1536,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "fourth remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1416,7 +1546,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "fourth remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1426,7 +1557,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "fourth remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1437,7 +1569,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1446,7 +1579,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "sixths remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1455,7 +1589,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "sixths remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1465,7 +1600,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "sixths remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1476,7 +1612,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1485,7 +1622,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "seventh remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1494,7 +1632,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "seventh remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1504,7 +1643,8 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
         "seventh remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1553,10 +1693,11 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     tab.move_focus_up(1);
     tab.close_focused_pane(1);
 
-    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1565,7 +1706,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1574,7 +1716,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1584,7 +1727,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1595,7 +1739,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1604,7 +1749,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "third remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1613,7 +1759,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "third remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1623,7 +1770,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "third remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1634,7 +1782,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1643,7 +1792,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "fourth remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1652,7 +1802,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "fourth remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1662,7 +1813,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "fourth remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1673,7 +1825,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -1682,7 +1835,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -1691,7 +1845,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -1701,7 +1856,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -1712,7 +1868,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1721,7 +1878,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "sixths remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1730,7 +1888,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "sixths remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1740,7 +1899,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "sixths remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -1751,7 +1911,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1760,7 +1921,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "seventh remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1769,7 +1931,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "seventh remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1779,7 +1942,8 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
         "seventh remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -1833,10 +1997,11 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     tab.move_focus_right(1);
     tab.close_focused_pane(1);
 
-    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1845,7 +2010,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1854,7 +2020,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1864,7 +2031,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -1875,7 +2043,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1884,7 +2053,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "third remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1893,7 +2063,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "third remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1903,7 +2074,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "third remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -1914,7 +2086,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1923,7 +2096,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "fourth remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1932,7 +2106,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "fourth remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1942,7 +2117,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "fourth remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -1953,7 +2129,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1962,7 +2139,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1971,7 +2149,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1981,7 +2160,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -1992,7 +2172,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2001,7 +2182,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "sixths remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2010,7 +2192,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "sixths remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2020,7 +2203,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "sixths remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2031,7 +2215,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2040,7 +2225,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "seventh remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2049,7 +2235,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "seventh remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2059,7 +2246,8 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
         "seventh remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2112,10 +2300,11 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     tab.move_focus_left(1);
     tab.close_focused_pane(1);
 
-    assert_eq!(tab.panes.len(), 6, "Six panes left in tab");
+    assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2124,7 +2313,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "first remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2133,7 +2323,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "first remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2143,7 +2334,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "first remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2154,7 +2346,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -2163,7 +2356,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "fourth remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -2172,7 +2366,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "fourth remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -2182,7 +2377,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "fourth remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -2193,7 +2389,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -2202,7 +2399,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "second remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -2211,7 +2409,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "second remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -2221,7 +2420,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "second remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -2232,7 +2432,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -2241,7 +2442,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "third remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -2250,7 +2452,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "third remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -2260,7 +2463,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "third remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -2271,7 +2475,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2280,7 +2485,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "sixths remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2289,7 +2495,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "sixths remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2299,7 +2506,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "sixths remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -2310,7 +2518,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2319,7 +2528,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "seventh remaining pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2328,7 +2538,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "seventh remaining pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2338,7 +2549,8 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
         "seventh remaining pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -2804,17 +3016,28 @@ pub fn resize_down_with_pane_above() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&new_pane_id).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id)
+            .unwrap()
+            .position_and_size()
+            .y,
         11,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
@@ -2824,7 +3047,8 @@ pub fn resize_down_with_pane_above() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
@@ -2835,7 +3059,8 @@ pub fn resize_down_with_pane_above() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2844,7 +3069,8 @@ pub fn resize_down_with_pane_above() {
         "pane above x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2853,7 +3079,8 @@ pub fn resize_down_with_pane_above() {
         "pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2863,7 +3090,8 @@ pub fn resize_down_with_pane_above() {
         "pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2895,17 +3123,28 @@ pub fn resize_down_with_pane_below() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&new_pane_id).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "pane below x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id)
+            .unwrap()
+            .position_and_size()
+            .y,
         11,
         "pane below y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
@@ -2915,7 +3154,8 @@ pub fn resize_down_with_pane_below() {
         "pane below column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id)
             .unwrap()
             .position_and_size()
@@ -2926,7 +3166,8 @@ pub fn resize_down_with_pane_below() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2935,7 +3176,8 @@ pub fn resize_down_with_pane_below() {
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2944,7 +3186,8 @@ pub fn resize_down_with_pane_below() {
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2954,7 +3197,8 @@ pub fn resize_down_with_pane_below() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -2993,17 +3237,28 @@ pub fn resize_down_with_panes_above_and_below() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&new_pane_id_1).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_1)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id_1).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_1)
+            .unwrap()
+            .position_and_size()
+            .y,
         15,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
@@ -3013,7 +3268,8 @@ pub fn resize_down_with_panes_above_and_below() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
@@ -3024,17 +3280,28 @@ pub fn resize_down_with_panes_above_and_below() {
     );
 
     assert_eq!(
-        tab.panes.get(&new_pane_id_2).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_2)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "pane below x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id_2).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_2)
+            .unwrap()
+            .position_and_size()
+            .y,
         24,
         "pane below y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
@@ -3044,7 +3311,8 @@ pub fn resize_down_with_panes_above_and_below() {
         "pane below column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
@@ -3055,17 +3323,28 @@ pub fn resize_down_with_panes_above_and_below() {
     );
 
     assert_eq!(
-        tab.panes.get(&first_pane_id).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&first_pane_id)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&first_pane_id).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&first_pane_id)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
@@ -3075,7 +3354,8 @@ pub fn resize_down_with_panes_above_and_below() {
         "pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
@@ -3111,17 +3391,28 @@ pub fn resize_down_with_multiple_panes_above() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&new_pane_id_1).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_1)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id_1).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_1)
+            .unwrap()
+            .position_and_size()
+            .y,
         16,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
@@ -3131,7 +3422,8 @@ pub fn resize_down_with_multiple_panes_above() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_1)
             .unwrap()
             .position_and_size()
@@ -3142,17 +3434,28 @@ pub fn resize_down_with_multiple_panes_above() {
     );
 
     assert_eq!(
-        tab.panes.get(&new_pane_id_2).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_2)
+            .unwrap()
+            .position_and_size()
+            .x,
         61,
         "first pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&new_pane_id_2).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&new_pane_id_2)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "first pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
@@ -3162,7 +3465,8 @@ pub fn resize_down_with_multiple_panes_above() {
         "first pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&new_pane_id_2)
             .unwrap()
             .position_and_size()
@@ -3173,17 +3477,28 @@ pub fn resize_down_with_multiple_panes_above() {
     );
 
     assert_eq!(
-        tab.panes.get(&first_pane_id).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&first_pane_id)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "second pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&first_pane_id).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&first_pane_id)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "second pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
@@ -3193,7 +3508,8 @@ pub fn resize_down_with_multiple_panes_above() {
         "second pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&first_pane_id)
             .unwrap()
             .position_and_size()
@@ -3231,17 +3547,28 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .x,
         61,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .y,
         16,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3251,7 +3578,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3262,7 +3590,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
@@ -3271,7 +3600,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane above and to the left x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
@@ -3280,7 +3610,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane above and to the left y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
@@ -3290,7 +3621,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane above and to the left column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_left)
             .unwrap()
             .position_and_size()
@@ -3301,17 +3633,28 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .x,
         61,
         "pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above)
             .unwrap()
             .position_and_size()
@@ -3321,7 +3664,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above)
             .unwrap()
             .position_and_size()
@@ -3332,7 +3676,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3341,7 +3686,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane to the left x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3350,7 +3696,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane to the left y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3360,7 +3707,8 @@ pub fn resize_down_with_panes_above_aligned_left_with_current_pane() {
         "pane to the left column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3398,17 +3746,28 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .x,
         61,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3418,7 +3777,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3429,7 +3789,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3438,7 +3799,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane above and to the left x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3447,7 +3809,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane above and to the left y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3457,7 +3820,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane above and to the left column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_left)
             .unwrap()
             .position_and_size()
@@ -3468,17 +3832,28 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .x,
         61,
         "pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .y,
         16,
         "pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below)
             .unwrap()
             .position_and_size()
@@ -3488,7 +3863,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below)
             .unwrap()
             .position_and_size()
@@ -3499,7 +3875,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
@@ -3508,7 +3885,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane to the left x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
@@ -3517,7 +3895,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane to the left y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
@@ -3527,7 +3906,8 @@ pub fn resize_down_with_panes_below_aligned_left_with_current_pane() {
         "pane to the left column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_left)
             .unwrap()
             .position_and_size()
@@ -3567,17 +3947,28 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .y,
         16,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3587,7 +3978,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3598,17 +3990,28 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "pane above x position"
     );
     assert_eq!(
-        tab.panes.get(&pane_above).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&pane_above)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "pane above y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above)
             .unwrap()
             .position_and_size()
@@ -3618,7 +4021,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane above column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above)
             .unwrap()
             .position_and_size()
@@ -3629,7 +4033,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3638,7 +4043,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane to the right x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3647,7 +4053,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane to the right y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3657,7 +4064,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane to the right column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3668,7 +4076,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
@@ -3677,7 +4086,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane above and to the right x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
@@ -3686,7 +4096,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane above and to the right y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
@@ -3696,7 +4107,8 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
         "pane above and to the right column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_above_and_right)
             .unwrap()
             .position_and_size()
@@ -3735,17 +4147,28 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "focused pane x position"
     );
     assert_eq!(
-        tab.panes.get(&focused_pane).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&focused_pane)
+            .unwrap()
+            .position_and_size()
+            .y,
         0,
         "focused pane y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3755,7 +4178,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "focused pane column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&focused_pane)
             .unwrap()
             .position_and_size()
@@ -3766,17 +4190,28 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().x,
+        tab.tiled_panes
+            .panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .x,
         0,
         "pane below x position"
     );
     assert_eq!(
-        tab.panes.get(&pane_below).unwrap().position_and_size().y,
+        tab.tiled_panes
+            .panes
+            .get(&pane_below)
+            .unwrap()
+            .position_and_size()
+            .y,
         16,
         "pane below y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below)
             .unwrap()
             .position_and_size()
@@ -3786,7 +4221,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane below column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below)
             .unwrap()
             .position_and_size()
@@ -3797,7 +4233,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
@@ -3806,7 +4243,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane below and to the right x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
@@ -3815,7 +4253,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane below and to the right y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
@@ -3825,7 +4264,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane below and to the right column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_below_and_right)
             .unwrap()
             .position_and_size()
@@ -3836,7 +4276,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3845,7 +4286,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane to the right x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3854,7 +4296,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane to the right y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3864,7 +4307,8 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
         "pane to the right column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&pane_to_the_right)
             .unwrap()
             .position_and_size()
@@ -3902,7 +4346,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -3911,7 +4356,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -3920,7 +4366,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -3930,7 +4377,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -3941,7 +4389,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -3950,7 +4399,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -3959,7 +4409,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -3969,7 +4420,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -3980,7 +4432,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -3989,7 +4442,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -3998,7 +4452,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4008,7 +4463,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4019,7 +4475,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4028,7 +4485,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4037,7 +4495,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4047,7 +4506,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4058,7 +4518,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4067,7 +4528,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4076,7 +4538,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4086,7 +4549,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4097,7 +4561,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4106,7 +4571,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4115,7 +4581,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4125,7 +4592,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4162,7 +4630,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4171,7 +4640,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4180,7 +4650,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4190,7 +4661,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4201,7 +4673,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4210,7 +4683,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4219,7 +4693,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4229,7 +4704,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4240,7 +4716,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4249,7 +4726,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4258,7 +4736,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4268,7 +4747,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4279,7 +4759,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4288,7 +4769,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4297,7 +4779,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4307,7 +4790,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4318,7 +4802,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4327,7 +4812,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4336,7 +4822,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4346,7 +4833,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4357,7 +4845,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4366,7 +4855,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4375,7 +4865,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4385,7 +4876,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4426,7 +4918,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4435,7 +4928,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4444,7 +4938,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4454,7 +4949,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4465,7 +4961,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4474,7 +4971,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4483,7 +4981,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4493,7 +4992,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4504,7 +5004,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4513,7 +5014,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4522,7 +5024,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4532,7 +5035,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4543,7 +5047,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4552,7 +5057,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4561,7 +5067,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4571,7 +5078,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4582,7 +5090,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4591,7 +5100,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4600,7 +5110,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4610,7 +5121,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4621,7 +5133,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4630,7 +5143,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4639,7 +5153,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4649,7 +5164,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4660,7 +5176,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -4669,7 +5186,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -4678,7 +5196,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -4688,7 +5207,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -4699,7 +5219,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -4708,7 +5229,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -4717,7 +5239,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -4727,7 +5250,8 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -4770,7 +5294,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4779,7 +5304,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4788,7 +5314,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4798,7 +5325,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -4809,7 +5337,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4818,7 +5347,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4827,7 +5357,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4837,7 +5368,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -4848,7 +5380,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4857,7 +5390,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4866,7 +5400,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4876,7 +5411,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -4887,7 +5423,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4896,7 +5433,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4905,7 +5443,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4915,7 +5454,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -4926,7 +5466,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4935,7 +5476,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4944,7 +5486,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4954,7 +5497,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -4965,7 +5509,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4974,7 +5519,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4983,7 +5529,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -4993,7 +5540,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -5004,7 +5552,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -5013,7 +5562,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -5022,7 +5572,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -5032,7 +5583,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -5043,7 +5595,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -5052,7 +5605,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -5061,7 +5615,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -5071,7 +5626,8 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -5101,7 +5657,8 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5111,7 +5668,8 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
         "pane 1 height stayed the same"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5140,7 +5698,8 @@ pub fn resize_left_with_pane_to_the_left() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5149,7 +5708,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5158,7 +5718,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5168,7 +5729,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5179,7 +5741,8 @@ pub fn resize_left_with_pane_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5188,7 +5751,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5197,7 +5761,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5207,7 +5772,8 @@ pub fn resize_left_with_pane_to_the_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5236,7 +5802,8 @@ pub fn resize_left_with_pane_to_the_right() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5245,7 +5812,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5254,7 +5822,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5264,7 +5833,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5275,7 +5845,8 @@ pub fn resize_left_with_pane_to_the_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5284,7 +5855,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5293,7 +5865,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5303,7 +5876,8 @@ pub fn resize_left_with_pane_to_the_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5334,7 +5908,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5343,7 +5918,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5352,7 +5928,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5362,7 +5939,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5373,7 +5951,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5382,7 +5961,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5391,7 +5971,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5401,7 +5982,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5412,7 +5994,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5421,7 +6004,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5430,7 +6014,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5440,7 +6025,8 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5471,7 +6057,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5480,7 +6067,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5489,7 +6077,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5499,7 +6088,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5510,7 +6100,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5519,7 +6110,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5528,7 +6120,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5538,7 +6131,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5549,7 +6143,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5558,7 +6153,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5567,7 +6163,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5577,7 +6174,8 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5610,7 +6208,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5619,7 +6218,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5628,7 +6228,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5638,7 +6239,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5649,7 +6251,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5658,7 +6261,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5667,7 +6271,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5677,7 +6282,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5688,7 +6294,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5697,7 +6304,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5706,7 +6314,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5716,7 +6325,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5727,7 +6337,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5736,7 +6347,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5745,7 +6357,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5755,7 +6368,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5789,7 +6403,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5798,7 +6413,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5807,7 +6423,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5817,7 +6434,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5828,7 +6446,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5837,7 +6456,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5846,7 +6466,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5856,7 +6477,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -5867,7 +6489,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5876,7 +6499,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5885,7 +6509,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5895,7 +6520,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -5906,7 +6532,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5915,7 +6542,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5924,7 +6552,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5934,7 +6563,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -5966,7 +6596,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5975,7 +6606,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5984,7 +6616,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -5994,7 +6627,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6005,7 +6639,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6014,7 +6649,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6023,7 +6659,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6033,7 +6670,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6044,7 +6682,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6053,7 +6692,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6062,7 +6702,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6072,7 +6713,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6083,7 +6725,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6092,7 +6735,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6101,7 +6745,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6111,7 +6756,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6144,7 +6790,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6153,7 +6800,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6162,7 +6810,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6172,7 +6821,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6183,7 +6833,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6192,7 +6843,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6201,7 +6853,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6211,7 +6864,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6222,7 +6876,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6231,7 +6886,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6240,7 +6896,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6250,7 +6907,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6261,7 +6919,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6270,7 +6929,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6279,7 +6939,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6289,7 +6950,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6327,7 +6989,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6336,7 +6999,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6345,7 +7009,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6355,7 +7020,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6366,7 +7032,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6375,7 +7042,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6384,7 +7052,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6394,7 +7063,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6405,7 +7075,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6414,7 +7085,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6423,7 +7095,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6433,7 +7106,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6444,7 +7118,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6453,7 +7128,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6462,7 +7138,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6472,7 +7149,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6483,7 +7161,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6492,7 +7171,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6501,7 +7181,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6511,7 +7192,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6522,7 +7204,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6531,7 +7214,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6540,7 +7224,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6550,7 +7235,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_current_pa
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6589,7 +7275,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6598,7 +7285,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6607,7 +7295,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6617,7 +7306,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6628,7 +7318,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6637,7 +7328,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6646,7 +7338,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6656,7 +7349,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6667,7 +7361,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6676,7 +7371,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6685,7 +7381,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6695,7 +7392,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6706,7 +7404,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6715,7 +7414,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6724,7 +7424,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6734,7 +7435,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6745,7 +7447,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6754,7 +7457,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6763,7 +7467,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6773,7 +7478,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -6784,7 +7490,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6793,7 +7500,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6802,7 +7510,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6812,7 +7521,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -6854,7 +7564,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6863,7 +7574,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6872,7 +7584,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6882,7 +7595,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -6893,7 +7607,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6902,7 +7617,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6911,7 +7627,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6921,7 +7638,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -6932,7 +7650,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6941,7 +7660,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6950,7 +7670,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6960,7 +7681,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -6971,7 +7693,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6980,7 +7703,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6989,7 +7713,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -6999,7 +7724,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -7010,7 +7736,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7019,7 +7746,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7028,7 +7756,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7038,7 +7767,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7049,7 +7779,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7058,7 +7789,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7067,7 +7799,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7077,7 +7810,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7088,7 +7822,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7097,7 +7832,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7106,7 +7842,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7116,7 +7853,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7127,7 +7865,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7136,7 +7875,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7145,7 +7885,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7155,7 +7896,8 @@ pub fn resize_left_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abov
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7198,7 +7940,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7207,7 +7950,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7216,7 +7960,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7226,7 +7971,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7237,7 +7983,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7246,7 +7993,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7255,7 +8003,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7265,7 +8014,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7276,7 +8026,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7285,7 +8036,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7294,7 +8046,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7304,7 +8057,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7315,7 +8069,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -7324,7 +8079,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -7333,7 +8089,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -7343,7 +8100,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -7354,7 +8112,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7363,7 +8122,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7372,7 +8132,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7382,7 +8143,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -7393,7 +8155,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7402,7 +8165,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7411,7 +8175,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7421,7 +8186,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -7432,7 +8198,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7441,7 +8208,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7450,7 +8218,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7460,7 +8229,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -7471,7 +8241,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7480,7 +8251,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7489,7 +8261,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7499,7 +8272,8 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -7525,7 +8299,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
     tab.resize_left(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7535,7 +8310,8 @@ pub fn cannot_resize_left_when_pane_to_the_left_is_at_minimum_width() {
         "pane 1 columns stayed the same"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7564,7 +8340,8 @@ pub fn resize_right_with_pane_to_the_left() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7573,7 +8350,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7582,7 +8360,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7592,7 +8371,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7603,7 +8383,8 @@ pub fn resize_right_with_pane_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7612,7 +8393,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7621,7 +8403,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7631,7 +8414,8 @@ pub fn resize_right_with_pane_to_the_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7661,7 +8445,8 @@ pub fn resize_right_with_pane_to_the_right() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7670,7 +8455,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7679,7 +8465,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7689,7 +8476,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7700,7 +8488,8 @@ pub fn resize_right_with_pane_to_the_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7709,7 +8498,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7718,7 +8508,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7728,7 +8519,8 @@ pub fn resize_right_with_pane_to_the_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7759,7 +8551,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7768,7 +8561,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7777,7 +8571,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7787,7 +8582,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7798,7 +8594,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7807,7 +8604,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7816,7 +8614,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7826,7 +8625,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7837,7 +8637,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7846,7 +8647,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7855,7 +8657,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7865,7 +8668,8 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7897,7 +8701,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7906,7 +8711,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7915,7 +8721,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7925,7 +8732,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -7936,7 +8744,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7945,7 +8754,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7954,7 +8764,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7964,7 +8775,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -7975,7 +8787,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7984,7 +8797,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -7993,7 +8807,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8003,7 +8818,8 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8036,7 +8852,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8045,7 +8862,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8054,7 +8872,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8064,7 +8883,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8075,7 +8895,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8084,7 +8905,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8093,7 +8915,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8103,7 +8926,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8114,7 +8938,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8123,7 +8948,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8132,7 +8958,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8142,7 +8969,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8153,7 +8981,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8162,7 +8991,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8171,7 +9001,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8181,7 +9012,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8214,7 +9046,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8223,7 +9056,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8232,7 +9066,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8242,7 +9077,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8253,7 +9089,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8262,7 +9099,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8271,7 +9109,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8281,7 +9120,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8292,7 +9132,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8301,7 +9142,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8310,7 +9152,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8320,7 +9163,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8331,7 +9175,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8340,7 +9185,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8349,7 +9195,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8359,7 +9206,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8393,7 +9241,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8402,7 +9251,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8411,7 +9261,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8421,7 +9272,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8432,7 +9284,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8441,7 +9294,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8450,7 +9304,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8460,7 +9315,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8471,7 +9327,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8480,7 +9337,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8489,7 +9347,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8499,7 +9358,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8510,7 +9370,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8519,7 +9380,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8528,7 +9390,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8538,7 +9401,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8573,7 +9437,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8582,7 +9447,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8591,7 +9457,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8601,7 +9468,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8612,7 +9480,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8621,7 +9490,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8630,7 +9500,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8640,7 +9511,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8651,7 +9523,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8660,7 +9533,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8669,7 +9543,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8679,7 +9554,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8690,7 +9566,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8699,7 +9576,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8708,7 +9586,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8718,7 +9597,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8756,7 +9636,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8765,7 +9646,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8774,7 +9656,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8784,7 +9667,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -8795,7 +9679,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8804,7 +9689,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8813,7 +9699,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8823,7 +9710,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -8834,7 +9722,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8843,7 +9732,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8852,7 +9742,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8862,7 +9753,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -8873,7 +9765,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8882,7 +9775,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8891,7 +9785,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8901,7 +9796,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -8912,7 +9808,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -8921,7 +9818,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -8930,7 +9828,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -8940,7 +9839,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -8951,7 +9851,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -8960,7 +9861,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -8969,7 +9871,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -8979,7 +9882,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_current_p
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9017,7 +9921,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9026,7 +9931,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9035,7 +9941,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9045,7 +9952,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9056,7 +9964,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9065,7 +9974,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9074,7 +9984,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9084,7 +9995,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9095,7 +10007,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9104,7 +10017,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9113,7 +10027,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9123,7 +10038,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9134,7 +10050,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9143,7 +10060,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9152,7 +10070,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9162,7 +10081,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9173,7 +10093,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9182,7 +10103,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9191,7 +10113,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9201,7 +10124,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9212,7 +10136,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9221,7 +10146,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9230,7 +10156,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9240,7 +10167,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9281,7 +10209,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9290,7 +10219,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9299,7 +10229,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9309,7 +10240,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9320,7 +10252,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9329,7 +10262,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9338,7 +10272,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9348,7 +10283,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9359,7 +10295,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9368,7 +10305,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9377,7 +10315,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9387,7 +10326,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9398,7 +10338,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9407,7 +10348,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9416,7 +10358,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9426,7 +10369,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9437,7 +10381,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9446,7 +10391,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9455,7 +10401,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9465,7 +10412,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9476,7 +10424,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9485,7 +10434,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9494,7 +10444,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9504,7 +10455,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9515,7 +10467,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9524,7 +10477,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9533,7 +10487,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9543,7 +10498,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9554,7 +10510,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9563,7 +10520,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9572,7 +10530,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9582,7 +10541,8 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_and_bottom_with_panes_abo
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9624,7 +10584,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9633,7 +10594,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9642,7 +10604,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9652,7 +10615,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9663,7 +10627,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9672,7 +10637,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9681,7 +10647,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9691,7 +10658,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9702,7 +10670,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9711,7 +10680,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9720,7 +10690,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9730,7 +10701,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -9741,7 +10713,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9750,7 +10723,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9759,7 +10733,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9769,7 +10744,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -9780,7 +10756,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9789,7 +10766,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9798,7 +10776,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9808,7 +10787,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -9819,7 +10799,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9828,7 +10809,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9837,7 +10819,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9847,7 +10830,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -9858,7 +10842,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9867,7 +10852,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9876,7 +10862,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9886,7 +10873,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -9897,7 +10885,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9906,7 +10895,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9915,7 +10905,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9925,7 +10916,8 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -9950,7 +10942,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
     tab.resize_right(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9960,7 +10953,8 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
         "pane 1 columns stayed the same"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -9990,7 +10984,8 @@ pub fn resize_up_with_pane_above() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -9999,7 +10994,8 @@ pub fn resize_up_with_pane_above() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10008,7 +11004,8 @@ pub fn resize_up_with_pane_above() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10018,7 +11015,8 @@ pub fn resize_up_with_pane_above() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10029,7 +11027,8 @@ pub fn resize_up_with_pane_above() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10038,7 +11037,8 @@ pub fn resize_up_with_pane_above() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10047,7 +11047,8 @@ pub fn resize_up_with_pane_above() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10057,7 +11058,8 @@ pub fn resize_up_with_pane_above() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10088,7 +11090,8 @@ pub fn resize_up_with_pane_below() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10097,7 +11100,8 @@ pub fn resize_up_with_pane_below() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10106,7 +11110,8 @@ pub fn resize_up_with_pane_below() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10116,7 +11121,8 @@ pub fn resize_up_with_pane_below() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10127,7 +11133,8 @@ pub fn resize_up_with_pane_below() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10136,7 +11143,8 @@ pub fn resize_up_with_pane_below() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10145,7 +11153,8 @@ pub fn resize_up_with_pane_below() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10155,7 +11164,8 @@ pub fn resize_up_with_pane_below() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10190,7 +11200,8 @@ pub fn resize_up_with_panes_above_and_below() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10199,7 +11210,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10208,7 +11220,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10218,7 +11231,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10229,7 +11243,8 @@ pub fn resize_up_with_panes_above_and_below() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10238,7 +11253,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10247,7 +11263,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10257,7 +11274,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10268,7 +11286,8 @@ pub fn resize_up_with_panes_above_and_below() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10277,7 +11296,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10286,7 +11306,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10296,7 +11317,8 @@ pub fn resize_up_with_panes_above_and_below() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10328,7 +11350,8 @@ pub fn resize_up_with_multiple_panes_above() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10337,7 +11360,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10346,7 +11370,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10356,7 +11381,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10367,7 +11393,8 @@ pub fn resize_up_with_multiple_panes_above() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10376,7 +11403,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10385,7 +11413,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10395,7 +11424,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10406,7 +11436,8 @@ pub fn resize_up_with_multiple_panes_above() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10415,7 +11446,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10424,7 +11456,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10434,7 +11467,8 @@ pub fn resize_up_with_multiple_panes_above() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10466,7 +11500,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10475,7 +11510,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10484,7 +11520,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10494,7 +11531,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10505,7 +11543,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10514,7 +11553,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10523,7 +11563,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10533,7 +11574,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10544,7 +11586,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10553,7 +11596,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10562,7 +11606,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10572,7 +11617,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10583,7 +11629,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10592,7 +11639,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10601,7 +11649,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10611,7 +11660,8 @@ pub fn resize_up_with_panes_above_aligned_left_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10646,7 +11696,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10655,7 +11706,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10664,7 +11716,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10674,7 +11727,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10685,7 +11739,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10694,7 +11749,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10703,7 +11759,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10713,7 +11770,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10724,7 +11782,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10733,7 +11792,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10742,7 +11802,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10752,7 +11813,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10763,7 +11825,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10772,7 +11835,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10781,7 +11845,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10791,7 +11856,8 @@ pub fn resize_up_with_panes_below_aligned_left_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10826,7 +11892,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10835,7 +11902,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10844,7 +11912,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10854,7 +11923,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -10865,7 +11935,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10874,7 +11945,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10883,7 +11955,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10893,7 +11966,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -10904,7 +11978,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10913,7 +11988,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10922,7 +11998,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10932,7 +12009,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -10943,7 +12021,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10952,7 +12031,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10961,7 +12041,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -10971,7 +12052,8 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11007,7 +12089,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11016,7 +12099,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11025,7 +12109,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11035,7 +12120,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11046,7 +12132,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11055,7 +12142,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11064,7 +12152,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11074,7 +12163,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11085,7 +12175,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11094,7 +12185,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11103,7 +12195,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11113,7 +12206,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11124,7 +12218,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11133,7 +12228,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11142,7 +12238,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11152,7 +12249,8 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11188,7 +12286,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11197,7 +12296,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11206,7 +12306,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11216,7 +12317,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11227,7 +12329,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11236,7 +12339,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11245,7 +12349,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11255,7 +12360,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11266,7 +12372,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11275,7 +12382,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11284,7 +12392,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11294,7 +12403,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11305,7 +12415,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11314,7 +12425,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11323,7 +12435,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11333,7 +12446,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11344,7 +12458,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11353,7 +12468,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11362,7 +12478,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11372,7 +12489,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11383,7 +12501,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11392,7 +12511,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11401,7 +12521,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11411,7 +12532,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11448,7 +12570,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11457,7 +12580,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11466,7 +12590,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11476,7 +12601,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11487,7 +12613,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11496,7 +12623,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11505,7 +12633,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11515,7 +12644,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11526,7 +12656,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11535,7 +12666,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11544,7 +12676,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11554,7 +12687,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11565,7 +12699,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11574,7 +12709,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11583,7 +12719,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11593,7 +12730,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11604,7 +12742,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11613,7 +12752,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11622,7 +12762,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11632,7 +12773,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11643,7 +12785,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11652,7 +12795,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11661,7 +12805,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11671,7 +12816,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11711,7 +12857,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11720,7 +12867,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11729,7 +12877,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11739,7 +12888,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -11750,7 +12900,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11759,7 +12910,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11768,7 +12920,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11778,7 +12931,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -11789,7 +12943,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11798,7 +12953,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11807,7 +12963,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11817,7 +12974,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -11828,7 +12986,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11837,7 +12996,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11846,7 +13006,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11856,7 +13017,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -11867,7 +13029,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11876,7 +13039,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11885,7 +13049,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11895,7 +13060,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -11906,7 +13072,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11915,7 +13082,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11924,7 +13092,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11934,7 +13103,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -11945,7 +13115,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -11954,7 +13125,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -11963,7 +13135,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -11973,7 +13146,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -11984,7 +13158,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -11993,7 +13168,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12002,7 +13178,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12012,7 +13189,8 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12053,7 +13231,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     tab.resize_up(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -12062,7 +13241,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 1 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -12071,7 +13251,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 1 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -12081,7 +13262,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 1 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -12092,7 +13274,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12101,7 +13284,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12110,7 +13294,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12120,7 +13305,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12131,7 +13317,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12140,7 +13327,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 3 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12149,7 +13337,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 3 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12159,7 +13348,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 3 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12170,7 +13360,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -12179,7 +13370,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 4 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -12188,7 +13380,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 4 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -12198,7 +13391,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 4 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(4))
             .unwrap()
             .position_and_size()
@@ -12209,7 +13403,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -12218,7 +13413,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 5 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -12227,7 +13423,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 5 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -12237,7 +13434,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 5 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(5))
             .unwrap()
             .position_and_size()
@@ -12248,7 +13446,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -12257,7 +13456,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 6 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -12266,7 +13466,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 6 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -12276,7 +13477,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 6 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(6))
             .unwrap()
             .position_and_size()
@@ -12287,7 +13489,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -12296,7 +13499,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 7 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -12305,7 +13509,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 7 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -12315,7 +13520,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 7 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(7))
             .unwrap()
             .position_and_size()
@@ -12326,7 +13532,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     );
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12335,7 +13542,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 8 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12344,7 +13552,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 8 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12354,7 +13563,8 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
         "pane 8 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(8))
             .unwrap()
             .position_and_size()
@@ -12383,7 +13593,8 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
     tab.resize_down(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(1))
             .unwrap()
             .position_and_size()
@@ -12393,7 +13604,8 @@ pub fn cannot_resize_up_when_pane_above_is_at_minimum_height() {
         "pane 1 height stayed the same"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12439,7 +13651,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_left() {
 
     // should behave like `resize_left_with_pane_to_the_left`
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12448,7 +13661,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12473,7 +13687,8 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
 
     // should behave like `resize_left_with_multiple_panes_to_the_left`
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12482,7 +13697,8 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
         "pane 2 x position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12491,7 +13707,8 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
         "pane 2 y position"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12501,7 +13718,8 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
         "pane 2 column count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12525,7 +13743,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
     tab.resize_increase(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12534,7 +13753,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
         "Pane 3 y coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12543,7 +13763,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
         "Pane 3 x coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12553,7 +13774,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
         "Pane 3 row count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(3))
             .unwrap()
             .position_and_size()
@@ -12577,7 +13799,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
     tab.resize_increase(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12586,7 +13809,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
         "Pane 3 y coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12595,7 +13819,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
         "Pane 3 x coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12605,7 +13830,8 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
         "Pane 3 row count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12629,7 +13855,8 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
     tab.resize_increase(1);
 
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12638,7 +13865,8 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
         "Pane 3 y coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12647,7 +13875,8 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
         "Pane 3 x coordinate"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()
@@ -12657,7 +13886,8 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
         "Pane 3 row count"
     );
     assert_eq!(
-        tab.panes
+        tab.tiled_panes
+            .panes
             .get(&PaneId::Terminal(2))
             .unwrap()
             .position_and_size()

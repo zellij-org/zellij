@@ -1,0 +1,42 @@
+name: update-rust-toolchain
+on:
+  workflow_dispatch: # allows manual triggering
+  schedule:
+    - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Nix
+        uses: cachix/install-nix-action@v16
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+          extra_nix_config: |
+            access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+      - name: install jq
+        run:  nix-env -i jq -f '<nixpkgs>'
+      - name: install curl
+        run:  nix-env -i curl -f '<nixpkgs>'
+      - name: update rust-toolchain
+        run:  assets/scripts/update-toolchain.sh
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v3
+        with:
+          commit-message: Update `rust-toolchain`
+          committer: GitHub <noreply@github.com>
+          author: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+          signoff: false
+          branch: update/rust-toolchain
+          delete-branch: true
+          title: '[Update] rust-toolchain'
+          body: |
+            Update rust-toolchain file
+          labels: |
+            dependencies
+            automated
+            rust

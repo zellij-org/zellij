@@ -158,6 +158,12 @@ in rec {
       name = "fmt-shell";
       nativeBuildInputs = fmtInputs;
     };
+    e2eShell = pkgs.mkShell {
+      name = "e2e-shell";
+      nativeBuildInputs = [
+        pkgs.cargo-make
+      ];
+    };
   };
 
   devShell = devShells.zellij;

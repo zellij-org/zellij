@@ -31,6 +31,8 @@ pub struct ConfigFromYaml {
     pub env: Option<EnvironmentVariablesFromYaml>,
     #[serde(default)]
     pub plugins: PluginsConfigFromYaml,
+    //    #[serde(default)]
+    //    pub ui: UiConfigFromYaml
 }
 
 /// Main configuration.
@@ -40,6 +42,7 @@ pub struct Config {
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
     pub plugins: PluginsConfig,
+    //    pub ui: UiConfigFromYaml,
     pub env: EnvironmentVariablesFromYaml,
 }
 
