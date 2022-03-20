@@ -6,6 +6,6 @@
 # provided by the current channel.
 
 [toolchain]
-channel = "1.57.0"
+channel = "1.58.1"
 components = ["rustfmt", "clippy", "rust-analysis"]
 targets = ["wasm32-wasi"]
