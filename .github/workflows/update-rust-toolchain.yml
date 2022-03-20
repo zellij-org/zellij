@@ -19,7 +19,7 @@ jobs:
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - name: update rust toolchain
         id: urt
-        uses: a-kenji/update-rust-toolchain
+        uses: a-kenji/update-rust-toolchain@main
         with:
           minor-version-delta: 1
           labels: |
