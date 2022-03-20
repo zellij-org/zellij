@@ -5,7 +5,8 @@ on:
     - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
 
 jobs:
-  lockfile:
+  update-rust-toolchain:
+    name: "Update rust-toolchain"
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -16,7 +17,7 @@ jobs:
         uses: a-kenji/update-rust-toolchain@main
         with:
           minor-version-delta: 2
-          labels: |
+          pr-labels: |
             dependencies
             automated
             rust
