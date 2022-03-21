@@ -18,6 +18,7 @@ jobs:
       - name: Update flake.lock
         uses: DeterminateSystems/update-flake-lock@v8
         with:
+          token: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
           pr-labels: |
             dependencies
             nix
