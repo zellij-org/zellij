@@ -206,13 +206,15 @@ impl ClientOsApi for ClientOsInputOutput {
         default_palette()
     }
     fn enable_mouse(&self) {
-        let _ = self.get_stdout_writer()
+        let _ = self
+            .get_stdout_writer()
             .write(ENABLE_MOUSE_SUPPORT.as_bytes())
             .unwrap();
     }
 
     fn disable_mouse(&self) {
-        let _ = self.get_stdout_writer()
+        let _ = self
+            .get_stdout_writer()
             .write(DISABLE_MOUSE_SUPPORT.as_bytes())
             .unwrap();
     }
