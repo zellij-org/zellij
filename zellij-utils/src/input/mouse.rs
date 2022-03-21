@@ -19,21 +19,66 @@ pub enum MouseEvent {
     Hold(Position),
 }
 
-impl From<termion::event::MouseEvent> for MouseEvent {
-    fn from(event: termion::event::MouseEvent) -> Self {
-        match event {
-            termion::event::MouseEvent::Press(button, x, y) => Self::Press(
-                MouseButton::from(button),
-                Position::new((y.saturating_sub(1)) as i32, x.saturating_sub(1)),
-            ),
-            termion::event::MouseEvent::Release(x, y) => Self::Release(Position::new(
-                (y.saturating_sub(1)) as i32,
-                x.saturating_sub(1),
-            )),
-            termion::event::MouseEvent::Hold(x, y) => Self::Hold(Position::new(
-                (y.saturating_sub(1)) as i32,
-                x.saturating_sub(1),
-            )),
+impl From<termwiz::input::MouseEvent> for MouseEvent {
+    fn from(event: termwiz::input::MouseEvent) -> Self {
+        if event
+            .mouse_buttons
+            .contains(termwiz::input::MouseButtons::LEFT)
+        {
+            MouseEvent::Press(
+                MouseButton::Left,
+                Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1)),
+            )
+        } else if event
+            .mouse_buttons
+            .contains(termwiz::input::MouseButtons::RIGHT)
+        {
+            MouseEvent::Press(
+                MouseButton::Right,
+                Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1)),
+            )
+        } else if event
+            .mouse_buttons
+            .contains(termwiz::input::MouseButtons::MIDDLE)
+        {
+            MouseEvent::Press(
+                MouseButton::Middle,
+                Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1)),
+            )
+        } else if event
+            .mouse_buttons
+            .contains(termwiz::input::MouseButtons::VERT_WHEEL)
+        {
+            if event
+                .mouse_buttons
+                .contains(termwiz::input::MouseButtons::WHEEL_POSITIVE)
+            {
+                MouseEvent::Press(
+                    MouseButton::WheelUp,
+                    Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1)),
+                )
+            } else {
+                MouseEvent::Press(
+                    MouseButton::WheelDown,
+                    Position::new(event.y.saturating_sub(1) as i32, event.x.saturating_sub(1)),
+                )
+            }
+        } else if event
+            .mouse_buttons
+            .contains(termwiz::input::MouseButtons::NONE)
+        {
+            // release
+            MouseEvent::Release(Position::new(
+                event.y.saturating_sub(1) as i32,
+                event.x.saturating_sub(1),
+            ))
+        } else {
+            // this is an unsupported event, we just do this in order to send "something", but if
+            // something happens here, we might want to add more specific support
+            MouseEvent::Release(Position::new(
+                event.y.saturating_sub(1) as i32,
+                event.x.saturating_sub(1),
+            ))
         }
     }
 }
@@ -54,16 +99,4 @@ pub enum MouseButton {
     ///
     /// This event is typically only used with Mouse::Press.
     WheelDown,
-}
-
-impl From<termion::event::MouseButton> for MouseButton {
-    fn from(button: termion::event::MouseButton) -> Self {
-        match button {
-            termion::event::MouseButton::Left => Self::Left,
-            termion::event::MouseButton::Right => Self::Right,
-            termion::event::MouseButton::Middle => Self::Middle,
-            termion::event::MouseButton::WheelUp => Self::WheelUp,
-            termion::event::MouseButton::WheelDown => Self::WheelDown,
-        }
-    }
 }
