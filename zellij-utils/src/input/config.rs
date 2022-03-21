@@ -11,7 +11,7 @@ use std::convert::{TryFrom, TryInto};
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
-use super::theme::ThemesFromYaml;
+use super::theme::{ThemesFromYaml, UiConfigFromYaml};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariablesFromYaml;
 use crate::setup;
@@ -31,8 +31,7 @@ pub struct ConfigFromYaml {
     pub env: Option<EnvironmentVariablesFromYaml>,
     #[serde(default)]
     pub plugins: PluginsConfigFromYaml,
-    //    #[serde(default)]
-    //    pub ui: UiConfigFromYaml
+    pub ui: Option<UiConfigFromYaml>,
 }
 
 /// Main configuration.
@@ -42,7 +41,7 @@ pub struct Config {
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
     pub plugins: PluginsConfig,
-    //    pub ui: UiConfigFromYaml,
+    pub ui: Option<UiConfigFromYaml>,
     pub env: EnvironmentVariablesFromYaml,
 }
 
@@ -75,6 +74,7 @@ impl Default for Config {
         let themes = None;
         let env = EnvironmentVariablesFromYaml::default();
         let plugins = PluginsConfig::default();
+        let ui = None;
 
         Config {
             keybinds,
@@ -82,6 +82,7 @@ impl Default for Config {
             themes,
             plugins,
             env,
+            ui,
         }
     }
 }
@@ -171,6 +172,7 @@ impl Config {
             themes: self.themes.clone(), // TODO
             env: self.env.merge(other.env),
             plugins: self.plugins.merge(other.plugins),
+            ui: self.ui, // TODO
         }
     }
 }
@@ -184,12 +186,14 @@ impl TryFrom<ConfigFromYaml> for Config {
         let themes = config_from_yaml.themes;
         let env = config_from_yaml.env.unwrap_or_default();
         let plugins = PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into()?);
+        let ui = config_from_yaml.ui;
         Ok(Self {
             keybinds,
             options,
             plugins,
             themes,
             env,
+            ui,
         })
     }
 }
