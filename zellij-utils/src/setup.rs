@@ -398,7 +398,7 @@ impl Setup {
             Shell::Bash => {}
             Shell::Elvish => {}
             Shell::Fish => {
-                let _ = out.write_all(&FISH_EXTRA_COMPLETION);
+                let _ = out.write_all(FISH_EXTRA_COMPLETION);
             }
             Shell::PowerShell => {}
             Shell::Zsh => {}

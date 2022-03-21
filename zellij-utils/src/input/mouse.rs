@@ -21,6 +21,7 @@ pub enum MouseEvent {
 
 impl From<termwiz::input::MouseEvent> for MouseEvent {
     fn from(event: termwiz::input::MouseEvent) -> Self {
+        #[allow(clippy::if_same_then_else)]
         if event
             .mouse_buttons
             .contains(termwiz::input::MouseButtons::LEFT)

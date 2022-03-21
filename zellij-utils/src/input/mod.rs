@@ -92,7 +92,7 @@ pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
             ret.push(cast_termwiz_key(key_event, input_bytes));
         }
     };
-    input_parser.parse(&input_bytes, parse_input_event, maybe_more);
+    input_parser.parse(input_bytes, parse_input_event, maybe_more);
     ret
 }
 
