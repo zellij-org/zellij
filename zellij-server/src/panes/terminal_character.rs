@@ -685,7 +685,7 @@ impl Cursor {
             x,
             y,
             is_hidden: false,
-            pending_styles: CharacterStyles::new(),
+            pending_styles: RESET_STYLES,
             charsets: Default::default(),
             shape: CursorShape::Initial,
         }
