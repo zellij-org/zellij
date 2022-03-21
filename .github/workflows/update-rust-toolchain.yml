@@ -17,6 +17,7 @@ jobs:
         uses: a-kenji/update-rust-toolchain@v1
         with:
           minor-version-delta: 2
+          token: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
           pr-labels: |
             dependencies
             automated
