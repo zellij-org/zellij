@@ -19,8 +19,8 @@ pub(crate) fn stdin_loop(
         let parse_input_event = |input_event: InputEvent| {
             holding_mouse = should_hold_mouse(input_event.clone());
             if holding_mouse {
-                 let mut poller = os_input.stdin_poller();
-                 loop {
+                let mut poller = os_input.stdin_poller();
+                loop {
                     let ready = poller.ready();
                     if ready {
                         break;
@@ -31,7 +31,7 @@ pub(crate) fn stdin_loop(
                             current_buffer.clone(),
                         ))
                         .unwrap();
-                 }
+                }
             } else {
                 send_input_instructions
                     .send(InputInstruction::KeyEvent(
@@ -52,7 +52,7 @@ fn should_hold_mouse(input_event: InputEvent) -> bool {
             match button {
                 MouseButton::Left | MouseButton::Right => {
                     return true;
-                },
+                }
                 _ => {}
             }
         }
