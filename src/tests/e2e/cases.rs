@@ -478,6 +478,7 @@ pub fn close_tab() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && !remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.tip_appears()
                 {
                     // cursor is in the first tab again
                     step_is_complete = true;

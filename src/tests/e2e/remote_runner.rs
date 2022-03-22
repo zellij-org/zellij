@@ -1,10 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use zellij_tile::data::Palette;
 
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::vte;
+use zellij_utils::zellij_tile::prelude::Style;
 
 use ssh2::Session;
 use std::io::prelude::*;
@@ -157,7 +157,7 @@ fn read_from_channel(
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
-                    Palette::default(),
+                    Style::default(),
                     0,
                     String::new(),
                     Rc::new(RefCell::new(LinkHandler::new())),

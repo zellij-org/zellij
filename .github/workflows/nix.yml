@@ -9,30 +9,6 @@ on:
       - main
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    name: "nix check"
-    environment: cachix
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          # Nix Flakes doesn't work on shallow clones
-          fetch-depth: 0
-      - uses: cachix/install-nix-action@v16
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-          fetch-depth: 0
-      - uses: cachix/cachix-action@v10
-        with:
-          name: zellij
-          # If you chose API tokens for write access OR if you have a private cache
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-      - run: nix develop .#fmtShell --command treefmt --fail-on-change
-      ## nix flake check still fails on IFD
-      #- run: nix flake check --print-build-logs --show-trace
-
   build:
     runs-on: ubuntu-latest
     name: "nix build"
@@ -45,8 +21,6 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v16
         with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
           fetch-depth: 0
       - uses: cachix/cachix-action@v10
         with:
@@ -54,24 +28,3 @@ jobs:
           # If you chose API tokens for write access OR if you have a private cache
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - run: nix build
-  develop:
-    runs-on: ubuntu-latest
-    name: "nix develop"
-    environment: cachix
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          # Nix Flakes doesn't work on shallow clones
-          fetch-depth: 0
-      - uses: cachix/install-nix-action@v16
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-          fetch-depth: 0
-      - uses: cachix/cachix-action@v10
-        with:
-          name: zellij
-          # If you chose API tokens for write access OR if you have a private cache
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-      - run: nix develop --profile devShell

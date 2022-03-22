@@ -175,10 +175,10 @@ impl ZellijPlugin for State {
         let separator = if !self.mode_info.capabilities.arrow_fonts {
             ARROW_SEPARATOR
         } else {
-            &""
+            ""
         };
 
-        let colored_elements = color_elements(self.mode_info.palette);
+        let colored_elements = color_elements(self.mode_info.style.colors);
         let superkey = superkey(colored_elements, separator);
         let ctrl_keys = ctrl_keys(
             &self.mode_info,
@@ -191,7 +191,7 @@ impl ZellijPlugin for State {
 
         // [48;5;238m is gray background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
-        match self.mode_info.palette.gray {
+        match self.mode_info.style.colors.gray {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
             }
@@ -208,25 +208,28 @@ impl State {
         let active_tab = self.tabs.iter().find(|t| t.active);
 
         if let Some(copy_destination) = self.text_copy_destination {
-            text_copied_hint(&self.mode_info.palette, copy_destination)
+            text_copied_hint(&self.mode_info.style.colors, copy_destination)
         } else if self.display_system_clipboard_failure {
-            system_clipboard_error(&self.mode_info.palette)
+            system_clipboard_error(&self.mode_info.style.colors)
         } else if let Some(active_tab) = active_tab {
             if active_tab.is_fullscreen_active {
                 match self.mode_info.mode {
-                    InputMode::Normal => {
-                        fullscreen_panes_to_hide(&self.mode_info.palette, active_tab.panes_to_hide)
-                    }
+                    InputMode::Normal => fullscreen_panes_to_hide(
+                        &self.mode_info.style.colors,
+                        active_tab.panes_to_hide,
+                    ),
                     InputMode::Locked => locked_fullscreen_panes_to_hide(
-                        &self.mode_info.palette,
+                        &self.mode_info.style.colors,
                         active_tab.panes_to_hide,
                     ),
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
             } else if active_tab.are_floating_panes_visible {
                 match self.mode_info.mode {
-                    InputMode::Normal => floating_panes_are_visible(&self.mode_info.palette),
-                    InputMode::Locked => locked_floating_panes_are_visible(&self.mode_info.palette),
+                    InputMode::Normal => floating_panes_are_visible(&self.mode_info.style.colors),
+                    InputMode::Locked => {
+                        locked_floating_panes_are_visible(&self.mode_info.style.colors)
+                    }
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
             } else {

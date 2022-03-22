@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)
 * Fix: `wasm_vm` use `cache_dirs` for ephemeral plugin data (https://github.com/zellij-org/zellij/pull/1230)
 * Bump `nix` version to `0.23.1` (https://github.com/zellij-org/zellij/pull/1234)
+* Refactor: move tiled_panes to their own module (https://github.com/zellij-org/zellij/pull/1239)
+* Add: allow rounded frame corners to be selected in the config (https://github.com/zellij-org/zellij/pull/1227)
 
 ## [0.26.1] - 2022-03-16
 * HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)

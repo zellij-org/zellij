@@ -18,13 +18,14 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_tile::prelude::Style;
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;
-use zellij_tile::data::{Event, Palette, PluginCapabilities};
+use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -100,7 +101,7 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
-    pub palette: Palette,
+    pub style: Style,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
@@ -371,8 +372,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info =
-                    get_mode_info(default_mode, attrs.palette, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, attrs.style, session_data.capabilities);
                 let mode = mode_info.mode;
                 session_data
                     .senders
@@ -645,7 +645,7 @@ fn init_session(
         },
         capabilities,
         default_shell,
-        palette: client_attributes.palette,
+        style: client_attributes.style,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),

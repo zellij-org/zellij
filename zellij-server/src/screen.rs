@@ -6,6 +6,7 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::Size;
 use zellij_utils::{
@@ -22,7 +23,7 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PluginCapabilities, TabInfo};
+use zellij_tile::data::{Event, InputMode, ModeInfo, PluginCapabilities, TabInfo};
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
@@ -200,7 +201,7 @@ pub(crate) struct Screen {
     tab_history: BTreeMap<ClientId, Vec<usize>>,
     mode_info: BTreeMap<ClientId, ModeInfo>,
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
-    colors: Palette,
+    style: Style,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
     copy_command: Option<String>,
@@ -224,7 +225,7 @@ impl Screen {
             bus,
             max_panes,
             size: client_attributes.size,
-            colors: client_attributes.palette,
+            style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
@@ -428,7 +429,7 @@ impl Screen {
         let size = self.size;
         let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
-            if tab.has_active_panes() {
+            if tab.has_selectable_panes() {
                 let vte_overlay = overlay.generate_overlay(size);
                 tab.render(&mut output, Some(vte_overlay));
             } else {
@@ -503,8 +504,8 @@ impl Screen {
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
+            self.style,
             client_mode_info,
-            self.colors,
             self.draw_pane_frames,
             self.connected_clients.clone(),
             self.session_is_mirrored,
@@ -567,11 +568,9 @@ impl Screen {
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.tabs.iter_mut().for_each(|(_, tab)| {
-            if tab.active_panes.get(&client_id).is_some() {
-                tab.remove_client(client_id);
-                if tab.has_no_connected_clients() {
-                    tab.visible(false);
-                }
+            tab.remove_client(client_id);
+            if tab.has_no_connected_clients() {
+                tab.visible(false);
             }
         });
         if self.active_tab_indices.contains_key(&client_id) {
@@ -604,7 +603,7 @@ impl Screen {
                     position: tab.position,
                     name: tab.name.clone(),
                     active: *active_tab_index == tab.index,
-                    panes_to_hide: tab.panes_to_hide.len(),
+                    panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
@@ -655,7 +654,7 @@ impl Screen {
                 .unwrap()
                 .clear_active_terminal_scroll(client_id);
         }
-        self.colors = mode_info.palette;
+        self.style = mode_info.style;
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
             tab.change_mode_info(mode_info.clone(), client_id);
@@ -711,7 +710,7 @@ pub(crate) fn screen_thread_main(
         max_panes,
         get_mode_info(
             config_options.default_mode.unwrap_or_default(),
-            client_attributes.palette,
+            client_attributes.style,
             PluginCapabilities {
                 arrow_fonts: capabilities.unwrap_or_default(),
             },
@@ -874,7 +873,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .get_active_tab_mut(client_id)
                     .unwrap()
-                    .move_focus(client_id);
+                    .focus_next_pane(client_id);
 
                 screen.render();
             }
@@ -1291,7 +1290,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::ConfirmPrompt(_client_id) => {
                 let overlay = screen.get_active_overlays_mut().pop();
-                let instruction = overlay.map(|o| o.prompt_confirm()).flatten();
+                let instruction = overlay.and_then(|o| o.prompt_confirm());
                 if let Some(instruction) = instruction {
                     screen.bus.senders.send_to_server(*instruction).unwrap();
                 }

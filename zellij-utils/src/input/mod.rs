@@ -12,15 +12,14 @@ pub mod theme;
 
 use crate::envs;
 use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
-use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
+use zellij_tile::{
+    data::{InputMode, Key, ModeInfo, PluginCapabilities},
+    prelude::Style,
+};
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
-pub fn get_mode_info(
-    mode: InputMode,
-    palette: Palette,
-    capabilities: PluginCapabilities,
-) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabilities) -> ModeInfo {
     let keybinds = match mode {
         InputMode::Normal | InputMode::Locked | InputMode::Prompt => Vec::new(),
         InputMode::Resize => vec![
@@ -77,7 +76,7 @@ pub fn get_mode_info(
     ModeInfo {
         mode,
         keybinds,
-        palette,
+        style,
         capabilities,
         session_name,
     }

@@ -208,6 +208,12 @@ pub struct Palette {
     pub brown: PaletteColor,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct Style {
+    pub colors: Palette,
+    pub rounded_corners: bool,
+}
+
 /// Represents the contents of the help message that is printed in the status bar,
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
@@ -216,7 +222,7 @@ pub struct ModeInfo {
     pub mode: InputMode,
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
-    pub palette: Palette,
+    pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
 }

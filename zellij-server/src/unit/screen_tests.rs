@@ -458,10 +458,9 @@ fn switch_to_tab_with_fullscreen() {
         screen
             .get_active_tab(1)
             .unwrap()
-            .active_panes
-            .get(&1)
+            .get_active_pane_id(1)
             .unwrap(),
-        &PaneId::Terminal(2),
+        PaneId::Terminal(2),
         "Active pane is still the fullscreen pane"
     );
 }
