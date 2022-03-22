@@ -248,7 +248,9 @@ pub fn scrolling_inside_a_pane() {
                         write!(&mut content_to_send, "{:0<58}", "line19 ").unwrap();
                         write!(&mut content_to_send, "{:0<57}", "line20 ").unwrap();
 
+                        remote_terminal.send_key(&BRACKETED_PASTE_START);
                         remote_terminal.send_key(content_to_send.as_bytes());
+                        remote_terminal.send_key(&BRACKETED_PASTE_END);
 
                         step_is_complete = true;
                     }
