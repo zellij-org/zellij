@@ -65,7 +65,9 @@ pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
     // 64 => scroll up
     // 65 => scroll down
     let Position { line, column } = position;
-    format!("\u{1b}[<{};{};{}M", button, column.0, line.0).as_bytes().to_vec()
+    format!("\u{1b}[<{};{};{}M", button, column.0, line.0)
+        .as_bytes()
+        .to_vec()
 }
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
