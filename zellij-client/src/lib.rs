@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use zellij_tile::prelude::Style;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -146,7 +147,10 @@ pub fn start_client(
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
-        palette,
+        style: Style {
+            colors: palette,
+            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+        },
     };
 
     let first_msg = match info {

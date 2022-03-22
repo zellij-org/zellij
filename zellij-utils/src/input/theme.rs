@@ -8,6 +8,16 @@ use zellij_tile::data::{Palette, PaletteColor};
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ThemesFromYaml(HashMap<String, Theme>);
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct UiConfigFromYaml {
+    pub pane_frames: FrameConfigFromYaml,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct FrameConfigFromYaml {
+    pub rounded_corners: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 struct Theme {
     #[serde(flatten)]

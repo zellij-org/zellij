@@ -1,5 +1,5 @@
+use zellij_tile::prelude::Style;
 mod floating_pane_grid;
-
 use zellij_utils::{position::Position, zellij_tile};
 
 use crate::tab::Pane;
@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
-use zellij_tile::data::{ModeInfo, Palette};
+use zellij_tile::data::ModeInfo;
 use zellij_utils::pane_size::{Offset, PaneGeom, Size, Viewport};
 
 macro_rules! resize_pty {
@@ -41,7 +41,7 @@ pub struct FloatingPanes {
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     default_mode_info: ModeInfo,
-    colors: Palette,
+    style: Style,
     session_is_mirrored: bool,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
@@ -51,6 +51,7 @@ pub struct FloatingPanes {
 }
 
 #[allow(clippy::borrowed_box)]
+#[allow(clippy::too_many_arguments)]
 impl FloatingPanes {
     pub fn new(
         display_area: Rc<RefCell<Size>>,
@@ -60,7 +61,7 @@ impl FloatingPanes {
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
-        colors: Palette,
+        style: Style,
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
@@ -71,7 +72,7 @@ impl FloatingPanes {
             mode_info,
             session_is_mirrored,
             default_mode_info,
-            colors,
+            style,
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
@@ -198,7 +199,7 @@ impl FloatingPanes {
             let mut pane_contents_and_ui = PaneContentsAndUi::new(
                 pane,
                 output,
-                self.colors,
+                self.style,
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes
@@ -207,7 +208,7 @@ impl FloatingPanes {
                 let client_mode = self
                     .mode_info
                     .borrow()
-                    .get(&client_id)
+                    .get(client_id)
                     .unwrap_or(&self.default_mode_info)
                     .mode;
                 pane_contents_and_ui.render_pane_frame(

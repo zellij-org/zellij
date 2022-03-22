@@ -5,6 +5,7 @@ mod clipboard;
 mod copy_command;
 
 use copy_command::CopyCommand;
+use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
@@ -77,7 +78,7 @@ pub(crate) struct Tab {
     should_clear_display_before_rendering: bool,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
     default_mode_info: ModeInfo,
-    pub colors: Palette,
+    pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
     pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
@@ -272,8 +273,8 @@ impl Tab {
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
+        style: Style,
         default_mode_info: ModeInfo,
-        colors: Palette,
         draw_pane_frames: bool,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
@@ -304,18 +305,18 @@ impl Tab {
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
-            colors,
+            style,
             os_api.clone(),
         );
         let floating_panes = FloatingPanes::new(
             display_area.clone(),
             viewport.clone(),
             connected_clients.clone(),
-            connected_clients_in_app.clone(),
+            connected_clients_in_app,
             mode_info.clone(),
             session_is_mirrored,
             default_mode_info.clone(),
-            colors,
+            style,
         );
 
         let clipboard_provider = match copy_command {
@@ -336,9 +337,9 @@ impl Tab {
             os_api,
             senders,
             should_clear_display_before_rendering: false,
+            style,
             mode_info,
             default_mode_info,
-            colors,
             draw_pane_frames,
             pending_vte_events: HashMap::new(),
             connected_clients,
@@ -408,7 +409,7 @@ impl Tab {
                 let mut new_pane = TerminalPane::new(
                     *pid,
                     *position_and_size,
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
@@ -632,7 +633,7 @@ impl Tab {
                     let mut new_pane = TerminalPane::new(
                         term_pid,
                         new_pane_geom,
-                        self.colors,
+                        self.style,
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
@@ -653,7 +654,7 @@ impl Tab {
                     let new_terminal = TerminalPane::new(
                         term_pid,
                         PaneGeom::default(), // the initial size will be set later
-                        self.colors,
+                        self.style,
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
@@ -681,7 +682,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -707,7 +708,7 @@ impl Tab {
                 let new_terminal = TerminalPane::new(
                     term_pid,
                     PaneGeom::default(), // the initial size will be set later
-                    self.colors,
+                    self.style,
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
@@ -1046,7 +1047,6 @@ impl Tab {
                 .resize_active_pane_left(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_left(client_id);
@@ -1059,7 +1059,6 @@ impl Tab {
                 .resize_active_pane_right(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_right(client_id);
@@ -1072,7 +1071,6 @@ impl Tab {
                 .resize_active_pane_down(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_down(client_id);
@@ -1085,7 +1083,6 @@ impl Tab {
                 .resize_active_pane_up(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_up(client_id);
@@ -1098,7 +1095,6 @@ impl Tab {
                 .resize_active_pane_increase(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_increase(client_id);
@@ -1111,7 +1107,6 @@ impl Tab {
                 .resize_active_pane_decrease(client_id, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
-                return;
             }
         } else {
             self.tiled_panes.resize_active_pane_decrease(client_id);

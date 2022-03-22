@@ -13,13 +13,14 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::time::{self, Instant};
+use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
     shared::make_terminal_title,
     vte,
-    zellij_tile::data::{InputMode, Palette, PaletteColor},
+    zellij_tile::data::{InputMode, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -41,7 +42,7 @@ pub struct TerminalPane {
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
-    pub colors: Palette,
+    pub style: Style,
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
@@ -216,7 +217,7 @@ impl Pane for TerminalPane {
                     .selection
                     .contains_row(character_chunk.y.saturating_sub(content_y))
                 {
-                    let background_color = match self.colors.bg {
+                    let background_color = match self.style.colors.bg {
                         PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                         PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                     };
@@ -482,7 +483,7 @@ impl TerminalPane {
     pub fn new(
         pid: RawFd,
         position_and_size: PaneGeom,
-        palette: Palette,
+        style: Style,
         pane_index: usize,
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
@@ -491,7 +492,7 @@ impl TerminalPane {
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
-            palette,
+            style.colors,
             link_handler,
         );
         TerminalPane {
@@ -504,7 +505,7 @@ impl TerminalPane {
             geom_override: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
-            colors: palette,
+            style,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
             pane_name,

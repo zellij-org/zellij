@@ -5,13 +5,14 @@ use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
 use std::collections::HashMap;
-use zellij_tile::data::{
-    client_id_to_colors, single_client_color, InputMode, Palette, PaletteColor,
+use zellij_tile::{
+    data::{client_id_to_colors, single_client_color, InputMode, PaletteColor},
+    prelude::Style,
 };
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
-    colors: Palette,
+    style: Style,
     focused_clients: Vec<ClientId>,
     multiple_users_exist_in_session: bool,
     z_index: Option<usize>,
@@ -21,7 +22,7 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn new(
         pane: &'a mut Box<dyn Pane>,
         output: &'a mut Output,
-        colors: Palette,
+        style: Style,
         active_panes: &HashMap<ClientId, PaneId>,
         multiple_users_exist_in_session: bool,
         z_index: Option<usize>,
@@ -34,7 +35,7 @@ impl<'a> PaneContentsAndUi<'a> {
         PaneContentsAndUi {
             pane,
             output,
-            colors,
+            style,
             focused_clients,
             multiple_users_exist_in_session,
             z_index,
@@ -95,7 +96,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 .iter()
                 .find(|&&c_id| c_id != client_id)
                 .unwrap();
-            if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.colors) {
+            if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.style.colors) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
                     self.output.add_post_vte_instruction_to_client(
                         client_id,
@@ -146,7 +147,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients: vec![],
-                colors: self.colors,
+                style: self.style,
                 color: frame_color,
                 other_cursors_exist_in_session: false,
             }
@@ -155,7 +156,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 focused_client,
                 is_main_client: pane_focused_for_client_id,
                 other_focused_clients,
-                colors: self.colors,
+                style: self.style,
                 color: frame_color,
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
             }
@@ -195,14 +196,14 @@ impl<'a> PaneContentsAndUi<'a> {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {
-                        let colors = single_client_color(self.colors); // mirrored sessions only have one focused color
+                        let colors = single_client_color(self.style.colors); // mirrored sessions only have one focused color
                         Some(colors.0)
                     } else {
-                        let colors = client_id_to_colors(client_id, self.colors);
+                        let colors = client_id_to_colors(client_id, self.style.colors);
                         colors.map(|colors| colors.0)
                     }
                 }
-                _ => Some(self.colors.orange),
+                _ => Some(self.style.colors.orange),
             }
         } else {
             None
