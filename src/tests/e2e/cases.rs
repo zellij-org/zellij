@@ -58,7 +58,7 @@ pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[
 pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
 pub const SLEEP: [u8; 0] = [];
 
-pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
+pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
     // button: (release is with lower case m, not supported here yet)
     // 0 => left click
     // 2 => right click
@@ -1030,7 +1030,7 @@ fn focus_pane_with_mouse() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(5, 2), 0));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(5, 2), 0));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1121,7 +1121,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(118, 20) {
                         // all lines have been written to the pane
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(2, 64), 64));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(2, 64), 64));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1638,8 +1638,10 @@ pub fn bracketed_paste() {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
                     remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                    remote_terminal.send_key("a".as_bytes());
+                    remote_terminal.send_key("b".as_bytes());
+                    remote_terminal.send_key("c".as_bytes());
                     remote_terminal.send_key(&BRACKETED_PASTE_END);
-                    remote_terminal.send_key("abc".as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1651,7 +1653,7 @@ pub fn bracketed_paste() {
             name: "Wait for terminal to render sent keys",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(9, 2) {
+                if remote_terminal.snapshot_contains("abc") {
                     // text has been entered into the only terminal pane
                     step_is_complete = true;
                 }
