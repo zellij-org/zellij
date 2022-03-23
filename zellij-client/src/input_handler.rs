@@ -151,6 +151,39 @@ impl InputHandler {
             }
         }
     }
+    fn handle_actions(&mut self, actions: Vec<Action>, session_name: &str) {
+        // TODO: handle Detach correctly
+        for action in actions {
+            match action {
+                Action::Quit => {
+                    crate::sessions::kill_session(&session_name);
+                    break;
+                }
+                Action::Detach => {
+                    self.should_exit = true;
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::DetachSession(1));
+                    //self.os_input
+                    //.send_to_server(ClientToServerMsg::Action(Action::Quit));
+                    //std::process::exit(0);
+                    //break;
+                }
+                _ => {
+                    let should_exit = self.dispatch_action(action);
+                    if should_exit {
+                        break;
+                    }
+                }
+            }
+        }
+        self.dispatch_action(Action::Quit);
+        // is this correct? should be just for this current client
+        self.should_exit = true;
+        log::error!("Quitting Now. Dispatched the actions");
+        std::process::exit(0);
+        //self.dispatch_action(Action::NoOp);
+        //self.exit();
+    }
 
     /// Dispatches an [`Action`].
     ///
@@ -236,6 +269,31 @@ pub(crate) fn input_loop(
         receive_input_instructions,
     )
     .handle_input();
+}
+
+/// Entry point to the module. Instantiates an [`InputHandler`] and starts
+/// its [`InputHandler::handle_input()`] loop.
+pub(crate) fn input_actions(
+    os_input: Box<dyn ClientOsApi>,
+    config: Config,
+    options: Options,
+    command_is_executing: CommandIsExecuting,
+    send_client_instructions: SenderWithContext<ClientInstruction>,
+    default_mode: InputMode,
+    receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    actions: Vec<Action>,
+    session_name: String,
+) {
+    let _handler = InputHandler::new(
+        os_input,
+        command_is_executing,
+        config,
+        options,
+        send_client_instructions,
+        default_mode,
+        receive_input_instructions,
+    )
+    .handle_actions(actions, &session_name);
 }
 
 #[cfg(test)]

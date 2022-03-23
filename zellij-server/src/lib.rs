@@ -148,6 +148,7 @@ impl SessionState {
             }
         }
         self.clients.insert(next_client_id, None);
+        //envs::set_zellij(next_client_id.to_string());
         next_client_id
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
