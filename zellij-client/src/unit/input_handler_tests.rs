@@ -3,8 +3,7 @@ use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
-use zellij_utils::termion::event::Event;
-use zellij_utils::termion::event::Key;
+use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
 use zellij_utils::zellij_tile::data::Palette;
 
 use crate::InputInstruction;
@@ -158,7 +157,13 @@ fn extract_actions_sent_to_server(
 
 #[test]
 pub fn quit_breaks_input_loop() {
-    let stdin_events = vec![(commands::QUIT.to_vec(), Event::Key(Key::Ctrl('q')))];
+    let stdin_events = vec![(
+        commands::QUIT.to_vec(),
+        InputEvent::Key(KeyEvent {
+            key: KeyCode::Char('q'),
+            modifiers: Modifiers::CTRL,
+        }),
+    )];
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = Box::new(FakeClientOsApi::new(
@@ -206,9 +211,18 @@ pub fn move_focus_left_in_normal_mode() {
     let stdin_events = vec![
         (
             commands::MOVE_FOCUS_LEFT_IN_NORMAL_MODE.to_vec(),
-            Event::Key(Key::Alt('h')),
+            InputEvent::Key(KeyEvent {
+                key: KeyCode::Char('h'),
+                modifiers: Modifiers::ALT,
+            }),
         ),
-        (commands::QUIT.to_vec(), Event::Key(Key::Ctrl('q'))),
+        (
+            commands::QUIT.to_vec(),
+            InputEvent::Key(KeyEvent {
+                key: KeyCode::Char('q'),
+                modifiers: Modifiers::CTRL,
+            }),
+        ),
     ];
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));

@@ -24,7 +24,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    termion,
+    termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
@@ -106,9 +106,8 @@ impl ClientInfo {
 
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
-    KeyEvent(termion::event::Event, Vec<u8>),
+    KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText(Vec<u8>),
 }
 
 pub fn start_client(
