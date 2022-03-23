@@ -264,6 +264,15 @@ fn start_plugin(
         )
     });
 
+    // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
+    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path()).unwrap_or_else(|e| {
+        log::error!(
+            "Could not create ZELLIJ_TMP_DIR at {:?} \n Error: {:?}",
+            &ZELLIJ_TMP_DIR.as_path(),
+            e
+        )
+    });
+
     let mut wasi_env = WasiState::new("Zellij")
         .env("CLICOLOR_FORCE", "1")
         .map_dir("/host", ".")
