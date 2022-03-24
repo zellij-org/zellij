@@ -1035,6 +1035,10 @@ impl Tab {
             .filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0 || selectable_floating_panes.count() > 0
     }
+    pub fn has_selectable_tiled_panes(&self) -> bool {
+        let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
+        selectable_tiled_panes.count() > 0
+    }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);
         self.tiled_panes.resize(new_screen_size);
