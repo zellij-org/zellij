@@ -122,28 +122,28 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
             } else {
                 Key::Left
             }
-        },
+        }
         KeyCode::RightArrow | KeyCode::ApplicationRightArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 Key::AltPlusRightArrow
             } else {
                 Key::Right
             }
-        },
+        }
         KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 Key::AltPlusUpArrow
             } else {
                 Key::Up
             }
-        },
+        }
         KeyCode::DownArrow | KeyCode::ApplicationDownArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 Key::AltPlusDownArrow
             } else {
                 Key::Down
             }
-        },
+        }
         KeyCode::Home => Key::Home,
         KeyCode::End => Key::End,
         KeyCode::PageUp => Key::PageUp,
