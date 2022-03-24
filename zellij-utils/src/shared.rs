@@ -102,7 +102,7 @@ pub fn default_palette() -> Palette {
 }
 
 // Dark magic
-pub fn _detect_theme_hue(bg: PaletteColor) -> ThemeHue {
+pub fn detect_theme_hue(bg: PaletteColor) -> ThemeHue {
     match bg {
         PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness

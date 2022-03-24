@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::options::Options;
+use crate::shared::detect_theme_hue;
 use zellij_tile::data::{Palette, PaletteColor};
 
 /// Intermediate deserialization of themes
@@ -97,6 +98,7 @@ impl From<PaletteFromYaml> for Palette {
             cyan: yaml.cyan.into(),
             white: yaml.white.into(),
             orange: yaml.orange.into(),
+            theme_hue: detect_theme_hue(yaml.bg.into()),
             ..Palette::default()
         }
     }
