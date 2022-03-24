@@ -50,6 +50,13 @@ pub enum Key {
     Ctrl(char),
     Null,
     Esc,
+    // the AltPlus<arrow> variants are temporary hacks and should be removed
+    // ASAP in favor of treating Alt/Ctrl/Shift as boolean modifiers to a future KeyCombo struct or
+    // similar
+    AltPlusRightArrow,
+    AltPlusLeftArrow,
+    AltPlusUpArrow,
+    AltPlusDownArrow,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
