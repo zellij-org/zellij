@@ -554,6 +554,9 @@ impl Tab {
         self.connected_clients.borrow().is_empty()
     }
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
         if self.floating_panes.panes_are_visible() {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
@@ -943,7 +946,7 @@ impl Tab {
         );
 
         self.hide_cursor_and_clear_display_as_needed(output);
-        self.tiled_panes.render(output);
+        self.tiled_panes.render(output, self.floating_panes.panes_are_visible());
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.render(output);
         }
