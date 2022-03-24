@@ -314,12 +314,12 @@ impl TiledPanes {
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
-    pub fn render(&mut self, output: &mut Output) {
+    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
         let mut client_id_to_boundaries: HashMap<ClientId, Boundaries> = HashMap::new();
-        let active_panes = if self.session_is_mirrored {
+        let active_panes = if self.session_is_mirrored || floating_panes_are_visible {
             HashMap::new()
         } else {
             self.active_panes
