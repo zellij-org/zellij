@@ -14,7 +14,7 @@ use crate::envs;
 use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
 use zellij_tile::{
     data::{InputMode, Key, ModeInfo, PluginCapabilities},
-    prelude::Style,
+    prelude::{CharOrArrow, Direction, Style},
 };
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
@@ -110,7 +110,7 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
             if modifiers.contains(Modifiers::CTRL) {
                 Key::Ctrl(c.to_lowercase().next().unwrap_or_default())
             } else if modifiers.contains(Modifiers::ALT) {
-                Key::Alt(c.to_lowercase().next().unwrap_or_default())
+                Key::Alt(CharOrArrow::Char(c))
             } else {
                 Key::Char(c)
             }
@@ -118,28 +118,29 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
         KeyCode::Backspace => Key::Backspace,
         KeyCode::LeftArrow | KeyCode::ApplicationLeftArrow => {
             if modifiers.contains(Modifiers::ALT) {
-                Key::AltPlusLeftArrow
+                Key::Alt(CharOrArrow::Direction(Direction::Left))
             } else {
                 Key::Left
             }
         }
         KeyCode::RightArrow | KeyCode::ApplicationRightArrow => {
             if modifiers.contains(Modifiers::ALT) {
-                Key::AltPlusRightArrow
+                Key::Alt(CharOrArrow::Direction(Direction::Right))
             } else {
                 Key::Right
             }
         }
         KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
             if modifiers.contains(Modifiers::ALT) {
-                Key::AltPlusUpArrow
+                //Key::AltPlusUpArrow
+                Key::Alt(CharOrArrow::Direction(Direction::Up))
             } else {
                 Key::Up
             }
         }
         KeyCode::DownArrow | KeyCode::ApplicationDownArrow => {
             if modifiers.contains(Modifiers::ALT) {
-                Key::AltPlusDownArrow
+                Key::Alt(CharOrArrow::Direction(Direction::Down))
             } else {
                 Key::Down
             }
