@@ -12,6 +12,7 @@ use zellij_client::start_client as start_client_impl;
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
+use zellij_utils::input::actions::ActionsFromYaml;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::{
@@ -139,25 +140,33 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
     })) = opts.command.clone()
     {
         if let Some(action) = action.clone() {
-            let parsed: zellij_utils::input::actions::ActionsFromYaml =
-                zellij_utils::serde_yaml::from_str(&action).unwrap();
-            println!("{:?}", parsed);
-            let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
+            match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action) {
+                Ok(parsed) => {
+                    let os_input =
+                        get_os_input(zellij_client::os_input_output::get_client_os_input);
 
-            let actions = parsed.actions().to_vec();
-            log::error!("Starting fake Zellij client!");
-            zellij_client::fake_client::start_fake_client(
-                Box::new(os_input),
-                opts,
-                *Box::new(zellij_utils::input::config::Config::from_default_assets().unwrap()),
-                Options::default(),
-                ClientInfo::New(name.to_string()),
-                None,
-                actions,
-            );
-            log::error!("Quitting Now.");
-            std::process::exit(0);
-        };
+                    let actions = parsed.actions().to_vec();
+                    log::debug!("Starting fake Zellij client!");
+                    zellij_client::fake_client::start_fake_client(
+                        Box::new(os_input),
+                        opts,
+                        *Box::new(
+                            zellij_utils::input::config::Config::from_default_assets().unwrap(),
+                        ),
+                        Options::default(),
+                        ClientInfo::New(name.to_string()),
+                        None,
+                        actions,
+                    );
+                    log::debug!("Quitting fake client now.");
+                    std::process::exit(0);
+                }
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    std::process::exit(1);
+                }
+            };
+        }
     };
 }
 
