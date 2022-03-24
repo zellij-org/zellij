@@ -30,8 +30,6 @@ jobs:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
       - uses: cachix/install-nix-action@v16
-        with:
-          fetch-depth: 0
       - uses: cachix/cachix-action@v10
         with:
           name: zellij
@@ -51,10 +49,6 @@ jobs:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
       - uses: cachix/install-nix-action@v16
-        with:
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-          fetch-depth: 0
       - uses: cachix/cachix-action@v10
         with:
           name: zellij
