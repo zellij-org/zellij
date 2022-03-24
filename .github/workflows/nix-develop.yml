@@ -9,12 +9,14 @@ on:
     paths:
       - '**.nix'
       - 'flake.lock'
+      - 'rust-toolchain'
   pull_request:
     branches:
       - main
     paths:
       - '**.nix'
       - 'flake.lock'
+      - 'rust-toolchain'
 
 jobs:
   check:
