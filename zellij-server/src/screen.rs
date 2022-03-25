@@ -255,27 +255,29 @@ impl Screen {
         &mut self,
         client_ids_and_mode_infos: Vec<(ClientId, ModeInfo)>,
     ) {
-        // this will panic if there are no more tabs (ie. if self.tabs.is_empty() == true)
+        if self.tabs.is_empty() {
+            log::error!(
+                "No tabs left, cannot move clients: {:?} from closed tab",
+                client_ids_and_mode_infos
+            );
+            return;
+        }
+        let first_tab_index = *self.tabs.keys().next().unwrap();
         for (client_id, client_mode_info) in client_ids_and_mode_infos {
             let client_tab_history = self.tab_history.entry(client_id).or_insert_with(Vec::new);
-            match client_tab_history.pop() {
-                Some(client_previous_tab) => {
+            if let Some(client_previous_tab) = client_tab_history.pop() {
+                if let Some(client_active_tab) = self.tabs.get_mut(&client_previous_tab) {
                     self.active_tab_indices
                         .insert(client_id, client_previous_tab);
-                    self.tabs
-                        .get_mut(&client_previous_tab)
-                        .unwrap()
-                        .add_client(client_id, Some(client_mode_info));
-                }
-                None => {
-                    let next_tab_index = *self.tabs.keys().next().unwrap();
-                    self.active_tab_indices.insert(client_id, next_tab_index);
-                    self.tabs
-                        .get_mut(&next_tab_index)
-                        .unwrap()
-                        .add_client(client_id, Some(client_mode_info));
+                    client_active_tab.add_client(client_id, Some(client_mode_info));
+                    continue;
                 }
             }
+            self.active_tab_indices.insert(client_id, first_tab_index);
+            self.tabs
+                .get_mut(&first_tab_index)
+                .unwrap()
+                .add_client(client_id, Some(client_mode_info));
         }
     }
     fn move_clients_between_tabs(
