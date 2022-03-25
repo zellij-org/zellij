@@ -68,7 +68,6 @@ pub enum Direction {
     Down,
 }
 
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 // FIXME: This should be extended to handle different button clicks (not just
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be

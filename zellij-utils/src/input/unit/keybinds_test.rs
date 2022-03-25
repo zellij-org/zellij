@@ -279,7 +279,10 @@ fn unbind_single_keybind_multiple_modes() {
         .expect("ModeKeybinds shouldn't be empty")
         .0
         .get(&Key::Alt(CharOrArrow::Char('n')));
-    let result_pane = pane.expect("Mode shouldn't be empty").0.get(&Key::Alt(CharOrArrow::Char('h')));
+    let result_pane = pane
+        .expect("Mode shouldn't be empty")
+        .0
+        .get(&Key::Alt(CharOrArrow::Char('h')));
     assert!(result_normal.is_none());
     assert!(result_pane.is_none());
 }
@@ -361,7 +364,10 @@ fn unbind_multiple_keybinds_multiple_modes() {
 
 #[test]
 fn unbind_multiple_keybinds_all_modes() {
-    let unbind = Unbind::Keys(vec![Key::Alt(CharOrArrow::Char('n')), Key::Alt(CharOrArrow::Char('h'))]);
+    let unbind = Unbind::Keys(vec![
+        Key::Alt(CharOrArrow::Char('n')),
+        Key::Alt(CharOrArrow::Char('h')),
+    ]);
     let keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
     let keybinds_from_yaml = KeybindsFromYaml {
         keybinds: keys,
@@ -702,7 +708,10 @@ fn unbind_single_toplevel_multiple_keys_multiple_modes() {
         unbind: unbind_normal,
     };
     let key_action_unbind_normal = vec![KeyActionUnbind::Unbind(unbind_from_yaml_normal)];
-    let unbind = Unbind::Keys(vec![Key::Alt(CharOrArrow::Char('l')), Key::Alt(CharOrArrow::Char('k'))]);
+    let unbind = Unbind::Keys(vec![
+        Key::Alt(CharOrArrow::Char('l')),
+        Key::Alt(CharOrArrow::Char('k')),
+    ]);
     let unbind_from_yaml = UnbindFromYaml { unbind };
     let key_action_unbind = vec![KeyActionUnbind::Unbind(unbind_from_yaml)];
     let mut keys = HashMap::<InputMode, Vec<KeyActionUnbind>>::new();
