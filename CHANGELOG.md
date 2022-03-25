@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Deps: move from termion to termwiz (https://github.com/zellij-org/zellij/pull/1249)
 * Fix: resolve crash when opening tab and zellij tmp dir does not exist (https://github.com/zellij-org/zellij/pull/1256)
 * Fix: Behave properly when embedding floating pane into a fullscreen tiled pane (https://github.com/zellij-org/zellij/pull/1267)
+* Fix: various screen crashes in some edge cases (https://github.com/zellij-org/zellij/pull/1269)
 
 ## [0.26.1] - 2022-03-16
 * HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)
