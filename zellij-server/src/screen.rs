@@ -1059,7 +1059,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        screen.get_active_tab_mut(client_id).and_then(|active_tab| active_tab.close_pane(id));
+                        screen
+                            .get_active_tab_mut(client_id)
+                            .and_then(|active_tab| active_tab.close_pane(id));
                     }
                     None => {
                         for tab in screen.tabs.values_mut() {
