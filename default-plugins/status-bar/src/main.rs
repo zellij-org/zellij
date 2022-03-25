@@ -197,9 +197,9 @@ impl ZellijPlugin for State {
         let first_line = format!("{}{}", superkey, ctrl_keys);
         let second_line = self.second_line(cols);
 
-        let background = match self.mode_info.palette.theme_hue {
-            ThemeHue::Dark => self.mode_info.palette.black,
-            ThemeHue::Light => self.mode_info.palette.white,
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
         };
 
         // [48;5;238m is white background, [0K is so that it fills the rest of the line
