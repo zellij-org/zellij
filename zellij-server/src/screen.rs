@@ -256,7 +256,10 @@ impl Screen {
         client_ids_and_mode_infos: Vec<(ClientId, ModeInfo)>,
     ) {
         if self.tabs.is_empty() {
-            log::error!("No tabs left, cannot move clients: {:?} from closed tab", client_ids_and_mode_infos);
+            log::error!(
+                "No tabs left, cannot move clients: {:?} from closed tab",
+                client_ids_and_mode_infos
+            );
             return;
         }
         let first_tab_index = *self.tabs.keys().next().unwrap();
