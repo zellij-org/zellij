@@ -46,14 +46,29 @@ pub enum Key {
     Insert,
     F(u8),
     Char(char),
-    Alt(char),
+    Alt(CharOrArrow),
     Ctrl(char),
     Null,
     Esc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CharOrArrow {
+    Char(char),
+    Direction(Direction),
+}
 
+/// The four directions (left, right, up, down).
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize)]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 // FIXME: This should be extended to handle different button clicks (not just
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
