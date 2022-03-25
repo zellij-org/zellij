@@ -654,7 +654,6 @@ impl Screen {
         } else {
             log::error!("Active tab not found for client id: {:?}", client_id);
         }
-
     }
     pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         let previous_mode = self
@@ -1148,8 +1147,8 @@ pub(crate) fn screen_thread_main(
                             .get_active_tab_mut(client_id)
                             .and_then(|active_tab| active_tab.close_pane(id))
                             .or_else(|| {
-                                 log::error!("Active tab not found for client id: {:?}", client_id);
-                                 None
+                                log::error!("Active tab not found for client id: {:?}", client_id);
+                                None
                             });
                     }
                     None => {
