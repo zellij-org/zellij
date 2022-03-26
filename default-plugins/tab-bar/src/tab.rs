@@ -24,11 +24,7 @@ pub fn render_tab(
     focused_clients: &[ClientId],
     active: bool,
 ) -> LinePart {
-    let background_color = if active {
-        palette.green
-    } else {
-        palette.fg
-    };
+    let background_color = if active { palette.green } else { palette.fg };
     let foreground_color = match palette.theme_hue {
         ThemeHue::Dark => palette.black,
         ThemeHue::Light => palette.white,
