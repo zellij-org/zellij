@@ -27,10 +27,7 @@ pub fn render_tab(
     let background_color = if active {
         palette.green
     } else {
-        match palette.theme_hue {
-            ThemeHue::Dark => palette.fg,
-            ThemeHue::Light => palette.bg,
-        }
+        palette.fg
     };
     let foreground_color = match palette.theme_hue {
         ThemeHue::Dark => palette.black,
