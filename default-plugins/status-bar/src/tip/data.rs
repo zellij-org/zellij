@@ -95,6 +95,6 @@ fn quicknav_short(palette: Palette) -> LinePart {
         Style::new().paint("/"),
         Style::new().fg(green_color).bold().paint("hjkl"),
         Style::new().paint("/"),
-        Style::new().fg(green_color).bold().paint("+-"),
+        Style::new().fg(green_color).bold().paint("+->"),
     ])
 }
