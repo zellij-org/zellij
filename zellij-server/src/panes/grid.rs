@@ -814,30 +814,31 @@ impl Grid {
         }
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self
+            .scroll_region
+            .or(Some((0, self.height.saturating_sub(1))))
+        {
             for _ in 0..count {
-                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
-                if scroll_region_bottom < self.viewport.len() {
-                    self.viewport.remove(scroll_region_bottom);
-                }
-                if scroll_region_top < self.viewport.len() {
-                    self.viewport
-                        .insert(scroll_region_top, Row::from_columns(columns).canonical());
+                if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
+                    self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
+                    if self.viewport.get(scroll_region_bottom).is_some() {
+                        self.viewport.remove(scroll_region_bottom);
+                    }
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
         }
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self
+            .scroll_region
+            .or(Some((0, self.height.saturating_sub(1))))
+        {
             for _ in 0..count {
-                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
-                self.viewport.remove(scroll_region_top);
-                if self.viewport.len() > scroll_region_top {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
-                } else {
-                    self.viewport.push(Row::from_columns(columns).canonical());
+                if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
+                    self.pad_lines_until(scroll_region_top, EMPTY_TERMINAL_CHARACTER);
+                    self.viewport.remove(scroll_region_top);
+                    self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines

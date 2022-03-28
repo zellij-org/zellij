@@ -1602,3 +1602,20 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     }
     assert_snapshot!(format!("{:?}", grid));
 }
+
+#[test]
+pub fn scroll_down_ansi() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+    );
+    let fixture_name = "scroll_down";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
