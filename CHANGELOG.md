@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Fix: resolve crash when closing panes on single core systems (https://github.com/zellij-org/zellij/pull/1051)
 * Terminal Compatibility: Behave properly when ansi scrolling down with an undefined scroll region (https://github.com/zellij-org/zellij/pull/1279)
 * Fix: properly render selection when background color of characters is not set (https://github.com/zellij-org/zellij/pull/1250)
+* Terminal Compatibility: revert previous incorrect change to csi erase display (https://github.com/zellij-org/zellij/pull/1283)
 
 ## [0.26.1] - 2022-03-16
 * HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)
