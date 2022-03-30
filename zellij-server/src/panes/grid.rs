@@ -1066,6 +1066,9 @@ impl Grid {
     }
 
     fn pad_current_line_until(&mut self, position: usize) {
+        if self.viewport.get(self.cursor.y).is_none() {
+            self.pad_lines_until(self.cursor.y, EMPTY_TERMINAL_CHARACTER);
+        }
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in current_row.width()..position {
             current_row.push(EMPTY_TERMINAL_CHARACTER);
