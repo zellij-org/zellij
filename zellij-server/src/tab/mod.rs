@@ -554,6 +554,9 @@ impl Tab {
         self.connected_clients.borrow().is_empty()
     }
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
         if self.floating_panes.panes_are_visible() {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
@@ -846,12 +849,15 @@ impl Tab {
                     .get(&pane_id)
                     .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                self.os_api
+                if let Err(e) = self
+                    .os_api
                     .write_to_tty_stdin(active_terminal_id, &adjusted_input)
-                    .expect("failed to write to terminal");
-                self.os_api
-                    .tcdrain(active_terminal_id)
-                    .expect("failed to drain terminal");
+                {
+                    log::error!("failed to write to terminal: {}", e);
+                }
+                if let Err(e) = self.os_api.tcdrain(active_terminal_id) {
+                    log::error!("failed to drain terminal: {}", e);
+                }
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
@@ -943,7 +949,8 @@ impl Tab {
         );
 
         self.hide_cursor_and_clear_display_as_needed(output);
-        self.tiled_panes.render(output);
+        self.tiled_panes
+            .render(output, self.floating_panes.panes_are_visible());
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.render(output);
         }
@@ -1034,6 +1041,10 @@ impl Tab {
             .get_panes()
             .filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0 || selectable_floating_panes.count() > 0
+    }
+    pub fn has_selectable_tiled_panes(&self) -> bool {
+        let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
+        selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);

@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
+
+## [0.27.0] - 2022-03-31
 * Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)
 * Fix: `wasm_vm` use `cache_dirs` for ephemeral plugin data (https://github.com/zellij-org/zellij/pull/1230)
 * Bump `nix` version to `0.23.1` (https://github.com/zellij-org/zellij/pull/1234)
@@ -12,7 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: allow rounded frame corners to be selected in the config (https://github.com/zellij-org/zellij/pull/1227)
 * Deps: move from termion to termwiz (https://github.com/zellij-org/zellij/pull/1249)
 * Fix: resolve crash when opening tab and zellij tmp dir does not exist (https://github.com/zellij-org/zellij/pull/1256)
-* (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
+* Fix: Behave properly when embedding floating pane into a fullscreen tiled pane (https://github.com/zellij-org/zellij/pull/1267)
+* Fix: various screen crashes in some edge cases (https://github.com/zellij-org/zellij/pull/1269)
+* Feat: Add Alt+Arrows quick navigation (https://github.com/zellij-org/zellij/pull/1264)
+* Fix: don't crash on bad intermediate tab state (https://github.com/zellij-org/zellij/pull/1272)
+* Fix: resolve crash when closing panes on single core systems (https://github.com/zellij-org/zellij/pull/1051)
+* Terminal Compatibility: Behave properly when ansi scrolling down with an undefined scroll region (https://github.com/zellij-org/zellij/pull/1279)
+* Fix: properly render selection when background color of characters is not set (https://github.com/zellij-org/zellij/pull/1250)
+* Terminal Compatibility: revert previous incorrect change to csi erase display (https://github.com/zellij-org/zellij/pull/1283)
 
 ## [0.26.1] - 2022-03-16
 * HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)
