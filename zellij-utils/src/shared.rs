@@ -59,7 +59,7 @@ pub mod colors {
     pub const BRIGHT_GRAY: u8 = 245;
     pub const RED: u8 = 88;
     pub const ORANGE: u8 = 166;
-    pub const BLACK: u8 = 16;
+    pub const BLACK: u8 = 236;
     pub const MAGENTA: u8 = 201;
     pub const CYAN: u8 = 51;
     pub const YELLOW: u8 = 226;
@@ -102,7 +102,7 @@ pub fn default_palette() -> Palette {
 }
 
 // Dark magic
-pub fn _detect_theme_hue(bg: PaletteColor) -> ThemeHue {
+pub fn detect_theme_hue(bg: PaletteColor) -> ThemeHue {
     match bg {
         PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness

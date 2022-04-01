@@ -119,7 +119,11 @@ impl ZellijPlugin for State {
             }
             len_cnt += bar_part.len;
         }
-        match self.mode_info.style.colors.gray {
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
+        };
+        match background {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
             }
