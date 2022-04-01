@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: allow rounded frame corners to be selected in the config (https://github.com/zellij-org/zellij/pull/1227)
 * Deps: move from termion to termwiz (https://github.com/zellij-org/zellij/pull/1249)
 * Fix: resolve crash when opening tab and zellij tmp dir does not exist (https://github.com/zellij-org/zellij/pull/1256)
+* (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
 
 ## [0.26.1] - 2022-03-16
 * HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)
