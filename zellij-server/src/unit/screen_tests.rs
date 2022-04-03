@@ -10,6 +10,7 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 
@@ -92,6 +93,7 @@ fn create_new_screen(size: Size) -> Screen {
     let draw_pane_frames = false;
     let session_is_mirrored = true;
     let copy_command = None;
+    let copy_clipboard = Clipboard::default();
     Screen::new(
         bus,
         &client_attributes,
@@ -100,6 +102,7 @@ fn create_new_screen(size: Size) -> Screen {
         draw_pane_frames,
         session_is_mirrored,
         copy_command,
+        copy_clipboard,
     )
 }
 
@@ -201,23 +204,8 @@ pub fn close_the_middle_tab() {
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
     new_tab(&mut screen, 3);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
     screen.switch_tab_prev(1);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
     screen.close_tab(1);
-    dbg!(screen
-        .tabs
-        .values()
-        .map(|t| (t.index, t.position, t.name.clone(), t.get_pane_ids()))
-        .collect::<Vec<_>>());
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(
@@ -470,10 +458,9 @@ fn switch_to_tab_with_fullscreen() {
         screen
             .get_active_tab(1)
             .unwrap()
-            .active_panes
-            .get(&1)
+            .get_active_pane_id(1)
             .unwrap(),
-        &PaneId::Terminal(2),
+        PaneId::Terminal(2),
         "Active pane is still the fullscreen pane"
     );
 }

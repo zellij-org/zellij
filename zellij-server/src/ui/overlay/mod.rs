@@ -23,12 +23,6 @@ pub trait Overlayable {
 }
 
 #[derive(Clone, Debug)]
-struct Padding {
-    rows: usize,
-    cols: usize,
-}
-
-#[derive(Clone, Debug)]
 pub enum OverlayType {
     Prompt(prompt::Prompt),
 }

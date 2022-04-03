@@ -11,8 +11,9 @@ use std::convert::{TryFrom, TryInto};
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
-use super::theme::ThemesFromYaml;
+use super::theme::{ThemesFromYaml, UiConfigFromYaml};
 use crate::cli::{CliArgs, Command};
+use crate::envs::EnvironmentVariablesFromYaml;
 use crate::setup;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
@@ -26,8 +27,11 @@ pub struct ConfigFromYaml {
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
     pub themes: Option<ThemesFromYaml>,
+    #[serde(flatten)]
+    pub env: Option<EnvironmentVariablesFromYaml>,
     #[serde(default)]
     pub plugins: PluginsConfigFromYaml,
+    pub ui: Option<UiConfigFromYaml>,
 }
 
 /// Main configuration.
@@ -37,6 +41,8 @@ pub struct Config {
     pub options: Options,
     pub themes: Option<ThemesFromYaml>,
     pub plugins: PluginsConfig,
+    pub ui: Option<UiConfigFromYaml>,
+    pub env: EnvironmentVariablesFromYaml,
 }
 
 #[derive(Error, Debug)]
@@ -66,13 +72,17 @@ impl Default for Config {
         let keybinds = Keybinds::default();
         let options = Options::default();
         let themes = None;
+        let env = EnvironmentVariablesFromYaml::default();
         let plugins = PluginsConfig::default();
+        let ui = None;
 
         Config {
             keybinds,
             options,
             themes,
             plugins,
+            env,
+            ui,
         }
     }
 }
@@ -160,7 +170,9 @@ impl Config {
             keybinds: self.keybinds.clone(),
             options: self.options.merge(other.options),
             themes: self.themes.clone(), // TODO
+            env: self.env.merge(other.env),
             plugins: self.plugins.merge(other.plugins),
+            ui: self.ui, // TODO
         }
     }
 }
@@ -172,12 +184,16 @@ impl TryFrom<ConfigFromYaml> for Config {
         let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
         let options = Options::from_yaml(config_from_yaml.options);
         let themes = config_from_yaml.themes;
+        let env = config_from_yaml.env.unwrap_or_default();
         let plugins = PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into()?);
+        let ui = config_from_yaml.ui;
         Ok(Self {
             keybinds,
             options,
             plugins,
             themes,
+            env,
+            ui,
         })
     }
 }

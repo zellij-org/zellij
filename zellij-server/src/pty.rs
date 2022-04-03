@@ -29,6 +29,7 @@ use zellij_utils::{
 };
 
 pub type VteBytes = Vec<u8>;
+pub type TabIndex = u32;
 
 #[derive(Clone, Copy, Debug)]
 pub enum ClientOrTabIndex {
@@ -43,6 +44,7 @@ pub(crate) enum PtyInstruction {
     SpawnTerminalVertically(Option<TerminalAction>, ClientId),
     SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
     UpdateActivePane(Option<PaneId>, ClientId),
+    GoToTab(TabIndex, ClientId),
     NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
@@ -56,6 +58,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
+            PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
@@ -113,6 +116,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
             }
             PtyInstruction::UpdateActivePane(pane_id, client_id) => {
                 pty.set_active_pane(pane_id, client_id);
+            }
+            PtyInstruction::GoToTab(tab_index, client_id) => {
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
+                    .unwrap();
             }
             PtyInstruction::NewTab(terminal_action, tab_layout, client_id) => {
                 let tab_name = tab_layout.as_ref().and_then(|layout| {

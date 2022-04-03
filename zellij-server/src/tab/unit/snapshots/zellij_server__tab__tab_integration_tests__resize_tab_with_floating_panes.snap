@@ -1,0 +1,26 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+expression: snapshot
+
+---
+00 (C): ┌ Pane #1 ────────────────────┌ Pane #2 ─────────────────────────────────────────────────┐─────────┐                     
+01 (C): │                             │                                                          │         │                     
+02 (C): │ ┌ Pane #3 ─────────────── SCROLL:  0/1 ┐                  ┌ Pane #4 ─────────────── SCROLL:  0/1 ┐                     
+03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                  │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                     
+04 (C): │ ┌ Pane #5 ─────────────── SCROLL:  0/1 ┐        I am scrat┌ Pane #6 ─────────────── SCROLL:  0/1 ┐                     
+05 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                  │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                     
+06 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                  │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                     
+07 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                  │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                     
+08 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                  │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                     
+09 (C): └─└──────────────────────────────────────┘──────────────────└──────────────────────────────────────┘                     
+10 (C):                                                                                                                          
+11 (C):                                                                                                                          
+12 (C):                                                                                                                          
+13 (C):                                                                                                                          
+14 (C):                                                                                                                          
+15 (C):                                                                                                                          
+16 (C):                                                                                                                          
+17 (C):                                                                                                                          
+18 (C):                                                                                                                          
+19 (C):                                                                                                                          
+

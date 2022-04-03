@@ -1,6 +1,8 @@
 use std::io::prelude::*;
 use std::process::{Command, Stdio};
 
+use zellij_utils::anyhow::{Context, Result};
+
 pub struct CopyCommand {
     command: String,
     args: Vec<String>,
@@ -15,25 +17,18 @@ impl CopyCommand {
             args: command_with_args.collect(),
         }
     }
-    pub fn set(&self, value: String) -> bool {
-        let process = match Command::new(self.command.clone())
+    pub fn set(&self, value: String) -> Result<()> {
+        let process = Command::new(self.command.clone())
             .args(self.args.clone())
             .stdin(Stdio::piped())
             .spawn()
-        {
-            Err(why) => {
-                eprintln!("couldn't spawn {}: {}", self.command, why);
-                return false;
-            }
-            Ok(process) => process,
-        };
+            .with_context(|| format!("couldn't spawn {}", self.command))?;
+        process
+            .stdin
+            .context("could not get stdin")?
+            .write_all(value.as_bytes())
+            .with_context(|| format!("couldn't write to {} stdin", self.command))?;
 
-        match process.stdin.unwrap().write_all(value.as_bytes()) {
-            Err(why) => {
-                eprintln!("couldn't write to {} stdin: {}", self.command, why);
-                false
-            }
-            Ok(_) => true,
-        }
+        Ok(())
     }
 }

@@ -102,11 +102,13 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let left_separator = style!(palette.gray, palette.orange).paint(separator);
-    let more_styled_text = style!(palette.black, palette.orange)
-        .bold()
-        .paint(more_text);
-    let right_separator = style!(palette.orange, palette.gray).paint(separator);
+    let text_color = match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    };
+    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
+    let right_separator = style!(palette.orange, text_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -130,11 +132,13 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let left_separator = style!(palette.gray, palette.orange).paint(separator);
-    let more_styled_text = style!(palette.black, palette.orange)
-        .bold()
-        .paint(more_text);
-    let right_separator = style!(palette.orange, palette.gray).paint(separator);
+    let text_color = match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    };
+    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
+    let right_separator = style!(palette.orange, text_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -147,9 +151,15 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
-    let prefix_styled_text = style!(palette.white, palette.gray)
-        .bold()
-        .paint(prefix_text);
+    let text_color = match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    };
+    let bg_color = match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    };
+    let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
         len: prefix_text_len,
@@ -157,7 +167,11 @@ fn tab_line_prefix(session_name: Option<&str>, palette: Palette, cols: usize) ->
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
         let name_part_len = name_part.width();
-        let name_part_styled_text = style!(palette.white, palette.gray).bold().paint(name_part);
+        let text_color = match palette.theme_hue {
+            ThemeHue::Dark => palette.white,
+            ThemeHue::Light => palette.black,
+        };
+        let name_part_styled_text = style!(text_color, bg_color).bold().paint(name_part);
         if cols.saturating_sub(prefix_text_len) >= name_part_len {
             parts.push(LinePart {
                 part: name_part_styled_text.to_string(),

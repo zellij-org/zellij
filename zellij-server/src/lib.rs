@@ -1,4 +1,5 @@
 pub mod os_input_output;
+pub mod output;
 pub mod panes;
 pub mod tab;
 
@@ -17,19 +18,19 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_tile::prelude::Style;
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;
-use zellij_tile::data::{Event, Palette, PluginCapabilities};
+use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
-    tab::Output,
     thread_bus::{Bus, ThreadSenders},
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
@@ -63,7 +64,7 @@ pub enum ServerInstruction {
         ClientId,
         Option<PluginsConfig>,
     ),
-    Render(Option<Output>),
+    Render(Option<HashMap<ClientId, String>>),
     UnblockInputThread,
     ClientExit(ClientId),
     RemoveClient(ClientId),
@@ -71,6 +72,7 @@ pub enum ServerInstruction {
     KillSession,
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
+    ConnStatus(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -85,6 +87,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::KillSession => ServerContext::KillSession,
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
+            ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
         }
     }
 }
@@ -98,7 +101,7 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
-    pub palette: Palette,
+    pub style: Style,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
@@ -313,8 +316,24 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 };
 
                 if !&layout.tabs.is_empty() {
-                    for tab_layout in layout.tabs {
+                    for tab_layout in layout.clone().tabs {
                         spawn_tabs(Some(tab_layout.clone()));
+                    }
+
+                    let focused_tab = layout
+                        .tabs
+                        .into_iter()
+                        .enumerate()
+                        .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
+                    if let Some((tab_index, _)) = focused_tab {
+                        session_data
+                            .read()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_pty(PtyInstruction::GoToTab((tab_index + 1) as u32, client_id))
+                            .unwrap();
                     }
                 } else {
                     spawn_tabs(None);
@@ -353,8 +372,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info =
-                    get_mode_info(default_mode, attrs.palette, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, attrs.style, session_data.capabilities);
                 let mode = mode_info.mode;
                 session_data
                     .senders
@@ -459,31 +477,13 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                         .unwrap();
                 }
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                    .unwrap();
             }
-            ServerInstruction::Render(mut output) => {
+            ServerInstruction::Render(serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
-                // Here the output is of the type Option<String> sent by screen thread.
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
-                if let Some(op) = &mut output {
-                    for (client_id, client_render_instruction) in &mut op.client_render_instructions
-                    {
+                if let Some(output) = &serialized_output {
+                    for (client_id, client_render_instruction) in output.iter() {
                         os_input.send_to_client(
                             *client_id,
                             ServerToClientMsg::Render(client_render_instruction.clone()),
@@ -508,6 +508,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
+            }
+            ServerInstruction::ConnStatus(client_id) => {
+                os_input.send_to_client(client_id, ServerToClientMsg::Connected);
+                remove_client!(client_id, os_input, session_state);
             }
         }
     }
@@ -641,7 +645,7 @@ fn init_session(
         },
         capabilities,
         default_shell,
-        palette: client_attributes.palette,
+        style: client_attributes.style,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),

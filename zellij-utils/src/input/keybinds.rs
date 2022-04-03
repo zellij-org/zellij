@@ -198,7 +198,10 @@ impl Keybinds {
             keybinds
                 .0
                 .get(mode)
-                .unwrap_or_else(|| unreachable!("Unrecognized mode: {:?}", mode))
+                .unwrap_or({
+                    // create a dummy mode to recover from
+                    &ModeKeybinds::new()
+                })
                 .0
                 .get(key)
                 .cloned()

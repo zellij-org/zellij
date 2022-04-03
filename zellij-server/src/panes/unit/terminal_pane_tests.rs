@@ -1,8 +1,11 @@
 use super::super::TerminalPane;
+use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use ::insta::assert_snapshot;
+use std::cell::RefCell;
+use std::rc::Rc;
+use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::PaneGeom;
-use zellij_utils::zellij_tile::data::Palette;
 
 use std::fmt::Write;
 
@@ -14,8 +17,15 @@ pub fn scrolling_inside_a_pane() {
     fake_win_size.rows.set_inner(20);
 
     let pid = 1;
-    let palette = Palette::default();
-    let mut terminal_pane = TerminalPane::new(pid, fake_win_size, palette, 0, String::new()); // 0 is the pane index
+    let style = Style::default();
+    let mut terminal_pane = TerminalPane::new(
+        pid,
+        fake_win_size,
+        style,
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+    ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {
         writeln!(&mut text_to_fill_pane, "\rline {}", i + 1).unwrap();

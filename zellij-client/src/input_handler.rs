@@ -5,7 +5,8 @@ use zellij_utils::{
         mouse::{MouseButton, MouseEvent},
         options::Options,
     },
-    termion, zellij_tile,
+    termwiz::input::InputEvent,
+    zellij_tile,
 };
 
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     errors::{ContextType, ErrorContext},
-    input::{actions::Action, cast_termion_key, config::Config, keybinds::Keybinds},
+    input::{actions::Action, cast_termwiz_key, config::Config, keybinds::Keybinds},
     ipc::{ClientToServerMsg, ExitReason},
 };
 
@@ -32,6 +33,7 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    holding_mouse: bool,
 }
 
 impl InputHandler {
@@ -54,15 +56,17 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             receive_input_instructions,
+            holding_mouse: false,
         }
     }
 
-    /// Main input event loop. Interprets the terminal [`Event`](termion::event::Event)s
+    /// Main input event loop. Interprets the terminal Event
     /// as [`Action`]s according to the current [`InputMode`], and dispatches those actions.
     fn handle_input(&mut self) {
         let mut err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
         err_ctx.add_call(ContextType::StdinHandler);
-        let alt_left_bracket = vec![27, 91];
+        let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+        let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
@@ -71,53 +75,27 @@ impl InputHandler {
                 break;
             }
             match self.receive_input_instructions.recv() {
-                Ok((InputInstruction::KeyEvent(event, raw_bytes), _error_context)) => {
-                    match event {
-                        termion::event::Event::Key(key) => {
-                            let key = cast_termion_key(key);
+                Ok((InputInstruction::KeyEvent(input_event, raw_bytes), _error_context)) => {
+                    match input_event {
+                        InputEvent::Key(key_event) => {
+                            let key = cast_termwiz_key(key_event, &raw_bytes);
                             self.handle_key(&key, raw_bytes);
                         }
-                        termion::event::Event::Mouse(me) => {
-                            let mouse_event = zellij_utils::input::mouse::MouseEvent::from(me);
+                        InputEvent::Mouse(mouse_event) => {
+                            let mouse_event =
+                                zellij_utils::input::mouse::MouseEvent::from(mouse_event);
                             self.handle_mouse_event(&mouse_event);
                         }
-                        termion::event::Event::Unsupported(unsupported_key) => {
-                            // we have to do this because of a bug in termion
-                            // this should be a key event and not an unsupported event
-                            if unsupported_key == alt_left_bracket {
-                                let key = Key::Alt('[');
-                                self.handle_key(&key, raw_bytes);
-                            } else {
-                                // this is a hack because termion doesn't recognize certain keys
-                                // in this case we just forward it to the terminal
-                                self.handle_unknown_key(raw_bytes);
+                        InputEvent::Paste(pasted_text) => {
+                            if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
+                                self.dispatch_action(Action::Write(bracketed_paste_start.clone()));
+                                self.dispatch_action(Action::Write(
+                                    pasted_text.as_bytes().to_vec(),
+                                ));
+                                self.dispatch_action(Action::Write(bracketed_paste_end.clone()));
                             }
                         }
-                    }
-                }
-                Ok((
-                    InputInstruction::PastedText((
-                        send_bracketed_paste_start,
-                        raw_bytes,
-                        send_bracketed_paste_end,
-                    )),
-                    _error_context,
-                )) => {
-                    if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-                        if send_bracketed_paste_start {
-                            let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
-                            let paste_start_action = Action::Write(bracketed_paste_start);
-                            self.dispatch_action(paste_start_action);
-                        }
-
-                        let pasted_text_action = Action::Write(raw_bytes);
-                        self.dispatch_action(pasted_text_action);
-
-                        if send_bracketed_paste_end {
-                            let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
-                            let paste_end_action = Action::Write(bracketed_paste_end);
-                            self.dispatch_action(paste_end_action);
-                        }
+                        _ => {}
                     }
                 }
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
@@ -125,12 +103,6 @@ impl InputHandler {
                 }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
-        }
-    }
-    fn handle_unknown_key(&mut self, raw_bytes: Vec<u8>) {
-        if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-            let action = Action::Write(raw_bytes);
-            self.dispatch_action(action);
         }
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
@@ -152,18 +124,30 @@ impl InputHandler {
                     self.dispatch_action(Action::ScrollDownAt(point));
                 }
                 MouseButton::Left => {
-                    self.dispatch_action(Action::LeftClick(point));
+                    if self.holding_mouse {
+                        self.dispatch_action(Action::MouseHold(point));
+                    } else {
+                        self.dispatch_action(Action::LeftClick(point));
+                    }
+                    self.holding_mouse = true;
                 }
                 MouseButton::Right => {
-                    self.dispatch_action(Action::RightClick(point));
+                    if self.holding_mouse {
+                        self.dispatch_action(Action::MouseHold(point));
+                    } else {
+                        self.dispatch_action(Action::RightClick(point));
+                    }
+                    self.holding_mouse = true;
                 }
                 _ => {}
             },
             MouseEvent::Release(point) => {
                 self.dispatch_action(Action::MouseRelease(point));
+                self.holding_mouse = false;
             }
             MouseEvent::Hold(point) => {
                 self.dispatch_action(Action::MouseHold(point));
+                self.holding_mouse = true;
             }
         }
     }
@@ -199,6 +183,8 @@ impl InputHandler {
             }
             Action::CloseFocus
             | Action::NewPane(_)
+            | Action::ToggleFloatingPanes
+            | Action::TogglePaneEmbedOrFloating
             | Action::NewTab(_)
             | Action::GoToNextTab
             | Action::GoToPreviousTab

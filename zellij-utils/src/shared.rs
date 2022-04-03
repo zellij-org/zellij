@@ -2,6 +2,7 @@
 
 use std::{iter, str::from_utf8};
 
+use crate::envs::get_session_name;
 use colorsys::Rgb;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -40,6 +41,16 @@ pub fn adjust_to_size(s: &str, rows: usize, columns: usize) -> String {
         .join("\n\r")
 }
 
+pub fn make_terminal_title(pane_title: &str) -> String {
+    format!(
+        "\u{1b}]0;Zellij {}- {}\u{07}",
+        get_session_name()
+            .map(|n| format!("({}) ", n))
+            .unwrap_or_default(),
+        pane_title,
+    )
+}
+
 // Colors
 pub mod colors {
     pub const WHITE: u8 = 255;
@@ -48,7 +59,7 @@ pub mod colors {
     pub const BRIGHT_GRAY: u8 = 245;
     pub const RED: u8 = 88;
     pub const ORANGE: u8 = 166;
-    pub const BLACK: u8 = 16;
+    pub const BLACK: u8 = 236;
     pub const MAGENTA: u8 = 201;
     pub const CYAN: u8 = 51;
     pub const YELLOW: u8 = 226;
@@ -91,7 +102,7 @@ pub fn default_palette() -> Palette {
 }
 
 // Dark magic
-pub fn _detect_theme_hue(bg: PaletteColor) -> ThemeHue {
+pub fn detect_theme_hue(bg: PaletteColor) -> ThemeHue {
     match bg {
         PaletteColor::Rgb((r, g, b)) => {
             // HSP, P stands for perceived brightness

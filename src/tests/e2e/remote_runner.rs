@@ -1,10 +1,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use zellij_tile::data::Palette;
 
-use zellij_server::panes::TerminalPane;
+use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
-use zellij_utils::{vte, zellij_tile};
+use zellij_utils::vte;
+use zellij_utils::zellij_tile::prelude::Style;
 
 use ssh2::Session;
 use std::io::prelude::*;
@@ -12,8 +12,12 @@ use std::net::TcpStream;
 
 use std::path::Path;
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
+const ZELLIJ_DATA_DIR: &str = "/usr/src/zellij/e2e-data";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
@@ -59,8 +63,8 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
+                "{} --session {} --data-dir {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -73,8 +77,8 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {} options --mirror-session true\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
+                "{} --session {} --data-dir {} options --mirror-session true\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -87,8 +91,8 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
     channel
         .write_all(
             format!(
-                "{} --session {} options --mirror-session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, session_name, mirrored
+                "{} --session {} --data-dir {} options --mirror-session {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, session_name, ZELLIJ_DATA_DIR, mirrored
             )
             .as_bytes(),
         )
@@ -108,8 +112,8 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {} options --no-pane-frames\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME
+                "{} --session {} --data-dir {} options --no-pane-frames\n",
+                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -122,8 +126,8 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel
         .write_all(
             format!(
-                "{} --layout-path {} --session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME
+                "{} --layout-path {} --session {} --data-dir {}\n",
+                ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -141,16 +145,23 @@ fn read_from_channel(
     let thread = std::thread::Builder::new()
         .name("read_thread".into())
         .spawn({
+            let pane_geom = *pane_geom;
             let should_keep_running = should_keep_running.clone();
             let channel = channel.clone();
             let last_snapshot = last_snapshot.clone();
             let cursor_coordinates = cursor_coordinates.clone();
-            let mut vte_parser = vte::Parser::new();
-            let mut terminal_output =
-                TerminalPane::new(0, *pane_geom, Palette::default(), 0, String::new()); // 0 is the pane index
-            let mut retries_left = 3;
             move || {
+                let mut retries_left = 3;
                 let mut should_sleep = false;
+                let mut vte_parser = vte::Parser::new();
+                let mut terminal_output = TerminalPane::new(
+                    0,
+                    pane_geom,
+                    Style::default(),
+                    0,
+                    String::new(),
+                    Rc::new(RefCell::new(LinkHandler::new())),
+                ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
                         break;

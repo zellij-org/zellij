@@ -9,13 +9,13 @@ ZELLIJ_ASSETS_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/zellij-utils/asse
 # Add clippy to the default flow
 [tasks.dev-test-flow]
 dependencies = [
-  "format-flow",
-  "format-toml-conditioned-flow",
-  "pre-build",
-  "build",
-  "post-build",
-  "test-flow",
-  "clippy",
+    "format-flow",
+    "format-toml-conditioned-flow",
+    "pre-build",
+    "build",
+    "post-build",
+    "test-flow",
+    "clippy",
 ]
 
 # Patching the default flows to skip testing of wasm32-wasi targets
@@ -63,9 +63,32 @@ end
 writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
 '''
 
+[tasks.build-e2e-data-dir]
+dependencies = ["build-plugins-release"]
+script_runner = "@duckscript"
+script = '''
+target_dir = set ${CARGO_TARGET_DIR}
+data_dir = set ${target_dir}/e2e-data
+rm -r ${data_dir}
+plugins = glob_array ${target_dir}/wasm32-wasi/release/*.wasm
+mkdir ${data_dir}
+mkdir ${data_dir}/plugins
+for plugin in ${plugins}
+    plugin_name = basename ${plugin}
+    cp ${plugin} ${data_dir}/plugins/${plugin_name}
+end
+writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
+'''
+
 [tasks.launch]
 command = "cargo"
-args = ["run", "--", "--data-dir", "${CARGO_TARGET_DIR}/dev-data/", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = [
+    "run",
+    "--",
+    "--data-dir",
+    "${CARGO_TARGET_DIR}/dev-data/",
+    "@@split(CARGO_MAKE_TASK_ARGS,;)",
+]
 
 # Simple clippy tweak
 [tasks.clippy]
@@ -85,11 +108,19 @@ end
 '''
 
 [tasks.build-plugins-release]
-env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
+env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = [
+    "default-plugins/status-bar",
+    "default-plugins/strider",
+    "default-plugins/tab-bar",
+] }
 run_task = { name = "build-release", fork = true }
 
 [tasks.build-plugins]
-env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = ["default-plugins/status-bar", "default-plugins/strider", "default-plugins/tab-bar"] }
+env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = [
+    "default-plugins/status-bar",
+    "default-plugins/strider",
+    "default-plugins/tab-bar",
+] }
 run_task = { name = "build", fork = true }
 
 [tasks.wasm-opt-plugins]
@@ -135,23 +166,48 @@ cp ${ZELLIJ_ASSETS_DIR}/config/default.yaml ${ZELLIJ_EXAMPLE_DIR}/default.yaml
 # CI Releasing Zellij
 [tasks.ci-build-release]
 workspace = false
-dependencies = ["setup-cross-compilation", "build-plugins-release", "wasm-opt-plugins", "manpage"]
+dependencies = [
+    "setup-cross-compilation",
+    "build-plugins-release",
+    "wasm-opt-plugins",
+    "manpage",
+]
 command = "cross"
-args = ["build", "--verbose", "--release", "--target", "${CARGO_MAKE_TASK_ARGS}"]
+args = [
+    "build",
+    "--verbose",
+    "--release",
+    "--target",
+    "${CARGO_MAKE_TASK_ARGS}",
+]
 
 # Build e2e asset
 [tasks.build-e2e]
 workspace = false
-dependencies = ["build-plugins", "build-dev-data-dir"]
+dependencies = ["build-plugins-release", "build-e2e-data-dir"]
 command = "cargo"
-args = ["build", "--verbose", "--release", "--target", "x86_64-unknown-linux-musl"]
+args = [
+    "build",
+    "--verbose",
+    "--release",
+    "--target",
+    "x86_64-unknown-linux-musl",
+]
 
 # Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
 [tasks.e2e-test]
 workspace = false
 dependencies = ["build-e2e"]
 command = "cargo"
-args = ["test", "--", "--ignored", "--nocapture", "--test-threads", "1", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = [
+    "test",
+    "--",
+    "--ignored",
+    "--nocapture",
+    "--test-threads",
+    "1",
+    "@@split(CARGO_MAKE_TASK_ARGS,;)",
+]
 
 [tasks.setup-cross-compilation]
 command = "cargo"
@@ -161,7 +217,12 @@ args = ["install", "cross"]
 [tasks.publish]
 clear = true
 workspace = false
-dependencies = [ "update-default-config", "build-plugins-release", "wasm-opt-plugins", "release-commit"]
+dependencies = [
+    "update-default-config",
+    "build-plugins-release",
+    "wasm-opt-plugins",
+    "release-commit",
+]
 run_task = "publish-zellij"
 
 [tasks.release-commit]
@@ -176,7 +237,7 @@ args = ["commit", "-aem", "chore(release): v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.tag-release]
 command = "git"
-args = ["tag", "v${CARGO_MAKE_CRATE_VERSION}"]
+args = ["tag", "--annotate", "--message", "Version ${CARGO_MAKE_CRATE_VERSION}", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.publish-zellij-tile]
 ignore_errors = true
@@ -207,6 +268,10 @@ cwd = "zellij-tile-utils"
 script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
-dependencies = ["publish-zellij-client", "publish-zellij-server", "publish-zellij-utils",]
+dependencies = [
+    "publish-zellij-client",
+    "publish-zellij-server",
+    "publish-zellij-utils",
+]
 command = "cargo"
 args = ["publish"]

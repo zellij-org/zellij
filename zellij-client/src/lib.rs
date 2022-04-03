@@ -10,6 +10,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use zellij_tile::prelude::Style;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -23,7 +24,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    termion,
+    termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
@@ -35,6 +36,7 @@ pub(crate) enum ClientInstruction {
     UnblockInputThread,
     Exit(ExitReason),
     SwitchToMode(InputMode),
+    Connected,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -46,6 +48,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
             }
+            ServerToClientMsg::Connected => ClientInstruction::Connected,
         }
     }
 }
@@ -58,6 +61,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Render(_) => ClientContext::Render,
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
+            ClientInstruction::Connected => ClientContext::Connected,
         }
     }
 }
@@ -102,9 +106,8 @@ impl ClientInfo {
 
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
-    KeyEvent(termion::event::Event, Vec<u8>),
+    KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText((bool, Vec<u8>, bool)), // (send_brackted_paste_start, pasted_text, send_bracketed_paste_end)
 }
 
 pub fn start_client(
@@ -130,6 +133,7 @@ pub fn start_client(
         .write(clear_client_terminal_attributes.as_bytes())
         .unwrap();
     envs::set_zellij("0".to_string());
+    config.env.set_vars();
 
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
@@ -142,7 +146,10 @@ pub fn start_client(
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
-        palette,
+        style: Style {
+            colors: palette,
+            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+        },
     };
 
     let first_msg = match info {
@@ -190,7 +197,9 @@ pub fn start_client(
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
+        let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.unset_raw_mode(0);
             handle_panic(info, &send_client_instructions);
         })
     });
@@ -323,6 +332,7 @@ pub fn start_client(
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
             }
+            _ => {}
         }
     }
 

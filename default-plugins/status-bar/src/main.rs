@@ -10,7 +10,8 @@ use zellij_tile_utils::style;
 
 use first_line::{ctrl_keys, superkey};
 use second_line::{
-    fullscreen_panes_to_hide, keybinds, locked_fullscreen_panes_to_hide, system_clipboard_error,
+    floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
+    locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
     text_copied_hint,
 };
 use tip::utils::get_cached_tip_name;
@@ -24,7 +25,7 @@ struct State {
     tabs: Vec<TabInfo>,
     tip_name: String,
     mode_info: ModeInfo,
-    diplay_text_copied_hint: bool,
+    text_copy_destination: Option<CopyDestination>,
     display_system_clipboard_failure: bool,
 }
 
@@ -80,56 +81,64 @@ pub struct ColoredElements {
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
 fn color_elements(palette: Palette) -> ColoredElements {
+    let background = match palette.theme_hue {
+        ThemeHue::Dark => palette.black,
+        ThemeHue::Light => palette.white,
+    };
+    let foreground = match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    };
     match palette.source {
         PaletteSource::Default => ColoredElements {
-            selected_prefix_separator: style!(palette.gray, palette.green),
-            selected_char_left_separator: style!(palette.black, palette.green).bold(),
+            selected_prefix_separator: style!(background, palette.green),
+            selected_char_left_separator: style!(background, palette.green).bold(),
             selected_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_char_right_separator: style!(palette.black, palette.green).bold(),
-            selected_styled_text: style!(palette.black, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, palette.gray).bold(),
-            unselected_prefix_separator: style!(palette.gray, palette.fg),
-            unselected_char_left_separator: style!(palette.black, palette.fg).bold(),
+            selected_char_right_separator: style!(background, palette.green).bold(),
+            selected_styled_text: style!(background, palette.green).bold(),
+            selected_suffix_separator: style!(palette.green, background).bold(),
+            unselected_prefix_separator: style!(background, palette.fg),
+            unselected_char_left_separator: style!(background, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(palette.black, palette.fg).bold(),
-            unselected_styled_text: style!(palette.black, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, palette.gray),
-            disabled_prefix_separator: style!(palette.gray, palette.fg),
-            disabled_styled_text: style!(palette.gray, palette.fg).dimmed(),
-            disabled_suffix_separator: style!(palette.fg, palette.gray),
-            selected_single_letter_prefix_separator: style!(palette.gray, palette.green),
+            unselected_char_right_separator: style!(background, palette.fg).bold(),
+            unselected_styled_text: style!(background, palette.fg).bold(),
+            unselected_suffix_separator: style!(palette.fg, background),
+            disabled_prefix_separator: style!(background, palette.fg),
+            disabled_styled_text: style!(background, palette.fg).dimmed(),
+            disabled_suffix_separator: style!(palette.fg, background),
+            selected_single_letter_prefix_separator: style!(background, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_single_letter_suffix_separator: style!(palette.green, palette.gray),
-            unselected_single_letter_prefix_separator: style!(palette.gray, palette.fg),
-            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, palette.gray),
-            superkey_prefix: style!(palette.white, palette.gray).bold(),
-            superkey_suffix_separator: style!(palette.gray, palette.gray),
+            selected_single_letter_suffix_separator: style!(palette.green, background),
+            unselected_single_letter_prefix_separator: style!(background, palette.fg),
+            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold().dimmed(),
+            unselected_single_letter_suffix_separator: style!(palette.fg, background),
+            superkey_prefix: style!(foreground, background).bold(),
+            superkey_suffix_separator: style!(background, background),
         },
         PaletteSource::Xresources => ColoredElements {
-            selected_prefix_separator: style!(palette.gray, palette.green),
+            selected_prefix_separator: style!(background, palette.green),
             selected_char_left_separator: style!(palette.fg, palette.green).bold(),
             selected_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_char_right_separator: style!(palette.fg, palette.green).bold(),
-            selected_styled_text: style!(palette.gray, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, palette.gray).bold(),
-            unselected_prefix_separator: style!(palette.gray, palette.fg),
-            unselected_char_left_separator: style!(palette.gray, palette.fg).bold(),
+            selected_styled_text: style!(background, palette.green).bold(),
+            selected_suffix_separator: style!(palette.green, background).bold(),
+            unselected_prefix_separator: style!(background, palette.fg),
+            unselected_char_left_separator: style!(background, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(palette.gray, palette.fg).bold(),
-            unselected_styled_text: style!(palette.gray, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, palette.gray),
-            disabled_prefix_separator: style!(palette.gray, palette.fg),
-            disabled_styled_text: style!(palette.gray, palette.fg).dimmed(),
-            disabled_suffix_separator: style!(palette.fg, palette.gray),
+            unselected_char_right_separator: style!(background, palette.fg).bold(),
+            unselected_styled_text: style!(background, palette.fg).bold(),
+            unselected_suffix_separator: style!(palette.fg, background),
+            disabled_prefix_separator: style!(background, palette.fg),
+            disabled_styled_text: style!(background, palette.fg).dimmed(),
+            disabled_suffix_separator: style!(palette.fg, background),
             selected_single_letter_prefix_separator: style!(palette.fg, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_single_letter_suffix_separator: style!(palette.green, palette.fg),
-            unselected_single_letter_prefix_separator: style!(palette.fg, palette.gray),
+            unselected_single_letter_prefix_separator: style!(palette.fg, background),
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, palette.gray),
-            superkey_prefix: style!(palette.gray, palette.fg).bold(),
-            superkey_suffix_separator: style!(palette.fg, palette.gray),
+            unselected_single_letter_suffix_separator: style!(palette.fg, background),
+            superkey_prefix: style!(background, palette.fg).bold(),
+            superkey_suffix_separator: style!(palette.fg, background),
         },
     }
 }
@@ -156,14 +165,14 @@ impl ZellijPlugin for State {
             Event::TabUpdate(tabs) => {
                 self.tabs = tabs;
             }
-            Event::CopyToClipboard => {
-                self.diplay_text_copied_hint = true;
+            Event::CopyToClipboard(copy_destination) => {
+                self.text_copy_destination = Some(copy_destination);
             }
             Event::SystemClipboardFailure => {
                 self.display_system_clipboard_failure = true;
             }
             Event::InputReceived => {
-                self.diplay_text_copied_hint = false;
+                self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
             }
             _ => {}
@@ -174,10 +183,10 @@ impl ZellijPlugin for State {
         let separator = if !self.mode_info.capabilities.arrow_fonts {
             ARROW_SEPARATOR
         } else {
-            &""
+            ""
         };
 
-        let colored_elements = color_elements(self.mode_info.palette);
+        let colored_elements = color_elements(self.mode_info.style.colors);
         let superkey = superkey(colored_elements, separator);
         let ctrl_keys = ctrl_keys(
             &self.mode_info,
@@ -186,68 +195,16 @@ impl ZellijPlugin for State {
         );
 
         let first_line = format!("{}{}", superkey, ctrl_keys);
+        let second_line = self.second_line(cols);
 
-        let mut second_line = LinePart::default();
-        for t in &mut self.tabs {
-            if t.active {
-                match self.mode_info.mode {
-                    InputMode::Normal => {
-                        if t.is_fullscreen_active {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                fullscreen_panes_to_hide(&self.mode_info.palette, t.panes_to_hide)
-                            }
-                        } else {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
-                            }
-                        }
-                    }
-                    InputMode::Locked => {
-                        if t.is_fullscreen_active {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                locked_fullscreen_panes_to_hide(
-                                    &self.mode_info.palette,
-                                    t.panes_to_hide,
-                                )
-                            }
-                        } else {
-                            second_line = if self.diplay_text_copied_hint {
-                                text_copied_hint(&self.mode_info.palette)
-                            } else if self.display_system_clipboard_failure {
-                                system_clipboard_error(&self.mode_info.palette)
-                            } else {
-                                keybinds(&self.mode_info, &self.tip_name, cols)
-                            }
-                        }
-                    }
-                    _ => {
-                        second_line = if self.diplay_text_copied_hint {
-                            text_copied_hint(&self.mode_info.palette)
-                        } else if self.display_system_clipboard_failure {
-                            system_clipboard_error(&self.mode_info.palette)
-                        } else {
-                            keybinds(&self.mode_info, &self.tip_name, cols)
-                        }
-                    }
-                }
-            }
-        }
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
+        };
 
-        // [48;5;238m is gray background, [0K is so that it fills the rest of the line
+        // [48;5;238m is white background, [0K is so that it fills the rest of the line
         // [m is background reset, [0K is so that it clears the rest of the line
-        match self.mode_info.palette.gray {
+        match background {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
             }
@@ -256,5 +213,43 @@ impl ZellijPlugin for State {
             }
         }
         println!("\u{1b}[m{}\u{1b}[0K", second_line);
+    }
+}
+
+impl State {
+    fn second_line(&self, cols: usize) -> LinePart {
+        let active_tab = self.tabs.iter().find(|t| t.active);
+
+        if let Some(copy_destination) = self.text_copy_destination {
+            text_copied_hint(&self.mode_info.style.colors, copy_destination)
+        } else if self.display_system_clipboard_failure {
+            system_clipboard_error(&self.mode_info.style.colors)
+        } else if let Some(active_tab) = active_tab {
+            if active_tab.is_fullscreen_active {
+                match self.mode_info.mode {
+                    InputMode::Normal => fullscreen_panes_to_hide(
+                        &self.mode_info.style.colors,
+                        active_tab.panes_to_hide,
+                    ),
+                    InputMode::Locked => locked_fullscreen_panes_to_hide(
+                        &self.mode_info.style.colors,
+                        active_tab.panes_to_hide,
+                    ),
+                    _ => keybinds(&self.mode_info, &self.tip_name, cols),
+                }
+            } else if active_tab.are_floating_panes_visible {
+                match self.mode_info.mode {
+                    InputMode::Normal => floating_panes_are_visible(&self.mode_info.style.colors),
+                    InputMode::Locked => {
+                        locked_floating_panes_are_visible(&self.mode_info.style.colors)
+                    }
+                    _ => keybinds(&self.mode_info, &self.tip_name, cols),
+                }
+            } else {
+                keybinds(&self.mode_info, &self.tip_name, cols)
+            }
+        } else {
+            LinePart::default()
+        }
     }
 }

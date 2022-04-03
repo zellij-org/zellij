@@ -19,11 +19,14 @@ pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
 pub const MOVE_FOCUS_RIGHT_IN_NORMAL_MODE: [u8; 2] = [27, 108]; // alt-l
 
 pub const PANE_MODE: [u8; 1] = [16]; // ctrl-p
+pub const TMUX_MODE: [u8; 1] = [2]; // ctrl-b
 pub const SPAWN_TERMINAL_IN_PANE_MODE: [u8; 1] = [110]; // n
 pub const MOVE_FOCUS_IN_PANE_MODE: [u8; 1] = [112]; // p
 pub const SPLIT_DOWN_IN_PANE_MODE: [u8; 1] = [100]; // d
 pub const SPLIT_RIGHT_IN_PANE_MODE: [u8; 1] = [114]; // r
+pub const SPLIT_RIGHT_IN_TMUX_MODE: [u8; 1] = [37]; // %
 pub const TOGGLE_ACTIVE_TERMINAL_FULLSCREEN_IN_PANE_MODE: [u8; 1] = [102]; // f
+pub const TOGGLE_FLOATING_PANES: [u8; 1] = [119]; // w
 pub const CLOSE_PANE_IN_PANE_MODE: [u8; 1] = [120]; // x
 pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
 pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
@@ -55,15 +58,16 @@ pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[
 pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
 pub const SLEEP: [u8; 0] = [];
 
-// simplified, slighty adapted version of alacritty mouse reporting code
-pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
+pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
+    // button: (release is with lower case m, not supported here yet)
+    // 0 => left click
+    // 2 => right click
+    // 64 => scroll up
+    // 65 => scroll down
     let Position { line, column } = position;
-
-    let mut command = vec![b'\x1b', b'[', b'M', 32 + button];
-    command.push(32 + 1 + column.0 as u8);
-    command.push(32 + 1 + line.0 as u8);
-
-    command
+    format!("\u{1b}[<{};{};{}M", button, column.0, line.0)
+        .as_bytes()
+        .to_vec()
 }
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
@@ -244,7 +248,9 @@ pub fn scrolling_inside_a_pane() {
                         write!(&mut content_to_send, "{:0<58}", "line19 ").unwrap();
                         write!(&mut content_to_send, "{:0<57}", "line20 ").unwrap();
 
+                        remote_terminal.send_key(&BRACKETED_PASTE_START);
                         remote_terminal.send_key(content_to_send.as_bytes());
+                        remote_terminal.send_key(&BRACKETED_PASTE_END);
 
                         step_is_complete = true;
                     }
@@ -474,6 +480,7 @@ pub fn close_tab() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && !remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.tip_appears()
                 {
                     // cursor is in the first tab again
                     step_is_complete = true;
@@ -1026,7 +1033,7 @@ fn focus_pane_with_mouse() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(5, 2), 0));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(5, 2), 0));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1117,7 +1124,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(118, 20) {
                         // all lines have been written to the pane
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(2, 64), 64));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(2, 64), 64));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1634,8 +1641,10 @@ pub fn bracketed_paste() {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
                     remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                    remote_terminal.send_key("a".as_bytes());
+                    remote_terminal.send_key("b".as_bytes());
+                    remote_terminal.send_key("c".as_bytes());
                     remote_terminal.send_key(&BRACKETED_PASTE_END);
-                    remote_terminal.send_key("abc".as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1647,8 +1656,139 @@ pub fn bracketed_paste() {
             name: "Wait for terminal to render sent keys",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(9, 2) {
+                if remote_terminal.snapshot_contains("abc") {
                     // text has been entered into the only terminal pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn toggle_floating_panes() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Toggle floating panes",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&TOGGLE_FLOATING_PANES);
+                    // back to normal mode after split
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for new pane to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn focus_tab_with_layout() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let layout_file_name = "focus-tab-layout.yaml";
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_with_layout(fake_win_size, layout_file_name);
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.tip_appears()
+                    && remote_terminal.snapshot_contains("Tab #9")
+                    && remote_terminal.cursor_position_is(63, 2)
+                {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn tmux_mode() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&TMUX_MODE);
+                    remote_terminal.send_key(&SPLIT_RIGHT_IN_TMUX_MODE);
+                    // back to normal mode after split
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for new pane to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
+                    // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
                 step_is_complete

@@ -20,6 +20,14 @@ impl Position {
             column: Column(self.column.0.saturating_sub(column)),
         }
     }
+
+    pub fn line(&self) -> isize {
+        self.line.0
+    }
+
+    pub fn column(&self) -> usize {
+        self.column.0
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Deserialize, Serialize, PartialOrd)]

@@ -4,11 +4,25 @@ use ansi_term::{
     Style,
 };
 use zellij_tile::prelude::*;
+use zellij_tile_utils::palette_match;
 
 use crate::{
     tip::{data::TIPS, TipFn},
     LinePart, MORE_MSG,
 };
+
+#[derive(Clone, Copy)]
+enum StatusBarTextColor {
+    White,
+    Green,
+    Orange,
+}
+
+#[derive(Clone, Copy)]
+enum StatusBarTextBoldness {
+    Bold,
+    NotBold,
+}
 
 fn full_length_shortcut(
     is_first_shortcut: bool,
@@ -16,22 +30,19 @@ fn full_length_shortcut(
     description: &str,
     palette: Palette,
 ) -> LinePart {
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(white_color).paint(separator);
+    let separator = Style::new().fg(text_color).paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
+    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
     let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
+    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
     let description_len = description.chars().count();
-    let description = Style::new().fg(white_color).bold().paint(description);
+    let description = Style::new().fg(text_color).bold().paint(description);
     let len = shortcut_len + description_len + separator.chars().count();
     LinePart {
         part: ANSIStrings(&[
@@ -52,24 +63,21 @@ fn first_word_shortcut(
     description: &str,
     palette: Palette,
 ) -> LinePart {
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(white_color).paint(separator);
+    let separator = Style::new().fg(text_color).paint(separator);
     let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
+    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
     let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
+    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
     let description_first_word = description.split(' ').next().unwrap_or("");
     let description_first_word_length = description_first_word.chars().count();
     let description_first_word = Style::new()
-        .fg(white_color)
+        .fg(text_color)
         .bold()
         .paint(description_first_word);
     let len = shortcut_len + description_first_word_length + separator.chars().count();
@@ -89,92 +97,183 @@ fn first_word_shortcut(
 fn locked_interface_indication(palette: Palette) -> LinePart {
     let locked_text = " -- INTERFACE LOCKED -- ";
     let locked_text_len = locked_text.chars().count();
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let locked_styled_text = Style::new().fg(white_color).bold().paint(locked_text);
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let locked_styled_text = Style::new().fg(text_color).bold().paint(locked_text);
     LinePart {
         part: locked_styled_text.to_string(),
         len: locked_text_len,
     }
 }
 
-fn select_pane_shortcut(is_first_shortcut: bool, palette: Palette) -> LinePart {
-    let shortcut = "ENTER";
-    let description = "Select pane";
-    let separator = if is_first_shortcut { " " } else { " / " };
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let separator = Style::new().fg(white_color).paint(separator);
-    let shortcut_len = shortcut.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(white_color).paint("<");
-    let shortcut = Style::new().fg(orange_color).bold().paint(shortcut);
-    let shortcut_right_separator = Style::new().fg(white_color).paint("> ");
-    let description_len = description.chars().count();
-    let description = Style::new().fg(white_color).bold().paint(description);
-    let len = shortcut_len + description_len + separator.chars().count();
+fn show_extra_hints(
+    palette: Palette,
+    text_with_style: Vec<(&str, StatusBarTextColor, StatusBarTextBoldness)>,
+) -> LinePart {
+    use StatusBarTextBoldness::*;
+    use StatusBarTextColor::*;
+    // get the colors
+    let white_color = palette_match!(palette.white);
+    let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
+    // calculate length of tipp
+    let len = text_with_style
+        .iter()
+        .fold(0, |len_sum, (text, _, _)| len_sum + text.chars().count());
+    // apply the styles defined above
+    let styled_text = text_with_style
+        .into_iter()
+        .map(|(text, color, is_bold)| {
+            let color = match color {
+                White => white_color,
+                Green => green_color,
+                Orange => orange_color,
+            };
+            match is_bold {
+                Bold => Style::new().fg(color).bold().paint(text),
+                NotBold => Style::new().fg(color).paint(text),
+            }
+        })
+        .collect::<Vec<_>>();
     LinePart {
-        part: ANSIStrings(&[
-            separator,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            description,
-        ])
-        .to_string(),
+        part: ANSIStrings(&styled_text[..]).to_string(),
         len,
+    }
+}
+
+/// Creates hints for usage of Pane Mode
+fn confirm_pane_selection(palette: Palette) -> LinePart {
+    use StatusBarTextBoldness::*;
+    use StatusBarTextColor::*;
+    let text_with_style = [
+        (" / ", White, NotBold),
+        ("<ENTER>", Green, Bold),
+        (" Select pane", White, Bold),
+    ];
+    show_extra_hints(palette, text_with_style.to_vec())
+}
+
+/// Creates hints for usage of Rename Mode in Pane Mode
+fn select_pane_shortcut(palette: Palette) -> LinePart {
+    use StatusBarTextBoldness::*;
+    use StatusBarTextColor::*;
+    let text_with_style = [
+        (" / ", White, NotBold),
+        ("Alt", Orange, Bold),
+        (" + ", White, NotBold),
+        ("<", Green, Bold),
+        ("[]", Green, Bold),
+        (" or ", White, NotBold),
+        ("hjkl", Green, Bold),
+        (">", Green, Bold),
+        (" Select pane", White, Bold),
+    ];
+    show_extra_hints(palette, text_with_style.to_vec())
+}
+
+fn full_shortcut_list_nonstandard_mode(
+    extra_hint_producing_function: fn(Palette) -> LinePart,
+) -> impl FnOnce(&ModeInfo) -> LinePart {
+    move |help| {
+        let mut line_part = LinePart::default();
+        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
+            line_part.len += shortcut.len;
+            line_part.part = format!("{}{}", line_part.part, shortcut,);
+        }
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
+        line_part.len += select_pane_shortcut.len;
+        line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+        line_part
     }
 }
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.palette),
-        InputMode::Locked => locked_interface_indication(help.palette),
-        _ => {
-            let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = full_length_shortcut(i == 0, letter, description, help.palette);
-                line_part.len += shortcut.len;
-                line_part.part = format!("{}{}", line_part.part, shortcut,);
-            }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
-            line_part.len += select_pane_shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-            line_part
+        InputMode::Normal => tip(help.style.colors),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
+        InputMode::Tmux => full_tmux_mode_indication(help),
+        InputMode::RenamePane => full_shortcut_list_nonstandard_mode(select_pane_shortcut)(help),
+        _ => full_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+    }
+}
+
+fn shortened_shortcut_list_nonstandard_mode(
+    extra_hint_producing_function: fn(Palette) -> LinePart,
+) -> impl FnOnce(&ModeInfo) -> LinePart {
+    move |help| {
+        let mut line_part = LinePart::default();
+        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
+            line_part.len += shortcut.len;
+            line_part.part = format!("{}{}", line_part.part, shortcut,);
         }
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
+        line_part.len += select_pane_shortcut.len;
+        line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
+        line_part
     }
 }
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.palette),
-        InputMode::Locked => locked_interface_indication(help.palette),
-        _ => {
-            let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
-                line_part.len += shortcut.len;
-                line_part.part = format!("{}{}", line_part.part, shortcut,);
+        InputMode::Normal => tip(help.style.colors),
+        InputMode::Locked => locked_interface_indication(help.style.colors),
+        InputMode::Tmux => short_tmux_mode_indication(help),
+        InputMode::RenamePane => {
+            shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
+        }
+        _ => shortened_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+    }
+}
+
+fn best_effort_shortcut_list_nonstandard_mode(
+    extra_hint_producing_function: fn(Palette) -> LinePart,
+) -> impl FnOnce(&ModeInfo, usize) -> LinePart {
+    move |help, max_len| {
+        let mut line_part = LinePart::default();
+        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
+            if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
+                // TODO: better
+                line_part.part = format!("{}{}", line_part.part, MORE_MSG);
+                line_part.len += MORE_MSG.chars().count();
+                break;
             }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
+            line_part.len += shortcut.len;
+            line_part.part = format!("{}{}", line_part.part, shortcut);
+        }
+        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
+        if line_part.len + select_pane_shortcut.len <= max_len {
             line_part.len += select_pane_shortcut.len;
             line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-            line_part
         }
+        line_part
     }
+}
+
+fn best_effort_tmux_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
+    let mut line_part = tmux_mode_indication(help);
+    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
+        if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
+            // TODO: better
+            line_part.part = format!("{}{}", line_part.part, MORE_MSG);
+            line_part.len += MORE_MSG.chars().count();
+            break;
+        }
+        line_part.len += shortcut.len;
+        line_part.part = format!("{}{}", line_part.part, shortcut);
+    }
+    line_part
 }
 
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = tip(help.palette);
+            let line_part = tip(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -182,33 +281,18 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             }
         }
         InputMode::Locked => {
-            let line_part = locked_interface_indication(help.palette);
+            let line_part = locked_interface_indication(help.style.colors);
             if line_part.len <= max_len {
                 line_part
             } else {
                 LinePart::default()
             }
         }
-        _ => {
-            let mut line_part = LinePart::default();
-            for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-                let shortcut = first_word_shortcut(i == 0, letter, description, help.palette);
-                if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
-                    // TODO: better
-                    line_part.part = format!("{}{}", line_part.part, MORE_MSG);
-                    line_part.len += MORE_MSG.chars().count();
-                    break;
-                }
-                line_part.len += shortcut.len;
-                line_part.part = format!("{}{}", line_part.part, shortcut);
-            }
-            let select_pane_shortcut = select_pane_shortcut(help.keybinds.is_empty(), help.palette);
-            if line_part.len + select_pane_shortcut.len <= max_len {
-                line_part.len += select_pane_shortcut.len;
-                line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-            }
-            line_part
+        InputMode::Tmux => best_effort_tmux_shortcut_list(help, max_len),
+        InputMode::RenamePane => {
+            best_effort_shortcut_list_nonstandard_mode(select_pane_shortcut)(help, max_len)
         }
+        _ => best_effort_shortcut_list_nonstandard_mode(confirm_pane_selection)(help, max_len),
     }
 }
 
@@ -229,11 +313,15 @@ pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
     best_effort_shortcut_list(help, tip_body.short, max_width)
 }
 
-pub fn text_copied_hint(palette: &Palette) -> LinePart {
-    let hint = " Text copied to clipboard";
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
+pub fn text_copied_hint(palette: &Palette, copy_destination: CopyDestination) -> LinePart {
+    let green_color = palette_match!(palette.green);
+    let hint = match copy_destination {
+        CopyDestination::Command => "Text piped to external command",
+        #[cfg(not(target_os = "macos"))]
+        CopyDestination::Primary => "Text copied to primary selection",
+        #[cfg(target_os = "macos")] // primary selection does not exist on macos
+        CopyDestination::Primary => "Text copied to clipboard",
+        CopyDestination::System => "Text copied to clipboard",
     };
     LinePart {
         part: Style::new().fg(green_color).bold().paint(hint).to_string(),
@@ -243,10 +331,7 @@ pub fn text_copied_hint(palette: &Palette) -> LinePart {
 
 pub fn system_clipboard_error(palette: &Palette) -> LinePart {
     let hint = " Error using the system clipboard.";
-    let red_color = match palette.red {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
+    let red_color = palette_match!(palette.red);
     LinePart {
         part: Style::new().fg(red_color).bold().paint(hint).to_string(),
         len: hint.len(),
@@ -254,20 +339,14 @@ pub fn system_clipboard_error(palette: &Palette) -> LinePart {
 }
 
 pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
-    let white_color = match palette.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let green_color = match palette.green {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match palette.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
-    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
+    let shortcut_left_separator = Style::new().fg(text_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(text_color).bold().paint("): ");
     let fullscreen = "FULLSCREEN";
     let puls = "+ ";
     let panes = panes_to_hide.to_string();
@@ -283,15 +362,15 @@ pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> Line
             shortcut_left_separator,
             Style::new().fg(orange_color).bold().paint(fullscreen),
             shortcut_right_separator,
-            Style::new().fg(white_color).bold().paint(puls),
+            Style::new().fg(text_color).bold().paint(puls),
             Style::new().fg(green_color).bold().paint(panes),
-            Style::new().fg(white_color).bold().paint(hide)
+            Style::new().fg(text_color).bold().paint(hide)
         ),
         len,
     }
 }
 
-pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
+pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -304,9 +383,138 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) 
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
     };
-    let locked_text = " -- INTERFACE LOCKED -- ";
     let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
     let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let floating_panes = "FLOATING PANES VISIBLE";
+    let press = "Press ";
+    let ctrl = "Ctrl-p ";
+    let plus = "+ ";
+    let p_left_separator = "<";
+    let p = "w";
+    let p_right_separator = "> ";
+    let to_hide = "to hide.";
+
+    let len = floating_panes.chars().count()
+        + press.chars().count()
+        + ctrl.chars().count()
+        + plus.chars().count()
+        + p_left_separator.chars().count()
+        + p.chars().count()
+        + p_right_separator.chars().count()
+        + to_hide.chars().count()
+        + 5; // 3 for ():'s around floating_panes, 2 for the space
+    LinePart {
+        part: format!(
+            "{}{}{}{}{}{}{}{}{}{}",
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(floating_panes),
+            shortcut_right_separator,
+            Style::new().fg(white_color).bold().paint(press),
+            Style::new().fg(green_color).bold().paint(ctrl),
+            Style::new().fg(white_color).bold().paint(plus),
+            Style::new().fg(white_color).bold().paint(p_left_separator),
+            Style::new().fg(green_color).bold().paint(p),
+            Style::new().fg(white_color).bold().paint(p_right_separator),
+            Style::new().fg(white_color).bold().paint(to_hide),
+        ),
+        len,
+    }
+}
+
+pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
+    let white_color = match help.style.colors.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match help.style.colors.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let tmux_mode_text = "TMUX MODE";
+    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
+    let line_part = LinePart {
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
+    };
+    line_part
+}
+
+pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
+    let white_color = match help.style.colors.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match help.style.colors.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let tmux_mode_text = "TMUX MODE";
+    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
+    let mut line_part = LinePart {
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
+    };
+
+    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+        let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
+        line_part.len += shortcut.len;
+        line_part.part = format!("{}{}", line_part.part, shortcut,);
+    }
+    line_part
+}
+
+pub fn short_tmux_mode_indication(help: &ModeInfo) -> LinePart {
+    let white_color = match help.style.colors.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match help.style.colors.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
+    let tmux_mode_text = "TMUX MODE";
+    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
+    let mut line_part = LinePart {
+        part: format!(
+            "{}{}{}",
+            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
+        ),
+        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
+    };
+
+    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
+        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
+        line_part.len += shortcut.len;
+        line_part.part = format!("{}{}", line_part.part, shortcut);
+    }
+    line_part
+}
+
+pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let shortcut_left_separator = Style::new().fg(text_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(text_color).bold().paint("): ");
     let fullscreen = "FULLSCREEN";
     let puls = "+ ";
     let panes = panes_to_hide.to_string();
@@ -320,13 +528,40 @@ pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) 
     LinePart {
         part: format!(
             "{}{}{}{}{}{}{}",
-            Style::new().fg(white_color).bold().paint(locked_text),
+            Style::new().fg(text_color).bold().paint(locked_text),
             shortcut_left_separator,
             Style::new().fg(orange_color).bold().paint(fullscreen),
             shortcut_right_separator,
-            Style::new().fg(white_color).bold().paint(puls),
+            Style::new().fg(text_color).bold().paint(puls),
             Style::new().fg(green_color).bold().paint(panes),
-            Style::new().fg(white_color).bold().paint(hide)
+            Style::new().fg(text_color).bold().paint(hide)
+        ),
+        len,
+    }
+}
+
+pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
+    let white_color = match palette.white {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let orange_color = match palette.orange {
+        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
+        PaletteColor::EightBit(color) => Fixed(color),
+    };
+    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
+    let shortcut_right_separator = Style::new().fg(white_color).bold().paint(")");
+    let locked_text = " -- INTERFACE LOCKED -- ";
+    let floating_panes = "FLOATING PANES VISIBLE";
+
+    let len = locked_text.chars().count() + floating_panes.chars().count();
+    LinePart {
+        part: format!(
+            "{}{}{}{}",
+            Style::new().fg(white_color).bold().paint(locked_text),
+            shortcut_left_separator,
+            Style::new().fg(orange_color).bold().paint(floating_panes),
+            shortcut_right_separator,
         ),
         len,
     }

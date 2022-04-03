@@ -1,0 +1,57 @@
+# This is a workflow, consisting of jobs that only need to be run,
+# once `*nix`, or `flake.lock` files change
+name: nix-develop
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.nix'
+      - 'flake.lock'
+      - 'rust-toolchain'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**.nix'
+      - 'flake.lock'
+      - 'rust-toolchain'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: "nix check"
+    environment: cachix
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Nix Flakes doesn't work on shallow clones
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v16
+      - uses: cachix/cachix-action@v10
+        with:
+          name: zellij
+          # If you chose API tokens for write access OR if you have a private cache
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - run: nix develop .#fmtShell --command treefmt --fail-on-change
+      ## nix flake check still fails on IFD
+      #- run: nix flake check --print-build-logs --show-trace
+  develop:
+    runs-on: ubuntu-latest
+    name: "nix develop"
+    environment: cachix
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Nix Flakes doesn't work on shallow clones
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v16
+      - uses: cachix/cachix-action@v10
+        with:
+          name: zellij
+          # If you chose API tokens for write access OR if you have a private cache
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - run: nix develop --profile devShell

@@ -1,5 +1,5 @@
 use zellij_utils::pane_size::Size;
-use zellij_utils::{interprocess, libc, nix, signal_hook, termion, zellij_tile};
+use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};
@@ -19,6 +19,9 @@ use zellij_utils::{
 };
 
 const SIGWINCH_CB_THROTTLE_DURATION: time::Duration = time::Duration::from_millis(50);
+
+const ENABLE_MOUSE_SUPPORT: &str = "\u{1b}[?1000h\u{1b}[?1002h\u{1b}[?1015h\u{1b}[?1006h";
+const DISABLE_MOUSE_SUPPORT: &str = "\u{1b}[?1006l\u{1b}[?1015l\u{1b}[?1002l\u{1b}[?1000l";
 
 fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
@@ -66,7 +69,6 @@ pub struct ClientOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
-    mouse_term: Arc<Mutex<Option<termion::input::MouseTerminal<std::io::Stdout>>>>,
 }
 
 /// The `ClientOsApi` trait represents an abstract interface to the features of an operating system that
@@ -82,6 +84,7 @@ pub trait ClientOsApi: Send + Sync {
     fn unset_raw_mode(&self, fd: RawFd);
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
+    fn get_stdin_reader(&self) -> Box<dyn io::Read>;
     /// Returns the raw contents of standard input.
     fn read_from_stdin(&self) -> Vec<u8>;
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
@@ -128,6 +131,11 @@ impl ClientOsApi for ClientOsInputOutput {
         let stdout = ::std::io::stdout();
         Box::new(stdout)
     }
+    fn get_stdin_reader(&self) -> Box<dyn io::Read> {
+        let stdin = ::std::io::stdin();
+        Box::new(stdin)
+    }
+
     fn send_to_server(&self, msg: ClientToServerMsg) {
         self.send_instructions_to_server
             .lock()
@@ -198,17 +206,17 @@ impl ClientOsApi for ClientOsInputOutput {
         default_palette()
     }
     fn enable_mouse(&self) {
-        let mut mouse_term = self.mouse_term.lock().unwrap();
-        if mouse_term.is_none() {
-            *mouse_term = Some(termion::input::MouseTerminal::from(std::io::stdout()));
-        }
+        let _ = self
+            .get_stdout_writer()
+            .write(ENABLE_MOUSE_SUPPORT.as_bytes())
+            .unwrap();
     }
 
     fn disable_mouse(&self) {
-        let mut mouse_term = self.mouse_term.lock().unwrap();
-        if mouse_term.is_some() {
-            *mouse_term = None;
-        }
+        let _ = self
+            .get_stdout_writer()
+            .write(DISABLE_MOUSE_SUPPORT.as_bytes())
+            .unwrap();
     }
 
     fn stdin_poller(&self) -> StdinPoller {
@@ -225,12 +233,10 @@ impl Clone for Box<dyn ClientOsApi> {
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
     let orig_termios = Arc::new(Mutex::new(current_termios));
-    let mouse_term = Arc::new(Mutex::new(None));
     Ok(ClientOsInputOutput {
         orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
         receive_instructions_from_server: Arc::new(Mutex::new(None)),
-        mouse_term,
     })
 }
 

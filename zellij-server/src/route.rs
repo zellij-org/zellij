@@ -66,7 +66,7 @@ fn route_action(
                 .unwrap();
         }
         Action::SwitchToMode(mode) => {
-            let palette = session.palette;
+            let style = session.style;
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around
             // to allow for this
@@ -75,13 +75,13 @@ fn route_action(
                 .send_to_plugin(PluginInstruction::Update(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, palette, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, style, session.capabilities)),
                 ))
                 .unwrap();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, palette, session.capabilities),
+                    get_mode_info(mode, style, session.capabilities),
                     client_id,
                 ))
                 .unwrap();
@@ -225,6 +225,21 @@ fn route_action(
                 None => PtyInstruction::SpawnTerminal(shell, ClientOrTabIndex::ClientId(client_id)),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
+        }
+        Action::TogglePaneEmbedOrFloating => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::TogglePaneEmbedOrFloating(client_id))
+                .unwrap();
+        }
+        Action::ToggleFloatingPanes => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ToggleFloatingPanes(
+                    client_id,
+                    session.default_shell.clone(),
+                ))
+                .unwrap();
         }
         Action::PaneNameInput(c) => {
             session
@@ -445,6 +460,10 @@ pub(crate) fn route_thread_main(
             }
             ClientToServerMsg::KillSession => {
                 to_server.send(ServerInstruction::KillSession).unwrap();
+            }
+            ClientToServerMsg::ConnStatus => {
+                let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                break;
             }
         }
     }
