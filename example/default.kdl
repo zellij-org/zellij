@@ -1,5 +1,7 @@
 // Configuration for zellij.
 
+// FIXME: I suppose I'll eventually need to add tmux mode here?
+
 modes clear-defaults=true {
   // Can also use `shared` with a list of modes to include
   shared-except "locked" "renametab" "renamepane" {
@@ -33,23 +35,17 @@ modes clear-defaults=true {
     bind "Alt-n" {
       NewPane
     }
-    bind "Alt-h" {
+    bind "Alt-h" "Alt-Left" {
       MoveFocusOrTab "Left"
     }
-    bind "Alt-l" {
+    bind "Alt-l" "Alt-Right" {
       MoveFocusOrTab "Right"
     }
-    bind "Alt-j" {
+    bind "Alt-j" "Alt-Down" {
       MoveFocusOrTab "Down"
     }
-    bind "Alt-k" {
+    bind "Alt-k" "Alt-Up" {
       MoveFocusOrTab "Up"
-    }
-    bind "Alt-[" {
-      FocusPreviousPane
-    }
-    bind "Alt-]" {
-      FocusNextPane
     }
     bind "Alt-+" "Alt-=" {
       Resize "Increase"
@@ -299,6 +295,16 @@ plugins {
   }
 }
 
+ui {
+  // FIXME: This needs to absorb a couple of the options that already exist...
+  // This block should replace the `pane-frames` option and `simplified-ui`
+  // should be an item called `simplified` in this ui block... Maybe that
+  // doesn't work though, since these options can't be given as launch flags?
+  pane-frames {
+    rounded-corners true
+  }
+}
+
 options {
   on-force-close "quit"
   default-shell "fish"
@@ -308,4 +314,5 @@ options {
   pane-frames true
   mouse-support false
   scroll-buffer-size 10000
+  // FIXME: Add new clipboard options
 }
