@@ -816,7 +816,7 @@ impl Grid {
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self
             .scroll_region
-            .or(Some((0, self.height.saturating_sub(1))))
+            .or_else(|| Some((0, self.height.saturating_sub(1))))
         {
             for _ in 0..count {
                 if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
@@ -832,7 +832,7 @@ impl Grid {
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self
             .scroll_region
-            .or(Some((0, self.height.saturating_sub(1))))
+            .or_else(|| Some((0, self.height.saturating_sub(1))))
         {
             for _ in 0..count {
                 if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
