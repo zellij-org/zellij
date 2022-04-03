@@ -11,9 +11,9 @@ use std::convert::{TryFrom, TryInto};
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
-use super::theme::{ThemesFromYaml, UiConfigFromYaml};
+use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
-use crate::envs::EnvironmentVariablesFromYaml;
+use crate::envs::EnvironmentVariables;
 use crate::setup;
 
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
@@ -26,12 +26,12 @@ pub struct ConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
-    pub themes: Option<ThemesFromYaml>,
+    pub themes: Option<Themes>,
     #[serde(flatten)]
-    pub env: Option<EnvironmentVariablesFromYaml>,
+    pub env: Option<EnvironmentVariables>,
     #[serde(default)]
     pub plugins: PluginsConfigFromYaml,
-    pub ui: Option<UiConfigFromYaml>,
+    pub ui: Option<UiConfig>,
 }
 
 /// Main configuration.
@@ -39,10 +39,10 @@ pub struct ConfigFromYaml {
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
-    pub themes: Option<ThemesFromYaml>,
+    pub themes: Option<Themes>,
     pub plugins: PluginsConfig,
-    pub ui: Option<UiConfigFromYaml>,
-    pub env: EnvironmentVariablesFromYaml,
+    pub ui: Option<UiConfig>,
+    pub env: EnvironmentVariables,
 }
 
 #[derive(Error, Debug)]
@@ -72,7 +72,7 @@ impl Default for Config {
         let keybinds = Keybinds::default();
         let options = Options::default();
         let themes = None;
-        let env = EnvironmentVariablesFromYaml::default();
+        let env = EnvironmentVariables::default();
         let plugins = PluginsConfig::default();
         let ui = None;
 

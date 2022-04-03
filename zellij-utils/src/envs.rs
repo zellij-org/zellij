@@ -31,11 +31,11 @@ pub fn get_socket_dir() -> Result<String> {
 
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EnvironmentVariablesFromYaml {
+pub struct EnvironmentVariables {
     env: HashMap<String, String>,
 }
 
-impl EnvironmentVariablesFromYaml {
+impl EnvironmentVariables {
     /// Merges two structs, keys from `other` supercede keys from `self`
     pub fn merge(&self, other: Self) -> Self {
         let mut env = self.clone();

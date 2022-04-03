@@ -7,10 +7,10 @@ use zellij_tile::data::{Palette, PaletteColor};
 
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ThemesFromYaml(HashMap<String, Theme>);
+pub struct Themes(HashMap<String, Theme>);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct UiConfigFromYaml {
+pub struct UiConfig {
     pub pane_frames: FrameConfigFromYaml,
 }
 
@@ -56,7 +56,7 @@ impl Default for PaletteColorFromYaml {
     }
 }
 
-impl ThemesFromYaml {
+impl Themes {
     pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {
