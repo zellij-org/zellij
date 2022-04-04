@@ -30,7 +30,7 @@ flake-utils.lib.eachSystem [
 
   name = "zellij";
   pname = name;
-  root = toString ../.;
+  root = self;
 
   ignoreSource = [".git" "target" "example"];
 
@@ -47,21 +47,20 @@ flake-utils.lib.eachSystem [
   rustc = rustToolchainToml;
 
   buildInputs = [
-    rustToolchainToml
-
     # in order to run tests
     pkgs.openssl
   ];
 
   nativeBuildInputs = [
+    rustToolchainToml
+    # for openssl/openssl-sys
+    pkgs.pkg-config
+
     # generates manpages
     pkgs.mandown
 
     pkgs.installShellFiles
     pkgs.copyDesktopItems
-
-    # for openssl/openssl-sys
-    pkgs.pkg-config
   ];
 
   devInputs = [
