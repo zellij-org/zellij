@@ -8,4 +8,4 @@
 [toolchain]
 channel = "1.57.0"
 components = ["rustfmt", "clippy", "rust-analysis"]
-targets = ["wasm32-wasi"]
+targets = ["wasm32-wasi", "x86_64-unknown-linux-musl"]
