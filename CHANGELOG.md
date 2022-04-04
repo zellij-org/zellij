@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
+* repo: add `.git-blame-ignore-revs-file` (https://github.com/zellij-org/zellij/pull/1295)
+* add: `musl` target to `rust-toolchain` (https://github.com/zellij-org/zellij/pull/1294)
 
 ## [0.27.0] - 2022-03-31
 * Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)
