@@ -6,10 +6,10 @@ mod copy_command;
 
 use copy_command::CopyCommand;
 use zellij_tile::prelude::Style;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::screen::CopyOptions;
 use crate::ui::pane_boundaries_frame::FrameParams;
 
 use self::clipboard::ClipboardProvider;
@@ -88,6 +88,7 @@ pub(crate) struct Tab {
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
+    copy_on_release: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -279,8 +280,7 @@ impl Tab {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
-        copy_command: Option<String>,
-        copy_clipboard: Clipboard,
+        copy_options: CopyOptions,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -319,9 +319,9 @@ impl Tab {
             style,
         );
 
-        let clipboard_provider = match copy_command {
+        let clipboard_provider = match copy_options.command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
-            None => ClipboardProvider::Osc52(copy_clipboard),
+            None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
 
         Tab {
@@ -347,6 +347,7 @@ impl Tab {
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
+            copy_on_release: copy_options.copy_on_select,
         }
     }
 
@@ -1577,7 +1578,9 @@ impl Tab {
             return;
         }
 
+        // read these here to avoid use of borrowed `*self`, since we are holding active_pane
         let selecting = self.selecting_with_mouse;
+        let copy_on_release = self.copy_on_release;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
@@ -1594,12 +1597,16 @@ impl Tab {
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else if selecting {
-                active_pane.end_selection(&relative_position, client_id);
-                let selected_text = active_pane.get_selected_text();
-                active_pane.reset_selection();
-                if let Some(selected_text) = selected_text {
-                    self.write_selection_to_clipboard(&selected_text);
+                if copy_on_release {
+                    active_pane.end_selection(&relative_position, client_id);
+                    let selected_text = active_pane.get_selected_text();
+                    active_pane.reset_selection();
+
+                    if let Some(selected_text) = selected_text {
+                        self.write_selection_to_clipboard(&selected_text);
+                    }
                 }
+
                 self.selecting_with_mouse = false;
             }
         }

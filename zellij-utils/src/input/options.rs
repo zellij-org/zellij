@@ -84,9 +84,14 @@ pub struct Options {
     #[clap(long, arg_enum, ignore_case = true, conflicts_with = "copy-command")]
     #[serde(default)]
     pub copy_clipboard: Option<Clipboard>,
+
+    /// Automatically copy when selecting text (true or false)
+    #[clap(long)]
+    #[serde(default)]
+    pub copy_on_select: Option<bool>,
 }
 
-#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum Clipboard {
     #[serde(alias = "system")]
     System,
@@ -125,6 +130,7 @@ impl Options {
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
+        let copy_on_select = other.copy_on_select.or(self.copy_on_select);
 
         Options {
             simplified_ui,
@@ -139,6 +145,7 @@ impl Options {
             scroll_buffer_size,
             copy_command,
             copy_clipboard,
+            copy_on_select,
         }
     }
 
@@ -170,6 +177,7 @@ impl Options {
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
+        let copy_on_select = other.copy_on_select.or(self.copy_on_select);
 
         Options {
             simplified_ui,
@@ -184,6 +192,7 @@ impl Options {
             scroll_buffer_size,
             copy_command,
             copy_clipboard,
+            copy_on_select,
         }
     }
 
@@ -234,6 +243,7 @@ impl From<CliOptions> for Options {
             scroll_buffer_size: opts.scroll_buffer_size,
             copy_command: opts.copy_command,
             copy_clipboard: opts.copy_clipboard,
+            copy_on_select: opts.copy_on_select,
         }
     }
 }
