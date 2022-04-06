@@ -60,14 +60,14 @@ impl<'a> TiledPaneGrid<'a> {
         if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
             return;
         }
-        self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
         if self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
             return;
         }
-        self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_increase(&mut self, pane_id: &PaneId) {
         if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
