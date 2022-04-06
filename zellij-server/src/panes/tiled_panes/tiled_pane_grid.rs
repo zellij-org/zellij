@@ -41,54 +41,33 @@ impl<'a> TiledPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    pub fn resize_pane_left(&'a mut self, pane_id: &PaneId) {
+    pub fn resize_pane_left(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            // let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+        if self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_increase(&mut self, pane_id: &PaneId) {
         if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
