@@ -535,4 +535,7 @@ plugins:
 # Options:
 #   - system (default)
 #   - primary
-# copy_clipboard: primary
+#copy_clipboard: primary
+
+# Enable or disable automatic copy (and clear) of selection when releasing mouse
+#copy_on_select: true
