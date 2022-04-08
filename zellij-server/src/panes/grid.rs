@@ -1864,12 +1864,14 @@ impl Perform for Grid {
         } else if c == 'M' {
             // delete lines if currently inside scroll region
             let line_count_to_delete = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
             let line_count_to_add = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
             let column = next_param_or(1).saturating_sub(1);
