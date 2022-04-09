@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * add: `musl` target to `rust-toolchain` (https://github.com/zellij-org/zellij/pull/1294)
 * fix: update termwiz to fix crash when pasting on wsl (https://github.com/zellij-org/zellij/pull/1303)
 * add: nord theme example (https://github.com/zellij-org/zellij/pull/1304)
-* Terminal compatibility: preserve background color when scrolling (https://github.com/zellij-org/zellij/pull/1305)
+* Terminal compatibility: preserve background color when scrolling (https://github.com/zellij-org/zellij/pull/1305 and https://github.com/zellij-org/zellij/pull/1307)
 
 ## [0.27.0] - 2022-03-31
 * Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)
