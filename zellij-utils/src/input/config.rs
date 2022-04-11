@@ -5,12 +5,12 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::convert::{TryFrom, TryInto};
 
-use super::keybinds::{Keybinds, KeybindsFromYaml};
+use super::keybinds::Keybinds;
 use super::options::Options;
-use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
+use super::plugins::{PluginsConfig, PluginsConfigError};
 use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
@@ -19,20 +19,6 @@ use crate::setup;
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 
 type ConfigResult = Result<Config, ConfigError>;
-
-/// Intermediate deserialization config struct
-#[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
-pub struct ConfigFromYaml {
-    #[serde(flatten)]
-    pub options: Option<Options>,
-    pub keybinds: Option<KeybindsFromYaml>,
-    pub themes: Option<Themes>,
-    #[serde(flatten)]
-    pub env: Option<EnvironmentVariables>,
-    #[serde(default)]
-    pub plugins: PluginsConfigFromYaml,
-    pub ui: Option<UiConfig>,
-}
 
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -48,8 +34,9 @@ pub struct Config {
 #[derive(Error, Debug)]
 pub enum ConfigError {
     // Deserialization error
-    #[error("Deserialization error: {0}")]
-    Serde(#[from] serde_yaml::Error),
+    // FIXME: Does this still need to exist?
+    // #[error("Deserialization error: {0}")]
+    // Serde(#[from] !),
     // Io error
     #[error("IoError: {0}")]
     Io(#[from] io::Error),
@@ -121,24 +108,8 @@ impl TryFrom<&CliArgs> for Config {
 
 impl Config {
     /// Uses defaults, but lets config override them.
-    pub fn from_yaml(yaml_config: &str) -> ConfigResult {
-        let maybe_config_from_yaml: Option<ConfigFromYaml> = match serde_yaml::from_str(yaml_config)
-        {
-            Err(e) => {
-                // needs direct check, as `[ErrorImpl]` is private
-                // https://github.com/dtolnay/serde-yaml/issues/121
-                if yaml_config.is_empty() {
-                    return Ok(Config::default());
-                }
-                return Err(ConfigError::Serde(e));
-            }
-            Ok(config) => config,
-        };
-
-        match maybe_config_from_yaml {
-            None => Ok(Config::default()),
-            Some(config) => config.try_into(),
-        }
+    pub fn from_kdl(kdl_config: &str) -> ConfigResult {
+        todo!();
     }
 
     /// Deserializes from given path.
@@ -148,7 +119,7 @@ impl Config {
                 let mut yaml_config = String::new();
                 file.read_to_string(&mut yaml_config)
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
-                Ok(Config::from_yaml(&yaml_config)?)
+                Ok(Config::from_kdl(&yaml_config)?)
             }
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }
@@ -157,9 +128,10 @@ impl Config {
     /// Gets default configuration from assets
     // TODO Deserialize the Config from bytes &[u8],
     // once serde-yaml supports zero-copy
+    // FIXME: This can be revisited now!
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        Self::from_yaml(&cfg)
+        Self::from_kdl(&cfg)
     }
 
     /// Merges two Config structs into one Config struct
@@ -174,27 +146,6 @@ impl Config {
             plugins: self.plugins.merge(other.plugins),
             ui: self.ui, // TODO
         }
-    }
-}
-
-impl TryFrom<ConfigFromYaml> for Config {
-    type Error = ConfigError;
-
-    fn try_from(config_from_yaml: ConfigFromYaml) -> ConfigResult {
-        let keybinds = Keybinds::get_default_keybinds_with_config(config_from_yaml.keybinds);
-        let options = Options::from_yaml(config_from_yaml.options);
-        let themes = config_from_yaml.themes;
-        let env = config_from_yaml.env.unwrap_or_default();
-        let plugins = PluginsConfig::get_plugins_with_default(config_from_yaml.plugins.try_into()?);
-        let ui = config_from_yaml.ui;
-        Ok(Self {
-            keybinds,
-            options,
-            plugins,
-            themes,
-            env,
-            ui,
-        })
     }
 }
 

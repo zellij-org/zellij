@@ -18,7 +18,6 @@ pub use interprocess;
 pub use libc;
 pub use nix;
 pub use serde;
-pub use serde_yaml;
 pub use signal_hook;
 pub use termwiz;
 pub use vte;

@@ -5,6 +5,7 @@ mod input_handler;
 mod stdin_handler;
 
 use log::info;
+use zellij_utils::input::layout::Layout;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
@@ -17,6 +18,7 @@ use crate::{
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
 use zellij_tile::data::InputMode;
+use zellij_utils::cli::CliArgs;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::ZELLIJ_IPC_PIPE,
@@ -26,7 +28,6 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
-use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -116,7 +117,7 @@ pub fn start_client(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    layout: Option<LayoutFromYaml>,
+    layout: Option<Layout>,
 ) {
     info!("Starting Zellij client!");
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";

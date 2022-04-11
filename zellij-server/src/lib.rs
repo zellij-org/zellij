@@ -43,7 +43,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::LayoutFromYaml,
+        layout::Layout,
         options::Options,
         plugins::PluginsConfig,
     },
@@ -60,7 +60,7 @@ pub enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Box<LayoutFromYaml>,
+        Box<Layout>,
         ClientId,
         Option<PluginsConfig>,
     ),
