@@ -1,0 +1,81 @@
+template {
+  parts "Horizontal" {
+    pane fixed=1 {
+      borderless true
+      plugin "zellij:tab-bar"
+    }
+
+    body
+
+    pane fixed=2 {
+      borderless true
+      plugin "zellij:status-bar"
+    }
+  }
+}
+
+tabs {
+  pane {
+    parts "Vertical" {
+      pane percent=50 {
+        command "htop"
+      }
+      pane
+    }
+  }
+
+  pane {
+    parts "Vertical" {
+      pane
+      pane
+    }
+  }
+
+  pane {
+    parts "Vertical" {
+      pane
+      pane {
+        parts "Horizontal" {
+          pane
+          pane
+        }
+      }
+    }
+  }
+
+  pane
+
+  pane {
+    command "htop" "-C"
+  }
+
+  pane
+
+  pane {
+    parts "Vertical" {
+      pane percent=20 {
+        plugin "zellij:strider"
+      }
+      // This could also just be `pane` with the `percent=80` implied :)
+      // Writing it long-form here just to show that's also possible
+      pane percent=80 {
+        parts "Horizontal" {
+          pane
+          pane
+        }
+      }
+    }
+  }
+
+  pane {
+    parts "Vertical" {
+      pane percent=40
+      pane {
+        parts "Horizontal" {
+          pane
+          pane
+        }
+      }
+    }
+  }
+}

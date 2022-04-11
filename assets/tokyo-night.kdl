@@ -1,0 +1,49 @@
+// TokyoNight Theme/
+// Originally by https//github.com/enkia/tokyo-night-vscode-theme
+
+themes {
+  tokyo-night {
+    fg 169 177 214 //#A9B1D6
+    bg 26 27 38 //#1A1B26
+    gray 86 95 137 //#565F89
+    black 65 72 104 //#414868
+    red 247 118 142 //#F7768E
+    green 158 206 106  //#9ECE6A
+    yellow 224 175 104 //#E0AF68
+    blue 122 162 247  //#7AA2F7
+    magenta 187 154 247 //#BB9AF7
+    cyan 42 195 222 //#2AC3DE
+    white 192 202 245 //#C0CAF5
+    orange 255 158 100 //#FF9E64
+  }
+
+  tokyo-night-storm {
+    fg 169 177 214 //#A9B1D6
+    bg 36 40 59 //#24283B
+    gray 86 95 137 //#565F89
+    black 65 72 104 //#414868
+    red 247 118 142 //#F7768E
+    green 158 206 106  //#9ECE6A
+    yellow 224 175 104 //#E0AF68
+    blue 122 162 247  //#7AA2F7
+    magenta 187 154 247 //#BB9AF7
+    cyan 42 195 222 //#2AC3DE
+    white 192 202 245 //#C0CAF5
+    orange 255 158 100 //#FF9E64
+  }
+
+  tokyo-night-light {
+    fg 52 59 88 //#343B58
+    bg 213 214 219 //#D5D6DB
+    gray 150 153 163 //#9699A3
+    black 15 15 20 //#0F0F14
+    red 140 67 81 //#8C4351
+    green 72 94 48  //#485E30
+    yellow 143 94 21 //#8F5E15
+    blue 52 84 138  //#34548A
+    magenta 90 74 120 //#5A4A78
+    cyan 15 75 110 //#0F4B6E
+    white 52 59 88 //#343B58
+    orange 150 80 39 //#965027
+  }
+}
