@@ -185,3 +185,13 @@ in rec {
 
   devShell = devShells.zellij;
 })
+// rec {
+  overlays = {
+    default = final: prev: rec {
+      zellij = self.packages.${prev.system}.zellij;
+    };
+    nightly = final: prev: rec {
+      zellij-nightly = self.packages.${prev.system}.zellij;
+    };
+  };
+}
