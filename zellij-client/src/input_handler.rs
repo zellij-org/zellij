@@ -69,7 +69,18 @@ impl PixelCsiParser {
     }
     fn key_is_valid(&self, key: Key) -> bool {
         match key {
-            Key::Esc | Key::Char(';') | Key::Char('[') => true,
+            Key::Esc => {
+                // this is a UX improvement
+                // in case the user's terminal doesn't support one or more of these signals,
+                // if they spam ESC they need to be able to get back to normal mode and not "us
+                // waiting for pixel instructions" mode
+                if self.current_buffer.iter().find(|(key, _)| *key == Key::Esc).is_none() {
+                    true
+                } else {
+                    false
+                }
+            }
+            Key::Char(';') | Key::Char('[') => true,
             Key::Char(c) => {
                 if let '0'..='9' = c {
                     true
@@ -228,6 +239,14 @@ impl InputHandler {
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
                 }
+                Ok((InputInstruction::PossiblePixelRatioChange, _error_context)) => {
+                    #[cfg(not(test))] // TODO: find a way to test this, maybe by implementing the io::Write trait
+                    let _ = self.os_input
+                        .get_stdout_writer()
+                        .write(get_cell_pixel_info.as_bytes())
+                        .unwrap();
+                    pixel_csi_parser.increment_expected_csi_instructions(3);
+                }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }
@@ -264,7 +283,6 @@ impl InputHandler {
                     _ => {}
                 }
                 let pixel_dimensions = PixelDimensions { text_area_size, character_cell_size };
-                log::info!("pixel_dimensions: {:?}", pixel_dimensions);
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
                 // TODO: CONTINUE HERE (09/04) -
@@ -274,9 +292,12 @@ impl InputHandler {
                 //
                 // - then briefly experiment with fixing the cursor height width ratio thing with
                 // them - DONE
-                // - then do this whole thing on sigwinch
+                // - then do this whole thing on sigwinch - DONE
                 // - then respond ourselves to these queries
-                // - then extensively test (including unit tests) and merge
+                // - then extensively test (including unit tests), including terminals that don't
+                // support any of these
+                // - then refactor (move the pixel struc thing outside, send only the 2
+                // instructions and figure out what to do with the recommended 3rd, etc.)
             },
             Some(PixelInstructionOrKeys::Keys(keys)) => {
                 for (key, raw_bytes) in keys {

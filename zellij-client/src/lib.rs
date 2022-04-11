@@ -108,6 +108,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
+    PossiblePixelRatioChange,
 }
 
 pub fn start_client(
@@ -237,6 +238,7 @@ pub fn start_client(
     let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
+            let send_input_instructions = send_input_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 os_input.handle_signals(
@@ -246,6 +248,7 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
+                            let _ = send_input_instructions.send(InputInstruction::PossiblePixelRatioChange);
                         }
                     }),
                     Box::new({

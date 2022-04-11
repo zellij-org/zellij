@@ -8,7 +8,7 @@ use std::str;
 
 use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
 };
@@ -431,7 +431,6 @@ impl Screen {
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: Size) {
-        log::info!("pixel size: {:?}", self.pixel_dimensions);
         self.size = new_screen_size;
         for tab in self.tabs.values_mut() {
             tab.resize_whole_tab(new_screen_size);
@@ -440,15 +439,23 @@ impl Screen {
         self.render();
     }
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
+        log::info!("updating pixel dimensions: {:?}", pixel_dimensions);
         self.pixel_dimensions.merge(pixel_dimensions);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
             for tab in self.tabs.values_mut() {
                 tab.change_character_cell_size(character_cell_size);
             }
+        } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
+            let character_cell_size_height = text_area_size.height / self.size.rows;
+            let character_cell_size_width = text_area_size.width / self.size.cols;
+            let character_cell_size = SizeInPixels {
+                height: character_cell_size_height,
+                width: character_cell_size_width,
+            };
+            for tab in self.tabs.values_mut() {
+                tab.change_character_cell_size(character_cell_size);
+            }
         }
-        // TODO: if we don't have character_cell_size but do have text_window_cell_size (or however
-        // it's called) we can derive character_cell_size from there and from our own col/row
-        // dimensions
     }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
