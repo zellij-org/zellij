@@ -389,7 +389,7 @@ impl Grid {
         }
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = styles;
-        self.pad_current_line_until(self.cursor.x);
+        self.pad_current_line_until(self.cursor.x, empty_character);
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn move_to_previous_tabstop(&mut self) {
@@ -877,12 +877,16 @@ impl Grid {
                         self.viewport.remove(0);
                     }
 
-                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     self.viewport.push(Row::from_columns(columns).canonical());
                     self.selection.move_up(1);
                 } else {
                     self.viewport.remove(scroll_region_top);
-                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     if self.viewport.len() >= scroll_region_bottom {
                         self.viewport
                             .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
@@ -1065,13 +1069,13 @@ impl Grid {
         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
     }
 
-    fn pad_current_line_until(&mut self, position: usize) {
+    fn pad_current_line_until(&mut self, position: usize, pad_character: TerminalCharacter) {
         if self.viewport.get(self.cursor.y).is_none() {
-            self.pad_lines_until(self.cursor.y, EMPTY_TERMINAL_CHARACTER);
+            self.pad_lines_until(self.cursor.y, pad_character);
         }
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in current_row.width()..position {
-            current_row.push(EMPTY_TERMINAL_CHARACTER);
+            current_row.push(pad_character);
         }
         self.output_buffer.update_line(self.cursor.y);
     }
@@ -1097,13 +1101,13 @@ impl Grid {
                     self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
                 }
                 self.pad_lines_until(self.cursor.y, pad_character);
-                self.pad_current_line_until(self.cursor.x);
+                self.pad_current_line_until(self.cursor.x, pad_character);
             }
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
                 self.cursor.y = std::cmp::min(self.height - 1, y);
                 self.pad_lines_until(self.cursor.y, pad_character);
-                self.pad_current_line_until(self.cursor.x);
+                self.pad_current_line_until(self.cursor.x, pad_character);
             }
         }
     }
@@ -1176,7 +1180,9 @@ impl Grid {
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
         let bottom_line_index = bottom_line_index.unwrap_or(self.height);
         self.scroll_region = Some((top_line_index, bottom_line_index));
-        self.move_cursor_to(0, 0, EMPTY_TERMINAL_CHARACTER); // DECSTBM moves the cursor to column 1 line 1 of the page
+        let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+        pad_character.styles = self.cursor.pending_styles;
+        self.move_cursor_to(0, 0, pad_character); // DECSTBM moves the cursor to column 1 line 1 of the page
     }
     pub fn clear_scroll_region(&mut self) {
         self.scroll_region = None;
@@ -1238,18 +1244,20 @@ impl Grid {
     }
     pub fn move_cursor_to_column(&mut self, column: usize) {
         self.cursor.x = column;
-        self.pad_current_line_until(self.cursor.x);
+        let pad_character = EMPTY_TERMINAL_CHARACTER;
+        self.pad_current_line_until(self.cursor.x, pad_character);
     }
     pub fn move_cursor_to_line(&mut self, line: usize, pad_character: TerminalCharacter) {
         self.cursor.y = std::cmp::min(self.height - 1, line);
         self.pad_lines_until(self.cursor.y, pad_character);
-        self.pad_current_line_until(self.cursor.x);
+        let pad_character = EMPTY_TERMINAL_CHARACTER;
+        self.pad_current_line_until(self.cursor.x, pad_character);
     }
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
-        self.pad_current_line_until(pad_until);
+        self.pad_current_line_until(pad_until, empty_character);
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for i in 0..count {
             current_row.replace_character_at(empty_character, self.cursor.x + i);
@@ -1719,8 +1727,7 @@ impl Perform for Grid {
             // we subtract 1 from the row/column because these are 1 indexed
             let row = next_param_or(1).saturating_sub(1);
             let col = next_param_or(1).saturating_sub(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_to(col, row, pad_character);
+            self.move_cursor_to(col, row, EMPTY_TERMINAL_CHARACTER);
         } else if c == 'A' {
             // move cursor up until edge of screen
             let move_up_count = next_param_or(1);
@@ -1864,12 +1871,14 @@ impl Perform for Grid {
         } else if c == 'M' {
             // delete lines if currently inside scroll region
             let line_count_to_delete = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
             let line_count_to_add = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
             let column = next_param_or(1).saturating_sub(1);

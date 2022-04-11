@@ -17,6 +17,10 @@ flake-utils.lib.eachSystem [
   overlays = [(import rust-overlay)];
 
   pkgs = import nixpkgs {inherit system overlays;};
+  pkgsMusl = import nixpkgs {
+    inherit system overlays;
+    crossSystem = {config = "x86_64-unknown-linux-musl";};
+  };
 
   crate2nixPkgs = import nixpkgs {
     inherit system;
@@ -30,7 +34,7 @@ flake-utils.lib.eachSystem [
 
   name = "zellij";
   pname = name;
-  root = toString ../.;
+  root = self;
 
   ignoreSource = [".git" "target" "example"];
 
@@ -47,21 +51,20 @@ flake-utils.lib.eachSystem [
   rustc = rustToolchainToml;
 
   buildInputs = [
-    rustToolchainToml
-
     # in order to run tests
     pkgs.openssl
   ];
 
   nativeBuildInputs = [
+    rustToolchainToml
+    # for openssl/openssl-sys
+    pkgs.pkg-config
+
     # generates manpages
     pkgs.mandown
 
     pkgs.installShellFiles
     pkgs.copyDesktopItems
-
-    # for openssl/openssl-sys
-    pkgs.pkg-config
   ];
 
   devInputs = [
@@ -142,6 +145,19 @@ in rec {
       meta
       ;
   };
+  # musl cross-compilation - static binary
+  packages.zellij-musl = (pkgsMusl.makeRustPlatform {inherit rustc cargo;}).buildRustPackage {
+    inherit
+      src
+      name
+      cargoLock
+      postInstall
+      buildInputs
+      nativeBuildInputs
+      desktopItems
+      meta
+      ;
+  };
 
   defaultPackage = packages.zellij;
 
@@ -158,13 +174,24 @@ in rec {
       name = "fmt-shell";
       nativeBuildInputs = fmtInputs;
     };
-    e2eShell = pkgs.mkShell {
+    e2eShell = pkgs.pkgsMusl.mkShell {
       name = "e2e-shell";
       nativeBuildInputs = [
         pkgs.cargo-make
+        pkgs.pkgsMusl.cargo
       ];
     };
   };
 
   devShell = devShells.zellij;
 })
+// rec {
+  overlays = {
+    default = final: prev: rec {
+      zellij = self.packages.${prev.system}.zellij;
+    };
+    nightly = final: prev: rec {
+      zellij-nightly = self.packages.${prev.system}.zellij;
+    };
+  };
+}
