@@ -40,7 +40,7 @@ use zellij_utils::{
         layout::{Layout, Run},
         parse_keys,
     },
-    pane_size::{Offset, PaneGeom, Size, Viewport},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -72,6 +72,7 @@ pub(crate) struct Tab {
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
+    character_cell_size: Option<SizeInPixels>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -270,6 +271,7 @@ impl Tab {
         position: usize,
         name: String,
         display_area: Size,
+        character_cell_size: Option<SizeInPixels>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -288,6 +290,7 @@ impl Tab {
             name
         };
 
+        let cursor_height_width_ratio = None; // this is queried for later
         let mut connected_clients = HashSet::new();
         connected_clients.insert(client_id);
         let viewport: Viewport = display_area.into();
@@ -298,6 +301,7 @@ impl Tab {
 
         let tiled_panes = TiledPanes::new(
             display_area.clone(),
+            cursor_height_width_ratio,
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
@@ -333,6 +337,7 @@ impl Tab {
             max_panes,
             viewport,
             display_area,
+            character_cell_size,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -947,6 +952,10 @@ impl Tab {
             self.link_handler.clone(),
             floating_panes_stack,
         );
+//         output.add_pre_vte_instruction_to_multiple_clients(
+//             connected_clients.iter().copied(),
+//             "\u{1b}[16t"
+//         ); // TODO: removeme
 
         self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes
@@ -1050,6 +1059,12 @@ impl Tab {
         self.floating_panes.resize(new_screen_size);
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
+    }
+    pub fn change_character_cell_size(&mut self, character_cell_size: SizeInPixels) {
+        self.character_cell_size = Some(character_cell_size);
+        self.tiled_panes.change_cursor_height_width_ratio(
+            (character_cell_size.height as f64 / character_cell_size.width as f64).round() as usize
+        );
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {

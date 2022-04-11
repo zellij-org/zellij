@@ -430,6 +430,14 @@ pub(crate) fn route_thread_main(
                     .send_to_screen(ScreenInstruction::TerminalResize(min_size))
                     .unwrap();
             }
+            ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
+                rlocked_sessions
+                    .as_ref()
+                    .unwrap()
+                    .senders
+                    .send_to_screen(ScreenInstruction::TerminalPixelDimensions(pixel_dimensions))
+                    .unwrap();
+            }
             ClientToServerMsg::NewClient(
                 client_attributes,
                 cli_args,

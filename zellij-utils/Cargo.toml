@@ -38,6 +38,7 @@ log4rs = "1.0.0"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
 termwiz = "0.15.0"
+regex = "1.5.5"
 
 
 [dependencies.async-std]

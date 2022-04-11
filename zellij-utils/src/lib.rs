@@ -22,4 +22,6 @@ pub use serde_yaml;
 pub use signal_hook;
 pub use termwiz;
 pub use vte;
+pub use regex;
+pub use lazy_static;
 pub use zellij_tile;

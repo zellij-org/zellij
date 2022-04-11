@@ -2659,9 +2659,9 @@ dependencies = [
 
 [[package]]
 name = "vtparse"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f41c9314c4dde1f43dd0c46c67bb5ae73850ce11eebaf7d8b912e178bda5401"
+checksum = "36ce903972602c84dd48f488cdce39edcba03a93b7ca67b146ae862568f48c5c"
 dependencies = [
  "utf8parse",
 ]
@@ -3134,6 +3134,7 @@ dependencies = [
  "miette",
  "nix",
  "once_cell",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",

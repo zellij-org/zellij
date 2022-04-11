@@ -57,6 +57,7 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
 pub struct TiledPanes {
     pub panes: BTreeMap<PaneId, Box<dyn Pane>>,
     display_area: Rc<RefCell<Size>>,
+    cursor_height_width_ratio: Option<usize>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
@@ -75,6 +76,7 @@ impl TiledPanes {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         display_area: Rc<RefCell<Size>>,
+        cursor_height_width_ratio: Option<usize>,
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
@@ -88,6 +90,7 @@ impl TiledPanes {
         TiledPanes {
             panes: BTreeMap::new(),
             display_area,
+            cursor_height_width_ratio,
             viewport,
             connected_clients,
             connected_clients_in_app,
@@ -111,7 +114,7 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let pane_id_and_split_direction = pane_grid.find_room_for_new_pane();
+        let pane_id_and_split_direction = pane_grid.find_room_for_new_pane(self.cursor_height_width_ratio);
         if let Some((pane_id_to_split, split_direction)) = pane_id_and_split_direction {
             // this unwrap is safe because floating panes should not be visible if there are no floating panes
             let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
@@ -130,7 +133,7 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        pane_grid.find_room_for_new_pane().is_some()
+        pane_grid.find_room_for_new_pane(self.cursor_height_width_ratio).is_some()
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
         self.panes
@@ -414,6 +417,9 @@ impl TiledPanes {
             }
         }
         self.set_pane_frames(self.draw_pane_frames);
+    }
+    pub fn change_cursor_height_width_ratio(&mut self, ratio: usize) {
+        self.cursor_height_width_ratio = Some(ratio);
     }
     pub fn resize_active_pane_left(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
