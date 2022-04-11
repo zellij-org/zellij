@@ -1,8 +1,0 @@
----
-source: zellij-server/src/panes/./unit/grid_tests.rs
-expression: "format!(\"{:?}\", grid)"
-
----
-00 (C): Welcome to fish, the friendly interactive shell                                                         
-01 (C): ⋊> ~/c/zellij on main ⨯ ＨＨＨＨＨＨＨ                                                          15:19:10
-
