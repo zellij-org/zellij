@@ -850,7 +850,7 @@ fn session_name_to_layout_has_name() {
     let layout_template = layout_from_yaml.unwrap();
     let session_layout = layout_template.session;
 
-    let expected_session = SessionConfig {
+    let expected_session = SessionFromYaml {
         name: Some(String::from("zellij-session")),
         attach: Some(true),
     };

@@ -8,18 +8,22 @@
 //  place.
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
-use crate::serde;
 use crate::{
     input::{
         command::RunCommand,
         config::{ConfigError, LayoutNameInTabError},
     },
     pane_size::{Dimension, PaneGeom},
+    setup,
 };
+use crate::{serde, serde_yaml};
 
-use super::plugins::{PluginTag, PluginsConfigError};
+use super::{
+    config::ConfigFromYaml,
+    plugins::{PluginTag, PluginsConfigError},
+};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
 use std::{
     cmp::max,
@@ -27,6 +31,7 @@ use std::{
     ops::Not,
     path::{Path, PathBuf},
 };
+use std::{fs::File, io::prelude::*};
 use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
@@ -65,6 +70,23 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub enum RunFromYaml {
+    #[serde(rename = "plugin")]
+    Plugin(RunPluginFromYaml),
+    #[serde(rename = "command")]
+    Command(RunCommand),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[serde(crate = "self::serde")]
+pub struct RunPluginFromYaml {
+    #[serde(default)]
+    pub _allow_exec_host_cmd: bool,
+    pub location: Url,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -125,11 +147,263 @@ pub struct Layout {
     pub focus: Option<bool>,
 }
 
+// The struct that is used to deserialize the layout from
+// a yaml configuration file, is needed because of:
+// https://github.com/bincode-org/bincode/issues/245
+// flattened fields don't retain size information.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(crate = "self::serde")]
+#[serde(default)]
+pub struct LayoutFromYamlIntermediate {
+    #[serde(default)]
+    pub template: LayoutTemplate,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub tabs: Vec<TabLayout>,
+    #[serde(default)]
+    pub session: SessionFromYaml,
+    #[serde(flatten)]
+    pub config: Option<ConfigFromYaml>,
+}
+
+// The struct that is used to deserialize the layout from
+// a yaml configuration file
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(crate = "self::serde")]
+#[serde(default)]
+pub struct LayoutFromYaml {
+    #[serde(default)]
+    pub session: SessionFromYaml,
+    #[serde(default)]
+    pub template: LayoutTemplate,
+    #[serde(default)]
+    pub borderless: bool,
+    #[serde(default)]
+    pub tabs: Vec<TabLayout>,
+}
+
+type LayoutFromYamlIntermediateResult = Result<LayoutFromYamlIntermediate, ConfigError>;
+
+impl LayoutFromYamlIntermediate {
+    pub fn from_path(layout_path: &Path) -> LayoutFromYamlIntermediateResult {
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut layout = String::new();
+        layout_file.read_to_string(&mut layout)?;
+        let layout: Option<LayoutFromYamlIntermediate> = match serde_yaml::from_str(&layout) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if layout.is_empty() {
+                    return Ok(LayoutFromYamlIntermediate::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+
+        match layout {
+            Some(layout) => {
+                for tab in layout.tabs.clone() {
+                    tab.check()?;
+                }
+                Ok(layout)
+            }
+            None => Ok(LayoutFromYamlIntermediate::default()),
+        }
+    }
+
+    pub fn from_yaml(yaml: &str) -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate = match serde_yaml::from_str(yaml) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if yaml.is_empty() {
+                    return Ok(LayoutFromYamlIntermediate::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+        Ok(layout)
+    }
+
+    pub fn to_layout_and_config(&self) -> (LayoutFromYaml, Option<ConfigFromYaml>) {
+        let config = self.config.clone();
+        let layout = self.clone().into();
+        (layout, config)
+    }
+
+    pub fn from_path_or_default(
+        layout: Option<&PathBuf>,
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Option<LayoutFromYamlIntermediateResult> {
+        layout
+            .map(|p| LayoutFromYamlIntermediate::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| LayoutFromYamlIntermediate::from_path(p)))
+            .or_else(|| {
+                Some(LayoutFromYamlIntermediate::from_dir(
+                    &std::path::PathBuf::from("default"),
+                    layout_dir.as_ref(),
+                ))
+            })
+    }
+
+    // It wants to use Path here, but that doesn't compile.
+    #[allow(clippy::ptr_arg)]
+    pub fn from_dir(
+        layout: &PathBuf,
+        layout_dir: Option<&PathBuf>,
+    ) -> LayoutFromYamlIntermediateResult {
+        match layout_dir {
+            Some(dir) => Self::from_path(&dir.join(layout))
+                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout)),
+            None => LayoutFromYamlIntermediate::from_default_assets(layout),
+        }
+    }
+    // Currently still needed but on nightly
+    // this is already possible:
+    // HashMap<&'static str, Vec<u8>>
+    pub fn from_default_assets(path: &Path) -> LayoutFromYamlIntermediateResult {
+        match path.to_str() {
+            Some("default") => Self::default_from_assets(),
+            Some("strider") => Self::strider_from_assets(),
+            Some("disable-status-bar") => Self::disable_status_from_assets(),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+
+    // TODO Deserialize the assets from bytes &[u8],
+    // once serde-yaml supports zero-copy
+    pub fn default_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn strider_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+}
+
+type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
+
+impl LayoutFromYaml {
+    pub fn new(layout_path: &Path) -> LayoutFromYamlResult {
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut layout = String::new();
+        layout_file.read_to_string(&mut layout)?;
+        let layout: Option<LayoutFromYaml> = match serde_yaml::from_str(&layout) {
+            Err(e) => {
+                // needs direct check, as `[ErrorImpl]` is private
+                // https://github.com/dtolnay/serde-yaml/issues/121
+                if layout.is_empty() {
+                    return Ok(LayoutFromYaml::default());
+                }
+                return Err(ConfigError::Serde(e));
+            }
+            Ok(config) => config,
+        };
+
+        match layout {
+            Some(layout) => {
+                for tab in layout.tabs.clone() {
+                    tab.check()?;
+                }
+                Ok(layout)
+            }
+            None => Ok(LayoutFromYaml::default()),
+        }
+    }
+
+    // It wants to use Path here, but that doesn't compile.
+    #[allow(clippy::ptr_arg)]
+    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlResult {
+        match layout_dir {
+            Some(dir) => {
+                Self::new(&dir.join(layout)).or_else(|_| Self::from_default_assets(layout))
+            }
+            None => Self::from_default_assets(layout),
+        }
+    }
+
+    pub fn from_path_or_default(
+        layout: Option<&PathBuf>,
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Option<LayoutFromYamlResult> {
+        layout
+            .map(|p| LayoutFromYaml::from_dir(p, layout_dir.as_ref()))
+            .or_else(|| layout_path.map(|p| LayoutFromYaml::new(p)))
+            .or_else(|| {
+                Some(LayoutFromYaml::from_dir(
+                    &std::path::PathBuf::from("default"),
+                    layout_dir.as_ref(),
+                ))
+            })
+    }
+
+    // Currently still needed but on nightly
+    // this is already possible:
+    // HashMap<&'static str, Vec<u8>>
+    pub fn from_default_assets(path: &Path) -> LayoutFromYamlResult {
+        match path.to_str() {
+            Some("default") => Self::default_from_assets(),
+            Some("strider") => Self::strider_from_assets(),
+            Some("disable-status-bar") => Self::disable_status_from_assets(),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
+        }
+    }
+
+    // TODO Deserialize the assets from bytes &[u8],
+    // once serde-yaml supports zero-copy
+    pub fn default_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn strider_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn disable_status_from_assets() -> LayoutFromYamlResult {
+        let layout: LayoutFromYaml =
+            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+}
+
 // The struct that is used to deserialize the session from
 // a yaml configuration file
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct SessionConfig {
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(crate = "self::serde")]
+pub struct SessionFromYaml {
     pub name: Option<String>,
+    #[serde(default = "default_as_some_true")]
     pub attach: Option<bool>,
 }
 
@@ -153,7 +427,7 @@ pub struct LayoutTemplate {
     pub body: bool,
     pub split_size: Option<SplitSize>,
     pub focus: Option<bool>,
-    pub run: Option<Run>,
+    pub run: Option<RunFromYaml>,
 }
 
 impl LayoutTemplate {
@@ -199,7 +473,7 @@ pub struct TabLayout {
     #[serde(default)]
     pub name: String,
     pub focus: Option<bool>,
-    pub run: Option<Run>,
+    pub run: Option<RunFromYaml>,
 }
 
 impl TabLayout {
@@ -392,6 +666,49 @@ impl TryFrom<Url> for RunPluginLocation {
     }
 }
 
+impl TryFrom<RunFromYaml> for Run {
+    type Error = PluginsConfigError;
+
+    fn try_from(run: RunFromYaml) -> Result<Self, Self::Error> {
+        match run {
+            RunFromYaml::Command(command) => Ok(Run::Command(command)),
+            RunFromYaml::Plugin(plugin) => Ok(Run::Plugin(RunPlugin {
+                _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+                location: plugin.location.try_into()?,
+            })),
+        }
+    }
+}
+
+impl From<LayoutFromYamlIntermediate> for LayoutFromYaml {
+    fn from(layout_from_yaml_intermediate: LayoutFromYamlIntermediate) -> Self {
+        Self {
+            template: layout_from_yaml_intermediate.template,
+            borderless: layout_from_yaml_intermediate.borderless,
+            tabs: layout_from_yaml_intermediate.tabs,
+            session: layout_from_yaml_intermediate.session,
+        }
+    }
+}
+
+impl From<LayoutFromYaml> for LayoutFromYamlIntermediate {
+    fn from(layout_from_yaml: LayoutFromYaml) -> Self {
+        Self {
+            template: layout_from_yaml.template,
+            borderless: layout_from_yaml.borderless,
+            tabs: layout_from_yaml.tabs,
+            config: None,
+            session: layout_from_yaml.session,
+        }
+    }
+}
+
+impl Default for LayoutFromYamlIntermediate {
+    fn default() -> Self {
+        LayoutFromYaml::default().into()
+    }
+}
+
 impl TryFrom<TabLayout> for Layout {
     type Error = ConfigError;
 
@@ -403,7 +720,7 @@ impl TryFrom<TabLayout> for Layout {
             parts: Self::from_vec_tab_layout(tab.parts)?,
             split_size: tab.split_size,
             focus: tab.focus,
-            run: tab.run,
+            run: tab.run.map(Run::try_from).transpose()?,
         })
     }
 }
@@ -434,7 +751,12 @@ impl TryFrom<LayoutTemplate> for Layout {
             parts: Self::from_vec_template_layout(template.parts)?,
             split_size: template.split_size,
             focus: template.focus,
-            run: template.run,
+            run: template
+                .run
+                .map(Run::try_from)
+                // FIXME: This is just Result::transpose but that method is unstable, when it
+                // stabalizes we should swap this out.
+                .map_or(Ok(None), |r| r.map(Some))?,
         })
     }
 }

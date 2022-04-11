@@ -6,7 +6,8 @@ use crate::{
     },
     input::{
         config::{Config, ConfigError},
-        options::Options, layout::Layout,
+        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
+        options::Options,
     },
 };
 use clap::{Args, IntoApp};
@@ -163,7 +164,7 @@ impl Setup {
     /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
-    ) -> Result<(Config, Option<Layout>, Options), ConfigError> {
+    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
         let clean = match &opts.command {
             Some(Command::Setup(ref setup)) => setup.clean,
             _ => false,
@@ -197,7 +198,11 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = todo!();
+        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
+            opts.layout.as_ref(),
+            opts.layout_path.as_ref(),
+            layout_dir,
+        );
         let layout = match layout_result {
             None => None,
             Some(Ok(layout)) => Some(layout),
@@ -260,22 +265,21 @@ impl Setup {
 
     fn merge_config_with_layout(
         config: Config,
-        layout: Option<Layout>,
+        layout: Option<LayoutFromYamlIntermediate>,
         config_options: Options,
-    ) -> Result<(Config, Option<Layout>, Options), ConfigError> {
-            // FIXME: That's only maybe the right type
-        let (layout, layout_config): (Option<Layout>, Option<Config>) = match layout.map(|l| todo!()) {
+    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+        let (layout, layout_config) = match layout.map(|l| l.to_layout_and_config()) {
             None => (None, None),
             Some((layout, layout_config)) => (Some(layout), layout_config),
         };
 
         let (config, config_options) = if let Some(layout_config) = layout_config {
-            let config_options = if let Some(options) = todo!() {
+            let config_options = if let Some(options) = layout_config.options.clone() {
                 config_options.merge(options)
             } else {
                 config_options
             };
-            let config = todo!();
+            let config = config.merge(layout_config.try_into()?);
             (config, config_options)
         } else {
             (config, config_options)
@@ -416,7 +420,7 @@ mod setup_test {
         config: &str,
         layout: &str,
     ) -> Result<(Config, LayoutFromYamlIntermediate), ConfigError> {
-        let config = Config::from_kdl(config)?;
+        let config = Config::from_yaml(config)?;
         let layout = LayoutFromYamlIntermediate::from_yaml(layout)?;
         Ok((config, layout))
     }

@@ -23,7 +23,7 @@ use zellij_utils::{
     errors::{get_current_ctx, ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Layout, Run, TabLayout},
+        layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
     logging::debug_to_file,
 };
@@ -77,7 +77,7 @@ pub(crate) struct Pty {
 
 use std::convert::TryFrom;
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));

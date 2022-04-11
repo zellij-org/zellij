@@ -11,18 +11,49 @@ pub struct Themes(HashMap<String, Theme>);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct UiConfig {
-    pub pane_frames: FrameConfig,
+    pub pane_frames: FrameConfigFromYaml,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct FrameConfig {
+pub struct FrameConfigFromYaml {
     pub rounded_corners: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 struct Theme {
     #[serde(flatten)]
-    palette: Palette,
+    palette: PaletteFromYaml,
+}
+
+/// Intermediate deserialization struct
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub struct PaletteFromYaml {
+    pub fg: PaletteColorFromYaml,
+    pub bg: PaletteColorFromYaml,
+    pub black: PaletteColorFromYaml,
+    pub red: PaletteColorFromYaml,
+    pub green: PaletteColorFromYaml,
+    pub yellow: PaletteColorFromYaml,
+    pub blue: PaletteColorFromYaml,
+    pub magenta: PaletteColorFromYaml,
+    pub cyan: PaletteColorFromYaml,
+    pub white: PaletteColorFromYaml,
+    pub orange: PaletteColorFromYaml,
+}
+
+/// Intermediate deserialization enum
+// This is here in order to make the untagged enum work
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum PaletteColorFromYaml {
+    Rgb((u8, u8, u8)),
+    EightBit(u8),
+}
+
+impl Default for PaletteColorFromYaml {
+    fn default() -> Self {
+        PaletteColorFromYaml::EightBit(0)
+    }
 }
 
 impl Themes {
@@ -50,5 +81,34 @@ impl Themes {
         let mut theme = self.0.clone();
         theme.extend(other.0);
         Self(theme)
+    }
+}
+
+impl From<PaletteFromYaml> for Palette {
+    fn from(yaml: PaletteFromYaml) -> Self {
+        Palette {
+            fg: yaml.fg.into(),
+            bg: yaml.bg.into(),
+            black: yaml.black.into(),
+            red: yaml.red.into(),
+            green: yaml.green.into(),
+            yellow: yaml.yellow.into(),
+            blue: yaml.blue.into(),
+            magenta: yaml.magenta.into(),
+            cyan: yaml.cyan.into(),
+            white: yaml.white.into(),
+            orange: yaml.orange.into(),
+            theme_hue: detect_theme_hue(yaml.bg.into()),
+            ..Palette::default()
+        }
+    }
+}
+
+impl From<PaletteColorFromYaml> for PaletteColor {
+    fn from(yaml: PaletteColorFromYaml) -> Self {
+        match yaml {
+            PaletteColorFromYaml::Rgb(color) => PaletteColor::Rgb(color),
+            PaletteColorFromYaml::EightBit(color) => PaletteColor::EightBit(color),
+        }
     }
 }
