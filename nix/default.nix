@@ -40,7 +40,7 @@ flake-utils.lib.eachSystem [
 
   src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain;
+  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain.toml");
   cargoLock = {
     lockFile = builtins.path {
       path = ../Cargo.lock;
@@ -158,7 +158,6 @@ in rec {
       meta
       ;
   };
-
   defaultPackage = packages.zellij;
 
   # nix run
