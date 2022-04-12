@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
 * repo: add `.git-blame-ignore-revs-file` (https://github.com/zellij-org/zellij/pull/1295)
 * add: `musl` target to `rust-toolchain` (https://github.com/zellij-org/zellij/pull/1294)
+* fix: update termwiz to fix crash when pasting on wsl (https://github.com/zellij-org/zellij/pull/1303)
+* add: nord theme example (https://github.com/zellij-org/zellij/pull/1304)
+* Terminal compatibility: preserve background color when scrolling (https://github.com/zellij-org/zellij/pull/1305 and https://github.com/zellij-org/zellij/pull/1307)
+* add: `overlays` to the `flake` `outputs`  (https://github.com/zellij-org/zellij/pull/1312)
+* refactor: reduce code duplication in tiled_panes (https://github.com/zellij-org/zellij/pull/1299)
 
 ## [0.27.0] - 2022-03-31
 * Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)

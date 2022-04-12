@@ -37,8 +37,8 @@ log = "0.4.16"
 log4rs = "1.0.0"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
-termwiz = "0.15.0"
 regex = "1.5.5"
+termwiz = "0.16.0"
 
 
 [dependencies.async-std]
@@ -49,4 +49,4 @@ features = ["unstable"]
 tempfile = "3.2.0"
 
 [features]
-disable_automatic_asset_installation = [ ]
+disable_automatic_asset_installation = []
