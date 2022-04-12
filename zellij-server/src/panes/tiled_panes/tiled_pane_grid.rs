@@ -10,7 +10,6 @@ use zellij_utils::{
 };
 
 use std::cell::RefCell;
-use std::iter::Iterator;
 use std::rc::Rc;
 
 const RESIZE_PERCENT: f64 = 5.0;
