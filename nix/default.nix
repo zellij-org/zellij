@@ -179,7 +179,6 @@ in rec {
 
   defaultPackage = packages.zellij;
 
-
   # nix run
   apps.zellij = flake-utils.lib.mkApp {drv = packages.zellij;};
   defaultApp = apps.zellij;
