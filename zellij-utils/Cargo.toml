@@ -37,6 +37,7 @@ log = "0.4.16"
 log4rs = "1.0.0"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
+regex = "1.5.5"
 termwiz = "0.16.0"
 
 

@@ -1,5 +1,4 @@
 //! Main input logic.
-
 use zellij_utils::{
     input::{
         mouse::{MouseButton, MouseEvent},
@@ -10,7 +9,9 @@ use zellij_utils::{
 };
 
 use crate::{
-    os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting, InputInstruction,
+    os_input_output::ClientOsApi,
+    pixel_csi_parser::{PixelCsiParser, PixelDimensionsOrKeys},
+    ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
@@ -70,6 +71,15 @@ impl InputHandler {
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
+        // <ESC>[14t => get text area size in pixels, <ESC>[16t => get character cell size in pixels
+        let get_cell_pixel_info = "\u{1b}[14t\u{1b}[16t";
+        let _ = self
+            .os_input
+            .get_stdout_writer()
+            .write(get_cell_pixel_info.as_bytes())
+            .unwrap();
+        let mut pixel_csi_parser = PixelCsiParser::new();
+        pixel_csi_parser.increment_expected_csi_instructions(2);
         loop {
             if self.should_exit {
                 break;
@@ -79,7 +89,13 @@ impl InputHandler {
                     match input_event {
                         InputEvent::Key(key_event) => {
                             let key = cast_termwiz_key(key_event, &raw_bytes);
-                            self.handle_key(&key, raw_bytes);
+                            if pixel_csi_parser.expected_instructions() > 0 {
+                                self.handle_possible_pixel_instruction(
+                                    pixel_csi_parser.parse(key, raw_bytes),
+                                );
+                            } else {
+                                self.handle_key(&key, raw_bytes);
+                            }
                         }
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event =
@@ -101,6 +117,14 @@ impl InputHandler {
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
                 }
+                Ok((InputInstruction::PossiblePixelRatioChange, _error_context)) => {
+                    let _ = self
+                        .os_input
+                        .get_stdout_writer()
+                        .write(get_cell_pixel_info.as_bytes())
+                        .unwrap();
+                    pixel_csi_parser.increment_expected_csi_instructions(2);
+                }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }
@@ -112,6 +136,23 @@ impl InputHandler {
             if should_exit {
                 self.should_exit = true;
             }
+        }
+    }
+    fn handle_possible_pixel_instruction(
+        &mut self,
+        pixel_instruction_or_keys: Option<PixelDimensionsOrKeys>,
+    ) {
+        match pixel_instruction_or_keys {
+            Some(PixelDimensionsOrKeys::PixelDimensions(pixel_dimensions)) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
+            }
+            Some(PixelDimensionsOrKeys::Keys(keys)) => {
+                for (key, raw_bytes) in keys {
+                    self.handle_key(&key, raw_bytes);
+                }
+            }
+            None => {}
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

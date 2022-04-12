@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const RESIZE_PERCENT: f64 = 5.0;
-const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -1606,7 +1606,10 @@ impl<'a> TiledPaneGrid<'a> {
         }
         false
     }
-    pub fn find_room_for_new_pane(&self) -> Option<(PaneId, Direction)> {
+    pub fn find_room_for_new_pane(
+        &self,
+        cursor_height_width_ratio: Option<usize>,
+    ) -> Option<(PaneId, Direction)> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
@@ -1614,8 +1617,9 @@ impl<'a> TiledPaneGrid<'a> {
             (0, None),
             |(current_largest_pane_size, current_pane_id_to_split), id_and_pane_to_check| {
                 let (id_of_pane_to_check, pane_to_check) = id_and_pane_to_check;
-                let pane_size =
-                    (pane_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO) * pane_to_check.cols();
+                let pane_size = (pane_to_check.rows()
+                    * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO))
+                    * pane_to_check.cols();
                 let pane_can_be_split = pane_to_check.cols() >= MIN_TERMINAL_WIDTH
                     && pane_to_check.rows() >= MIN_TERMINAL_HEIGHT
                     && ((pane_to_check.cols() > pane_to_check.min_width() * 2)
@@ -1629,7 +1633,8 @@ impl<'a> TiledPaneGrid<'a> {
         );
         pane_id_to_split.and_then(|t_id_to_split| {
             let pane_to_split = panes.get(t_id_to_split).unwrap();
-            let direction = if pane_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO
+            let direction = if pane_to_split.rows()
+                * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
                 > pane_to_split.cols()
                 && pane_to_split.rows() > pane_to_split.min_height() * 2
             {

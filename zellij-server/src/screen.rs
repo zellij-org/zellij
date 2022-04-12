@@ -8,7 +8,7 @@ use std::str;
 
 use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
 };
@@ -27,7 +27,7 @@ use zellij_tile::data::{Event, InputMode, ModeInfo, PluginCapabilities, TabInfo}
 use zellij_utils::{
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
-    ipc::ClientAttributes,
+    ipc::{ClientAttributes, PixelDimensions},
 };
 
 /// Instructions that can be sent to the [`Screen`].
@@ -87,6 +87,7 @@ pub enum ScreenInstruction {
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     TerminalResize(Size),
+    TerminalPixelDimensions(PixelDimensions),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -162,6 +163,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
+            ScreenInstruction::TerminalPixelDimensions(..) => {
+                ScreenContext::TerminalPixelDimensions
+            }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -193,6 +197,8 @@ pub(crate) struct Screen {
     tabs: BTreeMap<usize, Tab>,
     /// The full size of this [`Screen`].
     size: Size,
+    pixel_dimensions: PixelDimensions,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -225,6 +231,8 @@ impl Screen {
             bus,
             max_panes,
             size: client_attributes.size,
+            pixel_dimensions: Default::default(),
+            character_cell_size: Rc::new(RefCell::new(None)),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
@@ -434,6 +442,20 @@ impl Screen {
         }
         self.render();
     }
+    pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
+        self.pixel_dimensions.merge(pixel_dimensions);
+        if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
+            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+        } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
+            let character_cell_size_height = text_area_size.height / self.size.rows;
+            let character_cell_size_width = text_area_size.width / self.size.cols;
+            let character_cell_size = SizeInPixels {
+                height: character_cell_size_height,
+                width: character_cell_size_width,
+            };
+            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
+        }
+    }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
@@ -514,6 +536,7 @@ impl Screen {
             position,
             String::new(),
             self.size,
+            self.character_cell_size.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -1253,6 +1276,9 @@ pub(crate) fn screen_thread_main(
                 screen.resize_to_screen(new_size);
 
                 screen.render();
+            }
+            ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
+                screen.update_pixel_dimensions(pixel_dimensions);
             }
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);

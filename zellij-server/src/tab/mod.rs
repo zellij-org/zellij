@@ -40,7 +40,7 @@ use zellij_utils::{
         layout::{Layout, Run},
         parse_keys,
     },
-    pane_size::{Offset, PaneGeom, Size, Viewport},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -72,6 +72,7 @@ pub(crate) struct Tab {
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -270,6 +271,7 @@ impl Tab {
         position: usize,
         name: String,
         display_area: Size,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -302,6 +304,7 @@ impl Tab {
             connected_clients.clone(),
             connected_clients_in_app.clone(),
             mode_info.clone(),
+            character_cell_size.clone(),
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
@@ -333,6 +336,7 @@ impl Tab {
             max_panes,
             viewport,
             display_area,
+            character_cell_size,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -413,6 +417,7 @@ impl Tab {
                     next_terminal_position,
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -640,6 +645,7 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -661,6 +667,7 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -689,6 +696,7 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -715,6 +723,7 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
