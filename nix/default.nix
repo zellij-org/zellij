@@ -40,10 +40,12 @@ flake-utils.lib.eachSystem [
 
   src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
+  cargoToml = builtins.fromTOML (builtins.readFile (src + ./Cargo.toml));
   rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain.toml");
+
   cargoLock = {
     lockFile = builtins.path {
-      path = ../Cargo.lock;
+      path = src + "/Cargo.lock";
       name = "Cargo.lock";
     };
   };
@@ -56,9 +58,13 @@ flake-utils.lib.eachSystem [
   ];
 
   nativeBuildInputs = [
-    rustToolchainToml
     # for openssl/openssl-sys
     pkgs.pkg-config
+
+    # default plugins
+    plugins.status-bar
+    plugins.tab-bar
+    plugins.strider
 
     # generates manpages
     pkgs.mandown
@@ -67,7 +73,15 @@ flake-utils.lib.eachSystem [
     pkgs.copyDesktopItems
   ];
 
+  pluginNativeBuildInputs = [
+    pkgs.pkg-config
+    # optimizes wasm binaries
+    pkgs.binaryen
+  ];
+
   devInputs = [
+    rustToolchainToml
+
     pkgs.cargo-make
     pkgs.rust-analyzer
 
@@ -82,6 +96,11 @@ flake-utils.lib.eachSystem [
     pkgs.alejandra
     pkgs.treefmt
   ];
+
+  plugins = import ./plugins.nix {
+    inherit root pkgs cargo rustc cargoLock buildInputs;
+    nativeBuildInputs = pluginNativeBuildInputs;
+  };
 
   postInstall = ''
     mandown ./docs/MANPAGE.md > ./zellij.1
@@ -98,6 +117,11 @@ flake-utils.lib.eachSystem [
     install -Dm644  ./assets/logo.png $out/share/icons/hicolor/scalable/apps/zellij.png
 
     copyDesktopItems
+  '';
+  patchPhase = ''
+    cp ${plugins.tab-bar}/bin/tab-bar.wasm assets/plugins/tab-bar.wasm
+    cp ${plugins.status-bar}/bin/status-bar.wasm assets/plugins/status-bar.wasm
+    cp ${plugins.strider}/bin/strider.wasm assets/plugins/strider.wasm
   '';
 
   desktopItems = [
@@ -124,10 +148,11 @@ in rec {
     inherit
       name
       src
-      nativeBuildInputs
       crate2nix
+      nativeBuildInputs
       desktopItems
       postInstall
+      patchPhase
       meta
       ;
   };
@@ -138,26 +163,20 @@ in rec {
       src
       name
       cargoLock
-      buildInputs
       nativeBuildInputs
+      buildInputs
       postInstall
+      patchPhase
       desktopItems
       meta
       ;
   };
-  # musl cross-compilation - static binary
-  packages.zellij-musl = (pkgsMusl.makeRustPlatform {inherit rustc cargo;}).buildRustPackage {
-    inherit
-      src
-      name
-      cargoLock
-      postInstall
-      buildInputs
-      nativeBuildInputs
-      desktopItems
-      meta
-      ;
-  };
+  packages.default = packages.zellij;
+
+  packages.plugins-status-bar = plugins.status-bar;
+  packages.plugins-tab-bar = plugins.tab-bar;
+  packages.plugins-strider = plugins.strider;
+
   defaultPackage = packages.zellij;
 
   # nix run
