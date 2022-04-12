@@ -11,8 +11,8 @@ use std::{
 
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    position::Position,
     pane_size::SizeInPixels,
+    position::Position,
     vte, zellij_tile,
 };
 
@@ -2014,14 +2014,21 @@ impl Perform for Grid {
             match next_param_or(1) as usize {
                 14 => {
                     if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let text_area_pixel_size_report = format!("\x1b[4;{};{}t", character_cell_size.height * self.height, character_cell_size.width * self.width);
+                        let text_area_pixel_size_report = format!(
+                            "\x1b[4;{};{}t",
+                            character_cell_size.height * self.height,
+                            character_cell_size.width * self.width
+                        );
                         self.pending_messages_to_pty
                             .push(text_area_pixel_size_report.as_bytes().to_vec());
                     }
                 }
                 16 => {
                     if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-                        let character_cell_size_report = format!("\x1b[6;{};{}t", character_cell_size.height, character_cell_size.width);
+                        let character_cell_size_report = format!(
+                            "\x1b[6;{};{}t",
+                            character_cell_size.height, character_cell_size.width
+                        );
                         self.pending_messages_to_pty
                             .push(character_cell_size_report.as_bytes().to_vec());
                     }

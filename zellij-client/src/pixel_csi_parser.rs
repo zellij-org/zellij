@@ -1,13 +1,7 @@
 //! Main input logic.
-use zellij_utils::{
-    pane_size::SizeInPixels,
-};
+use zellij_utils::pane_size::SizeInPixels;
 
-use zellij_utils::{
-    ipc::PixelDimensions,
-    regex::Regex,
-    lazy_static::lazy_static,
-};
+use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
 use zellij_tile::data::Key;
 
@@ -27,7 +21,8 @@ impl PixelCsiParser {
         self.expected_pixel_csi_instructions += by;
     }
     pub fn decrement_expected_csi_instructions(&mut self, by: usize) {
-        self.expected_pixel_csi_instructions = self.expected_pixel_csi_instructions.saturating_sub(by);
+        self.expected_pixel_csi_instructions =
+            self.expected_pixel_csi_instructions.saturating_sub(by);
     }
     pub fn expected_instructions(&self) -> usize {
         self.expected_pixel_csi_instructions
@@ -40,10 +35,12 @@ impl PixelCsiParser {
                     self.decrement_expected_csi_instructions(1);
                     self.current_buffer.clear();
                     Some(pixel_instruction)
-                },
+                }
                 Err(_) => {
                     self.expected_pixel_csi_instructions = 0;
-                    Some(PixelDimensionsOrKeys::Keys(self.current_buffer.drain(..).collect()))
+                    Some(PixelDimensionsOrKeys::Keys(
+                        self.current_buffer.drain(..).collect(),
+                    ))
                 }
             }
         } else if self.key_is_valid(key) {
@@ -52,7 +49,9 @@ impl PixelCsiParser {
         } else {
             self.current_buffer.push((key, raw_bytes));
             self.expected_pixel_csi_instructions = 0;
-            Some(PixelDimensionsOrKeys::Keys(self.current_buffer.drain(..).collect()))
+            Some(PixelDimensionsOrKeys::Keys(
+                self.current_buffer.drain(..).collect(),
+            ))
         }
     }
     fn key_is_valid(&self, key: Key) -> bool {
@@ -62,7 +61,12 @@ impl PixelCsiParser {
                 // in case the user's terminal doesn't support one or more of these signals,
                 // if they spam ESC they need to be able to get back to normal mode and not "us
                 // waiting for pixel instructions" mode
-                if self.current_buffer.iter().find(|(key, _)| *key == Key::Esc).is_none() {
+                if self
+                    .current_buffer
+                    .iter()
+                    .find(|(key, _)| *key == Key::Esc)
+                    .is_none()
+                {
                     true
                 } else {
                     false
@@ -76,13 +80,14 @@ impl PixelCsiParser {
                     false
                 }
             }
-            _ => false
+            _ => false,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum PixelDimensionsOrKeys { // TODO: rename to PixelDimensionsOrKeys
+pub enum PixelDimensionsOrKeys {
+    // TODO: rename to PixelDimensionsOrKeys
     PixelDimensions(PixelDimensions),
     Keys(Vec<(Key, Vec<u8>)>),
 }
@@ -92,16 +97,20 @@ impl PixelDimensionsOrKeys {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
         }
-        let key_sequence: Vec<Option<char>> = keys.iter().map(|(key, _)| {
-            match key {
+        let key_sequence: Vec<Option<char>> = keys
+            .iter()
+            .map(|(key, _)| match key {
                 Key::Char(c) => Some(*c),
                 Key::Esc => Some('\u{1b}'),
                 _ => None,
-            }
-        }).collect();
+            })
+            .collect();
         if key_sequence.iter().all(|k| k.is_some()) {
             let key_string: String = key_sequence.iter().map(|k| k.unwrap()).collect();
-            let captures = RE.captures_iter(&key_string).next().ok_or("invalid_instruction")?;
+            let captures = RE
+                .captures_iter(&key_string)
+                .next()
+                .ok_or("invalid_instruction")?;
             let csi_index = captures[1].parse::<usize>();
             let first_field = captures[2].parse::<usize>();
             let second_field = captures[3].parse::<usize>();
@@ -116,9 +125,9 @@ impl PixelDimensionsOrKeys {
                         text_area_size: Some(SizeInPixels {
                             height: first_field.unwrap(),
                             width: second_field.unwrap(),
-                        })
+                        }),
                     }))
-                },
+                }
                 Ok(6) => {
                     // character cell size
                     Ok(PixelDimensionsOrKeys::PixelDimensions(PixelDimensions {
@@ -128,10 +137,8 @@ impl PixelDimensionsOrKeys {
                         }),
                         text_area_size: None,
                     }))
-                },
-                _ => {
-                    Err("invalid sequence")
                 }
+                _ => Err("invalid sequence"),
             }
         } else {
             Err("invalid sequence")

@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, ServerToClientMsg, PixelDimensions},
+    ipc::{ClientToServerMsg, PixelDimensions, ServerToClientMsg},
 };
 
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
@@ -77,9 +77,7 @@ struct FakeStdoutWriter {
 }
 impl FakeStdoutWriter {
     pub fn new(buffer: Arc<Mutex<Vec<u8>>>) -> Self {
-        FakeStdoutWriter {
-            buffer
-        }
+        FakeStdoutWriter { buffer }
     }
 }
 impl io::Write for FakeStdoutWriter {
@@ -90,7 +88,6 @@ impl io::Write for FakeStdoutWriter {
     fn flush(&mut self) -> Result<(), io::Error> {
         Ok(())
     }
-
 }
 
 #[derive(Clone)]
@@ -312,22 +309,18 @@ pub fn move_focus_left_in_normal_mode() {
 
 #[test]
 pub fn pixel_info_queried_from_terminal_emulator() {
-    let stdin_events = vec![
-        (
-            commands::QUIT.to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('q'),
-                modifiers: Modifiers::CTRL,
-            }),
-        ),
-    ];
+    let stdin_events = vec![(
+        commands::QUIT.to_vec(),
+        InputEvent::Key(KeyEvent {
+            key: KeyCode::Char('q'),
+            modifiers: Modifiers::CTRL,
+        }),
+    )];
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(
-        events_sent_to_server.clone(),
-        command_is_executing.clone(),
-    );
+    let client_os_api =
+        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -441,10 +434,8 @@ pub fn pixel_info_sent_to_server() {
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(
-        events_sent_to_server.clone(),
-        command_is_executing.clone(),
-    );
+    let client_os_api =
+        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -474,7 +465,8 @@ pub fn pixel_info_sent_to_server() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server.clone());
+    let pixel_events_sent_to_server =
+        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
     assert_eq!(actions_sent_to_server, vec![Action::Quit]);
     assert_eq!(
         pixel_events_sent_to_server,
@@ -565,10 +557,8 @@ pub fn corrupted_pixel_info_sent_as_key_events() {
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(
-        events_sent_to_server.clone(),
-        command_is_executing.clone(),
-    );
+    let client_os_api =
+        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -598,23 +588,24 @@ pub fn corrupted_pixel_info_sent_as_key_events() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server.clone());
-    assert_eq!(actions_sent_to_server, vec![
-        Action::Write(vec![27]),
-        Action::Write(vec![b'[']),
-        Action::Write(vec![b'f']),
-        Action::Write(vec![b';']),
-        Action::Write(vec![b'1']),
-        Action::Write(vec![b'0']),
-        Action::Write(vec![b';']),
-        Action::Write(vec![b'5']),
-        Action::Write(vec![b't']),
-        Action::Quit
-    ]);
+    let pixel_events_sent_to_server =
+        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
     assert_eq!(
-        pixel_events_sent_to_server,
-        vec![],
+        actions_sent_to_server,
+        vec![
+            Action::Write(vec![27]),
+            Action::Write(vec![b'[']),
+            Action::Write(vec![b'f']),
+            Action::Write(vec![b';']),
+            Action::Write(vec![b'1']),
+            Action::Write(vec![b'0']),
+            Action::Write(vec![b';']),
+            Action::Write(vec![b'5']),
+            Action::Write(vec![b't']),
+            Action::Quit
+        ]
     );
+    assert_eq!(pixel_events_sent_to_server, vec![],);
 }
 
 #[test]
@@ -694,10 +685,8 @@ pub fn esc_in_the_middle_of_pixelinfo_breaks_out_of_it() {
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(
-        events_sent_to_server.clone(),
-        command_is_executing.clone(),
-    );
+    let client_os_api =
+        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -727,22 +716,22 @@ pub fn esc_in_the_middle_of_pixelinfo_breaks_out_of_it() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server.clone());
-    assert_eq!(actions_sent_to_server, vec![
-        Action::Write(vec![27]),
-        Action::Write(vec![b'[']),
-        Action::Write(vec![27]),
-        Action::Write(vec![b';']),
-        Action::Write(vec![b'1']),
-        Action::Write(vec![b'0']),
-        Action::Write(vec![b';']),
-        Action::Write(vec![b'5']),
-        Action::Write(vec![b't']),
-        Action::Quit
-    ]);
+    let pixel_events_sent_to_server =
+        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
     assert_eq!(
-        pixel_events_sent_to_server,
-        vec![],
+        actions_sent_to_server,
+        vec![
+            Action::Write(vec![27]),
+            Action::Write(vec![b'[']),
+            Action::Write(vec![27]),
+            Action::Write(vec![b';']),
+            Action::Write(vec![b'1']),
+            Action::Write(vec![b'0']),
+            Action::Write(vec![b';']),
+            Action::Write(vec![b'5']),
+            Action::Write(vec![b't']),
+            Action::Quit
+        ]
     );
+    assert_eq!(pixel_events_sent_to_server, vec![],);
 }
-

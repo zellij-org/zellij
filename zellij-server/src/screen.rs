@@ -163,7 +163,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
-            ScreenInstruction::TerminalPixelDimensions(..) => ScreenContext::TerminalPixelDimensions,
+            ScreenInstruction::TerminalPixelDimensions(..) => {
+                ScreenContext::TerminalPixelDimensions
+            }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,

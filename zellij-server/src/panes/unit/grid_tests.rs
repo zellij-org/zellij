@@ -3,7 +3,7 @@ use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::{position::Position, vte, zellij_tile::data::Palette, pane_size::SizeInPixels};
+use zellij_utils::{pane_size::SizeInPixels, position::Position, vte, zellij_tile::data::Palette};
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -1715,7 +1715,10 @@ fn terminal_pixel_size_reports() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
-        Rc::new(RefCell::new(Some(SizeInPixels{ height: 21, width: 8}))),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            height: 21,
+            width: 8,
+        }))),
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -1723,7 +1726,10 @@ fn terminal_pixel_size_reports() {
         vte_parser.advance(&mut grid, byte);
     }
     assert_eq!(
-        grid.pending_messages_to_pty.iter().map(|bytes| String::from_utf8(bytes.clone()).unwrap()).collect::<Vec<String>>(),
+        grid.pending_messages_to_pty
+            .iter()
+            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
+            .collect::<Vec<String>>(),
         vec!["\x1b[4;1071;776t", "\x1b[6;21;8t"]
     );
 }
@@ -1745,7 +1751,10 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     }
     let expected: Vec<String> = vec![];
     assert_eq!(
-        grid.pending_messages_to_pty.iter().map(|bytes| String::from_utf8(bytes.clone()).unwrap()).collect::<Vec<String>>(),
+        grid.pending_messages_to_pty
+            .iter()
+            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
+            .collect::<Vec<String>>(),
         expected,
     );
 }

@@ -103,7 +103,7 @@ fn create_new_tab(size: Size) -> Tab {
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let copy_command = None;
-    let character_cell_info =  Rc::new(RefCell::new(None));
+    let character_cell_info = Rc::new(RefCell::new(None));
     let clipboard = Clipboard::default();
     let mut tab = Tab::new(
         index,

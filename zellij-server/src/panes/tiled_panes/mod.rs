@@ -115,7 +115,8 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let pane_id_and_split_direction = pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
+        let pane_id_and_split_direction =
+            pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
         if let Some((pane_id_to_split, split_direction)) = pane_id_and_split_direction {
             // this unwrap is safe because floating panes should not be visible if there are no floating panes
             let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
@@ -135,7 +136,9 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        pane_grid.find_room_for_new_pane(cursor_height_width_ratio).is_some()
+        pane_grid
+            .find_room_for_new_pane(cursor_height_width_ratio)
+            .is_some()
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
         self.panes

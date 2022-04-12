@@ -128,7 +128,10 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
-fn create_new_tab_with_cell_size(size: Size, character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Tab {
+fn create_new_tab_with_cell_size(
+    size: Size,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -13944,7 +13947,6 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
     );
 }
 
-
 #[test]
 pub fn custom_cursor_height_width_ratio() {
     let size = Size {
@@ -13954,8 +13956,18 @@ pub fn custom_cursor_height_width_ratio() {
     let character_cell_size = Rc::new(RefCell::new(None));
     let tab = create_new_tab_with_cell_size(size, character_cell_size.clone());
     let initial_cursor_height_width_ratio = tab.tiled_panes.cursor_height_width_ratio();
-    *character_cell_size.borrow_mut() = Some(SizeInPixels { height: 10, width: 4 });
+    *character_cell_size.borrow_mut() = Some(SizeInPixels {
+        height: 10,
+        width: 4,
+    });
     let cursor_height_width_ratio_after_update = tab.tiled_panes.cursor_height_width_ratio();
-    assert_eq!(initial_cursor_height_width_ratio, None, "initially no ratio ");
-    assert_eq!(cursor_height_width_ratio_after_update, Some(3), "ratio updated successfully"); // 10 / 4 == 2.5, rounded: 3
+    assert_eq!(
+        initial_cursor_height_width_ratio, None,
+        "initially no ratio "
+    );
+    assert_eq!(
+        cursor_height_width_ratio_after_update,
+        Some(3),
+        "ratio updated successfully"
+    ); // 10 / 4 == 2.5, rounded: 3
 }

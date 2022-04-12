@@ -2,8 +2,8 @@ pub mod os_input_output;
 
 mod command_is_executing;
 mod input_handler;
-mod stdin_handler;
 mod pixel_csi_parser;
+mod stdin_handler;
 
 use log::info;
 use std::env::current_exe;
@@ -249,7 +249,8 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
-                            let _ = send_input_instructions.send(InputInstruction::PossiblePixelRatioChange);
+                            let _ = send_input_instructions
+                                .send(InputInstruction::PossiblePixelRatioChange);
                         }
                     }),
                     Box::new({
