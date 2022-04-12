@@ -41,8 +41,8 @@ flake-utils.lib.eachSystem [
   src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
   cargoToml = builtins.fromTOML (builtins.readFile (src + ./Cargo.toml));
+  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain.toml");
 
-  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain");
   cargoLock = {
     lockFile = builtins.path {
       path = src + "/Cargo.lock";
@@ -176,6 +176,9 @@ in rec {
   packages.plugins-status-bar = plugins.status-bar;
   packages.plugins-tab-bar = plugins.tab-bar;
   packages.plugins-strider = plugins.strider;
+
+  defaultPackage = packages.zellij;
+
 
   # nix run
   apps.zellij = flake-utils.lib.mkApp {drv = packages.zellij;};
