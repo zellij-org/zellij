@@ -1,4 +1,3 @@
-//! Main input logic.
 use zellij_utils::pane_size::SizeInPixels;
 
 use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};

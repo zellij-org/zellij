@@ -956,10 +956,6 @@ impl Tab {
             self.link_handler.clone(),
             floating_panes_stack,
         );
-        //         output.add_pre_vte_instruction_to_multiple_clients(
-        //             connected_clients.iter().copied(),
-        //             "\u{1b}[16t"
-        //         ); // TODO: removeme
 
         self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes

@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const RESIZE_PERCENT: f64 = 5.0;
-const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -1610,10 +1610,6 @@ impl<'a> TiledPaneGrid<'a> {
         &self,
         cursor_height_width_ratio: Option<usize>,
     ) -> Option<(PaneId, Direction)> {
-        log::info!(
-            "find_room_for_new_pane, cursor_height_width_ratio: {:?}",
-            cursor_height_width_ratio
-        );
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
