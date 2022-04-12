@@ -34,7 +34,7 @@ pub struct Size {
     pub cols: usize,
 }
 
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SizeInPixels {
     pub height: usize,
     pub width: usize,

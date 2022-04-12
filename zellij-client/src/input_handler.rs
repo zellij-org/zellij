@@ -4,139 +4,25 @@ use zellij_utils::{
         mouse::{MouseButton, MouseEvent},
         options::Options,
     },
-    pane_size::SizeInPixels,
     termwiz::input::InputEvent,
     zellij_tile,
 };
 
 use crate::{
-    os_input_output::ClientOsApi, ClientInstruction, CommandIsExecuting, InputInstruction,
+    os_input_output::ClientOsApi,
+    ClientInstruction,
+    CommandIsExecuting,
+    InputInstruction,
+    pixel_csi_parser::{PixelCsiParser, PixelDimensionsOrKeys},
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     errors::{ContextType, ErrorContext},
     input::{actions::Action, cast_termwiz_key, config::Config, keybinds::Keybinds},
-    ipc::{ClientToServerMsg, ExitReason, PixelDimensions},
-    regex::Regex,
-    lazy_static::lazy_static,
+    ipc::{ClientToServerMsg, ExitReason},
 };
 
 use zellij_tile::data::{InputMode, Key};
-
-struct PixelCsiParser {
-    expected_pixel_csi_instructions: usize,
-    current_buffer: Vec<(Key, Vec<u8>)>,
-}
-
-impl PixelCsiParser {
-    pub fn new() -> Self {
-        PixelCsiParser {
-            expected_pixel_csi_instructions: 0,
-            current_buffer: vec![],
-        }
-    }
-    pub fn increment_expected_csi_instructions(&mut self, by: usize) {
-        self.expected_pixel_csi_instructions += by;
-    }
-    pub fn decrement_expected_csi_instructions(&mut self, by: usize) {
-        self.expected_pixel_csi_instructions = self.expected_pixel_csi_instructions.saturating_sub(by);
-    }
-    pub fn expected_instructions(&self) -> usize {
-        self.expected_pixel_csi_instructions
-    }
-    pub fn parse(&mut self, key: Key, raw_bytes: Vec<u8>) -> Option<PixelInstructionOrKeys> {
-        if let Key::Char('t') = key {
-            self.current_buffer.push((key, raw_bytes));
-            match PixelInstructionOrKeys::pixel_instruction_from_keys(&self.current_buffer) {
-                Ok(pixel_instruction) => {
-                    self.decrement_expected_csi_instructions(1);
-                    self.current_buffer.clear();
-                    Some(pixel_instruction)
-                },
-                Err(_) => {
-                    self.expected_pixel_csi_instructions = 0;
-                    Some(PixelInstructionOrKeys::Keys(self.current_buffer.drain(..).collect()))
-                }
-            }
-        } else if self.key_is_valid(key) {
-            self.current_buffer.push((key, raw_bytes));
-            None
-        } else {
-            self.current_buffer.push((key, raw_bytes));
-            self.expected_pixel_csi_instructions = 0;
-            Some(PixelInstructionOrKeys::Keys(self.current_buffer.drain(..).collect()))
-        }
-    }
-    fn key_is_valid(&self, key: Key) -> bool {
-        match key {
-            Key::Esc => {
-                // this is a UX improvement
-                // in case the user's terminal doesn't support one or more of these signals,
-                // if they spam ESC they need to be able to get back to normal mode and not "us
-                // waiting for pixel instructions" mode
-                if self.current_buffer.iter().find(|(key, _)| *key == Key::Esc).is_none() {
-                    true
-                } else {
-                    false
-                }
-            }
-            Key::Char(';') | Key::Char('[') => true,
-            Key::Char(c) => {
-                if let '0'..='9' = c {
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => false
-        }
-    }
-}
-
-#[derive(Debug)]
-enum PixelInstructionOrKeys {
-    PixelInstruction(PixelInstruction),
-    Keys(Vec<(Key, Vec<u8>)>),
-}
-
-impl PixelInstructionOrKeys {
-    pub fn pixel_instruction_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
-        }
-        let key_sequence: Vec<Option<char>> = keys.iter().map(|(key, _)| {
-            match key {
-                Key::Char(c) => Some(*c),
-                Key::Esc => Some('\u{1b}'),
-                _ => None,
-            }
-        }).collect();
-        if key_sequence.iter().all(|k| k.is_some()) {
-            let key_string: String = key_sequence.iter().map(|k| k.unwrap()).collect();
-            let captures = RE.captures_iter(&key_string).next().ok_or("invalid_instruction")?;
-            let csi_index = captures[1].parse::<usize>();
-            let first_field = captures[2].parse::<usize>();
-            let second_field = captures[3].parse::<usize>();
-            if csi_index.is_err() || first_field.is_err() || second_field.is_err() {
-                return Err("invalid_instruction");
-            }
-            return Ok(PixelInstructionOrKeys::PixelInstruction(PixelInstruction {
-                csi_index: csi_index.unwrap(),
-                first_field: first_field.unwrap(),
-                second_field: second_field.unwrap(),
-            }))
-        } else {
-            return Err("invalid sequence");
-        }
-    }
-}
-
-#[derive(Debug)]
-struct PixelInstruction {
-    csi_index: usize,
-    first_field: usize,
-    second_field: usize,
-}
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
@@ -187,23 +73,14 @@ impl InputHandler {
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
-        // TODO:
-        // * send the pixel stuff from here
-        // * increment the "expected_pixel_csi_instructions" counter when doing so
-        // * whenever the counter is greater than 0, we should be using it instead of the
-        // handle_key stuff
-        // * as soon as the parser sees something it doesn't recognize, it dumps all of its buffer
-        // into handle_key one byte at a time
-        // * otherwise it builds pixel instructions until its done, decrementing the counter for
-        // every pixel instruction
-        let get_cell_pixel_info = "\u{1b}[14t\u{1b}[16t\u{1b}[18t";
-        #[cfg(not(test))] // TODO: find a way to test this, maybe by implementing the io::Write trait
+        // <ESC>[14t => get text area size in pixels, <ESC>[16t => get character cell size in pixels
+        let get_cell_pixel_info = "\u{1b}[14t\u{1b}[16t";
         let _ = self.os_input
             .get_stdout_writer()
             .write(get_cell_pixel_info.as_bytes())
             .unwrap();
         let mut pixel_csi_parser = PixelCsiParser::new();
-        pixel_csi_parser.increment_expected_csi_instructions(3);
+        pixel_csi_parser.increment_expected_csi_instructions(2);
         loop {
             if self.should_exit {
                 break;
@@ -240,12 +117,11 @@ impl InputHandler {
                     self.mode = input_mode;
                 }
                 Ok((InputInstruction::PossiblePixelRatioChange, _error_context)) => {
-                    #[cfg(not(test))] // TODO: find a way to test this, maybe by implementing the io::Write trait
                     let _ = self.os_input
                         .get_stdout_writer()
                         .write(get_cell_pixel_info.as_bytes())
                         .unwrap();
-                    pixel_csi_parser.increment_expected_csi_instructions(3);
+                    pixel_csi_parser.increment_expected_csi_instructions(2);
                 }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
@@ -260,46 +136,13 @@ impl InputHandler {
             }
         }
     }
-    fn handle_possible_pixel_instruction(&mut self, pixel_instruction_or_keys: Option<PixelInstructionOrKeys>) {
-        let mut text_area_size = None;
-        let mut character_cell_size = None;
+    fn handle_possible_pixel_instruction(&mut self, pixel_instruction_or_keys: Option<PixelDimensionsOrKeys>) {
         match pixel_instruction_or_keys {
-            Some(PixelInstructionOrKeys::PixelInstruction(pixel_instruction)) => {
-                match pixel_instruction.csi_index {
-                    4 => {
-                        // text area size
-                        text_area_size = Some(SizeInPixels {
-                            height: pixel_instruction.first_field,
-                            width: pixel_instruction.second_field,
-                        });
-                    },
-                    6 => {
-                        // character cell size
-                        character_cell_size = Some(SizeInPixels {
-                            height: pixel_instruction.first_field,
-                            width: pixel_instruction.second_field,
-                        });
-                    },
-                    _ => {}
-                }
-                let pixel_dimensions = PixelDimensions { text_area_size, character_cell_size };
+            Some(PixelDimensionsOrKeys::PixelDimensions(pixel_dimensions)) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
-                // TODO: CONTINUE HERE (09/04) -
-                // - send these to the server and log them on screen - DONE
-                // - calculate the pixel_instruction stuff from the csis and then them to the
-                // server - DONE
-                //
-                // - then briefly experiment with fixing the cursor height width ratio thing with
-                // them - DONE
-                // - then do this whole thing on sigwinch - DONE
-                // - then respond ourselves to these queries
-                // - then extensively test (including unit tests), including terminals that don't
-                // support any of these
-                // - then refactor (move the pixel struc thing outside, send only the 2
-                // instructions and figure out what to do with the recommended 3rd, etc.)
             },
-            Some(PixelInstructionOrKeys::Keys(keys)) => {
+            Some(PixelDimensionsOrKeys::Keys(keys)) => {
                 for (key, raw_bytes) in keys {
                     self.handle_key(&key, raw_bytes);
                 }

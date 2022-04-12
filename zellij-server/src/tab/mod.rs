@@ -72,7 +72,7 @@ pub(crate) struct Tab {
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
-    character_cell_size: Option<SizeInPixels>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -271,7 +271,7 @@ impl Tab {
         position: usize,
         name: String,
         display_area: Size,
-        character_cell_size: Option<SizeInPixels>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -290,7 +290,6 @@ impl Tab {
             name
         };
 
-        let cursor_height_width_ratio = None; // this is queried for later
         let mut connected_clients = HashSet::new();
         connected_clients.insert(client_id);
         let viewport: Viewport = display_area.into();
@@ -301,11 +300,11 @@ impl Tab {
 
         let tiled_panes = TiledPanes::new(
             display_area.clone(),
-            cursor_height_width_ratio,
             viewport.clone(),
             connected_clients.clone(),
             connected_clients_in_app.clone(),
             mode_info.clone(),
+            character_cell_size.clone(),
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
@@ -418,6 +417,7 @@ impl Tab {
                     next_terminal_position,
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -645,6 +645,7 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -666,6 +667,7 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -694,6 +696,7 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -720,6 +723,7 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -1059,12 +1063,6 @@ impl Tab {
         self.floating_panes.resize(new_screen_size);
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
-    }
-    pub fn change_character_cell_size(&mut self, character_cell_size: SizeInPixels) {
-        self.character_cell_size = Some(character_cell_size);
-        self.tiled_panes.change_cursor_height_width_ratio(
-            (character_cell_size.height as f64 / character_cell_size.width as f64).round() as usize
-        );
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {

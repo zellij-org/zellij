@@ -103,12 +103,14 @@ fn create_new_tab(size: Size) -> Tab {
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let copy_command = None;
+    let character_cell_info =  Rc::new(RefCell::new(None));
     let clipboard = Clipboard::default();
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
+        character_cell_info,
         os_api,
         senders,
         max_panes,
@@ -151,6 +153,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
         columns,
         palette,
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -171,6 +174,7 @@ fn take_snapshot_and_cursor_position(
         columns,
         palette,
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {

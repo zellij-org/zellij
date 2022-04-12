@@ -1667,7 +1667,7 @@ impl<'a> TiledPaneGrid<'a> {
         false
     }
     pub fn find_room_for_new_pane(&self, cursor_height_width_ratio: Option<usize>) -> Option<(PaneId, Direction)> {
-        log::info!("find_room_for_new_pane: {:?}", cursor_height_width_ratio);
+        log::info!("find_room_for_new_pane, cursor_height_width_ratio: {:?}", cursor_height_width_ratio);
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();

@@ -3,6 +3,7 @@ pub mod os_input_output;
 mod command_is_executing;
 mod input_handler;
 mod stdin_handler;
+mod pixel_csi_parser;
 
 use log::info;
 use std::env::current_exe;

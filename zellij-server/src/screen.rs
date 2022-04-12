@@ -196,6 +196,7 @@ pub(crate) struct Screen {
     /// The full size of this [`Screen`].
     size: Size,
     pixel_dimensions: PixelDimensions,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -229,6 +230,7 @@ impl Screen {
             max_panes,
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
+            character_cell_size: Rc::new(RefCell::new(None)),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
@@ -439,12 +441,9 @@ impl Screen {
         self.render();
     }
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
-        log::info!("updating pixel dimensions: {:?}", pixel_dimensions);
         self.pixel_dimensions.merge(pixel_dimensions);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
-            for tab in self.tabs.values_mut() {
-                tab.change_character_cell_size(character_cell_size);
-            }
+            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         } else if let Some(text_area_size) = self.pixel_dimensions.text_area_size {
             let character_cell_size_height = text_area_size.height / self.size.rows;
             let character_cell_size_width = text_area_size.width / self.size.cols;
@@ -452,9 +451,7 @@ impl Screen {
                 height: character_cell_size_height,
                 width: character_cell_size_width,
             };
-            for tab in self.tabs.values_mut() {
-                tab.change_character_cell_size(character_cell_size);
-            }
+            *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
     }
 
@@ -537,7 +534,7 @@ impl Screen {
             position,
             String::new(),
             self.size,
-            self.pixel_dimensions.character_cell_size,
+            self.character_cell_size.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,

@@ -3,7 +3,7 @@ use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::{position::Position, vte, zellij_tile::data::Palette};
+use zellij_utils::{position::Position, vte, zellij_tile::data::Palette, pane_size::SizeInPixels};
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -23,6 +23,7 @@ fn vttest1_0() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -40,6 +41,7 @@ fn vttest1_1() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -57,6 +59,7 @@ fn vttest1_2() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -74,6 +77,7 @@ fn vttest1_3() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -91,6 +95,7 @@ fn vttest1_4() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -108,6 +113,7 @@ fn vttest1_5() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -125,6 +131,7 @@ fn vttest2_0() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -142,6 +149,7 @@ fn vttest2_1() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -159,6 +167,7 @@ fn vttest2_2() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -176,6 +185,7 @@ fn vttest2_3() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -193,6 +203,7 @@ fn vttest2_4() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -210,6 +221,7 @@ fn vttest2_5() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -227,6 +239,7 @@ fn vttest2_6() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -244,6 +257,7 @@ fn vttest2_7() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -261,6 +275,7 @@ fn vttest2_8() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -278,6 +293,7 @@ fn vttest2_9() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -295,6 +311,7 @@ fn vttest2_10() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -312,6 +329,7 @@ fn vttest2_11() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -329,6 +347,7 @@ fn vttest2_12() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -346,6 +365,7 @@ fn vttest2_13() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -363,6 +383,7 @@ fn vttest2_14() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -380,6 +401,7 @@ fn vttest3_0() {
         110,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -397,6 +419,7 @@ fn vttest8_0() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -414,6 +437,7 @@ fn vttest8_1() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -431,6 +455,7 @@ fn vttest8_2() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -448,6 +473,7 @@ fn vttest8_3() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -465,6 +491,7 @@ fn vttest8_4() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -482,6 +509,7 @@ fn vttest8_5() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -499,6 +527,7 @@ fn csi_b() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -516,6 +545,7 @@ fn csi_capital_i() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -533,6 +563,7 @@ fn csi_capital_z() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -550,6 +581,7 @@ fn terminal_reports() {
         97,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -567,6 +599,7 @@ fn wide_characters() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -584,6 +617,7 @@ fn wide_characters_line_wrap() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -601,6 +635,7 @@ fn insert_character_in_line_with_wide_character() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -618,6 +653,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -635,6 +671,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -652,6 +689,7 @@ fn fish_wide_characters_override_clock() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -669,6 +707,7 @@ fn bash_delete_wide_characters() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -686,6 +725,7 @@ fn delete_wide_characters_before_cursor() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -703,6 +743,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -720,6 +761,7 @@ fn delete_wide_character_under_cursor() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -737,6 +779,7 @@ fn replace_wide_character_under_cursor() {
         104,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -754,6 +797,7 @@ fn wrap_wide_characters() {
         90,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -771,6 +815,7 @@ fn wrap_wide_characters_on_size_change() {
         93,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -789,6 +834,7 @@ fn unwrap_wide_characters_on_size_change() {
         93,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -808,6 +854,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
         91,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -825,6 +872,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
         90,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -842,6 +890,7 @@ fn copy_selected_text_from_viewport() {
         125,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -867,6 +916,7 @@ fn copy_wrapped_selected_text_from_viewport() {
         73,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -891,6 +941,7 @@ fn copy_selected_text_from_lines_above() {
         125,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -916,6 +967,7 @@ fn copy_selected_text_from_lines_below() {
         125,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -949,6 +1001,7 @@ fn run_bandwhich_from_fish_shell() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -966,6 +1019,7 @@ fn fish_tab_completion_options() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -988,6 +1042,7 @@ pub fn fish_select_tab_completion_options() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1013,6 +1068,7 @@ pub fn vim_scroll_region_down() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1036,6 +1092,7 @@ pub fn vim_ctrl_d() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1058,6 +1115,7 @@ pub fn vim_ctrl_u() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1075,6 +1133,7 @@ pub fn htop() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1092,6 +1151,7 @@ pub fn htop_scrolling() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1109,6 +1169,7 @@ pub fn htop_right_scrolling() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1134,6 +1195,7 @@ pub fn vim_overwrite() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1153,6 +1215,7 @@ pub fn clear_scroll_region() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1170,6 +1233,7 @@ pub fn display_tab_characters_properly() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1187,6 +1251,7 @@ pub fn neovim_insert_mode() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -1204,6 +1269,7 @@ pub fn bash_cursor_linewrap() {
         116,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -1223,6 +1289,7 @@ pub fn fish_paste_multiline() {
         149,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -1240,6 +1307,7 @@ pub fn git_log() {
         149,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -1259,6 +1327,7 @@ pub fn git_diff_scrollup() {
         149,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -1276,6 +1345,7 @@ pub fn emacs_longbuf() {
         284,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -1293,6 +1363,7 @@ pub fn top_and_quit() {
         235,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -1316,6 +1387,7 @@ pub fn exa_plus_omf_theme() {
         235,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -1333,6 +1405,7 @@ pub fn scroll_up() {
         50,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1351,6 +1424,7 @@ pub fn scroll_down() {
         50,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1370,6 +1444,7 @@ pub fn scroll_up_with_line_wraps() {
         25,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1388,6 +1463,7 @@ pub fn scroll_down_with_line_wraps() {
         25,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1407,6 +1483,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
         50,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1431,6 +1508,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
         25,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1455,6 +1533,7 @@ pub fn move_cursor_below_scroll_region() {
         114,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1472,6 +1551,7 @@ pub fn insert_wide_characters_in_existing_line() {
         86,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1494,6 +1574,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
         80,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -1514,6 +1595,7 @@ pub fn ring_bell() {
         64,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -1531,6 +1613,7 @@ pub fn alternate_screen_change_size() {
         20,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -1552,6 +1635,7 @@ pub fn fzf_fullscreen() {
         112,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -1573,6 +1657,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
         112,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1594,6 +1679,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
         112,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1611,6 +1697,7 @@ pub fn scroll_down_ansi() {
         112,
         Palette::default(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -1618,4 +1705,47 @@ pub fn scroll_down_ansi() {
         vte_parser.advance(&mut grid, byte);
     }
     assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn terminal_pixel_size_reports() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels{ height: 21, width: 8}))),
+    );
+    let fixture_name = "terminal_pixel_size_reports";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_eq!(
+        grid.pending_messages_to_pty.iter().map(|bytes| String::from_utf8(bytes.clone()).unwrap()).collect::<Vec<String>>(),
+        vec!["\x1b[4;1071;776t", "\x1b[6;21;8t"]
+    );
+}
+
+#[test]
+fn terminal_pixel_size_reports_in_unsupported_terminals() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
+    );
+    let fixture_name = "terminal_pixel_size_reports";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    let expected: Vec<String> = vec![];
+    assert_eq!(
+        grid.pending_messages_to_pty.iter().map(|bytes| String::from_utf8(bytes.clone()).unwrap()).collect::<Vec<String>>(),
+        expected,
+    );
 }

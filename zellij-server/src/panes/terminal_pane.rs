@@ -18,6 +18,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     pane_size::{Dimension, PaneGeom},
     position::Position,
+    pane_size::SizeInPixels,
     shared::make_terminal_title,
     vte,
     zellij_tile::data::{InputMode, PaletteColor},
@@ -487,6 +488,7 @@ impl TerminalPane {
         pane_index: usize,
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
@@ -494,6 +496,7 @@ impl TerminalPane {
             position_and_size.cols.as_usize(),
             style.colors,
             link_handler,
+            character_cell_size,
         );
         TerminalPane {
             frame: HashMap::new(),

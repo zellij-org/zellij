@@ -43,7 +43,7 @@ pub struct ClientAttributes {
     pub style: Style,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PixelDimensions {
     pub text_area_size: Option<SizeInPixels>,
     pub character_cell_size: Option<SizeInPixels>,

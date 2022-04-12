@@ -161,6 +161,7 @@ fn read_from_channel(
                     0,
                     String::new(),
                     Rc::new(RefCell::new(LinkHandler::new())),
+                    Rc::new(RefCell::new(None)),
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

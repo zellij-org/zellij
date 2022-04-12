@@ -25,6 +25,7 @@ pub fn scrolling_inside_a_pane() {
         0,
         String::new(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {

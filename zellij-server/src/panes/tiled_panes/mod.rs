@@ -18,7 +18,7 @@ use std::time::Instant;
 use zellij_tile::data::ModeInfo;
 use zellij_utils::{
     input::layout::Direction,
-    pane_size::{Offset, PaneGeom, Size, Viewport},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -57,11 +57,11 @@ fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (us
 pub struct TiledPanes {
     pub panes: BTreeMap<PaneId, Box<dyn Pane>>,
     display_area: Rc<RefCell<Size>>,
-    cursor_height_width_ratio: Option<usize>,
     viewport: Rc<RefCell<Viewport>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     default_mode_info: ModeInfo,
     style: Style,
     session_is_mirrored: bool,
@@ -76,11 +76,11 @@ impl TiledPanes {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         display_area: Rc<RefCell<Size>>,
-        cursor_height_width_ratio: Option<usize>,
         viewport: Rc<RefCell<Viewport>>,
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         session_is_mirrored: bool,
         draw_pane_frames: bool,
         default_mode_info: ModeInfo,
@@ -90,11 +90,11 @@ impl TiledPanes {
         TiledPanes {
             panes: BTreeMap::new(),
             display_area,
-            cursor_height_width_ratio,
             viewport,
             connected_clients,
             connected_clients_in_app,
             mode_info,
+            character_cell_size,
             default_mode_info,
             style,
             session_is_mirrored,
@@ -109,12 +109,13 @@ impl TiledPanes {
         self.panes.insert(pane_id, pane);
     }
     pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
+        let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let pane_id_and_split_direction = pane_grid.find_room_for_new_pane(self.cursor_height_width_ratio);
+        let pane_id_and_split_direction = pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
         if let Some((pane_id_to_split, split_direction)) = pane_id_and_split_direction {
             // this unwrap is safe because floating panes should not be visible if there are no floating panes
             let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
@@ -128,12 +129,13 @@ impl TiledPanes {
         }
     }
     pub fn has_room_for_new_pane(&mut self) -> bool {
+        let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        pane_grid.find_room_for_new_pane(self.cursor_height_width_ratio).is_some()
+        pane_grid.find_room_for_new_pane(cursor_height_width_ratio).is_some()
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
         self.panes
@@ -418,9 +420,6 @@ impl TiledPanes {
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
-    pub fn change_cursor_height_width_ratio(&mut self, ratio: usize) {
-        self.cursor_height_width_ratio = Some(ratio);
-    }
     pub fn resize_active_pane_left(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
@@ -533,6 +532,12 @@ impl TiledPanes {
         if let Some(pane) = self.get_pane_mut(pane_id) {
             pane.set_active_at(Instant::now());
         }
+    }
+    pub fn cursor_height_width_ratio(&self) -> Option<usize> {
+        let character_cell_size = self.character_cell_size.borrow();
+        character_cell_size.map(|size_in_pixels| {
+            (size_in_pixels.height as f64 / size_in_pixels.width as f64).round() as usize
+        })
     }
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {

@@ -12,6 +12,7 @@ use std::{
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     position::Position,
+    pane_size::SizeInPixels,
     vte, zellij_tile,
 };
 
@@ -289,6 +290,7 @@ pub struct Grid {
     colors: Palette,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -328,6 +330,7 @@ impl Grid {
         columns: usize,
         colors: Palette,
         link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     ) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(
@@ -365,6 +368,7 @@ impl Grid {
             ring_bell: false,
             scrollback_buffer_lines: 0,
             mouse_mode: false,
+            character_cell_size,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -2000,9 +2004,18 @@ impl Perform for Grid {
         } else if c == 't' {
             match next_param_or(1) as usize {
                 14 => {
-                    // TODO: report text area size in pixels, currently unimplemented
-                    // to solve this we probably need to query the user's terminal for the cursor
-                    // size and then use it as a multiplier
+                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                        let text_area_pixel_size_report = format!("\x1b[4;{};{}t", character_cell_size.height * self.height, character_cell_size.width * self.width);
+                        self.pending_messages_to_pty
+                            .push(text_area_pixel_size_report.as_bytes().to_vec());
+                    }
+                }
+                16 => {
+                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                        let character_cell_size_report = format!("\x1b[6;{};{}t", character_cell_size.height, character_cell_size.width);
+                        self.pending_messages_to_pty
+                            .push(character_cell_size_report.as_bytes().to_vec());
+                    }
                 }
                 18 => {
                     // report text area
