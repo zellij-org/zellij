@@ -104,7 +104,7 @@ fn color_elements(palette: Palette) -> ColoredElements {
             unselected_styled_text: style!(background, palette.fg).bold(),
             unselected_suffix_separator: style!(palette.fg, background),
             disabled_prefix_separator: style!(background, palette.fg),
-            disabled_styled_text: style!(background, palette.fg).dimmed(),
+            disabled_styled_text: style!(background, palette.fg).dimmed().italic(),
             disabled_suffix_separator: style!(palette.fg, background),
             selected_single_letter_prefix_separator: style!(background, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
