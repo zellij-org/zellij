@@ -318,10 +318,10 @@ pub fn text_copied_hint(palette: &Palette, copy_destination: CopyDestination) ->
     let hint = match copy_destination {
         CopyDestination::Command => "Text piped to external command",
         #[cfg(not(target_os = "macos"))]
-        CopyDestination::Primary => "Text copied to primary selection",
+        CopyDestination::Primary => "Text copied to system primary selection",
         #[cfg(target_os = "macos")] // primary selection does not exist on macos
-        CopyDestination::Primary => "Text copied to clipboard",
-        CopyDestination::System => "Text copied to clipboard",
+        CopyDestination::Primary => "Text copied to system clipboard",
+        CopyDestination::System => "Text copied to system clipboard",
     };
     LinePart {
         part: Style::new().fg(green_color).bold().paint(hint).to_string(),
