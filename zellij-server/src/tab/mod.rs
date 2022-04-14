@@ -1606,8 +1606,8 @@ impl Tab {
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else if selecting {
+                active_pane.end_selection(&relative_position, client_id);
                 if copy_on_release {
-                    active_pane.end_selection(&relative_position, client_id);
                     let selected_text = active_pane.get_selected_text();
                     active_pane.reset_selection();
 
