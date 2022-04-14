@@ -88,7 +88,7 @@ pub(crate) struct Tab {
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
-    copy_on_release: bool,
+    copy_on_select: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -347,7 +347,7 @@ impl Tab {
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
-            copy_on_release: copy_options.copy_on_select,
+            copy_on_select: copy_options.copy_on_select,
         }
     }
 
@@ -1580,7 +1580,7 @@ impl Tab {
 
         // read these here to avoid use of borrowed `*self`, since we are holding active_pane
         let selecting = self.selecting_with_mouse;
-        let copy_on_release = self.copy_on_release;
+        let copy_on_release = self.copy_on_select;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {

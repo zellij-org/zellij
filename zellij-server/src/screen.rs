@@ -193,12 +193,12 @@ impl CopyOptions {
     pub(crate) fn new(
         copy_command: Option<String>,
         copy_clipboard: Clipboard,
-        copy_on_release: bool,
+        copy_on_select: bool,
     ) -> Self {
         Self {
             command: copy_command,
             clipboard: copy_clipboard,
-            copy_on_select: copy_on_release,
+            copy_on_select,
         }
     }
 
