@@ -129,7 +129,7 @@ impl Options {
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
-        let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
+        let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
 
         Options {
@@ -176,7 +176,7 @@ impl Options {
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
-        let copy_clipboard = other.copy_clipboard.or_else(|| self.copy_clipboard.clone());
+        let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
 
         Options {
