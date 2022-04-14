@@ -11,11 +11,11 @@ use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::os::unix::io::RawFd;
 
-use zellij_utils::ipc::ClientAttributes;
+use zellij_utils::ipc::{ClientAttributes, PixelDimensions};
 use zellij_utils::nix;
 
 use zellij_utils::{
@@ -460,5 +460,83 @@ fn switch_to_tab_with_fullscreen() {
             .unwrap(),
         PaneId::Terminal(2),
         "Active pane is still the fullscreen pane"
+    );
+}
+
+#[test]
+fn update_screen_pixel_dimensions() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+    let initial_pixel_dimensions = screen.pixel_dimensions;
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: Some(SizeInPixels {
+            height: 10,
+            width: 5,
+        }),
+        text_area_size: None,
+    });
+    let pixel_dimensions_after_first_update = screen.pixel_dimensions;
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: None,
+        text_area_size: Some(SizeInPixels {
+            height: 100,
+            width: 50,
+        }),
+    });
+    let pixel_dimensions_after_second_update = screen.pixel_dimensions;
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: None,
+        text_area_size: None,
+    });
+    let pixel_dimensions_after_third_update = screen.pixel_dimensions;
+    assert_eq!(
+        initial_pixel_dimensions,
+        PixelDimensions {
+            character_cell_size: None,
+            text_area_size: None
+        },
+        "Initial pixel dimensions empty"
+    );
+    assert_eq!(
+        pixel_dimensions_after_first_update,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5
+            }),
+            text_area_size: None
+        },
+        "character_cell_size updated properly",
+    );
+    assert_eq!(
+        pixel_dimensions_after_second_update,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 100,
+                width: 50,
+            }),
+        },
+        "text_area_size updated properly without overriding character_cell_size",
+    );
+    assert_eq!(
+        pixel_dimensions_after_third_update,
+        PixelDimensions {
+            character_cell_size: Some(SizeInPixels {
+                height: 10,
+                width: 5
+            }),
+            text_area_size: Some(SizeInPixels {
+                height: 100,
+                width: 50,
+            }),
+        },
+        "empty update does not delete existing data",
     );
 }

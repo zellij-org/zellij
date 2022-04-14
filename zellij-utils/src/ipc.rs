@@ -4,7 +4,7 @@ use crate::{
     cli::CliArgs,
     errors::{get_current_ctx, ErrorContext},
     input::{actions::Action, layout::LayoutFromYaml, options::Options, plugins::PluginsConfig},
-    pane_size::Size,
+    pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
 use nix::unistd::dup;
@@ -43,6 +43,23 @@ pub struct ClientAttributes {
     pub style: Style,
 }
 
+#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelDimensions {
+    pub text_area_size: Option<SizeInPixels>,
+    pub character_cell_size: Option<SizeInPixels>,
+}
+
+impl PixelDimensions {
+    pub fn merge(&mut self, other: PixelDimensions) {
+        if let Some(text_area_size) = other.text_area_size {
+            self.text_area_size = Some(text_area_size);
+        }
+        if let Some(character_cell_size) = other.character_cell_size {
+            self.character_cell_size = Some(character_cell_size);
+        }
+    }
+}
+
 // Types of messages sent from the client to the server
 #[allow(clippy::large_enum_variant)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -57,6 +74,7 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
+    TerminalPixelDimensions(PixelDimensions),
     TerminalResize(Size),
     NewClient(
         ClientAttributes,

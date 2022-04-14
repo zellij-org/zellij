@@ -1,6 +1,6 @@
 [package]
 name = "zellij-utils"
-version = "0.28.0"
+version = "0.29.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
@@ -32,12 +32,13 @@ strum = "0.20.0"
 thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
 vte = "0.10.1"
-zellij-tile = { path = "../zellij-tile/", version = "0.28.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.29.0" }
 log = "0.4.16"
 log4rs = "1.0.0"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
-termwiz = "0.15.0"
+regex = "1.5.5"
+termwiz = "0.16.0"
 
 
 [dependencies.async-std]
@@ -48,4 +49,4 @@ features = ["unstable"]
 tempfile = "3.2.0"
 
 [features]
-disable_automatic_asset_installation = [ ]
+disable_automatic_asset_installation = []

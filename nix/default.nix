@@ -17,6 +17,10 @@ flake-utils.lib.eachSystem [
   overlays = [(import rust-overlay)];
 
   pkgs = import nixpkgs {inherit system overlays;};
+  pkgsMusl = import nixpkgs {
+    inherit system overlays;
+    crossSystem = {config = "x86_64-unknown-linux-musl";};
+  };
 
   crate2nixPkgs = import nixpkgs {
     inherit system;
@@ -30,16 +34,18 @@ flake-utils.lib.eachSystem [
 
   name = "zellij";
   pname = name;
-  root = toString ../.;
+  root = self;
 
   ignoreSource = [".git" "target" "example"];
 
   src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile ../rust-toolchain;
+  cargoToml = builtins.fromTOML (builtins.readFile (src + ./Cargo.toml));
+  rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain.toml");
+
   cargoLock = {
     lockFile = builtins.path {
-      path = ../Cargo.lock;
+      path = src + "/Cargo.lock";
       name = "Cargo.lock";
     };
   };
@@ -47,24 +53,35 @@ flake-utils.lib.eachSystem [
   rustc = rustToolchainToml;
 
   buildInputs = [
-    rustToolchainToml
-
     # in order to run tests
     pkgs.openssl
   ];
 
   nativeBuildInputs = [
+    # for openssl/openssl-sys
+    pkgs.pkg-config
+
+    # default plugins
+    plugins.status-bar
+    plugins.tab-bar
+    plugins.strider
+
     # generates manpages
     pkgs.mandown
 
     pkgs.installShellFiles
     pkgs.copyDesktopItems
+  ];
 
-    # for openssl/openssl-sys
+  pluginNativeBuildInputs = [
     pkgs.pkg-config
+    # optimizes wasm binaries
+    pkgs.binaryen
   ];
 
   devInputs = [
+    rustToolchainToml
+
     pkgs.cargo-make
     pkgs.rust-analyzer
 
@@ -79,6 +96,11 @@ flake-utils.lib.eachSystem [
     pkgs.alejandra
     pkgs.treefmt
   ];
+
+  plugins = import ./plugins.nix {
+    inherit root pkgs cargo rustc cargoLock buildInputs;
+    nativeBuildInputs = pluginNativeBuildInputs;
+  };
 
   postInstall = ''
     mandown ./docs/MANPAGE.md > ./zellij.1
@@ -95,6 +117,11 @@ flake-utils.lib.eachSystem [
     install -Dm644  ./assets/logo.png $out/share/icons/hicolor/scalable/apps/zellij.png
 
     copyDesktopItems
+  '';
+  patchPhase = ''
+    cp ${plugins.tab-bar}/bin/tab-bar.wasm assets/plugins/tab-bar.wasm
+    cp ${plugins.status-bar}/bin/status-bar.wasm assets/plugins/status-bar.wasm
+    cp ${plugins.strider}/bin/strider.wasm assets/plugins/strider.wasm
   '';
 
   desktopItems = [
@@ -121,10 +148,11 @@ in rec {
     inherit
       name
       src
-      nativeBuildInputs
       crate2nix
+      nativeBuildInputs
       desktopItems
       postInstall
+      patchPhase
       meta
       ;
   };
@@ -135,13 +163,19 @@ in rec {
       src
       name
       cargoLock
-      buildInputs
       nativeBuildInputs
+      buildInputs
       postInstall
+      patchPhase
       desktopItems
       meta
       ;
   };
+  packages.default = packages.zellij;
+
+  packages.plugins-status-bar = plugins.status-bar;
+  packages.plugins-tab-bar = plugins.tab-bar;
+  packages.plugins-strider = plugins.strider;
 
   defaultPackage = packages.zellij;
 
@@ -158,13 +192,24 @@ in rec {
       name = "fmt-shell";
       nativeBuildInputs = fmtInputs;
     };
-    e2eShell = pkgs.mkShell {
+    e2eShell = pkgs.pkgsMusl.mkShell {
       name = "e2e-shell";
       nativeBuildInputs = [
         pkgs.cargo-make
+        pkgs.pkgsMusl.cargo
       ];
     };
   };
 
   devShell = devShells.zellij;
 })
+// rec {
+  overlays = {
+    default = final: prev: rec {
+      zellij = self.packages.${prev.system}.zellij;
+    };
+    nightly = final: prev: rec {
+      zellij-nightly = self.packages.${prev.system}.zellij;
+    };
+  };
+}

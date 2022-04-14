@@ -59,7 +59,7 @@ pub mod colors {
     pub const BRIGHT_GRAY: u8 = 245;
     pub const RED: u8 = 88;
     pub const ORANGE: u8 = 166;
-    pub const BLACK: u8 = 236;
+    pub const BLACK: u8 = 16;
     pub const MAGENTA: u8 = 201;
     pub const CYAN: u8 = 51;
     pub const YELLOW: u8 = 226;

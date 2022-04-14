@@ -3,6 +3,7 @@
   crate2nix,
   name,
   src,
+  patchPhase,
   postInstall,
   nativeBuildInputs,
   desktopItems,
@@ -27,7 +28,7 @@
             // {
               # Crate dependency overrides go here
               zellij = attrs: {
-                inherit postInstall desktopItems meta name nativeBuildInputs;
+                inherit postInstall desktopItems meta name nativeBuildInputs patchPhase;
               };
             };
         };
