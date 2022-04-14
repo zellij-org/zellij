@@ -823,11 +823,15 @@ impl Grid {
             .or(Some((0, self.height.saturating_sub(1))))
         {
             for _ in 0..count {
+                self.pad_lines_until(scroll_region_top, EMPTY_TERMINAL_CHARACTER);
                 if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
-                    self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
                     if self.viewport.get(scroll_region_bottom).is_some() {
                         self.viewport.remove(scroll_region_bottom);
                     }
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]); // TODO: make sure no pending styling
+                    self.viewport.insert(scroll_region_top, Row::from_columns(columns).canonical());
                 }
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
