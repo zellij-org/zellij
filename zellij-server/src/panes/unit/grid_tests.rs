@@ -1725,6 +1725,23 @@ pub fn ansi_capital_t() {
 }
 
 #[test]
+pub fn ansi_capital_s() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Palette::default(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
 fn terminal_pixel_size_reports() {
     let mut vte_parser = vte::Parser::new();
     let mut grid = Grid::new(
