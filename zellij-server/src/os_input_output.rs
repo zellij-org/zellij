@@ -300,7 +300,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Box::new((*self).clone())
     }
     fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
-        let _ = kill(pid, Some(Signal::SIGTERM));
+        let _ = kill(pid, Some(Signal::SIGHUP));
         Ok(())
     }
     fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
