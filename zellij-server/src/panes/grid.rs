@@ -1,6 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashMap;
 use unicode_width::UnicodeWidthChar;
+
+use sixel_tokenizer::{Parser, SixelEvent, ColorCoordinateSystem};
 
 use std::{
     cmp::Ordering,
@@ -31,6 +34,132 @@ use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
+
+#[derive(Debug, Clone, Copy)]
+enum SixelColor {
+    Rgb(u8, u8, u8), // 0-100
+    Hsl(u16, u8, u8), // 0-360, 0-100, 0-100
+}
+
+impl From<ColorCoordinateSystem> for SixelColor {
+    fn from(item: ColorCoordinateSystem) -> Self {
+        unimplemented!()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Pixel {
+    on: bool,
+    color: SixelColor
+}
+
+#[derive(Debug, Clone)]
+struct SixelImage {
+    color_registers: HashMap<u8, SixelColor>,
+    current_color: SixelColor,
+    pixels: Vec<Vec<Pixel>>,
+    z_index: usize,
+}
+
+impl SixelImage {
+    pub fn handle_event(&mut self, event: SixelEvent) {
+        match event {
+            SixelEvent::ColorIntroducer { color_coordinate_system, color_number } => {
+                match color_coordinate_system {
+                    Some(color_coordinate_system) => {
+                        // define a color in a register
+                        let color = SixelColor::from(color_coordinate_system);
+                        self.color_registers.insert(color_number, color);
+                    },
+                    None => {
+                        // switch to register number
+                        if let Some(color) = self.color_registers.get(&color_number) {
+                            self.current_color = *color;
+                        }
+                    }
+                }
+            }
+            SixelEvent::RasterAttribute { pan, pad, ph, pv } => {
+                // we ignore pan/pad because (reportedly) no-one uses them
+
+                // TODO: use ph (horizontal) and pv (vertical) to pad the current image
+            }
+            SixelEvent::Data { byte } => {
+                let mut mask = 32;
+                loop {
+                    if byte & mask == mask {
+                        // TODO: CONTINUE HERE (15/04) - push this into the pixel array, swap
+                        // existing elements if they exist
+                        // https://stackoverflow.com/questions/57449264/how-to-get-replace-a-value-in-rust-vec
+                        println!("1");
+                    }
+                    else {
+                        println!("0");
+                    }
+                    mask >>= 1;
+                    if mask == 0 {
+                        break;
+                    }
+                }
+            }
+            SixelEvent::Repeat { repeat_count, byte_to_repeat } => {
+
+            }
+            SixelEvent::Dcs { macro_parameter, inverse_background, horizontal_pixel_distance } => {
+
+            }
+            SixelEvent::GotoBeginningOfLine => {
+
+            }
+            SixelEvent::GotoNextLine => {
+
+            }
+            SixelEvent::UnknownSequence(_) => {
+
+            }
+            SixelEvent::End => {
+
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct SixelCell {
+    sixel_images: HashMap<usize, (usize, usize)>, // image_id, (x_coordinates_in_image, y_coordinates_in_image)
+}
+
+#[derive(Debug, Clone, Default)]
+struct SixelCanvas {
+    sixel_images: HashMap<usize, SixelImage>,
+    currently_parsing: Option<SixelImage>,
+}
+
+impl SixelCanvas {
+    pub fn handle_event(&mut self, sixel_event: SixelEvent) {
+
+    }
+}
+// TODO
+// Question: how do we deal with overlapping SixelImages?
+// Thoughts:
+// * All SixelImages should be separate entities, because they do not cancel out each other,
+// they're only on top of each other
+// * we'll have to have z indices
+// * their location is relative to the character to their left and above
+// * they expand and contract relative to font size, but stay fixed to the upper-left corner where
+// they were created
+// * when text goes over a SixelImages, it'll "eat away" at it, removing those pixels
+// * when linewrapping, if the SixelImage needs to be wrapped completely, it is destroyed
+// * when creating the image, we calculate which cells it covers, and for each cell calculate the
+// start_coordinates in the image so that we can access the pixels we need when rendering - we
+// recalculate this on SIGWINCH
+// * the calculated cells should be their own struct called SixelCell, this is because they need to
+// hold a few images potentially and we only want to link to them from TerminalCharacter
+//
+// TODO:
+// 1. create a SixelImage from the sixel events we get
+// 2. serialize this image, and when its first cell is on screen, render it, otherwise don't
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -291,6 +420,8 @@ pub struct Grid {
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    sixel_parser: Option<sixel_tokenizer::Parser>,
+    sixel_canvas: SixelCanvas,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -369,6 +500,8 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: false,
             character_cell_size,
+            sixel_parser: None,
+            sixel_canvas: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1459,6 +1592,9 @@ impl Grid {
         self.scrollback_buffer_lines =
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
+    fn handle_sixel_event(&mut self, sixel_event: SixelEvent) {
+        self.sixel_canvas.handle_event(sixel_event);
+    }
 }
 
 impl Perform for Grid {
@@ -1509,15 +1645,29 @@ impl Perform for Grid {
         }
     }
 
-    fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _c: char) {
+    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
+        log::info!("hook, params: {:?}, intermediates: {:?}, ignore: {:?}, char: {:?}", params, intermediates, ignore, c);
+        if c == 'q' {
+            self.sixel_parser = Some(sixel_tokenizer::Parser::new());
+        }
         // TBD
     }
 
-    fn put(&mut self, _byte: u8) {
-        // TBD
+    fn put(&mut self, byte: u8) {
+        if let Some(sixel_parser) = self.sixel_parser.as_mut() {
+            // sixel_parser.advance(&byte, |sixel_event| log::info!("{:?}", sixel_event));
+            // TODO: better
+            let mut pending_sixel_event = None;
+            sixel_parser.advance(&byte, |sixel_event| pending_sixel_event = Some(sixel_event));
+            if let Some(pending_sixel_event)  = pending_sixel_event {
+                self.handle_sixel_event(pending_sixel_event);
+            }
+        }
     }
 
     fn unhook(&mut self) {
+        log::info!("unhook");
+        self.sixel_parser = None;
         // TBD
     }
 
