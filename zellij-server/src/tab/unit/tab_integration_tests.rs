@@ -1,4 +1,5 @@
 use super::{Output, Tab};
+use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -11,7 +12,6 @@ use std::path::PathBuf;
 use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
@@ -102,9 +102,8 @@ fn create_new_tab(size: Size) -> Tab {
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let copy_command = None;
     let character_cell_info = Rc::new(RefCell::new(None));
-    let clipboard = Clipboard::default();
+    let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
         position,
@@ -120,8 +119,7 @@ fn create_new_tab(size: Size) -> Tab {
         connected_clients,
         session_is_mirrored,
         client_id,
-        copy_command,
-        clipboard,
+        copy_options,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),

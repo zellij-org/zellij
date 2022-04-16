@@ -186,6 +186,36 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct CopyOptions {
+    pub command: Option<String>,
+    pub clipboard: Clipboard,
+    pub copy_on_select: bool,
+}
+
+impl CopyOptions {
+    pub(crate) fn new(
+        copy_command: Option<String>,
+        copy_clipboard: Clipboard,
+        copy_on_select: bool,
+    ) -> Self {
+        Self {
+            command: copy_command,
+            clipboard: copy_clipboard,
+            copy_on_select,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn default() -> Self {
+        Self {
+            command: None,
+            clipboard: Clipboard::default(),
+            copy_on_select: true,
+        }
+    }
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -210,13 +240,11 @@ pub(crate) struct Screen {
     style: Style,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
-    copy_command: Option<String>,
-    copy_clipboard: Clipboard,
+    copy_options: CopyOptions,
 }
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         bus: Bus<ScreenInstruction>,
         client_attributes: &ClientAttributes,
@@ -224,8 +252,7 @@ impl Screen {
         mode_info: ModeInfo,
         draw_pane_frames: bool,
         session_is_mirrored: bool,
-        copy_command: Option<String>,
-        copy_clipboard: Clipboard,
+        copy_options: CopyOptions,
     ) -> Self {
         Screen {
             bus,
@@ -243,8 +270,7 @@ impl Screen {
             default_mode_info: mode_info,
             draw_pane_frames,
             session_is_mirrored,
-            copy_command,
-            copy_clipboard,
+            copy_options,
         }
     }
 
@@ -546,8 +572,7 @@ impl Screen {
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
-            self.copy_command.clone(),
-            self.copy_clipboard.clone(),
+            self.copy_options.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -743,6 +768,11 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let copy_options = CopyOptions::new(
+        config_options.copy_command,
+        config_options.copy_clipboard.unwrap_or_default(),
+        config_options.copy_on_select.unwrap_or(true),
+    );
 
     let mut screen = Screen::new(
         bus,
@@ -757,8 +787,7 @@ pub(crate) fn screen_thread_main(
         ),
         draw_pane_frames,
         session_is_mirrored,
-        config_options.copy_command,
-        config_options.copy_clipboard.unwrap_or_default(),
+        copy_options,
     );
     loop {
         let (event, mut err_ctx) = screen
