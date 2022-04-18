@@ -115,6 +115,24 @@ pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     "assets/completions/comp.fish"
 ));
 
+pub const BASH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.bash"
+));
+
+pub const FISH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.fish"
+));
+
+pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.zsh"
+));
+
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
 }
@@ -427,10 +445,16 @@ impl Setup {
             }
         };
 
+        let mut out = std::io::stdout();
         match shell {
+            Shell::Bash => {
+                let _ = out.write_all(BASH_AUTO_START_SCRIPT);
+            }
             Shell::Fish => {
-                let script = include_str!("./shell/auto-start.fish");
-                println!("{}", script);
+                let _ = out.write_all(FISH_AUTO_START_SCRIPT);
+            }
+            Shell::Zsh => {
+                let _ = out.write_all(ZSH_AUTO_START_SCRIPT);
             }
             _ => {}
         }
