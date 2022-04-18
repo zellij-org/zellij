@@ -1,6 +1,11 @@
 if not set -q ZELLIJ
-    zellij
+    if test "$ZELLIJ_AUTO_ATTACH" = "true"
+        zellij attach -c
+    else
+        zellij
+    end
 
-    # auto quit the shell
-    kill $fish_pid
+    if test "$ZELLIJ_AUTO_EXIT" = "true"
+        suspend --force
+    end
 end
