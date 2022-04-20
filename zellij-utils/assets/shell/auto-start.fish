@@ -6,6 +6,6 @@ if not set -q ZELLIJ
     end
 
     if test "$ZELLIJ_AUTO_EXIT" = "true"
-        suspend --force
+        kill $fish_pid
     end
 end
