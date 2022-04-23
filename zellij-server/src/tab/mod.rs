@@ -1541,7 +1541,7 @@ impl Tab {
                     relative_position.line.0 + 1
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else {
+            } else if let PaneId::Terminal(_) = pane.pid() {
                 pane.start_selection(&relative_position, client_id);
                 self.selecting_with_mouse = true;
             }
