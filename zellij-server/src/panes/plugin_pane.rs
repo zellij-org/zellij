@@ -32,6 +32,7 @@ pub(crate) struct PluginPane {
     pub pane_name: String,
     frame: bool,
     borderless: bool,
+    search_term: String,
 }
 
 impl PluginPane {
@@ -55,6 +56,7 @@ impl PluginPane {
             pane_title: title,
             borderless: false,
             pane_name,
+            search_term: String::new(),
         }
     }
 }
@@ -403,5 +405,31 @@ impl Pane for PluginPane {
     }
     fn mouse_mode(&self) -> bool {
         false
+    }
+    fn update_search_term(&mut self, needle: &str) {
+        match needle {
+            "\0" => {
+                self.search_term = String::new();
+            }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.search_term.pop();
+            }
+            c => {
+                self.search_term.push_str(c);
+            }
+        }
+    }
+    fn search_forward(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        // TODO
+    }
+    fn search_backward(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        // TODO
     }
 }

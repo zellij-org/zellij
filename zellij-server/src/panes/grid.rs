@@ -29,7 +29,7 @@ use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
-    AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
+    AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, NamedColor, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 
@@ -1495,6 +1495,61 @@ impl Grid {
 
         self.scrollback_buffer_lines =
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
+    }
+
+    pub fn search_forward(&mut self, needle: &str) {
+        let mut found_needle = None;
+        'rows_loop: for (ridx, row) in self.viewport.iter().enumerate() {
+            let mut nidx = 0; // Needle index
+            let mut hidx = 0; // Haystack index
+            while hidx < row.columns.len() {
+                if row.columns[hidx].character == needle.chars().nth(nidx).unwrap() {
+                    if nidx == needle.len() - 1 {
+                        // Found the searchterm!
+                        row.columns
+                            .range(hidx + 1 - needle.len()..=hidx)
+                            .for_each(|c| {
+                                // let _ = c
+                                //     .styles
+                                //     .background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
+                                let _ = c.styles.bold(None);
+                            });
+                        found_needle = Some((ridx, hidx - needle.len()));
+                        break 'rows_loop;
+                    };
+                    nidx += 1;
+                } else {
+                    nidx = 0;
+                }
+                hidx += 1;
+            }
+        }
+
+        if let Some(pos) = found_needle {
+            std::fs::write(
+                "/tmp/mydummyoutput",
+                format!("Found something at {:?}!", pos),
+            )
+            .unwrap();
+            self.output_buffer.update_all_lines();
+            self.mark_for_rerender();
+        } else {
+            std::fs::write("/tmp/mydummyoutput", "Found nothing :-(").unwrap();
+        }
+    }
+
+    pub fn search_backward(&mut self, _needle: &str) {
+        self.viewport
+            .first()
+            .unwrap()
+            .columns
+            .iter()
+            .take(10)
+            .for_each(|c| {
+                let _ = c.styles.bold(Some(AnsiCode::On));
+            });
+        self.output_buffer.update_all_lines();
+        self.mark_for_rerender();
     }
 }
 

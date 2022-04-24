@@ -120,6 +120,12 @@ pub enum InputMode {
     /// `Scroll` mode allows scrolling up and down within a pane.
     #[serde(alias = "scroll")]
     Scroll,
+    /// `EnterSearch` mode allows for typing in the needle for a search in the scroll buffer of a pane.
+    #[serde(alias = "entersearch")]
+    EnterSearch,
+    /// `Search` mode allows for searching a term in a pane (superset of `Scroll`).
+    #[serde(alias = "search")]
+    Search,
     /// `RenameTab` mode allows assigning a new name to a tab.
     #[serde(alias = "renametab")]
     RenameTab,
@@ -179,6 +185,8 @@ impl FromStr for InputMode {
             "pane" => Ok(InputMode::Pane),
             "tab" => Ok(InputMode::Tab),
             "scroll" => Ok(InputMode::Scroll),
+            "search" => Ok(InputMode::Search),
+            "entersearch" => Ok(InputMode::EnterSearch),
             "renametab" => Ok(InputMode::RenameTab),
             "session" => Ok(InputMode::Session),
             "move" => Ok(InputMode::Move),

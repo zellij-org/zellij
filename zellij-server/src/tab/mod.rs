@@ -274,6 +274,9 @@ pub trait Pane {
     fn get_line_number(&self) -> Option<usize> {
         None
     }
+    fn update_search_term(&mut self, needle: &str);
+    fn search_forward(&mut self);
+    fn search_backward(&mut self);
 }
 
 impl Tab {
@@ -1938,6 +1941,44 @@ impl Tab {
     }
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
+    }
+
+    pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_terminal.update_search_term(s);
+            }
+        }
+    }
+
+    pub fn search_forward(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            active_terminal.search_forward();
+        }
+    }
+
+    pub fn search_backward(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            active_terminal.search_backward();
+        }
     }
 }
 

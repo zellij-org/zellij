@@ -288,6 +288,9 @@ pub enum ScreenContext {
     RemoveOverlay,
     ConfirmPrompt,
     DenyPrompt,
+    UpdateSearch,
+    SearchForward,
+    SearchBackward,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

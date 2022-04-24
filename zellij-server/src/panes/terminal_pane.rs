@@ -52,6 +52,7 @@ pub struct TerminalPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
+    search_term: String,
 }
 
 impl Pane for TerminalPane {
@@ -253,6 +254,13 @@ impl Pane for TerminalPane {
             && frame_params.is_main_client
         {
             String::from("Enter name...")
+        } else if input_mode == InputMode::EnterSearch
+            && frame_params.is_main_client
+            && self.search_term.is_empty()
+        {
+            String::from("Enter search...")
+        } else if input_mode == InputMode::EnterSearch && !self.search_term.is_empty() {
+            self.search_term.clone()
         } else if self.pane_name.is_empty() {
             self.grid
                 .title
@@ -261,6 +269,7 @@ impl Pane for TerminalPane {
         } else {
             self.pane_name.clone()
         };
+
         let frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
@@ -481,9 +490,41 @@ impl Pane for TerminalPane {
     fn mouse_mode(&self) -> bool {
         self.grid.mouse_mode
     }
+
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)
+    }
+
+    fn update_search_term(&mut self, needle: &str) {
+        match needle {
+            "\0" => {
+                self.search_term = String::new();
+            }
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.search_term.pop();
+            }
+            c => {
+                self.search_term.push_str(c);
+            }
+        }
+    }
+    fn search_forward(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        self.grid.search_forward(&self.search_term);
+        self.set_should_render(true);
+        self.reflow_lines();
+    }
+    fn search_backward(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        self.grid.search_backward(&self.search_term);
+        self.set_should_render(true);
+        self.reflow_lines();
     }
 }
 
@@ -522,6 +563,7 @@ impl TerminalPane {
             pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
+            search_term: String::new(),
         }
     }
     pub fn get_x(&self) -> usize {

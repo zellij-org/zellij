@@ -12,7 +12,7 @@ use crate::{
 use zellij_utils::{
     channels::SenderWithContext,
     input::{
-        actions::{Action, Direction, ResizeDirection},
+        actions::{Action, Direction, ResizeDirection, SearchDirection},
         command::TerminalAction,
         get_mode_info,
     },
@@ -396,6 +396,19 @@ fn route_action(
             _ => {}
         },
         Action::NoOp => {}
+        Action::SearchInput(c) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateSearch(c, client_id))
+                .unwrap();
+        }
+        Action::Search(d) => {
+            let instruction = match d {
+                SearchDirection::Forward => ScreenInstruction::SearchForward(client_id),
+                SearchDirection::Backward => ScreenInstruction::SearchBackward(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
+        }
     }
     should_break
 }

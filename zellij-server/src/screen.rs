@@ -109,6 +109,9 @@ pub enum ScreenInstruction {
     RemoveOverlay(ClientId),
     ConfirmPrompt(ClientId),
     DenyPrompt(ClientId),
+    UpdateSearch(Vec<u8>, ClientId),
+    SearchForward(ClientId),
+    SearchBackward(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -200,6 +203,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
             ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
             ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
+            ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
+            ScreenInstruction::SearchForward(..) => ScreenContext::SearchForward,
+            ScreenInstruction::SearchBackward(..) => ScreenContext::SearchBackward,
         }
     }
 }
@@ -1511,6 +1517,33 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
+            }
+            ScreenInstruction::UpdateSearch(c, client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.update_search_term(c, client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::SearchForward(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.search_forward(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::SearchBackward(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.search_backward(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
             }
         }
     }
