@@ -935,7 +935,11 @@ impl Grid {
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;
     }
-    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter, should_insert_character: bool) {
+    pub fn add_character_at_cursor_position(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        should_insert_character: bool,
+    ) {
         // this function assumes the current line has enough room for terminal_character (that its
         // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
@@ -2313,7 +2317,8 @@ impl Row {
             let character = self.columns.swap_remove_back(absolute_x_index).unwrap();
             let excess_width = character.width.saturating_sub(terminal_character.width);
             for _ in 0..excess_width {
-                self.columns.insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
+                self.columns
+                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
             }
         }
         self.width = None;
