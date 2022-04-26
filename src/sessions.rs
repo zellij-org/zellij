@@ -34,6 +34,7 @@ pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<Strin
             for file in files {
                 let file = file?;
                 let file_name = file.file_name().into_string().unwrap();
+                // TODO: some filesystems (`btrfs`, `tmpfs`, etc) do not support creation time.
                 let file_created_at = file.metadata()?.created()?;
                 if file.file_type()?.is_socket() && assert_socket(&file_name) {
                     sessions_with_creation_date.push((file_name, file_created_at));
