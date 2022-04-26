@@ -1,12 +1,17 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashMap;
+use std::iter;
 use unicode_width::UnicodeWidthChar;
 
+use arrayvec::ArrayVec;
+
 use sixel_tokenizer::{Parser, SixelEvent, ColorCoordinateSystem};
+use sixel_image::{SixelImage, SixelDeserializer};
 
 use std::{
     cmp::Ordering,
+            // * the character should link to a SixelImage that contains a link to this image
     collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
     str,
@@ -43,7 +48,10 @@ enum SixelColor {
 
 impl From<ColorCoordinateSystem> for SixelColor {
     fn from(item: ColorCoordinateSystem) -> Self {
-        unimplemented!()
+        match item {
+            ColorCoordinateSystem::HLS(x, y, z) => SixelColor::Hsl(x as u16, y as u8, z as u8),
+            ColorCoordinateSystem::RGB(x, y, z) => SixelColor::Rgb(x as u8, y as u8, z as u8),
+        }
     }
 }
 
@@ -53,91 +61,98 @@ struct Pixel {
     color: SixelColor
 }
 
-#[derive(Debug, Clone)]
-struct SixelImage {
-    color_registers: HashMap<u8, SixelColor>,
-    current_color: SixelColor,
-    pixels: Vec<Vec<Pixel>>,
-    z_index: usize,
+#[derive(Debug, Clone, Copy)]
+struct SixelPixelIterator {
+    sixel_byte: u8,
+    current_mask: u8,
 }
-
-impl SixelImage {
-    pub fn handle_event(&mut self, event: SixelEvent) {
-        match event {
-            SixelEvent::ColorIntroducer { color_coordinate_system, color_number } => {
-                match color_coordinate_system {
-                    Some(color_coordinate_system) => {
-                        // define a color in a register
-                        let color = SixelColor::from(color_coordinate_system);
-                        self.color_registers.insert(color_number, color);
-                    },
-                    None => {
-                        // switch to register number
-                        if let Some(color) = self.color_registers.get(&color_number) {
-                            self.current_color = *color;
-                        }
-                    }
-                }
-            }
-            SixelEvent::RasterAttribute { pan, pad, ph, pv } => {
-                // we ignore pan/pad because (reportedly) no-one uses them
-
-                // TODO: use ph (horizontal) and pv (vertical) to pad the current image
-            }
-            SixelEvent::Data { byte } => {
-                let mut mask = 32;
-                loop {
-                    if byte & mask == mask {
-                        // TODO: CONTINUE HERE (15/04) - push this into the pixel array, swap
-                        // existing elements if they exist
-                        // https://stackoverflow.com/questions/57449264/how-to-get-replace-a-value-in-rust-vec
-                        println!("1");
-                    }
-                    else {
-                        println!("0");
-                    }
-                    mask >>= 1;
-                    if mask == 0 {
-                        break;
-                    }
-                }
-            }
-            SixelEvent::Repeat { repeat_count, byte_to_repeat } => {
-
-            }
-            SixelEvent::Dcs { macro_parameter, inverse_background, horizontal_pixel_distance } => {
-
-            }
-            SixelEvent::GotoBeginningOfLine => {
-
-            }
-            SixelEvent::GotoNextLine => {
-
-            }
-            SixelEvent::UnknownSequence(_) => {
-
-            }
-            SixelEvent::End => {
-
-            }
+impl SixelPixelIterator {
+    pub fn new(sixel_byte: u8) -> Self {
+        SixelPixelIterator { sixel_byte, current_mask: 32 }
+    }
+}
+impl Iterator for SixelPixelIterator {
+    type Item = bool;
+    fn next(&mut self) -> Option<Self::Item> {
+        // iterate through the bits in a byte from left (most significant) to right (least
+        // significant), eg. 89 => 1011001 => true, false, true, true, false, false, true
+        let bit = self.sixel_byte & self.current_mask == self.current_mask;
+        self.current_mask >>= 1;
+        if self.current_mask == 0 {
+            None
+        } else {
+            Some(bit)
         }
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct SixelCell {
-    sixel_images: HashMap<usize, (usize, usize)>, // image_id, (x_coordinates_in_image, y_coordinates_in_image)
-}
 
 #[derive(Debug, Clone, Default)]
-struct SixelCanvas {
-    sixel_images: HashMap<usize, SixelImage>,
-    currently_parsing: Option<SixelImage>,
+pub struct SixelCanvas {
+    sixel_images: HashMap<usize, SixelImage>, // usize is image id
+    currently_parsing: Option<SixelDeserializer>,
+    sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
+
 }
 
 impl SixelCanvas {
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-
+        match sixel_event {
+            SixelEvent::Dcs { .. } => {
+                // self.start_image();
+            }
+            SixelEvent::End => {
+                // self.end_image();
+            }
+            _ => {
+                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
+                    currently_parsing.handle_event(sixel_event);
+                }
+            }
+        }
+    }
+    pub fn start_image(&mut self) {
+        self.currently_parsing = Some(SixelDeserializer::new());
+    }
+    pub fn end_image(&mut self) -> Option<usize> { // returns image id
+        if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
+            let next_image_id = self.sixel_images.keys().len();
+            let sixel_image = sixel_deserializer.create_image();
+            self.sixel_images.insert(next_image_id, sixel_image); // TODO: handle character_z_index
+            self.currently_parsing = None;
+            Some(next_image_id)
+        } else {
+            None
+        }
+    }
+    pub fn new_cell(&mut self) -> usize { // usize is the cell id
+        let next_cell_id = self.sixel_cells.keys().len();
+        self.sixel_cells.insert(next_cell_id, vec![]);
+        next_cell_id
+    }
+    pub fn link_cell_to_image(&mut self, cell_id: usize, image_id: usize) {
+        let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
+        cell_images.push(image_id);
+    }
+    pub fn serialize_cell(&self, cell_id: usize) -> String {
+        let mut serialized_images = String::new();
+        if let Some(sixel_image_ids) = self.sixel_cells.get(&cell_id) {
+            for image_id in sixel_image_ids {
+                if let Some(sixel_image) = self.sixel_images.get(image_id) {
+                    serialized_images.push_str(&sixel_image.serialize())
+                }
+            }
+        }
+        serialized_images
+    }
+    pub fn dump_info(&self) {
+        // debugging method, TODO: removeme
+        log::info!("*** SIXEL INFO ***");
+        log::info!("number of images: {:?}", self.sixel_images.keys().len());
+        log::info!("IMAGES:");
+        for (key, image) in &self.sixel_images {
+            log::info!("{:?} - size in pixels: (height / width): {:?}", key, image.pixel_size());
+        }
     }
 }
 // TODO
@@ -421,7 +436,7 @@ pub struct Grid {
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
-    sixel_canvas: SixelCanvas,
+    sixel_canvas: Rc<RefCell<SixelCanvas>>,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -462,6 +477,7 @@ impl Grid {
         colors: Palette,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_canvas: Rc<RefCell<SixelCanvas>>,
     ) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(
@@ -501,7 +517,7 @@ impl Grid {
             mouse_mode: false,
             character_cell_size,
             sixel_parser: None,
-            sixel_canvas: Default::default(),
+            sixel_canvas,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -912,7 +928,7 @@ impl Grid {
         lines
     }
     pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> Vec<CharacterChunk> {
-        let changes = self.output_buffer.changed_chunks_in_viewport(
+        let changed_chunks = self.output_buffer.changed_chunks_in_viewport(
             &self.viewport,
             self.width,
             self.height,
@@ -920,7 +936,7 @@ impl Grid {
             y_offset,
         );
         self.output_buffer.clear();
-        changes
+        changed_chunks
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor.is_hidden {
@@ -1593,7 +1609,7 @@ impl Grid {
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
     fn handle_sixel_event(&mut self, sixel_event: SixelEvent) {
-        self.sixel_canvas.handle_event(sixel_event);
+        self.sixel_canvas.borrow_mut().handle_event(sixel_event);
     }
 }
 
@@ -1607,6 +1623,7 @@ impl Perform for Grid {
             character: c,
             width: c.width().unwrap_or(0),
             styles: self.cursor.pending_styles,
+            sixel_cell: None,
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -1646,29 +1663,48 @@ impl Perform for Grid {
     }
 
     fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
-        log::info!("hook, params: {:?}, intermediates: {:?}, ignore: {:?}, char: {:?}", params, intermediates, ignore, c);
         if c == 'q' {
             self.sixel_parser = Some(sixel_tokenizer::Parser::new());
+            self.sixel_canvas.borrow_mut().start_image();
         }
         // TBD
     }
 
     fn put(&mut self, byte: u8) {
         if let Some(sixel_parser) = self.sixel_parser.as_mut() {
-            // sixel_parser.advance(&byte, |sixel_event| log::info!("{:?}", sixel_event));
             // TODO: better
-            let mut pending_sixel_event = None;
-            sixel_parser.advance(&byte, |sixel_event| pending_sixel_event = Some(sixel_event));
-            if let Some(pending_sixel_event)  = pending_sixel_event {
-                self.handle_sixel_event(pending_sixel_event);
+            let mut pending_sixel_events: ArrayVec<SixelEvent, 2> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better
+            sixel_parser.advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
+            for event in pending_sixel_events.drain(..) {
+                self.handle_sixel_event(event);
             }
         }
     }
 
     fn unhook(&mut self) {
-        log::info!("unhook");
+        let new_image_id = self.sixel_canvas.borrow_mut().end_image();
+        if let Some(new_image_id) = new_image_id {
+            match self.get_character_under_cursor().as_mut() {
+                Some(character_under_cursor) => {
+                    if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
+                        self.sixel_canvas.borrow_mut().link_cell_to_image(sixel_cell_id, new_image_id);
+                    } else {
+                        let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
+                        character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
+                        self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                    }
+                }
+                None => {
+                    let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
+                    let mut new_character = EMPTY_TERMINAL_CHARACTER;
+                    new_character.styles = self.cursor.pending_styles;
+                    new_character.sixel_cell = Some(new_sixel_cell_id);
+                    self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                    self.add_character(new_character);
+                }
+            }
+        }
         self.sixel_parser = None;
-        // TBD
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {

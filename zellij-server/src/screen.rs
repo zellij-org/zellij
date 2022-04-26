@@ -16,6 +16,7 @@ use zellij_utils::{
 use crate::{
     output::Output,
     panes::PaneId,
+    panes::grid::SixelCanvas,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
@@ -199,6 +200,7 @@ pub(crate) struct Screen {
     size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    sixel_canvas: Rc<RefCell<SixelCanvas>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
@@ -233,6 +235,7 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
+            sixel_canvas: Rc::new(RefCell::new(SixelCanvas::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
@@ -459,7 +462,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let mut output = Output::default();
+        let mut output = Output::new(self.sixel_canvas.clone());
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();
@@ -537,6 +540,7 @@ impl Screen {
             String::new(),
             self.size,
             self.character_cell_size.clone(),
+            self.sixel_canvas.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,

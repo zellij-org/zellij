@@ -2269,6 +2269,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bd3e3206899af3f8b12af284fafc038cc1dc2b41d1b89dd17297221c5d225de"
 
 [[package]]
+name = "sixel-image"
+version = "0.1.0"
+dependencies = [
+ "sixel-tokenizer",
+]
+
+[[package]]
 name = "sixel-tokenizer"
 version = "0.1.0"
 dependencies = [
@@ -3269,6 +3276,7 @@ name = "zellij-server"
 version = "0.29.0"
 dependencies = [
  "ansi_term",
+ "arrayvec 0.7.2",
  "async-trait",
  "base64",
  "byteorder",
@@ -3280,6 +3288,7 @@ dependencies = [
  "insta",
  "log",
  "serde_json",
+ "sixel-image",
  "sixel-tokenizer",
  "sysinfo",
  "typetag",

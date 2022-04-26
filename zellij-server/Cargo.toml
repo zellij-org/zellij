@@ -29,6 +29,8 @@ chrono = "0.4.19"
 close_fds = "0.3.2"
 sysinfo = "0.22.5"
 sixel-tokenizer = { path = "../../sixel-tokenizer" }
+sixel-image = { path = "../../sixel-image" }
+arrayvec = "0.7.2"
 
 [dev-dependencies]
 insta = "1.6.0"

@@ -4,6 +4,7 @@ use crate::panes::selection::Selection;
 use crate::panes::Row;
 
 use crate::{
+    panes::grid::SixelCanvas,
     panes::terminal_character::{AnsiCode, CharacterStyles},
     panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
     ClientId,
@@ -54,7 +55,6 @@ fn write_changed_styles(
     if let Some(new_styles) =
         character_styles.update_and_return_diff(&current_character_styles, chunk_changed_colors)
     {
-        // if let Some(osc8_link) = link_handler.as_ref().and_then(|l_h| l_h.borrow().output_osc8(new_styles.link_anchor)) {
         if let Some(osc8_link) =
             link_handler.and_then(|l_h| l_h.output_osc8(new_styles.link_anchor))
         {
@@ -68,6 +68,7 @@ fn write_changed_styles(
 fn serialize_character_chunks(
     character_chunks: Vec<CharacterChunk>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
+    sixel_canvas: &SixelCanvas,
 ) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
@@ -78,6 +79,11 @@ fn serialize_character_chunks(
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
+            let mut serialized_image_or_images = None;
+            if let Some(sixel_anchor) = t_character.sixel_cell {
+                log::info!("can has serialized cell");
+                serialized_image_or_images = Some(sixel_canvas.serialize_cell(sixel_anchor));
+            }
             let current_character_styles = adjust_styles_for_possible_selection(
                 chunk_selection_and_background_color,
                 t_character.styles,
@@ -93,6 +99,9 @@ fn serialize_character_chunks(
             );
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
+            if let Some(serialized_image_or_images) = serialized_image_or_images {
+                vte_output.push_str(&serialized_image_or_images);
+            }
         }
         character_styles.clear();
     }
@@ -149,10 +158,17 @@ pub struct Output {
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
+    sixel_canvas: Rc<RefCell<SixelCanvas>>,
     floating_panes_stack: Option<FloatingPanesStack>,
 }
 
 impl Output {
+    pub fn new(sixel_canvas: Rc<RefCell<SixelCanvas>>) -> Self {
+        Output {
+            sixel_canvas,
+            ..Default::default()
+        }
+    }
     pub fn add_clients(
         &mut self,
         client_ids: &HashSet<ClientId>,
@@ -259,6 +275,7 @@ impl Output {
             client_serialized_render_instructions.push_str(&serialize_character_chunks(
                 client_character_chunks,
                 self.link_handler.as_mut(),
+                &self.sixel_canvas.borrow(),
             )); // TODO: less allocations?
 
             // append post-vte instructions for this client
@@ -514,12 +531,22 @@ impl OutputBuffer {
         viewport_height: usize,
         x_offset: usize,
         y_offset: usize,
-    ) -> Vec<CharacterChunk> {
+    ) -> Vec<CharacterChunk> { // Option<Vec<usize>> -> sixel image anchor ids to render
         if self.should_update_all_lines {
             let mut changed_chunks = Vec::with_capacity(viewport.len());
+            let mut sixel_image_anchor_ids_to_render: Option<Vec<usize>> = None;
             for line_index in 0..viewport_height {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
+
+                // TODO: performance? can we do this when adding them to the line? does it matter?
+//                 for character in terminal_characters {
+//                     if let Some(sixel_cell) = character.sixel_cell {
+//                         let mut sixel_image_anchor_ids_to_render = sixel_image_anchor_ids_to_render.get_or_insert(vec![]);
+//                         sixel_image_anchor_ids_to_render.push(sixel_cell);
+//                     }
+//                 }
+
                 let x = x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
                 let y = line_index + y_offset;
                 changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
@@ -530,9 +557,19 @@ impl OutputBuffer {
             line_changes.sort_unstable();
             line_changes.dedup();
             let mut changed_chunks = Vec::with_capacity(line_changes.len());
+            let mut sixel_image_anchor_ids_to_render: Option<Vec<usize>> = None;
             for line_index in line_changes {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
+
+                // TODO: performance? can we do this when adding them to the line? does it matter?
+  //               for character in terminal_characters {
+  //                   if let Some(sixel_cell) = character.sixel_cell {
+  //                       let mut sixel_image_anchor_ids_to_render = sixel_image_anchor_ids_to_render.get_or_insert(vec![]);
+  //                       sixel_image_anchor_ids_to_render.push(sixel_cell);
+  //                   }
+  //               }
+
                 let x = x_offset;
                 let y = line_index + y_offset;
                 changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));

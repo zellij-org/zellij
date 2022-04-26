@@ -4,6 +4,7 @@ use crate::panes::{
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
+use crate::panes::grid::SixelCanvas;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
@@ -489,6 +490,7 @@ impl TerminalPane {
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_canvas: Rc<RefCell<SixelCanvas>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
@@ -497,6 +499,7 @@ impl TerminalPane {
             style.colors,
             link_handler,
             character_cell_size,
+            sixel_canvas,
         );
         TerminalPane {
             frame: HashMap::new(),

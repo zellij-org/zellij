@@ -17,6 +17,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output},
     panes::{FloatingPanes, TiledPanes},
+    panes::grid::SixelCanvas,
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -73,6 +74,7 @@ pub(crate) struct Tab {
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    sixel_canvas: Rc<RefCell<SixelCanvas>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -272,6 +274,7 @@ impl Tab {
         name: String,
         display_area: Size,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_canvas: Rc<RefCell<SixelCanvas>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -337,6 +340,7 @@ impl Tab {
             viewport,
             display_area,
             character_cell_size,
+            sixel_canvas,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -418,6 +422,7 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_canvas.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -646,6 +651,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.sixel_canvas.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -668,6 +674,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.sixel_canvas.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -697,6 +704,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_canvas.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -724,6 +732,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_canvas.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
