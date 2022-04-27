@@ -270,14 +270,23 @@ pub fn start_client(
             let os_input = os_input.clone();
             let mut should_break = false;
             move || loop {
-                let (instruction, err_ctx) = os_input.recv_from_server();
-                err_ctx.update_thread_ctx();
-                if let ServerToClientMsg::Exit(_) = instruction {
-                    should_break = true;
-                }
-                send_client_instructions.send(instruction.into()).unwrap();
-                if should_break {
-                    break;
+                match os_input.recv_from_server() {
+                    Some((instruction, err_ctx)) => {
+                        err_ctx.update_thread_ctx();
+                        if let ServerToClientMsg::Exit(_) = instruction {
+                            should_break = true;
+                        }
+                        send_client_instructions.send(instruction.into()).unwrap();
+                        if should_break {
+                            break;
+                        }
+                    }
+                    None => {
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        log::error!("Received empty message from server");
+                    }
                 }
             }
         })

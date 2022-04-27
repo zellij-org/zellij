@@ -184,8 +184,11 @@ where
     }
 
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
-    pub fn recv(&mut self) -> (T, ErrorContext) {
-        bincode::deserialize_from(&mut self.receiver).unwrap()
+    pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
+        match bincode::deserialize_from(&mut self.receiver) {
+            Ok(msg) => Some(msg),
+            Err(_) => None,
+        }
     }
 
     /// Returns an [`IpcSenderWithContext`] with the same socket as this receiver.
