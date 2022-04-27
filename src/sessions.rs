@@ -58,10 +58,13 @@ fn assert_socket(name: &str) -> bool {
         Ok(stream) => {
             let mut sender = IpcSenderWithContext::new(stream);
             sender.send(ClientToServerMsg::ConnStatus);
-
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            let (instruction, _) = receiver.recv();
-            matches!(instruction, ServerToClientMsg::Connected)
+            match receiver.recv() {
+                Some((instruction, _)) => {
+                    matches!(instruction, ServerToClientMsg::Connected)
+                },
+                None => false
+            }
         }
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));

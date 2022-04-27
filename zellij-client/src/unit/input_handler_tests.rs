@@ -151,7 +151,7 @@ impl ClientOsApi for FakeClientOsApi {
             command_is_executing.unblock_input_thread();
         }
     }
-    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext) {
+    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
         unimplemented!()
     }
     fn handle_signals(&self, _sigwinch_cb: Box<dyn Fn()>, _quit_cb: Box<dyn Fn()>) {
