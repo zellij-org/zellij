@@ -62,8 +62,8 @@ fn assert_socket(name: &str) -> bool {
             match receiver.recv() {
                 Some((instruction, _)) => {
                     matches!(instruction, ServerToClientMsg::Connected)
-                },
-                None => false
+                }
+                None => false,
             }
         }
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {

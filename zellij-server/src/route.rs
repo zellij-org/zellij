@@ -406,10 +406,18 @@ pub(crate) fn route_thread_main(
                     ClientToServerMsg::Action(action) => {
                         if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                             if let Action::SwitchToMode(input_mode) = action {
-                                os_input
-                                    .send_to_client(client_id, ServerToClientMsg::SwitchToMode(input_mode));
+                                os_input.send_to_client(
+                                    client_id,
+                                    ServerToClientMsg::SwitchToMode(input_mode),
+                                );
                             }
-                            if route_action(action, rlocked_sessions, &*os_input, &to_server, client_id) {
+                            if route_action(
+                                action,
+                                rlocked_sessions,
+                                &*os_input,
+                                &to_server,
+                                client_id,
+                            ) {
                                 break;
                             }
                         }
@@ -436,7 +444,9 @@ pub(crate) fn route_thread_main(
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_screen(ScreenInstruction::TerminalPixelDimensions(pixel_dimensions))
+                            .send_to_screen(ScreenInstruction::TerminalPixelDimensions(
+                                pixel_dimensions,
+                            ))
                             .unwrap();
                     }
                     ClientToServerMsg::NewClient(
@@ -475,7 +485,7 @@ pub(crate) fn route_thread_main(
                         break;
                     }
                 }
-            },
+            }
             None => {
                 log::error!("Received empty message from client");
             }

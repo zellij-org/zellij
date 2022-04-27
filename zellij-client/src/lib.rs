@@ -280,9 +280,11 @@ pub fn start_client(
                         if should_break {
                             break;
                         }
-                    },
+                    }
                     None => {
-                        send_client_instructions.send(ClientInstruction::UnblockInputThread).unwrap();
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
                         log::error!("Received empty message from server");
                     }
                 }
