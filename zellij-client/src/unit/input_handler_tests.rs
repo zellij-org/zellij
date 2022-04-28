@@ -353,7 +353,9 @@ pub fn pixel_info_queried_from_terminal_emulator() {
     let extracted_stdout_buffer = client_os_api_clone.stdout_buffer();
     assert_eq!(
         String::from_utf8(extracted_stdout_buffer),
-        Ok(String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\\\u{1b}]10;?\u{1b}\\")),
+        Ok(String::from(
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\\\u{1b}]10;?\u{1b}\\"
+        )),
     );
 }
 

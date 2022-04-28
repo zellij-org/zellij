@@ -21,7 +21,7 @@ use zellij_utils::{
     position::Position,
     shared::make_terminal_title,
     vte,
-    zellij_tile::data::{InputMode, PaletteColor, Palette},
+    zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;

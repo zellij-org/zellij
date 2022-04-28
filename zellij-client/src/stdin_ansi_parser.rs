@@ -2,7 +2,7 @@ use zellij_utils::pane_size::SizeInPixels;
 
 use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
-use zellij_tile::data::{Key, CharOrArrow};
+use zellij_tile::data::{CharOrArrow, Key};
 
 pub struct StdinAnsiParser {
     expected_ansi_instructions: usize,
@@ -20,8 +20,7 @@ impl StdinAnsiParser {
         self.expected_ansi_instructions = to;
     }
     pub fn decrement_expected_ansi_instructions(&mut self, by: usize) {
-        self.expected_ansi_instructions =
-            self.expected_ansi_instructions.saturating_sub(by);
+        self.expected_ansi_instructions = self.expected_ansi_instructions.saturating_sub(by);
     }
     pub fn expected_instructions(&self) -> usize {
         self.expected_ansi_instructions
@@ -68,7 +67,9 @@ impl StdinAnsiParser {
         }
     }
     fn key_is_valid(&self, key: Key) -> bool {
-        if self.current_buffer.is_empty() && (key != Key::Esc && key != Key::Alt(CharOrArrow::Char(']'))) {
+        if self.current_buffer.is_empty()
+            && (key != Key::Esc && key != Key::Alt(CharOrArrow::Char(']')))
+        {
             // the first key of a sequence is always Esc, but termwiz interprets esc + ] as Alt+]
             return false;
         }
@@ -89,7 +90,15 @@ impl StdinAnsiParser {
                     false
                 }
             }
-            Key::Char(';') | Key::Char('[') | Key::Char(']') | Key::Char('r') | Key::Char('g') | Key::Char('b') | Key::Char('\\') | Key::Char(':') | Key::Char('/') => true,
+            Key::Char(';')
+            | Key::Char('[')
+            | Key::Char(']')
+            | Key::Char('r')
+            | Key::Char('g')
+            | Key::Char('b')
+            | Key::Char('\\')
+            | Key::Char(':')
+            | Key::Char('/') => true,
             Key::Alt(CharOrArrow::Char(']')) => true,
             Key::Alt(CharOrArrow::Char('\\')) => true,
             Key::Char(c) => {
@@ -142,23 +151,27 @@ impl AnsiStdinInstructionOrKeys {
             match csi_index {
                 Ok(4) => {
                     // text area size
-                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(PixelDimensions {
-                        character_cell_size: None,
-                        text_area_size: Some(SizeInPixels {
-                            height: first_field.unwrap(),
-                            width: second_field.unwrap(),
-                        }),
-                    }))
+                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
+                        PixelDimensions {
+                            character_cell_size: None,
+                            text_area_size: Some(SizeInPixels {
+                                height: first_field.unwrap(),
+                                width: second_field.unwrap(),
+                            }),
+                        },
+                    ))
                 }
                 Ok(6) => {
                     // character cell size
-                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(PixelDimensions {
-                        character_cell_size: Some(SizeInPixels {
-                            height: first_field.unwrap(),
-                            width: second_field.unwrap(),
-                        }),
-                        text_area_size: None,
-                    }))
+                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
+                        PixelDimensions {
+                            character_cell_size: Some(SizeInPixels {
+                                height: first_field.unwrap(),
+                                width: second_field.unwrap(),
+                            }),
+                            text_area_size: None,
+                        },
+                    ))
                 }
                 _ => Err("invalid sequence"),
             }
@@ -173,37 +186,39 @@ impl AnsiStdinInstructionOrKeys {
         lazy_static! {
             static ref FOREGROUND_RE: Regex = Regex::new(r"10;(.*)$").unwrap();
         }
-        let key_string = keys
-            .iter()
-            .fold(String::new(), |mut acc, (key, _)| {
-                match key {
-                    Key::Char(c) => acc.push(*c),
-                    _ => {}
-                };
-                acc
-            });
+        let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
+            match key {
+                Key::Char(c) => acc.push(*c),
+                _ => {}
+            };
+            acc
+        });
         if let Some(captures) = BACKGROUND_RE.captures_iter(&key_string).next() {
             let background_query_response = captures[1].parse::<String>();
-            Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
+            Ok(AnsiStdinInstructionOrKeys::BackgroundColor(
+                background_query_response.unwrap(),
+            ))
         } else if let Some(captures) = FOREGROUND_RE.captures_iter(&key_string).next() {
             let foreground_query_response = captures[1].parse::<String>();
-            Ok(AnsiStdinInstructionOrKeys::ForegroundColor(foreground_query_response.unwrap()))
+            Ok(AnsiStdinInstructionOrKeys::ForegroundColor(
+                foreground_query_response.unwrap(),
+            ))
         } else {
             Err("invalid_instruction")
         }
-//         let background_query_response = captures[1].parse::<String>();
-//         if background_query_response.is_err() {
-//             return Err("invalid_instruction");
-//         }
-//         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
-//         let captures = RE
-//             .captures_iter(&key_string)
-//             .next()
-//             .ok_or("invalid_instruction")?;
-//         let background_query_response = captures[1].parse::<String>();
-//         if background_query_response.is_err() {
-//             return Err("invalid_instruction");
-//         }
-//         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
+        //         let background_query_response = captures[1].parse::<String>();
+        //         if background_query_response.is_err() {
+        //             return Err("invalid_instruction");
+        //         }
+        //         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
+        //         let captures = RE
+        //             .captures_iter(&key_string)
+        //             .next()
+        //             .ok_or("invalid_instruction")?;
+        //         let background_query_response = captures[1].parse::<String>();
+        //         if background_query_response.is_err() {
+        //             return Err("invalid_instruction");
+        //         }
+        //         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
     }
 }

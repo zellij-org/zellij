@@ -6,8 +6,8 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
-use zellij_tile::prelude::Style;
 use zellij_tile::data::{Palette, PaletteColor};
+use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
@@ -497,13 +497,17 @@ impl Screen {
         }
     }
     pub fn update_terminal_background_color(&mut self, background_color_instruction: String) {
-        if let Some(AnsiCode::RgbCode((r, g, b))) = xparse_color(background_color_instruction.as_bytes()) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(background_color_instruction.as_bytes())
+        {
             let bg_palette_color = PaletteColor::Rgb((r, g, b));
             self.terminal_emulator_colors.borrow_mut().bg = bg_palette_color;
         }
     }
     pub fn update_terminal_foreground_color(&mut self, foreground_color_instruction: String) {
-        if let Some(AnsiCode::RgbCode((r, g, b))) = xparse_color(foreground_color_instruction.as_bytes()) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(foreground_color_instruction.as_bytes())
+        {
             let fg_palette_color = PaletteColor::Rgb((r, g, b));
             self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
         }

@@ -10,7 +10,7 @@ use zellij_utils::{
 
 use crate::{
     os_input_output::ClientOsApi,
-    stdin_ansi_parser::{StdinAnsiParser, AnsiStdinInstructionOrKeys},
+    stdin_ansi_parser::{AnsiStdinInstructionOrKeys, StdinAnsiParser},
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
@@ -75,7 +75,8 @@ impl InputHandler {
         // <ESC>[16t => get character cell size in pixels
         // <ESC>]11;?<ESC>\ => get background color
         // <ESC>]10;?<ESC>\ => get foreground color
-        let get_cell_pixel_info = "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}";
+        let get_cell_pixel_info =
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}";
         let _ = self
             .os_input
             .get_stdout_writer()
@@ -152,11 +153,15 @@ impl InputHandler {
             }
             Some(AnsiStdinInstructionOrKeys::BackgroundColor(background_color_instruction)) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::BackgroundColor(background_color_instruction));
+                    .send_to_server(ClientToServerMsg::BackgroundColor(
+                        background_color_instruction,
+                    ));
             }
             Some(AnsiStdinInstructionOrKeys::ForegroundColor(foreground_color_instruction)) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::ForegroundColor(foreground_color_instruction));
+                    .send_to_server(ClientToServerMsg::ForegroundColor(
+                        foreground_color_instruction,
+                    ));
             }
             Some(AnsiStdinInstructionOrKeys::Keys(keys)) => {
                 for (key, raw_bytes) in keys {

@@ -455,7 +455,7 @@ pub(crate) fn route_thread_main(
                             .unwrap()
                             .senders
                             .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
-                                    background_color_instruction
+                                background_color_instruction,
                             ))
                             .unwrap();
                     }
@@ -465,7 +465,7 @@ pub(crate) fn route_thread_main(
                             .unwrap()
                             .senders
                             .send_to_screen(ScreenInstruction::TerminalForegroundColor(
-                                    foreground_color_instruction
+                                foreground_color_instruction,
                             ))
                             .unwrap();
                     }
