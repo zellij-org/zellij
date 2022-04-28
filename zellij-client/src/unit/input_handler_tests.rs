@@ -319,8 +319,7 @@ pub fn pixel_info_queried_from_terminal_emulator() {
 
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api =
-        FakeClientOsApi::new(events_sent_to_server, command_is_executing.clone());
+    let client_os_api = FakeClientOsApi::new(events_sent_to_server, command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -467,8 +466,7 @@ pub fn pixel_info_sent_to_server() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server);
+    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(actions_sent_to_server, vec![Action::Quit]);
     assert_eq!(
         pixel_events_sent_to_server,
@@ -590,8 +588,7 @@ pub fn corrupted_pixel_info_sent_as_key_events() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server);
+    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(
         actions_sent_to_server,
         vec![
@@ -718,8 +715,7 @@ pub fn esc_in_the_middle_of_pixelinfo_breaks_out_of_it() {
         receive_input_instructions,
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server);
+    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(
         actions_sent_to_server,
         vec![
