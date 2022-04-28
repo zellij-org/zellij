@@ -195,19 +195,5 @@ impl AnsiStdinInstructionOrKeys {
         } else {
             Err("invalid_instruction")
         }
-        //         let background_query_response = captures[1].parse::<String>();
-        //         if background_query_response.is_err() {
-        //             return Err("invalid_instruction");
-        //         }
-        //         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
-        //         let captures = RE
-        //             .captures_iter(&key_string)
-        //             .next()
-        //             .ok_or("invalid_instruction")?;
-        //         let background_query_response = captures[1].parse::<String>();
-        //         if background_query_response.is_err() {
-        //             return Err("invalid_instruction");
-        //         }
-        //         Ok(AnsiStdinInstructionOrKeys::BackgroundColor(background_query_response.unwrap()))
     }
 }
