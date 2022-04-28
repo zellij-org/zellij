@@ -1093,3 +1093,54 @@ fn replacing_existing_wide_characters() {
     );
     assert_snapshot!(snapshot);
 }
+
+#[test]
+fn rename_embedded_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
+    );
+    tab.update_active_pane_name("Renamed empedded pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn rename_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.new_pane(new_pane_id, Some(client_id));
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    );
+    tab.toggle_pane_embed_or_floating(client_id);
+    tab.update_active_pane_name("Renamed floating pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
