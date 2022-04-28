@@ -50,17 +50,31 @@ impl LinkHandler {
     }
 
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {
-        link_anchor.map(|link| match link {
-            LinkAnchor::Start(index) => {
-                let link = self.links.get(&index).unwrap();
-                let id = link
-                    .id
-                    .as_ref()
-                    .map_or("".to_string(), |id| format!("id={}", id));
-                format!("\u{1b}]8;{};{}{}", id, link.uri, TERMINATOR)
-            }
-            LinkAnchor::End => format!("\u{1b}]8;;{}", TERMINATOR),
-        })
+        link_anchor
+            .map(|link| match link {
+                LinkAnchor::Start(index) => {
+                    let link = self.links.get(&index);
+
+                    let output = link.map(|link| {
+                        let id = link
+                            .id
+                            .as_ref()
+                            .map_or("".to_string(), |id| format!("id={}", id));
+                        format!("\u{1b}]8;{};{}{}", id, link.uri, TERMINATOR)
+                    });
+
+                    if output.is_none() {
+                        log::warn!(
+                            "attempted to output osc8 link start, but id: {} was not found!",
+                            index
+                        );
+                    }
+
+                    output
+                }
+                LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
+            })
+            .flatten()
     }
 }
 
@@ -107,5 +121,12 @@ mod tests {
 
         let expected = format!("\u{1b}]8;;{}", TERMINATOR);
         assert_eq!(link_handler.output_osc8(anchor).unwrap(), expected);
+    }
+
+    #[test]
+    fn return_none_on_missing_link_id() {
+        let link_handler = LinkHandler::default();
+        let anchor = LinkAnchor::Start(100);
+        assert_eq!(link_handler.output_osc8(Some(anchor)), None);
     }
 }
