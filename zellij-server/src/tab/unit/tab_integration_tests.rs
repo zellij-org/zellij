@@ -103,6 +103,7 @@ fn create_new_tab(size: Size) -> Tab {
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
@@ -120,6 +121,7 @@ fn create_new_tab(size: Size) -> Tab {
         session_is_mirrored,
         client_id,
         copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -149,7 +151,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -170,7 +172,7 @@ fn take_snapshot_and_cursor_position(
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );

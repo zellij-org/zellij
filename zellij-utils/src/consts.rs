@@ -46,7 +46,7 @@ lazy_static! {
     pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
-        set_permissions(&sock_dir).unwrap();
+        set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
         sock_dir
     };

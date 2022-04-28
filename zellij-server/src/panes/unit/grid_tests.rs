@@ -21,7 +21,7 @@ fn vttest1_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -39,7 +39,7 @@ fn vttest1_1() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -57,7 +57,7 @@ fn vttest1_2() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -75,7 +75,7 @@ fn vttest1_3() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -93,7 +93,7 @@ fn vttest1_4() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -111,7 +111,7 @@ fn vttest1_5() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -129,7 +129,7 @@ fn vttest2_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -147,7 +147,7 @@ fn vttest2_1() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -165,7 +165,7 @@ fn vttest2_2() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -183,7 +183,7 @@ fn vttest2_3() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -201,7 +201,7 @@ fn vttest2_4() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -219,7 +219,7 @@ fn vttest2_5() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -237,7 +237,7 @@ fn vttest2_6() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -255,7 +255,7 @@ fn vttest2_7() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -273,7 +273,7 @@ fn vttest2_8() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -291,7 +291,7 @@ fn vttest2_9() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -309,7 +309,7 @@ fn vttest2_10() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -327,7 +327,7 @@ fn vttest2_11() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -345,7 +345,7 @@ fn vttest2_12() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -363,7 +363,7 @@ fn vttest2_13() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -381,7 +381,7 @@ fn vttest2_14() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -399,7 +399,7 @@ fn vttest3_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -417,7 +417,7 @@ fn vttest8_0() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -435,7 +435,7 @@ fn vttest8_1() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -453,7 +453,7 @@ fn vttest8_2() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -471,7 +471,7 @@ fn vttest8_3() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -489,7 +489,7 @@ fn vttest8_4() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -507,7 +507,7 @@ fn vttest8_5() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -525,7 +525,7 @@ fn csi_b() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -543,7 +543,7 @@ fn csi_capital_i() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -561,7 +561,7 @@ fn csi_capital_z() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -579,7 +579,7 @@ fn terminal_reports() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -597,7 +597,7 @@ fn wide_characters() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -615,7 +615,7 @@ fn wide_characters_line_wrap() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -633,7 +633,7 @@ fn insert_character_in_line_with_wide_character() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -651,7 +651,7 @@ fn delete_char_in_middle_of_line_with_widechar() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -669,7 +669,7 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -687,7 +687,7 @@ fn fish_wide_characters_override_clock() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -705,7 +705,7 @@ fn bash_delete_wide_characters() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -723,7 +723,7 @@ fn delete_wide_characters_before_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -741,7 +741,7 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -759,7 +759,7 @@ fn delete_wide_character_under_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -777,7 +777,7 @@ fn replace_wide_character_under_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -795,7 +795,7 @@ fn wrap_wide_characters() {
     let mut grid = Grid::new(
         21,
         90,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -813,7 +813,7 @@ fn wrap_wide_characters_on_size_change() {
     let mut grid = Grid::new(
         21,
         93,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -832,7 +832,7 @@ fn unwrap_wide_characters_on_size_change() {
     let mut grid = Grid::new(
         21,
         93,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -852,7 +852,7 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     let mut grid = Grid::new(
         21,
         91,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -870,7 +870,7 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     let mut grid = Grid::new(
         21,
         90,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -888,7 +888,7 @@ fn copy_selected_text_from_viewport() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -914,7 +914,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     let mut grid = Grid::new(
         22,
         73,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -939,7 +939,7 @@ fn copy_selected_text_from_lines_above() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -965,7 +965,7 @@ fn copy_selected_text_from_lines_below() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -999,7 +999,7 @@ fn run_bandwhich_from_fish_shell() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1017,7 +1017,7 @@ fn fish_tab_completion_options() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1040,7 +1040,7 @@ pub fn fish_select_tab_completion_options() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1066,7 +1066,7 @@ pub fn vim_scroll_region_down() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1090,7 +1090,7 @@ pub fn vim_ctrl_d() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1113,7 +1113,7 @@ pub fn vim_ctrl_u() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1131,7 +1131,7 @@ pub fn htop() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1149,7 +1149,7 @@ pub fn htop_scrolling() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1167,7 +1167,7 @@ pub fn htop_right_scrolling() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1193,7 +1193,7 @@ pub fn vim_overwrite() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1213,7 +1213,7 @@ pub fn clear_scroll_region() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1231,7 +1231,7 @@ pub fn display_tab_characters_properly() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1249,7 +1249,7 @@ pub fn neovim_insert_mode() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1267,7 +1267,7 @@ pub fn bash_cursor_linewrap() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1287,7 +1287,7 @@ pub fn fish_paste_multiline() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1305,7 +1305,7 @@ pub fn git_log() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1325,7 +1325,7 @@ pub fn git_diff_scrollup() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1343,7 +1343,7 @@ pub fn emacs_longbuf() {
     let mut grid = Grid::new(
         60,
         284,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1361,7 +1361,7 @@ pub fn top_and_quit() {
     let mut grid = Grid::new(
         56,
         235,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1385,7 +1385,7 @@ pub fn exa_plus_omf_theme() {
     let mut grid = Grid::new(
         56,
         235,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1403,7 +1403,7 @@ pub fn scroll_up() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1422,7 +1422,7 @@ pub fn scroll_down() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1442,7 +1442,7 @@ pub fn scroll_up_with_line_wraps() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1461,7 +1461,7 @@ pub fn scroll_down_with_line_wraps() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1481,7 +1481,7 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1506,7 +1506,7 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1531,7 +1531,7 @@ pub fn move_cursor_below_scroll_region() {
     let mut grid = Grid::new(
         34,
         114,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1549,7 +1549,7 @@ pub fn insert_wide_characters_in_existing_line() {
     let mut grid = Grid::new(
         21,
         86,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1572,7 +1572,7 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     let mut grid = Grid::new(
         54,
         80,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1593,7 +1593,7 @@ pub fn ring_bell() {
     let mut grid = Grid::new(
         134,
         64,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1611,7 +1611,7 @@ pub fn alternate_screen_change_size() {
     let mut grid = Grid::new(
         20,
         20,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1633,7 +1633,7 @@ pub fn fzf_fullscreen() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1655,7 +1655,7 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1677,7 +1677,7 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1695,7 +1695,7 @@ pub fn scroll_down_ansi() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1713,7 +1713,7 @@ pub fn ansi_capital_t() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1730,7 +1730,7 @@ pub fn ansi_capital_s() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1747,7 +1747,7 @@ fn terminal_pixel_size_reports() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(Some(SizeInPixels {
             height: 21,
@@ -1774,7 +1774,7 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
     );
@@ -1791,4 +1791,21 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
             .collect::<Vec<String>>(),
         expected,
     );
+}
+
+#[test]
+pub fn ansi_csi_at_sign() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
 }

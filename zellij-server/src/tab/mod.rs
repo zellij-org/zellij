@@ -91,6 +91,7 @@ pub(crate) struct Tab {
     focus_pane_id: Option<PaneId>,
     copy_on_select: bool,
     last_mouse_hold_position: Option<Position>,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -284,6 +285,7 @@ impl Tab {
         session_is_mirrored: bool,
         client_id: ClientId,
         copy_options: CopyOptions,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -354,6 +356,7 @@ impl Tab {
             focus_pane_id: None,
             copy_on_select: copy_options.copy_on_select,
             last_mouse_hold_position: None,
+            terminal_emulator_colors,
         }
     }
 
@@ -421,6 +424,7 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -649,6 +653,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -671,6 +676,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -700,6 +706,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -727,6 +734,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);

@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: fix ANSI scrolling regression (https://github.com/zellij-org/zellij/pull/1324)
 * fix: send SIGHUP instead of SIGTERM when closing a pane (https://github.com/zellij-org/zellij/pull/1320)
 * add: `copy_on_select` option to configure automatic copy behavior (https://github.com/zellij-org/zellij/pull/1298)
+* fix: minor system improvements (https://github.com/zellij-org/zellij/pull/1328)
+* add: add command for auto-start script (https://github.com/zellij-org/zellij/pull/1281)
+* Terminal compatibility: fix cursor pane escape and invalid ansi crash (https://github.com/zellij-org/zellij/pull/1349)
+* fix: recover from corrupted ipc bus state (https://github.com/zellij-org/zellij/pull/1351)
+* Terminal compatibility: respond to foreground/background color ansi requests (OSC 10 and 11) (https://github.com/zellij-org/zellij/pull/1358)
+* fix: avoid panic in link_handler.rs (https://github.com/zellij-org/zellij/pull/1356)
 
 ## [0.28.1] - 2022-04-13
 * (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)

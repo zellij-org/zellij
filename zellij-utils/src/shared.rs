@@ -11,11 +11,9 @@ use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
 use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 
-const UNIX_PERMISSIONS: u32 = 0o700;
-
-pub fn set_permissions(path: &Path) -> io::Result<()> {
+pub fn set_permissions(path: &Path, mode: u32) -> io::Result<()> {
     let mut permissions = fs::metadata(path)?.permissions();
-    permissions.set_mode(UNIX_PERMISSIONS);
+    permissions.set_mode(mode);
     fs::set_permissions(path, permissions)
 }
 

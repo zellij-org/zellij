@@ -1,4 +1,4 @@
-mod alacritty_functions;
+pub mod alacritty_functions;
 mod floating_panes;
 pub mod grid;
 pub mod link_handler;

@@ -25,7 +25,7 @@ pub(crate) use crate::sessions::list_sessions;
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => {
-            println!("No active zellij sessions found.");
+            eprintln!("No active zellij sessions found.");
             process::exit(1);
         }
         Ok(sessions) => {
@@ -119,7 +119,7 @@ fn attach_with_session_index(config_options: Options, index: usize, create: bool
             if create {
                 create_new_client()
             } else {
-                println!("No active zellij sessions found.");
+                eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
         }
@@ -151,7 +151,7 @@ fn attach_with_session_name(
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
-                println!("No active zellij sessions found.");
+                eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
