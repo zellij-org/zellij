@@ -79,16 +79,9 @@ impl StdinAnsiParser {
                 // in case the user's terminal doesn't support one or more of these signals,
                 // if they spam ESC they need to be able to get back to normal mode and not "us
                 // waiting for ansi instructions" mode
-                if self
+                !self
                     .current_buffer
-                    .iter()
-                    .find(|(key, _)| *key == Key::Esc)
-                    .is_none()
-                {
-                    true
-                } else {
-                    false
-                }
+                    .iter().any(|(key, _)| *key == Key::Esc)
             }
             Key::Char(';')
             | Key::Char('[')
@@ -102,9 +95,7 @@ impl StdinAnsiParser {
             Key::Alt(CharOrArrow::Char(']')) => true,
             Key::Alt(CharOrArrow::Char('\\')) => true,
             Key::Char(c) => {
-                if let '0'..='9' = c {
-                    true
-                } else if let 'a'..='f' = c {
+                if let '0'..='9' | 'a'..='f' = c {
                     true
                 } else {
                     false

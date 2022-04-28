@@ -81,8 +81,8 @@ impl FakeStdoutWriter {
     }
 }
 impl io::Write for FakeStdoutWriter {
-    fn write(&mut self, mut buf: &[u8]) -> Result<usize, io::Error> {
-        self.buffer.lock().unwrap().extend_from_slice(&mut buf);
+    fn write(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
+        self.buffer.lock().unwrap().extend_from_slice(buf);
         Ok(buf.len())
     }
     fn flush(&mut self) -> Result<(), io::Error> {
@@ -188,7 +188,7 @@ fn extract_pixel_events_sent_to_server(
     let events_sent_to_server = events_sent_to_server.lock().unwrap();
     events_sent_to_server.iter().fold(vec![], |mut acc, event| {
         if let ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) = event {
-            acc.push(pixel_dimensions.clone());
+            acc.push(*pixel_dimensions);
         }
         acc
     })
@@ -320,7 +320,7 @@ pub fn pixel_info_queried_from_terminal_emulator() {
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api =
-        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
+        FakeClientOsApi::new(events_sent_to_server, command_is_executing.clone());
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -468,7 +468,7 @@ pub fn pixel_info_sent_to_server() {
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
     let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
+        extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(actions_sent_to_server, vec![Action::Quit]);
     assert_eq!(
         pixel_events_sent_to_server,
@@ -591,7 +591,7 @@ pub fn corrupted_pixel_info_sent_as_key_events() {
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
     let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
+        extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(
         actions_sent_to_server,
         vec![
@@ -719,7 +719,7 @@ pub fn esc_in_the_middle_of_pixelinfo_breaks_out_of_it() {
     );
     let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
     let pixel_events_sent_to_server =
-        extract_pixel_events_sent_to_server(events_sent_to_server.clone());
+        extract_pixel_events_sent_to_server(events_sent_to_server);
     assert_eq!(
         actions_sent_to_server,
         vec![
