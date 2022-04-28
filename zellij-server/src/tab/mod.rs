@@ -1741,10 +1741,14 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
+            let active_terminal = if self.are_floating_panes_visible() {
+                self.floating_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            } else {
+                self.tiled_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            }
+            .unwrap();
 
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
