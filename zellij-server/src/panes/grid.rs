@@ -287,7 +287,7 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
-    colors: Palette,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -328,7 +328,7 @@ impl Grid {
     pub fn new(
         rows: usize,
         columns: usize,
-        colors: Palette,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     ) -> Self {
@@ -357,7 +357,7 @@ impl Grid {
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
-            colors,
+            terminal_emulator_colors,
             output_buffer: Default::default(),
             selection: Default::default(),
             title_stack: vec![],
@@ -1553,16 +1553,23 @@ impl Perform for Grid {
                     self.link_handler.borrow_mut().dispatch_osc8(params);
             }
 
-            // Get/set Foreground, Background, Cursor colors.
-            b"10" | b"11" | b"12" => {
+            // Get/set Foreground (b"10") or background (b"11") colors
+            b"10" | b"11" => {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-                                let color_response_message = match self.colors.bg {
-                                    PaletteColor::Rgb((r, g, b)) => {
+                                let saved_terminal_color = if dynamic_code == 10 {
+                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                } else if dynamic_code == 11 {
+                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                } else {
+                                    None
+                                };
+                                let color_response_message = match saved_terminal_color {
+                                    Some(PaletteColor::Rgb((r, g, b))) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
@@ -1584,6 +1591,10 @@ impl Perform for Grid {
                         }
                     }
                 }
+            }
+
+            b"12" => {
+                // get/set cursor color currently unimplemented
             }
 
             // Set cursor style.

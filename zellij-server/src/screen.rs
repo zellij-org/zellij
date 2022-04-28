@@ -6,12 +6,16 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+use zellij_tile::data::{Palette, PaletteColor};
 use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
 };
+
+use crate::panes::alacritty_functions::xparse_color;
+use crate::panes::terminal_character::AnsiCode;
 
 use crate::{
     output::Output,
@@ -88,6 +92,8 @@ pub enum ScreenInstruction {
     UpdateTabName(Vec<u8>, ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
+    TerminalBackgroundColor(String),
+    TerminalForegroundColor(String),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -166,6 +172,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
             }
+            ScreenInstruction::TerminalBackgroundColor(..) => {
+                ScreenContext::TerminalBackgroundColor
+            }
+            ScreenInstruction::TerminalForegroundColor(..) => {
+                ScreenContext::TerminalForegroundColor
+            }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -231,6 +243,7 @@ pub(crate) struct Screen {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
@@ -265,6 +278,7 @@ impl Screen {
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
+            terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             tab_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
@@ -482,6 +496,22 @@ impl Screen {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
     }
+    pub fn update_terminal_background_color(&mut self, background_color_instruction: String) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(background_color_instruction.as_bytes())
+        {
+            let bg_palette_color = PaletteColor::Rgb((r, g, b));
+            self.terminal_emulator_colors.borrow_mut().bg = bg_palette_color;
+        }
+    }
+    pub fn update_terminal_foreground_color(&mut self, foreground_color_instruction: String) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(foreground_color_instruction.as_bytes())
+        {
+            let fg_palette_color = PaletteColor::Rgb((r, g, b));
+            self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
+        }
+    }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
@@ -573,6 +603,7 @@ impl Screen {
             self.session_is_mirrored,
             client_id,
             self.copy_options.clone(),
+            self.terminal_emulator_colors.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -1308,6 +1339,12 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
                 screen.update_pixel_dimensions(pixel_dimensions);
+            }
+            ScreenInstruction::TerminalBackgroundColor(background_color_instruction) => {
+                screen.update_terminal_background_color(background_color_instruction);
+            }
+            ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
+                screen.update_terminal_foreground_color(background_color_instruction);
             }
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);
