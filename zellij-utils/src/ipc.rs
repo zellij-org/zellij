@@ -75,6 +75,8 @@ pub enum ClientToServerMsg {
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
     TerminalPixelDimensions(PixelDimensions),
+    BackgroundColor(String),
+    ForegroundColor(String),
     TerminalResize(Size),
     NewClient(
         ClientAttributes,

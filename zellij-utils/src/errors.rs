@@ -268,6 +268,8 @@ pub enum ScreenContext {
     UpdateTabName,
     TerminalResize,
     TerminalPixelDimensions,
+    TerminalBackgroundColor,
+    TerminalForegroundColor,
     ChangeMode,
     LeftClick,
     RightClick,
