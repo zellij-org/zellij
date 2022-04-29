@@ -99,6 +99,7 @@ fn create_new_tab(size: Size) -> Tab {
     let character_cell_info = Rc::new(RefCell::new(None));
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
@@ -116,6 +117,7 @@ fn create_new_tab(size: Size) -> Tab {
         session_is_mirrored,
         client_id,
         copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -144,6 +146,7 @@ fn create_new_tab_with_cell_size(
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
@@ -161,6 +164,7 @@ fn create_new_tab_with_cell_size(
         session_is_mirrored,
         client_id,
         copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),

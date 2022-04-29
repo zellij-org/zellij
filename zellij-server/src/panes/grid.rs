@@ -287,7 +287,7 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
-    colors: Palette,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -328,7 +328,7 @@ impl Grid {
     pub fn new(
         rows: usize,
         columns: usize,
-        colors: Palette,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     ) -> Self {
@@ -357,7 +357,7 @@ impl Grid {
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
-            colors,
+            terminal_emulator_colors,
             output_buffer: Default::default(),
             selection: Default::default(),
             title_stack: vec![],
@@ -699,6 +699,12 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
+            self.saved_cursor_position
+                .as_mut()
+                .map(|saved_cursor_position| {
+                    saved_cursor_position.y = new_cursor_y;
+                    saved_cursor_position.x = new_cursor_x;
+                });
         } else if new_columns != self.width
             && self.alternate_lines_above_viewport_and_cursor.is_some()
         {
@@ -723,13 +729,24 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
+                    self.saved_cursor_position
+                        .as_mut()
+                        .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
                 }
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
                         self.cursor.y = 0;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| saved_cursor_position.y = 0);
                     } else {
                         self.cursor.y -= row_count_to_transfer;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| {
+                                saved_cursor_position.y -= row_count_to_transfer
+                            });
                     }
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
@@ -1553,16 +1570,23 @@ impl Perform for Grid {
                     self.link_handler.borrow_mut().dispatch_osc8(params);
             }
 
-            // Get/set Foreground, Background, Cursor colors.
-            b"10" | b"11" | b"12" => {
+            // Get/set Foreground (b"10") or background (b"11") colors
+            b"10" | b"11" => {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-                                let color_response_message = match self.colors.bg {
-                                    PaletteColor::Rgb((r, g, b)) => {
+                                let saved_terminal_color = if dynamic_code == 10 {
+                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                } else if dynamic_code == 11 {
+                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                } else {
+                                    None
+                                };
+                                let color_response_message = match saved_terminal_color {
+                                    Some(PaletteColor::Rgb((r, g, b))) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
@@ -1584,6 +1608,10 @@ impl Perform for Grid {
                         }
                     }
                 }
+            }
+
+            b"12" => {
+                // get/set cursor color currently unimplemented
             }
 
             // Set cursor style.

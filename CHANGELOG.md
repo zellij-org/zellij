@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * add: add command for auto-start script (https://github.com/zellij-org/zellij/pull/1281)
 * Terminal compatibility: fix cursor pane escape and invalid ansi crash (https://github.com/zellij-org/zellij/pull/1349)
 * fix: recover from corrupted ipc bus state (https://github.com/zellij-org/zellij/pull/1351)
+* Terminal compatibility: respond to foreground/background color ansi requests (OSC 10 and 11) (https://github.com/zellij-org/zellij/pull/1358)
+* fix: avoid panic in link_handler.rs (https://github.com/zellij-org/zellij/pull/1356)
+* Terminal compatibility: prevent wide chars from overflowing the title line (https://github.com/zellij-org/zellij/pull/1361)
+* Terminal compatibility: adjust saved cursor position on resize (https://github.com/zellij-org/zellij/pull/1362)
 
 ## [0.28.1] - 2022-04-13
 * (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
