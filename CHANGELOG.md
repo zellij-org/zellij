@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: prevent wide chars from overflowing the title line (https://github.com/zellij-org/zellij/pull/1361)
 * Terminal compatibility: adjust saved cursor position on resize (https://github.com/zellij-org/zellij/pull/1362)
 * fix: avoid panic on renaming a floating pane (https://github.com/zellij-org/zellij/pull/1357)
+* fix: change the way sessions are sorted (https://github.com/zellij-org/zellij/pull/1347)
 
 ## [0.28.1] - 2022-04-13
 * (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)

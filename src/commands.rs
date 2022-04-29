@@ -2,8 +2,8 @@ use crate::install::populate_data_dir;
 use crate::sessions::kill_session as kill_session_impl;
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
-    get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession,
+    get_sessions_sorted_by_mtime, print_sessions, print_sessions_with_index, session_exists,
+    ActiveSession,
 };
 use dialoguer::Confirm;
 use std::path::PathBuf;
@@ -114,7 +114,7 @@ fn find_indexed_session(
 
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
     // Ignore the session_name when `--index` is provided
-    match get_sessions_sorted_by_creation_date() {
+    match get_sessions_sorted_by_mtime() {
         Ok(sessions) if sessions.is_empty() => {
             if create {
                 create_new_client()
