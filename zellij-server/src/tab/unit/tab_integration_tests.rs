@@ -1117,3 +1117,29 @@ fn wide_characters_in_left_title_side() {
     );
     assert_snapshot!(snapshot);
 }
+
+#[test]
+fn save_cursor_position_across_resizes() {
+    // the save cursor position ANSI instruction (CSI s) needs to point to the same character after we
+    // resize the pane
+    let size = Size { cols: 100, rows: 5 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+    );
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 });
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()));
+
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
