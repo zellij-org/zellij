@@ -699,10 +699,12 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
-            self.saved_cursor_position.as_mut().map(|saved_cursor_position| {
-                saved_cursor_position.y = new_cursor_y;
-                saved_cursor_position.x = new_cursor_x;
-            });
+            self.saved_cursor_position
+                .as_mut()
+                .map(|saved_cursor_position| {
+                    saved_cursor_position.y = new_cursor_y;
+                    saved_cursor_position.x = new_cursor_x;
+                });
         } else if new_columns != self.width
             && self.alternate_lines_above_viewport_and_cursor.is_some()
         {
@@ -727,16 +729,24 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
-                    self.saved_cursor_position.as_mut().map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
+                    self.saved_cursor_position
+                        .as_mut()
+                        .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
                 }
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
                         self.cursor.y = 0;
-                        self.saved_cursor_position.as_mut().map(|saved_cursor_position| saved_cursor_position.y = 0);
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| saved_cursor_position.y = 0);
                     } else {
                         self.cursor.y -= row_count_to_transfer;
-                        self.saved_cursor_position.as_mut().map(|saved_cursor_position| saved_cursor_position.y -= row_count_to_transfer);
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| {
+                                saved_cursor_position.y -= row_count_to_transfer
+                            });
                     }
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
