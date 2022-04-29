@@ -1095,3 +1095,25 @@ fn replacing_existing_wide_characters() {
     );
     assert_snapshot!(snapshot);
 }
+
+#[test]
+fn wide_characters_in_left_title_side() {
+    // this test makes sure the title doesn't overflow when it has wide characters
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("title-wide-chars");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
