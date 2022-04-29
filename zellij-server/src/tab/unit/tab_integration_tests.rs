@@ -103,6 +103,7 @@ fn create_new_tab(size: Size) -> Tab {
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
@@ -120,6 +121,7 @@ fn create_new_tab(size: Size) -> Tab {
         session_is_mirrored,
         client_id,
         copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -149,7 +151,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -170,7 +172,7 @@ fn take_snapshot_and_cursor_position(
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1084,6 +1086,54 @@ fn replacing_existing_wide_characters() {
     let mut output = Output::default();
     let pane_content = read_fixture("ncmpcpp-wide-chars");
     tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn wide_characters_in_left_title_side() {
+    // this test makes sure the title doesn't overflow when it has wide characters
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("title-wide-chars");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn save_cursor_position_across_resizes() {
+    // the save cursor position ANSI instruction (CSI s) needs to point to the same character after we
+    // resize the pane
+    let size = Size { cols: 100, rows: 5 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+    );
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 });
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()));
+
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),

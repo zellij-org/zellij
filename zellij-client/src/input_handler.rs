@@ -10,7 +10,7 @@ use zellij_utils::{
 
 use crate::{
     os_input_output::ClientOsApi,
-    pixel_csi_parser::{PixelCsiParser, PixelDimensionsOrKeys},
+    stdin_ansi_parser::{AnsiStdinInstructionOrKeys, StdinAnsiParser},
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
@@ -71,15 +71,19 @@ impl InputHandler {
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
-        // <ESC>[14t => get text area size in pixels, <ESC>[16t => get character cell size in pixels
-        let get_cell_pixel_info = "\u{1b}[14t\u{1b}[16t";
+        // <ESC>[14t => get text area size in pixels,
+        // <ESC>[16t => get character cell size in pixels
+        // <ESC>]11;?<ESC>\ => get background color
+        // <ESC>]10;?<ESC>\ => get foreground color
+        let get_cell_pixel_info =
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}";
         let _ = self
             .os_input
             .get_stdout_writer()
             .write(get_cell_pixel_info.as_bytes())
             .unwrap();
-        let mut pixel_csi_parser = PixelCsiParser::new();
-        pixel_csi_parser.increment_expected_csi_instructions(2);
+        let mut ansi_stdin_parser = StdinAnsiParser::new();
+        ansi_stdin_parser.increment_expected_ansi_instructions(4);
         loop {
             if self.should_exit {
                 break;
@@ -89,9 +93,9 @@ impl InputHandler {
                     match input_event {
                         InputEvent::Key(key_event) => {
                             let key = cast_termwiz_key(key_event, &raw_bytes);
-                            if pixel_csi_parser.expected_instructions() > 0 {
+                            if ansi_stdin_parser.expected_instructions() > 0 {
                                 self.handle_possible_pixel_instruction(
-                                    pixel_csi_parser.parse(key, raw_bytes),
+                                    ansi_stdin_parser.parse(key, raw_bytes),
                                 );
                             } else {
                                 self.handle_key(&key, raw_bytes);
@@ -123,7 +127,7 @@ impl InputHandler {
                         .get_stdout_writer()
                         .write(get_cell_pixel_info.as_bytes())
                         .unwrap();
-                    pixel_csi_parser.increment_expected_csi_instructions(2);
+                    ansi_stdin_parser.increment_expected_ansi_instructions(4);
                 }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
@@ -140,14 +144,26 @@ impl InputHandler {
     }
     fn handle_possible_pixel_instruction(
         &mut self,
-        pixel_instruction_or_keys: Option<PixelDimensionsOrKeys>,
+        pixel_instruction_or_keys: Option<AnsiStdinInstructionOrKeys>,
     ) {
         match pixel_instruction_or_keys {
-            Some(PixelDimensionsOrKeys::PixelDimensions(pixel_dimensions)) => {
+            Some(AnsiStdinInstructionOrKeys::PixelDimensions(pixel_dimensions)) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
             }
-            Some(PixelDimensionsOrKeys::Keys(keys)) => {
+            Some(AnsiStdinInstructionOrKeys::BackgroundColor(background_color_instruction)) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::BackgroundColor(
+                        background_color_instruction,
+                    ));
+            }
+            Some(AnsiStdinInstructionOrKeys::ForegroundColor(foreground_color_instruction)) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::ForegroundColor(
+                        foreground_color_instruction,
+                    ));
+            }
+            Some(AnsiStdinInstructionOrKeys::Keys(keys)) => {
                 for (key, raw_bytes) in keys {
                     self.handle_key(&key, raw_bytes);
                 }
@@ -281,4 +297,4 @@ pub(crate) fn input_loop(
 
 #[cfg(test)]
 #[path = "./unit/input_handler_tests.rs"]
-mod grid_tests;
+mod input_handler_tests;
