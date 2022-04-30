@@ -90,6 +90,7 @@ pub(crate) struct Tab {
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
     copy_on_select: bool,
+    last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
 }
 
@@ -354,6 +355,7 @@ impl Tab {
             clipboard_provider,
             focus_pane_id: None,
             copy_on_select: copy_options.copy_on_select,
+            last_mouse_hold_position: None,
             terminal_emulator_colors,
         }
     }
@@ -1547,7 +1549,7 @@ impl Tab {
                     relative_position.line.0 + 1
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else {
+            } else if let PaneId::Terminal(_) = pane.pid() {
                 pane.start_selection(&relative_position, client_id);
                 self.selecting_with_mouse = true;
             }
@@ -1588,6 +1590,8 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
+
         if self.floating_panes.panes_are_visible()
             && self.floating_panes.pane_is_being_moved_with_mouse()
         {
@@ -1629,6 +1633,14 @@ impl Tab {
         }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
         let search_selectable = true;
 
         if self.floating_panes.panes_are_visible()
@@ -1646,7 +1658,7 @@ impl Tab {
 
         if let Some(active_pane) = active_pane {
             let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() {
+            if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
                 let col = (relative_position.column.0 + 1)
                     .max(1)
