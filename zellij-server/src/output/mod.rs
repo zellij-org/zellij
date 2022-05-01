@@ -28,18 +28,16 @@ fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut Strin
 }
 
 fn adjust_styles_for_possible_selection(
-    chunk_selection_and_background_color: Option<(Selection, AnsiCode)>,
+    chunk_selection_and_background_color: Vec<(Selection, AnsiCode)>,
     character_styles: CharacterStyles,
     chunk_y: usize,
     chunk_width: usize,
 ) -> CharacterStyles {
     chunk_selection_and_background_color
-        .and_then(|(selection, background_color)| {
-            if selection.contains(chunk_y, chunk_width) {
-                Some(character_styles.background(Some(background_color)))
-            } else {
-                None
-            }
+        .iter()
+        .find(|(selection, _background_color)| selection.contains(chunk_y, chunk_width))
+        .and_then(|(_selection, background_color)| {
+            Some(character_styles.background(Some(*background_color)))
         })
         .unwrap_or(character_styles)
 }
@@ -72,14 +70,13 @@ fn serialize_character_chunks(
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
-        let chunk_selection_and_background_color = character_chunk.selection_and_background_color();
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = CharacterStyles::new();
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
-                chunk_selection_and_background_color,
+                character_chunk.selection_and_background_color(),
                 t_character.styles,
                 character_chunk.y,
                 chunk_width,
@@ -376,7 +373,7 @@ pub struct CharacterChunk {
     pub x: usize,
     pub y: usize,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
-    selection_and_background_color: Option<(Selection, AnsiCode)>,
+    selection_and_background_color: Vec<(Selection, AnsiCode)>,
 }
 
 impl CharacterChunk {
@@ -395,11 +392,11 @@ impl CharacterChunk {
         offset_x: usize,
         offset_y: usize,
     ) {
-        self.selection_and_background_color =
-            Some((selection.offset(offset_x, offset_y), background_color));
-    }
-    pub fn selection_and_background_color(&self) -> Option<(Selection, AnsiCode)> {
         self.selection_and_background_color
+            .push((selection.offset(offset_x, offset_y), background_color));
+    }
+    pub fn selection_and_background_color(&self) -> Vec<(Selection, AnsiCode)> {
+        self.selection_and_background_color.clone()
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
         self.changed_colors = changed_colors;

@@ -1,7 +1,7 @@
 use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{CursorShape, NamedColor, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
@@ -229,6 +229,22 @@ impl Pane for TerminalPane {
                         content_x,
                         content_y,
                     );
+                } else if !self.grid.search_results.selections.is_empty() {
+                    for (idx, res) in self.grid.search_results.selections.iter().enumerate() {
+                        if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                            let background_color = if idx == self.grid.search_results.active {
+                                AnsiCode::NamedColor(NamedColor::Yellow)
+                            } else {
+                                AnsiCode::NamedColor(NamedColor::Red)
+                            };
+                            character_chunk.add_selection_and_background(
+                                *res,
+                                background_color,
+                                content_x,
+                                content_y,
+                            );
+                        }
+                    }
                 }
             }
             if self.grid.ring_bell {
@@ -516,7 +532,6 @@ impl Pane for TerminalPane {
         }
         self.grid.search_forward(&self.search_term);
         self.set_should_render(true);
-        self.reflow_lines();
     }
     fn search_backward(&mut self) {
         if self.search_term.is_empty() {
@@ -524,7 +539,6 @@ impl Pane for TerminalPane {
         }
         self.grid.search_backward(&self.search_term);
         self.set_should_render(true);
-        self.reflow_lines();
     }
 }
 

@@ -29,7 +29,7 @@ use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
-    AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, NamedColor, StandardCharset,
+    AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
 
@@ -292,6 +292,13 @@ macro_rules! dump_screen {
     }};
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SearchResult {
+    pub selections: Vec<Selection>,
+    pub active: usize,
+    pub initialized: bool,
+}
+
 #[derive(Clone)]
 pub struct Grid {
     lines_above: VecDeque<Row>,
@@ -330,6 +337,7 @@ pub struct Grid {
     pub ring_bell: bool,
     scrollback_buffer_lines: usize,
     pub mouse_mode: bool,
+    pub search_results: SearchResult,
 }
 
 impl Debug for Grid {
@@ -390,6 +398,7 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: false,
             character_cell_size,
+            search_results: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -542,6 +551,10 @@ impl Grid {
                 .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
+            self.search_results
+                .selections
+                .iter_mut()
+                .for_each(|x| x.move_down(1));
         }
         self.output_buffer.update_all_lines();
     }
@@ -577,6 +590,10 @@ impl Grid {
             );
 
             self.selection.move_up(1);
+            self.search_results
+                .selections
+                .iter_mut()
+                .for_each(|x| x.move_up(1));
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
@@ -1349,6 +1366,7 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
         self.scrollback_buffer_lines = 0;
+        self.search_results = Default::default();
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
@@ -1498,26 +1516,62 @@ impl Grid {
     }
 
     pub fn search_forward(&mut self, needle: &str) {
-        let mut found_needle = None;
-        'rows_loop: for (ridx, row) in self.viewport.iter().enumerate() {
+        if !self.search_results.initialized {
+            self.search_viewport(needle, true);
+        } else if !self.search_results.selections.is_empty() {
+            self.output_buffer.update_line(
+                self.search_results.selections[self.search_results.active]
+                    .start
+                    .line() as usize,
+            );
+            if self.search_results.active + 1 < self.search_results.selections.len() {
+                self.search_results.active += 1;
+                self.output_buffer.update_line(
+                    self.search_results.selections[self.search_results.active]
+                        .start
+                        .line() as usize,
+                );
+            }
+        }
+    }
+
+    pub fn search_backward(&mut self, needle: &str) {
+        if !self.search_results.initialized {
+            self.search_viewport(needle, false);
+        } else if !self.search_results.selections.is_empty() {
+            self.output_buffer.update_line(
+                self.search_results.selections[self.search_results.active]
+                    .start
+                    .line() as usize,
+            );
+            if self.search_results.active > 0 {
+                self.search_results.active -= 1;
+                self.output_buffer.update_line(
+                    self.search_results.selections[self.search_results.active]
+                        .start
+                        .line() as usize,
+                );
+            }
+        }
+    }
+
+    fn search_viewport(&mut self, needle: &str, forward: bool) {
+        for (ridx, row) in self.viewport.iter().enumerate() {
             let mut nidx = 0; // Needle index
             let mut hidx = 0; // Haystack index
             while hidx < row.columns.len() {
                 if row.columns[hidx].character == needle.chars().nth(nidx).unwrap() {
                     if nidx == needle.len() - 1 {
-                        // Found the searchterm!
-                        row.columns
-                            .range(hidx + 1 - needle.len()..=hidx)
-                            .for_each(|c| {
-                                // let _ = c
-                                //     .styles
-                                //     .background(Some(AnsiCode::NamedColor(NamedColor::Yellow)));
-                                let _ = c.styles.bold(None);
-                            });
-                        found_needle = Some((ridx, hidx - needle.len()));
-                        break 'rows_loop;
-                    };
-                    nidx += 1;
+                        let mut selection = Selection::default();
+                        selection
+                            .start(Position::new(ridx as i32, (hidx + 1 - needle.len()) as u16));
+                        selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
+                        self.search_results.selections.push(selection);
+                        self.output_buffer.update_line(ridx);
+                        nidx = 0;
+                    } else {
+                        nidx += 1;
+                    }
                 } else {
                     nidx = 0;
                 }
@@ -1525,31 +1579,10 @@ impl Grid {
             }
         }
 
-        if let Some(pos) = found_needle {
-            std::fs::write(
-                "/tmp/mydummyoutput",
-                format!("Found something at {:?}!", pos),
-            )
-            .unwrap();
-            self.output_buffer.update_all_lines();
-            self.mark_for_rerender();
-        } else {
-            std::fs::write("/tmp/mydummyoutput", "Found nothing :-(").unwrap();
+        if !forward && !self.search_results.selections.is_empty() {
+            self.search_results.active = self.search_results.selections.len() - 1;
         }
-    }
-
-    pub fn search_backward(&mut self, _needle: &str) {
-        self.viewport
-            .first()
-            .unwrap()
-            .columns
-            .iter()
-            .take(10)
-            .for_each(|c| {
-                let _ = c.styles.bold(Some(AnsiCode::On));
-            });
-        self.output_buffer.update_all_lines();
-        self.mark_for_rerender();
+        self.search_results.initialized = true;
     }
 }
 
