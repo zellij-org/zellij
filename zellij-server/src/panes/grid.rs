@@ -86,13 +86,25 @@ impl Iterator for SixelPixelIterator {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PixelRect {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+}
+
+impl PixelRect {
+    pub fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+        PixelRect { x, y, width, height }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct SixelCanvas {
-    sixel_images: HashMap<usize, SixelImage>, // usize is image id
+    sixel_images: HashMap<usize, (PixelRect, SixelImage)>, // usize is image id
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
-
 }
 
 impl SixelCanvas {
@@ -114,12 +126,13 @@ impl SixelCanvas {
     pub fn start_image(&mut self) {
         self.currently_parsing = Some(SixelDeserializer::new());
     }
-    pub fn end_image(&mut self) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
+    pub fn end_image(&mut self, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
             let next_image_id = self.sixel_images.keys().len();
             let sixel_image = sixel_deserializer.create_image();
             let image_pixel_size = sixel_image.pixel_size();
-            self.sixel_images.insert(next_image_id, sixel_image); // TODO: handle character_z_index
+            let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
+            self.sixel_images.insert(next_image_id, (image_size_and_coordinates, sixel_image)); // TODO: handle character_z_index
             self.currently_parsing = None;
             Some((next_image_id, image_pixel_size))
         } else {
@@ -1624,6 +1637,17 @@ impl Grid {
         // TODO: what happens if it's not present?
 
     }
+    fn current_cursor_pixel_coordinates(&self) -> Option<(usize, usize)> { // (x, y)
+        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            let line_count_in_scrollback = self.lines_above.len();
+            let y_coordinates = (line_count_in_scrollback + self.cursor.y) * character_cell_size.height;
+            let x_coordinates = self.cursor.x * character_cell_size.width;
+            Some((y_coordinates, x_coordinates))
+        } else {
+            // TODO: what happens if it's not present?
+            None
+        }
+    }
 }
 
 impl Perform for Grid {
@@ -1677,8 +1701,10 @@ impl Perform for Grid {
 
     fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
         if c == 'q' {
-            self.sixel_parser = Some(sixel_tokenizer::Parser::new());
-            self.sixel_canvas.borrow_mut().start_image();
+            if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+                self.sixel_parser = Some(sixel_tokenizer::Parser::new());
+                self.sixel_canvas.borrow_mut().start_image(x_pixel_coordinates, y_pixel_coordinates);
+            }
         }
     }
 
@@ -1694,6 +1720,12 @@ impl Perform for Grid {
     }
 
     fn unhook(&mut self) {
+        // TODO: CONTINUE HERE (02/05)
+        // - move the start-image coordinates here to end_image
+        // - then chagne the read_changes method to also return cropped sixel images inside the
+        // changes
+        // - it should group consecutive lines and crop the sixel images accordingly
+        // - that way we can render them in Output instead of doing the serializing there
         let new_image_id = self.sixel_canvas.borrow_mut().end_image();
         if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_image_id {
             match self.get_character_under_cursor().as_mut() {
