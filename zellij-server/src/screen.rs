@@ -6,12 +6,16 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+use zellij_tile::data::{Palette, PaletteColor};
 use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
 };
+
+use crate::panes::alacritty_functions::xparse_color;
+use crate::panes::terminal_character::AnsiCode;
 
 use crate::{
     output::Output,
@@ -89,6 +93,8 @@ pub enum ScreenInstruction {
     UpdateTabName(Vec<u8>, ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
+    TerminalBackgroundColor(String),
+    TerminalForegroundColor(String),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -167,6 +173,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
             }
+            ScreenInstruction::TerminalBackgroundColor(..) => {
+                ScreenContext::TerminalBackgroundColor
+            }
+            ScreenInstruction::TerminalForegroundColor(..) => {
+                ScreenContext::TerminalForegroundColor
+            }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -187,6 +199,36 @@ impl From<&ScreenInstruction> for ScreenContext {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct CopyOptions {
+    pub command: Option<String>,
+    pub clipboard: Clipboard,
+    pub copy_on_select: bool,
+}
+
+impl CopyOptions {
+    pub(crate) fn new(
+        copy_command: Option<String>,
+        copy_clipboard: Clipboard,
+        copy_on_select: bool,
+    ) -> Self {
+        Self {
+            command: copy_command,
+            clipboard: copy_clipboard,
+            copy_on_select,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn default() -> Self {
+        Self {
+            command: None,
+            clipboard: Clipboard::default(),
+            copy_on_select: true,
+        }
+    }
+}
+
 /// A [`Screen`] holds multiple [`Tab`]s, each one holding multiple [`panes`](crate::client::panes).
 /// It only directly controls which tab is active, delegating the rest to the individual `Tab`.
 pub(crate) struct Screen {
@@ -203,6 +245,7 @@ pub(crate) struct Screen {
     sixel_canvas: Rc<RefCell<SixelCanvas>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
@@ -212,13 +255,11 @@ pub(crate) struct Screen {
     style: Style,
     draw_pane_frames: bool,
     session_is_mirrored: bool,
-    copy_command: Option<String>,
-    copy_clipboard: Clipboard,
+    copy_options: CopyOptions,
 }
 
 impl Screen {
     /// Creates and returns a new [`Screen`].
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         bus: Bus<ScreenInstruction>,
         client_attributes: &ClientAttributes,
@@ -226,8 +267,7 @@ impl Screen {
         mode_info: ModeInfo,
         draw_pane_frames: bool,
         session_is_mirrored: bool,
-        copy_command: Option<String>,
-        copy_clipboard: Clipboard,
+        copy_options: CopyOptions,
     ) -> Self {
         Screen {
             bus,
@@ -241,13 +281,13 @@ impl Screen {
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
+            terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
             tab_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
             session_is_mirrored,
-            copy_command,
-            copy_clipboard,
+            copy_options,
         }
     }
 
@@ -459,6 +499,22 @@ impl Screen {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
     }
+    pub fn update_terminal_background_color(&mut self, background_color_instruction: String) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(background_color_instruction.as_bytes())
+        {
+            let bg_palette_color = PaletteColor::Rgb((r, g, b));
+            self.terminal_emulator_colors.borrow_mut().bg = bg_palette_color;
+        }
+    }
+    pub fn update_terminal_foreground_color(&mut self, foreground_color_instruction: String) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(foreground_color_instruction.as_bytes())
+        {
+            let fg_palette_color = PaletteColor::Rgb((r, g, b));
+            self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
+        }
+    }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
@@ -550,8 +606,8 @@ impl Screen {
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
-            self.copy_command.clone(),
-            self.copy_clipboard.clone(),
+            self.copy_options.clone(),
+            self.terminal_emulator_colors.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -747,6 +803,11 @@ pub(crate) fn screen_thread_main(
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
+    let copy_options = CopyOptions::new(
+        config_options.copy_command,
+        config_options.copy_clipboard.unwrap_or_default(),
+        config_options.copy_on_select.unwrap_or(true),
+    );
 
     let mut screen = Screen::new(
         bus,
@@ -761,8 +822,7 @@ pub(crate) fn screen_thread_main(
         ),
         draw_pane_frames,
         session_is_mirrored,
-        config_options.copy_command,
-        config_options.copy_clipboard.unwrap_or_default(),
+        copy_options,
     );
     loop {
         let (event, mut err_ctx) = screen
@@ -1283,6 +1343,12 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
                 screen.update_pixel_dimensions(pixel_dimensions);
+            }
+            ScreenInstruction::TerminalBackgroundColor(background_color_instruction) => {
+                screen.update_terminal_background_color(background_color_instruction);
+            }
+            ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
+                screen.update_terminal_foreground_color(background_color_instruction);
             }
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);

@@ -6,10 +6,10 @@ mod copy_command;
 
 use copy_command::CopyCommand;
 use zellij_tile::prelude::Style;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::screen::CopyOptions;
 use crate::ui::pane_boundaries_frame::FrameParams;
 
 use self::clipboard::ClipboardProvider;
@@ -91,6 +91,9 @@ pub(crate) struct Tab {
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
+    copy_on_select: bool,
+    last_mouse_hold_position: Option<Position>,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -284,8 +287,8 @@ impl Tab {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
-        copy_command: Option<String>,
-        copy_clipboard: Clipboard,
+        copy_options: CopyOptions,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -325,9 +328,9 @@ impl Tab {
             style,
         );
 
-        let clipboard_provider = match copy_command {
+        let clipboard_provider = match copy_options.command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
-            None => ClipboardProvider::Osc52(copy_clipboard),
+            None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
 
         Tab {
@@ -355,6 +358,9 @@ impl Tab {
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
+            copy_on_select: copy_options.copy_on_select,
+            last_mouse_hold_position: None,
+            terminal_emulator_colors,
         }
     }
 
@@ -423,6 +429,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_canvas.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -652,6 +659,7 @@ impl Tab {
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_canvas.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -675,6 +683,7 @@ impl Tab {
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
                         self.sixel_canvas.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -705,6 +714,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_canvas.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -733,6 +743,7 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_canvas.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -1547,7 +1558,7 @@ impl Tab {
                     relative_position.line.0 + 1
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else {
+            } else if let PaneId::Terminal(_) = pane.pid() {
                 pane.start_selection(&relative_position, client_id);
                 self.selecting_with_mouse = true;
             }
@@ -1588,6 +1599,8 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
+
         if self.floating_panes.panes_are_visible()
             && self.floating_panes.pane_is_being_moved_with_mouse()
         {
@@ -1595,7 +1608,9 @@ impl Tab {
             return;
         }
 
+        // read these here to avoid use of borrowed `*self`, since we are holding active_pane
         let selecting = self.selecting_with_mouse;
+        let copy_on_release = self.copy_on_select;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
@@ -1613,16 +1628,28 @@ impl Tab {
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else if selecting {
                 active_pane.end_selection(&relative_position, client_id);
-                let selected_text = active_pane.get_selected_text();
-                active_pane.reset_selection();
-                if let Some(selected_text) = selected_text {
-                    self.write_selection_to_clipboard(&selected_text);
+                if copy_on_release {
+                    let selected_text = active_pane.get_selected_text();
+                    active_pane.reset_selection();
+
+                    if let Some(selected_text) = selected_text {
+                        self.write_selection_to_clipboard(&selected_text);
+                    }
                 }
+
                 self.selecting_with_mouse = false;
             }
         }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
         let search_selectable = true;
 
         if self.floating_panes.panes_are_visible()
@@ -1640,7 +1667,7 @@ impl Tab {
 
         if let Some(active_pane) = active_pane {
             let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() {
+            if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
                 let col = (relative_position.column.0 + 1)
                     .max(1)
@@ -1743,10 +1770,14 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
+            let active_terminal = if self.are_floating_panes_visible() {
+                self.floating_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            } else {
+                self.tiled_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            }
+            .unwrap();
 
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));

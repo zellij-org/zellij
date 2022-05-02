@@ -314,10 +314,7 @@ impl PaneFrame {
         if max_length <= 6 || self.title.is_empty() {
             None
         } else if full_text.width() <= max_length {
-            Some((
-                foreground_color(&full_text, self.color),
-                full_text.chars().count(),
-            ))
+            Some((foreground_color(&full_text, self.color), full_text.width()))
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.width()) / 2;
 

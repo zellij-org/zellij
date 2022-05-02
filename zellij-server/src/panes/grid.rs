@@ -431,7 +431,7 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
-    colors: Palette,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -474,7 +474,7 @@ impl Grid {
     pub fn new(
         rows: usize,
         columns: usize,
-        colors: Palette,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_canvas: Rc<RefCell<SixelCanvas>>,
@@ -504,7 +504,7 @@ impl Grid {
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
-            colors,
+            terminal_emulator_colors,
             output_buffer: Default::default(),
             selection: Default::default(),
             title_stack: vec![],
@@ -531,7 +531,7 @@ impl Grid {
             .horizontal_tabstops
             .iter()
             .copied()
-            .find(|&tabstop| tabstop > self.cursor.x);
+            .find(|&tabstop| tabstop > self.cursor.x && tabstop < self.width);
         match next_tabstop {
             Some(tabstop) => {
                 self.cursor.x = tabstop;
@@ -848,6 +848,12 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
+            self.saved_cursor_position
+                .as_mut()
+                .map(|saved_cursor_position| {
+                    saved_cursor_position.y = new_cursor_y;
+                    saved_cursor_position.x = new_cursor_x;
+                });
         } else if new_columns != self.width
             && self.alternate_lines_above_viewport_and_cursor.is_some()
         {
@@ -872,13 +878,24 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
+                    self.saved_cursor_position
+                        .as_mut()
+                        .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
                 }
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
                         self.cursor.y = 0;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| saved_cursor_position.y = 0);
                     } else {
                         self.cursor.y -= row_count_to_transfer;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| {
+                                saved_cursor_position.y -= row_count_to_transfer
+                            });
                     }
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
@@ -1084,37 +1101,22 @@ impl Grid {
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;
     }
-    pub fn insert_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
+    pub fn add_character_at_cursor_position(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        should_insert_character: bool,
+    ) {
+        // this function assumes the current line has enough room for terminal_character (that its
+        // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
             Some(row) => {
-                row.insert_character_at(terminal_character, self.cursor.x);
-                if row.width() > self.width {
-                    row.truncate(self.width);
-                }
-                self.output_buffer.update_line(self.cursor.y);
-            }
-            None => {
-                // pad lines until cursor if they do not exist
-                for _ in self.viewport.len()..self.cursor.y {
-                    self.viewport.push(Row::new(self.width).canonical());
-                }
-                self.viewport.push(
-                    Row::new(self.width)
-                        .with_character(terminal_character)
-                        .canonical(),
-                );
-                self.output_buffer.update_all_lines();
-            }
-        }
-    }
-    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
-        match self.viewport.get_mut(self.cursor.y) {
-            Some(row) => {
-                if self.insert_mode {
+                if self.insert_mode || should_insert_character {
                     row.insert_character_at(terminal_character, self.cursor.x);
+                    if row.width() > self.width {
+                        row.truncate(self.width);
+                    }
                 } else {
                     row.add_character_at(terminal_character, self.cursor.x);
-                    // self.move_cursor_forward_until_edge(count_to_move_cursor);
                 }
                 self.output_buffer.update_line(self.cursor.y);
             }
@@ -1133,7 +1135,6 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
-        // TODO: try to separate adding characters from moving the cursors in this function
         let character_width = terminal_character.width;
         if character_width == 0 {
             return;
@@ -1142,28 +1143,9 @@ impl Grid {
             if self.disable_linewrap {
                 return;
             }
-            // line wrap
-            self.cursor.x = 0;
-            if self.cursor.y == self.height - 1 {
-                if self.alternate_lines_above_viewport_and_cursor.is_none() {
-                    self.transfer_rows_to_lines_above(1);
-                } else {
-                    self.viewport.remove(0);
-                }
-                let wrapped_row = Row::new(self.width);
-                self.viewport.push(wrapped_row);
-                self.selection.move_up(1);
-                self.output_buffer.update_all_lines();
-            } else {
-                self.cursor.y += 1;
-                if self.viewport.len() <= self.cursor.y {
-                    let line_wrapped_row = Row::new(self.width);
-                    self.viewport.push(line_wrapped_row);
-                    self.output_buffer.update_line(self.cursor.y);
-                }
-            }
+            self.line_wrap();
         }
-        self.add_character_at_cursor_position(terminal_character);
+        self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
@@ -1223,6 +1205,27 @@ impl Grid {
             row.replace_columns(replace_with_columns.clone());
         }
         self.output_buffer.update_all_lines();
+    }
+    fn line_wrap(&mut self) {
+        self.cursor.x = 0;
+        if self.cursor.y == self.height - 1 {
+            if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                self.transfer_rows_to_lines_above(1);
+            } else {
+                self.viewport.remove(0);
+            }
+            let wrapped_row = Row::new(self.width);
+            self.viewport.push(wrapped_row);
+            self.selection.move_up(1);
+            self.output_buffer.update_all_lines();
+        } else {
+            self.cursor.y += 1;
+            if self.viewport.len() <= self.cursor.y {
+                let line_wrapped_row = Row::new(self.width);
+                self.viewport.push(line_wrapped_row);
+                self.output_buffer.update_line(self.cursor.y);
+            }
+        }
     }
     fn clear_lines_above(&mut self) {
         self.lines_above.clear();
@@ -1732,8 +1735,8 @@ impl Perform for Grid {
             // Set color index.
             b"4" => {
                 for chunk in params[1..].chunks(2) {
-                    let index = parse_number(chunk[0]);
-                    let color = xparse_color(chunk[1]);
+                    let index = chunk.get(0).and_then(|index| parse_number(index));
+                    let color = chunk.get(1).and_then(|color| xparse_color(color));
                     if let (Some(i), Some(c)) = (index, color) {
                         if self.changed_colors.is_none() {
                             self.changed_colors = Some([None; 256]);
@@ -1753,16 +1756,23 @@ impl Perform for Grid {
                     self.link_handler.borrow_mut().dispatch_osc8(params);
             }
 
-            // Get/set Foreground, Background, Cursor colors.
-            b"10" | b"11" | b"12" => {
+            // Get/set Foreground (b"10") or background (b"11") colors
+            b"10" | b"11" => {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-                                let color_response_message = match self.colors.bg {
-                                    PaletteColor::Rgb((r, g, b)) => {
+                                let saved_terminal_color = if dynamic_code == 10 {
+                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                } else if dynamic_code == 11 {
+                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                } else {
+                                    None
+                                };
+                                let color_response_message = match saved_terminal_color {
+                                    Some(PaletteColor::Rgb((r, g, b))) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
@@ -1784,6 +1794,10 @@ impl Perform for Grid {
                         }
                     }
                 }
+            }
+
+            b"12" => {
+                // get/set cursor color currently unimplemented
             }
 
             // Set cursor style.
@@ -2079,6 +2093,7 @@ impl Perform for Grid {
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
             let column = next_param_or(1).saturating_sub(1);
+            let column = std::cmp::min(column, self.width.saturating_sub(1));
             self.move_cursor_to_column(column);
         } else if c == 'g' {
             let clear_type = next_param_or(0);
@@ -2119,8 +2134,9 @@ impl Perform for Grid {
         } else if c == '@' {
             let count = next_param_or(1);
             for _ in 0..count {
-                // TODO: should this be styled?
-                self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);
+                let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                pad_character.styles = self.cursor.pending_styles;
+                self.add_character_at_cursor_position(pad_character, true);
             }
         } else if c == 'b' {
             if let Some(c) = self.preceding_char {
@@ -2513,9 +2529,10 @@ impl Row {
             self.columns.push_back(terminal_character);
             // this is much more performant than remove/insert
             let character = self.columns.swap_remove_back(absolute_x_index).unwrap();
-            let excess_width = character.width.saturating_sub(1);
+            let excess_width = character.width.saturating_sub(terminal_character.width);
             for _ in 0..excess_width {
-                self.columns.insert(absolute_x_index, terminal_character);
+                self.columns
+                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
             }
         }
         self.width = None;
@@ -2602,17 +2619,6 @@ impl Row {
         replace_with.append(&mut self.columns);
         self.width = None;
         self.columns = replace_with;
-    }
-    pub fn replace_beginning_with(&mut self, mut line_part: VecDeque<TerminalCharacter>) {
-        // this assumes line_part has no wide characters
-        if line_part.len() > self.columns.len() {
-            self.columns.clear();
-        } else {
-            drop(self.columns.drain(0..line_part.len()));
-        }
-        line_part.append(&mut self.columns);
-        self.width = None;
-        self.columns = line_part;
     }
     pub fn len(&self) -> usize {
         self.columns.len()

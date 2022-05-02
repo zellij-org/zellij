@@ -22,7 +22,7 @@ use zellij_utils::{
     position::Position,
     shared::make_terminal_title,
     vte,
-    zellij_tile::data::{InputMode, PaletteColor},
+    zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -491,12 +491,13 @@ impl TerminalPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_canvas: Rc<RefCell<SixelCanvas>>,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
-            style.colors,
+            terminal_emulator_colors,
             link_handler,
             character_cell_size,
             sixel_canvas,

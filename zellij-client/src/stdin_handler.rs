@@ -1,9 +1,7 @@
 use crate::os_input_output::ClientOsApi;
 use crate::InputInstruction;
 use zellij_utils::channels::SenderWithContext;
-use zellij_utils::input::mouse::{MouseButton, MouseEvent};
-
-use zellij_utils::termwiz::input::{InputEvent, InputParser};
+use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 
 pub(crate) fn stdin_loop(
     os_input: Box<dyn ClientOsApi>,
@@ -17,8 +15,7 @@ pub(crate) fn stdin_loop(
         current_buffer.append(&mut buf.to_vec());
         let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
         let parse_input_event = |input_event: InputEvent| {
-            holding_mouse = should_hold_mouse(input_event.clone());
-            if holding_mouse {
+            if holding_mouse && is_mouse_press_or_hold(&input_event) {
                 let mut poller = os_input.stdin_poller();
                 loop {
                     let ready = poller.ready();
@@ -32,29 +29,27 @@ pub(crate) fn stdin_loop(
                         ))
                         .unwrap();
                 }
-            } else {
-                send_input_instructions
-                    .send(InputInstruction::KeyEvent(
-                        input_event,
-                        current_buffer.drain(..).collect(),
-                    ))
-                    .unwrap();
             }
+
+            holding_mouse = is_mouse_press_or_hold(&input_event);
+
+            send_input_instructions
+                .send(InputInstruction::KeyEvent(
+                    input_event,
+                    current_buffer.drain(..).collect(),
+                ))
+                .unwrap();
         };
         input_parser.parse(&buf, parse_input_event, maybe_more);
     }
 }
 
-fn should_hold_mouse(input_event: InputEvent) -> bool {
+fn is_mouse_press_or_hold(input_event: &InputEvent) -> bool {
     if let InputEvent::Mouse(mouse_event) = input_event {
-        let mouse_event = zellij_utils::input::mouse::MouseEvent::from(mouse_event);
-        if let MouseEvent::Press(button, _point) = mouse_event {
-            match button {
-                MouseButton::Left | MouseButton::Right => {
-                    return true;
-                }
-                _ => {}
-            }
+        if mouse_event.mouse_buttons.contains(MouseButtons::LEFT)
+            || mouse_event.mouse_buttons.contains(MouseButtons::RIGHT)
+        {
+            return true;
         }
     }
     false

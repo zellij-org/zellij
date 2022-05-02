@@ -27,24 +27,21 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
     }
 }
 
-pub(crate) fn get_sessions_sorted_by_creation_date() -> anyhow::Result<Vec<String>> {
+pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
     match fs::read_dir(&*ZELLIJ_SOCK_DIR) {
         Ok(files) => {
-            let mut sessions_with_creation_date: Vec<(String, SystemTime)> = Vec::new();
+            let mut sessions_with_mtime: Vec<(String, SystemTime)> = Vec::new();
             for file in files {
                 let file = file?;
                 let file_name = file.file_name().into_string().unwrap();
-                let file_created_at = file.metadata()?.created()?;
+                let file_modified_at = file.metadata()?.modified()?;
                 if file.file_type()?.is_socket() && assert_socket(&file_name) {
-                    sessions_with_creation_date.push((file_name, file_created_at));
+                    sessions_with_mtime.push((file_name, file_modified_at));
                 }
             }
-            sessions_with_creation_date.sort_by_key(|x| x.1); // the oldest one will be the first
+            sessions_with_mtime.sort_by_key(|x| x.1); // the oldest one will be the first
 
-            let sessions = sessions_with_creation_date
-                .iter()
-                .map(|x| x.0.clone())
-                .collect();
+            let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
             Ok(sessions)
         }
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
@@ -58,10 +55,13 @@ fn assert_socket(name: &str) -> bool {
         Ok(stream) => {
             let mut sender = IpcSenderWithContext::new(stream);
             sender.send(ClientToServerMsg::ConnStatus);
-
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
-            let (instruction, _) = receiver.recv();
-            matches!(instruction, ServerToClientMsg::Connected)
+            match receiver.recv() {
+                Some((instruction, _)) => {
+                    matches!(instruction, ServerToClientMsg::Connected)
+                }
+                None => false,
+            }
         }
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));

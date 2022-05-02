@@ -1,4 +1,5 @@
 use super::{Output, Tab};
+use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -11,7 +12,6 @@ use std::path::PathBuf;
 use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
@@ -102,9 +102,9 @@ fn create_new_tab(size: Size) -> Tab {
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let copy_command = None;
     let character_cell_info = Rc::new(RefCell::new(None));
-    let clipboard = Clipboard::default();
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
         position,
@@ -120,8 +120,8 @@ fn create_new_tab(size: Size) -> Tab {
         connected_clients,
         session_is_mirrored,
         client_id,
-        copy_command,
-        clipboard,
+        copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -151,7 +151,7 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -172,7 +172,7 @@ fn take_snapshot_and_cursor_position(
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
     );
@@ -1086,6 +1086,105 @@ fn replacing_existing_wide_characters() {
     let mut output = Output::default();
     let pane_content = read_fixture("ncmpcpp-wide-chars");
     tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn rename_embedded_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
+    );
+    tab.update_active_pane_name("Renamed empedded pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn rename_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.new_pane(new_pane_id, Some(client_id));
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    );
+    tab.toggle_pane_embed_or_floating(client_id);
+    tab.update_active_pane_name("Renamed floating pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn wide_characters_in_left_title_side() {
+    // this test makes sure the title doesn't overflow when it has wide characters
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("title-wide-chars");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn save_cursor_position_across_resizes() {
+    // the save cursor position ANSI instruction (CSI s) needs to point to the same character after we
+    // resize the pane
+    let size = Size { cols: 100, rows: 5 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+    );
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 });
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()));
+
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
