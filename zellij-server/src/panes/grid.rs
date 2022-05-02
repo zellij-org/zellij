@@ -114,13 +114,14 @@ impl SixelCanvas {
     pub fn start_image(&mut self) {
         self.currently_parsing = Some(SixelDeserializer::new());
     }
-    pub fn end_image(&mut self) -> Option<usize> { // returns image id
+    pub fn end_image(&mut self) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
             let next_image_id = self.sixel_images.keys().len();
             let sixel_image = sixel_deserializer.create_image();
+            let image_pixel_size = sixel_image.pixel_size();
             self.sixel_images.insert(next_image_id, sixel_image); // TODO: handle character_z_index
             self.currently_parsing = None;
-            Some(next_image_id)
+            Some((next_image_id, image_pixel_size))
         } else {
             None
         }
@@ -1614,6 +1615,15 @@ impl Grid {
     fn handle_sixel_event(&mut self, sixel_event: SixelEvent) {
         self.sixel_canvas.borrow_mut().handle_event(sixel_event);
     }
+    fn move_cursor_down_by_pixels(&mut self, pixel_count: usize) {
+        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            let pixel_height = character_cell_size.height;
+            let to_move = (pixel_count as f64 / pixel_height as f64).ceil() as usize;
+            self.cursor.y += to_move
+        }
+        // TODO: what happens if it's not present?
+
+    }
 }
 
 impl Perform for Grid {
@@ -1670,7 +1680,6 @@ impl Perform for Grid {
             self.sixel_parser = Some(sixel_tokenizer::Parser::new());
             self.sixel_canvas.borrow_mut().start_image();
         }
-        // TBD
     }
 
     fn put(&mut self, byte: u8) {
@@ -1686,7 +1695,7 @@ impl Perform for Grid {
 
     fn unhook(&mut self) {
         let new_image_id = self.sixel_canvas.borrow_mut().end_image();
-        if let Some(new_image_id) = new_image_id {
+        if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_image_id {
             match self.get_character_under_cursor().as_mut() {
                 Some(character_under_cursor) => {
                     if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
@@ -1703,9 +1712,10 @@ impl Perform for Grid {
                     new_character.styles = self.cursor.pending_styles;
                     new_character.sixel_cell = Some(new_sixel_cell_id);
                     self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
-                    self.add_character(new_character);
+                    self.add_character_at_cursor_position(new_character, false);
                 }
             }
+            self.move_cursor_down_by_pixels(image_pixel_height);
         }
         self.sixel_parser = None;
     }

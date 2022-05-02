@@ -78,10 +78,12 @@ fn serialize_character_chunks(
         let mut character_styles = CharacterStyles::new();
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
         let mut chunk_width = character_chunk.x;
+        let mut sixel_vte: Option<String> = None;
+        // TODO: CONTINUE HERE
+        // figure out how to render partial sixel images that start outside the viewport
         for t_character in character_chunk.terminal_characters.iter() {
-            let mut serialized_image_or_images = None;
+            let mut serialized_image_or_images: Option<String> = None;
             if let Some(sixel_anchor) = t_character.sixel_cell {
-                log::info!("can has serialized cell");
                 serialized_image_or_images = Some(sixel_canvas.serialize_cell(sixel_anchor));
             }
             let current_character_styles = adjust_styles_for_possible_selection(
@@ -90,6 +92,14 @@ fn serialize_character_chunks(
                 character_chunk.y,
                 chunk_width,
             );
+            if let Some(serialized_image_or_images) = serialized_image_or_images {
+                let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
+                let move_cursor_one_char_forward = "\u{1b}[1C";
+                let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", character_chunk.y + 1, chunk_width + 1);
+                sixel_vte.push_str(&goto_image_beginning_cursor_position);
+                sixel_vte.push_str(&serialized_image_or_images);
+                sixel_vte.push_str(&goto_image_beginning_cursor_position);
+            };
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -99,9 +109,15 @@ fn serialize_character_chunks(
             );
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
-            if let Some(serialized_image_or_images) = serialized_image_or_images {
-                vte_output.push_str(&serialized_image_or_images);
-            }
+        }
+        if let Some(sixel_vte) = sixel_vte {
+            // we do this at the end because of the implied z-index,
+            // images should be above text unless the text was explicitly inserted after them
+            let save_cursor_position = "\u{1b}[s";
+            let restore_cursor_position = "\u{1b}[u";
+            vte_output.push_str(save_cursor_position);
+            vte_output.push_str(&sixel_vte);
+            vte_output.push_str(restore_cursor_position);
         }
         character_styles.clear();
     }
