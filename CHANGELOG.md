@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.29.0] - 2022-05-02
 * add: clarify copy to clipboard message (https://github.com/zellij-org/zellij/pull/1321)
 * Terminal compatibility: fix ANSI scrolling regression (https://github.com/zellij-org/zellij/pull/1324)
 * fix: send SIGHUP instead of SIGTERM when closing a pane (https://github.com/zellij-org/zellij/pull/1320)
