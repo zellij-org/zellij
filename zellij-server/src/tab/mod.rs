@@ -1549,9 +1549,12 @@ impl Tab {
                     relative_position.line.0 + 1
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else if let PaneId::Terminal(_) = pane.pid() {
+            } else {
+                // TODO: rename this method, it is used to forward click events to plugin panes
                 pane.start_selection(&relative_position, client_id);
-                self.selecting_with_mouse = true;
+                if let PaneId::Terminal(_) = pane.pid() {
+                    self.selecting_with_mouse = true;
+                }
             }
         };
     }
@@ -1617,9 +1620,10 @@ impl Tab {
                     .min(active_pane.get_content_rows() as isize);
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else if selecting {
+            } else {
+                // TODO: rename this method, it is used to forward release events to plugin panes
                 active_pane.end_selection(&relative_position, client_id);
-                if copy_on_release {
+                if selecting && copy_on_release {
                     let selected_text = active_pane.get_selected_text();
                     active_pane.reset_selection();
 
