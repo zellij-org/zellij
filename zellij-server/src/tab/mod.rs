@@ -90,6 +90,8 @@ pub(crate) struct Tab {
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
     copy_on_select: bool,
+    last_mouse_hold_position: Option<Position>,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -283,6 +285,7 @@ impl Tab {
         session_is_mirrored: bool,
         client_id: ClientId,
         copy_options: CopyOptions,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -352,6 +355,8 @@ impl Tab {
             clipboard_provider,
             focus_pane_id: None,
             copy_on_select: copy_options.copy_on_select,
+            last_mouse_hold_position: None,
+            terminal_emulator_colors,
         }
     }
 
@@ -419,6 +424,7 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -647,6 +653,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -669,6 +676,7 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -698,6 +706,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -725,6 +734,7 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -1540,8 +1550,11 @@ impl Tab {
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else {
+                // TODO: rename this method, it is used to forward click events to plugin panes
                 pane.start_selection(&relative_position, client_id);
-                self.selecting_with_mouse = true;
+                if let PaneId::Terminal(_) = pane.pid() {
+                    self.selecting_with_mouse = true;
+                }
             }
         };
     }
@@ -1580,6 +1593,8 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
+
         if self.floating_panes.panes_are_visible()
             && self.floating_panes.pane_is_being_moved_with_mouse()
         {
@@ -1605,9 +1620,10 @@ impl Tab {
                     .min(active_pane.get_content_rows() as isize);
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else if selecting {
+            } else {
+                // TODO: rename this method, it is used to forward release events to plugin panes
                 active_pane.end_selection(&relative_position, client_id);
-                if copy_on_release {
+                if selecting && copy_on_release {
                     let selected_text = active_pane.get_selected_text();
                     active_pane.reset_selection();
 
@@ -1621,6 +1637,14 @@ impl Tab {
         }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
         let search_selectable = true;
 
         if self.floating_panes.panes_are_visible()
@@ -1638,7 +1662,7 @@ impl Tab {
 
         if let Some(active_pane) = active_pane {
             let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() {
+            if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
                 let col = (relative_position.column.0 + 1)
                     .max(1)
@@ -1741,10 +1765,14 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
+            let active_terminal = if self.are_floating_panes_visible() {
+                self.floating_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            } else {
+                self.tiled_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            }
+            .unwrap();
 
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));

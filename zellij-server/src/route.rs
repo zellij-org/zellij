@@ -449,6 +449,26 @@ pub(crate) fn route_thread_main(
                             ))
                             .unwrap();
                     }
+                    ClientToServerMsg::BackgroundColor(background_color_instruction) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
+                                background_color_instruction,
+                            ))
+                            .unwrap();
+                    }
+                    ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalForegroundColor(
+                                foreground_color_instruction,
+                            ))
+                            .unwrap();
+                    }
                     ClientToServerMsg::NewClient(
                         client_attributes,
                         cli_args,
