@@ -144,12 +144,41 @@ pub(crate) fn list_sessions() {
     process::exit(exit_code);
 }
 
-pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+#[derive(Debug, Clone)]
+pub enum SessionNameMatch {
+    AmbiguousPrefix(Vec<String>),
+    UniquePrefix(String),
+    Exact(String),
+    None,
+}
+
+pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     return match get_sessions() {
-        Ok(sessions) if sessions.iter().any(|s| s == name) => Ok(true),
-        Ok(_) => Ok(false),
+        Ok(sessions) => Ok({
+            let filtered_sessions: Vec<String> = sessions
+                .iter()
+                .filter(|s| s.starts_with(prefix))
+                .cloned()
+                .collect();
+            if filtered_sessions.iter().any(|s| s == prefix) {
+                return Ok(SessionNameMatch::Exact(prefix.to_string()));
+            }
+            match &filtered_sessions[..] {
+                [] => SessionNameMatch::None,
+                [s] => SessionNameMatch::UniquePrefix(s.to_string()),
+                _ => SessionNameMatch::AmbiguousPrefix(filtered_sessions),
+            }
+        }),
         Err(e) => Err(e),
     };
+}
+
+pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+    match match_session_name(name) {
+        Ok(SessionNameMatch::Exact(_)) => Ok(true),
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 pub(crate) fn assert_session(name: &str) {

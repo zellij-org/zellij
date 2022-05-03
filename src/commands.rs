@@ -2,8 +2,8 @@ use crate::install::populate_data_dir;
 use crate::sessions::kill_session as kill_session_impl;
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
-    get_sessions_sorted_by_mtime, print_sessions, print_sessions_with_index, session_exists,
-    ActiveSession,
+    get_sessions_sorted_by_mtime, match_session_name, print_sessions, print_sessions_with_index,
+    session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
 use std::path::PathBuf;
@@ -144,10 +144,23 @@ fn attach_with_session_name(
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
         }
-        Some(session) => {
-            assert_session(session);
-            ClientInfo::Attach(session_name.unwrap(), config_options)
-        }
+        Some(prefix) => match match_session_name(prefix).unwrap() {
+            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
+                ClientInfo::Attach(s, config_options)
+            }
+            SessionNameMatch::AmbiguousPrefix(sessions) => {
+                println!(
+                    "Ambiguous selection: multiple sessions names start with '{}':",
+                    prefix
+                );
+                print_sessions(sessions);
+                process::exit(1);
+            }
+            SessionNameMatch::None => {
+                eprintln!("No session with the name '{}' found!", prefix);
+                process::exit(1);
+            }
+        },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
@@ -156,7 +169,7 @@ fn attach_with_session_name(
             }
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
-                println!("Please specify the session name to attach to. The following sessions are active:");
+                println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
                 process::exit(1);
             }
