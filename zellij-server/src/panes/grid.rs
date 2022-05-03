@@ -817,6 +817,7 @@ impl Grid {
     pub fn dump_screen(&mut self) -> String {
         let mut lines: String = dump_screen!(self.lines_above);
         let viewport: String = dump_screen!(self.viewport);
+        lines.push_str("\n");
         lines.push_str(&viewport);
         return lines;
     }
