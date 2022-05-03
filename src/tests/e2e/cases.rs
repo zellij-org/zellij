@@ -950,7 +950,8 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
                     // we're back inside the session
                     step_is_complete = true;
                 }
