@@ -169,7 +169,7 @@ fn attach_with_session_name(
             }
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
-                println!("Please specify the session to attach to, either by using the full name or a unqiue prefix.\nThe following sessions are active:");
+                println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
                 process::exit(1);
             }
