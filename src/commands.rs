@@ -144,26 +144,20 @@ fn attach_with_session_name(
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
         }
-        Some(prefix) => match match_session_name(prefix) {
-            Ok(result) => match result {
-                SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
-                    ClientInfo::Attach(s, config_options)
-                }
-                SessionNameMatch::AmbiguousPrefix(sessions) => {
-                    println!(
-                        "Ambiguous selection: multiple sessions names start with '{}':",
-                        prefix
-                    );
-                    print_sessions(sessions);
-                    process::exit(1);
-                }
-                SessionNameMatch::None => {
-                    eprintln!("No session with the name '{}' found!", prefix);
-                    process::exit(1);
-                }
-            },
-            Err(e) => {
-                eprintln!("Error occured: {:?}", e);
+        Some(prefix) => match match_session_name(prefix).unwrap() {
+            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
+                ClientInfo::Attach(s, config_options)
+            }
+            SessionNameMatch::AmbiguousPrefix(sessions) => {
+                println!(
+                    "Ambiguous selection: multiple sessions names start with '{}':",
+                    prefix
+                );
+                print_sessions(sessions);
+                process::exit(1);
+            }
+            SessionNameMatch::None => {
+                eprintln!("No session with the name '{}' found!", prefix);
                 process::exit(1);
             }
         },
