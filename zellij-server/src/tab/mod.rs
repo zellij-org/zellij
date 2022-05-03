@@ -56,6 +56,44 @@ macro_rules! resize_pty {
         }
     };
 }
+macro_rules! unwrap {
+    (option $value:expr; log $message:expr) => {
+        match $value {
+            None => {
+                log::error!($message);
+            }
+            Some(p) => p,
+        }
+    };
+    (option $value:expr; panic $message:expr) => {
+        match $value {
+            None => {
+                log::error!($message);
+                log::error!("panicking!");
+                panic!($message);
+            }
+            Some(p) => p,
+        }
+    };
+    (result $value:expr; log $message:expr) => {
+        match $value {
+            Err(e) => {
+                log::error!($message, e);
+            }
+            Ok(p) => p,
+        }
+    };
+    (result $value:expr; panic $message:expr) => {
+        match $value {
+            Err(e) => {
+                log::error!($message, e);
+                log::error!("panicking!");
+                panic!($message, e);
+            }
+            Ok(p) => p,
+        }
+    };
+}
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
@@ -476,13 +514,12 @@ impl Tab {
         let mode_infos = self.mode_info.borrow();
         for client_id in self.connected_clients.borrow().iter() {
             let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
-                    None,
-                    Some(*client_id),
-                    Event::ModeUpdate(mode_info.clone()),
-                ))
-                .unwrap();
+            let result = self.senders.send_to_plugin(PluginInstruction::Update(
+                None,
+                Some(*client_id),
+                Event::ModeUpdate(mode_info.clone()),
+            ));
+            unwrap!(result result; log "Error updating input mode: {}");
         }
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
@@ -512,7 +549,7 @@ impl Tab {
             let focus_pane_id = self.focus_pane_id.unwrap_or_else(|| {
                 pane_ids.sort(); // TODO: make this predictable
                 pane_ids.retain(|p| !self.tiled_panes.panes_to_hide_contains(*p));
-                *pane_ids.get(0).unwrap()
+                *unwrap!(option pane_ids.get(0); panic "Error: no focused pane and no alternartive found")
             });
             self.tiled_panes.focus_pane(focus_pane_id, client_id);
             self.connected_clients.borrow_mut().insert(client_id);
@@ -572,8 +609,10 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
-                    // this unwrap is safe because floating panes should not be visible if there are no floating panes
-                    let floating_pane_to_embed = self.close_pane(focused_floating_pane_id).unwrap();
+                    let floating_pane_to_embed = unwrap!(
+                        option self.close_pane(focused_floating_pane_id);
+                        panic "floating panes should not be visible if there are no floating panes"
+                    );
                     self.tiled_panes
                         .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
                     self.should_clear_display_before_rendering = true;
@@ -632,7 +671,7 @@ impl Tab {
                         default_shell,
                         ClientOrTabIndex::ClientId(client_id),
                     );
-                    self.senders.send_to_pty(instruction).unwrap();
+                    unwrap!(result self.senders.send_to_pty(instruction); panic "unable to open new floating pane {}");
                 }
             }
             self.floating_panes.set_force_render();
@@ -841,9 +880,9 @@ impl Tab {
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
-                .unwrap_or_else(|| self.tiled_panes.get_active_pane_id(client_id).unwrap())
+                .unwrap_or_else(|| unwrap!(option self.tiled_panes.get_active_pane_id(client_id); panic "no active pane to write to"))
         } else {
-            self.tiled_panes.get_active_pane_id(client_id).unwrap()
+            unwrap!(option self.tiled_panes.get_active_pane_id(client_id); panic "no active tiled pane to write to")
         };
         self.write_to_pane_id(input_bytes, pane_id);
     }
@@ -864,10 +903,12 @@ impl Tab {
     pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
-                let active_terminal = self
-                    .floating_panes
-                    .get(&pane_id)
-                    .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
+                let active_terminal = self.floating_panes.get(&pane_id).unwrap_or_else(|| {
+                    unwrap!(
+                        option self.tiled_panes.get_pane(pane_id);
+                        panic format!("no pane found to write: id:{}", pane_id)
+                    )
+                });
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
                 if let Err(e) = self
                     .os_api
@@ -881,9 +922,10 @@ impl Tab {
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
-                    self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
-                        .unwrap()
+                    unwrap!(
+                        result self.senders.send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)));
+                        log format!("failed writing to plugin {}, {{}}", pid)
+                    )
                 }
             }
         }
@@ -945,12 +987,14 @@ impl Tab {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
-            self.senders
+            unwrap!(
+                result self.senders
                 .send_to_pty(PtyInstruction::UpdateActivePane(
                     self.get_active_pane_id(client_id),
                     client_id,
-                ))
-                .unwrap();
+                ));
+                panic format!("unable to update active pane in pty thread. clientd={}", client_id)
+            );
         }
     }
     pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
@@ -1303,9 +1347,10 @@ impl Tab {
         if let Some(max_panes) = self.max_panes {
             let terminals = self.get_tiled_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
-                self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(pid))
-                    .unwrap();
+                unwrap!(
+                    result self.senders.send_to_pty(PtyInstruction::ClosePane(pid));
+                    log format!("unable to send close command to terminal {}", pid)
+                );
                 self.close_pane(pid);
             }
         }
@@ -1367,17 +1412,19 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 self.close_pane(active_floating_pane_id);
-                self.senders
-                    .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
-                    .unwrap();
+                unwrap!(
+                    result self.senders.send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id));
+                    log format!("unable to send close command to terminal {}", active_floating_pane_id)
+                );
                 return;
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
             self.close_pane(active_pane_id);
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
-                .unwrap();
+            unwrap!(
+                result self.senders.send_to_pty(PtyInstruction::ClosePane(active_pane_id));
+                log format!("unable to send close command to terminal {}", active_pane_id)
+            );
         }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
@@ -1507,12 +1554,10 @@ impl Tab {
     fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
         if self.tiled_panes.fullscreen_is_active() && self.is_position_inside_viewport(point) {
             let first_client_id = {
-                self.connected_clients
-                    .borrow()
-                    .iter()
-                    .copied()
-                    .next()
-                    .unwrap()
+                unwrap!(
+                    option self.connected_clients.borrow().iter().copied().next();
+                    panic "no connected clients"
+                )
             }; // TODO: instead of doing this, record the pane that is in fullscreen
             return self.tiled_panes.get_active_pane_id(first_client_id);
         }
@@ -1686,13 +1731,14 @@ impl Tab {
             .and_then(|p| p.get_selected_text());
         if let Some(selected_text) = selected_text {
             self.write_selection_to_clipboard(&selected_text);
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
+            unwrap!(
+                result self.senders.send_to_plugin(PluginInstruction::Update(
                     None,
                     None,
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
-                ))
-                .unwrap();
+                ));
+                log "failed to copy selection to clipboard: {}"
+            );
         }
     }
 
@@ -1702,26 +1748,28 @@ impl Tab {
             { self.connected_clients.borrow().iter().copied().collect() };
         output.add_clients(&connected_clients, self.link_handler.clone(), None);
         let client_ids = connected_clients.iter().copied();
-        let clipboard_event =
-            match self
-                .clipboard_provider
-                .set_content(selection, &mut output, client_ids)
-            {
-                Ok(_) => {
-                    let serialized_output = output.serialize();
-                    self.senders
-                        .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                        .unwrap();
-                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
-                }
-                Err(err) => {
-                    log::error!("could not write selection to clipboard: {}", err);
-                    Event::SystemClipboardFailure
-                }
-            };
-        self.senders
-            .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
-            .unwrap();
+        let clipboard_event = match self.clipboard_provider.set_content(
+            selection,
+            &mut output,
+            client_ids,
+        ) {
+            Ok(_) => {
+                let serialized_output = output.serialize();
+                unwrap!(
+                    result self.senders.send_to_server(ServerInstruction::Render(Some(serialized_output)));
+                    panic "unable to render in server {}"
+                );
+                Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
+            }
+            Err(err) => {
+                log::error!("could not write selection to clipboard: {}", err);
+                Event::SystemClipboardFailure
+            }
+        };
+        unwrap!(
+            result self.senders.send_to_plugin(PluginInstruction::Update(None, None, clipboard_event));
+            log "unable to send clipboard event to plugin: {}"
+        );
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
         let mut viewport = self.viewport.borrow_mut();
@@ -1753,32 +1801,37 @@ impl Tab {
             _ => None,
         });
         for pid in pids_in_this_tab {
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
+            unwrap!(
+                result self.senders.send_to_plugin(PluginInstruction::Update(
                     Some(*pid),
                     None,
                     Event::Visible(visible),
-                ))
-                .unwrap();
+                ));
+                log format!("error sending visible event to plugin with id {}: {{}}", pid)
+            );
         }
     }
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = if self.are_floating_panes_visible() {
-                self.floating_panes
-                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
-            } else {
-                self.tiled_panes
-                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
-            }
-            .unwrap();
-
+            let active_terminal = unwrap!(
+                option if self.are_floating_panes_visible() {
+                    self.floating_panes.get_pane_mut(PaneId::Terminal(active_terminal_id))
+                } else {
+                    self.tiled_panes.get_pane_mut(PaneId::Terminal(active_terminal_id))
+                };
+                log "no active terminal found"
+            );
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
             if is_updatable {
-                let s = str::from_utf8(&buf).unwrap();
+                let s = unwrap!(
+                    result str::from_utf8(&buf);
+                    panic "error parsing new panel name as utf8: {}"
+                );
                 active_terminal.update_name(s);
+            } else {
+                log::warn!("new panel name contains illegal characters. ignoring");
             }
         }
     }
@@ -1788,7 +1841,7 @@ impl Tab {
             line: Line(line),
             column: Column(column),
         } = *point;
-        let line: usize = line.try_into().unwrap();
+        let line: usize = unwrap!(result line.try_into(); panic "unable to convert line {}");
 
         let viewport = self.viewport.borrow();
         line >= viewport.y
