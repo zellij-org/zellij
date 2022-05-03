@@ -159,7 +159,7 @@ impl ClientOsApi for ClientOsInputOutput {
             match signal {
                 SIGWINCH => {
                     // sleep a bit to let terminal catch up
-                    thread::sleep(200);
+                    thread::sleep(time::Duration::from_millis(200));
                     // throttle sigwinch_cb calls, reduce excessive renders while resizing
                     if sigwinch_cb_timestamp.elapsed() < SIGWINCH_CB_THROTTLE_DURATION {
                         thread::sleep(SIGWINCH_CB_THROTTLE_DURATION);
