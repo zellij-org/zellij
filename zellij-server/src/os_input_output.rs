@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::{fs::File, io::Write};
 
 use crate::panes::PaneId;
+use tempfile::tempfile;
 
 use std::env;
 use std::os::unix::io::RawFd;
@@ -268,6 +270,8 @@ pub trait ServerOsApi: Send + Sync {
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
+    /// Writes the given buffer to a string
+    fn write_to_file(&self, buf: String, file: Option<String>);
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -344,6 +348,16 @@ impl ServerOsApi for ServerOsInputOutput {
             return Some(process.cwd().to_path_buf());
         }
         None
+    }
+    fn write_to_file(&self, buf: String, name: Option<String>) {
+        let mut f: File;
+        match name {
+            Some(x) => f = File::create(x).unwrap(),
+            None => f = tempfile().unwrap(),
+        }
+        if let Err(e) = write!(f, "{}", buf) {
+            log::error!("could not write to file: {}", e);
+        }
     }
 }
 

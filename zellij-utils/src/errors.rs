@@ -240,6 +240,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    DumpScreen,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,

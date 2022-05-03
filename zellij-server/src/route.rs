@@ -146,6 +146,12 @@ fn route_action(
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
+        Action::DumpScreen(val) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::DumpScreen(val, client_id))
+                .unwrap();
+        }
         Action::ScrollUp => {
             session
                 .senders

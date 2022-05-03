@@ -271,6 +271,23 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     }
 }
 
+macro_rules! dump_screen {
+    ($lines:expr) => {{
+        let mut is_first = true;
+        let mut buf = "".to_owned();
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\n");
+            }
+            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            buf.push_str(&(s.replace("[ ]*$", "")));
+            is_first = false;
+        }
+        buf
+    }};
+}
+
 #[derive(Clone)]
 pub struct Grid {
     lines_above: VecDeque<Row>,
@@ -795,6 +812,13 @@ impl Grid {
         } else {
             Some((self.cursor.x, self.cursor.y))
         }
+    }
+
+    pub fn dump_screen(&mut self) -> String {
+        let mut lines: String = dump_screen!(self.lines_above);
+        let viewport: String = dump_screen!(self.viewport);
+        lines.push_str(&viewport);
+        return lines;
     }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {

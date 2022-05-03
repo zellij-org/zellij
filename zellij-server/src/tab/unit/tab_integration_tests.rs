@@ -83,6 +83,9 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+    fn write_to_file(&self, buf: String, name: Option<String>) {
+        unimplemented!()
+    }
 }
 
 // TODO: move to shared thingy with other test file

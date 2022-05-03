@@ -77,6 +77,9 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+    fn write_to_file(&self, _: std::string::String, _: std::option::Option<std::string::String>) {
+        unimplemented!()
+    }
 }
 
 fn create_new_screen(size: Size) -> Screen {

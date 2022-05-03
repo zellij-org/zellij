@@ -88,6 +88,8 @@ keybinds:
           key: [ Char: 'j', Down,]
         - action: [MoveFocus: Up,]
           key: [ Char: 'k', Up,]
+        - action: [DumpScreen,]
+          key: [Char: '/']
         - action: [SwitchFocus,]
           key: [Char: 'p']
         - action: [NewPane: ,]

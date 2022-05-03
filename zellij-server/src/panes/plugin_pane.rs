@@ -321,6 +321,9 @@ impl Pane for PluginPane {
         self.geom.y -= count;
         self.should_render = true;
     }
+    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+        return "".to_owned();
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
