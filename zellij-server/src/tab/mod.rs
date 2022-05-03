@@ -1622,14 +1622,18 @@ impl Tab {
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else {
                 // TODO: rename this method, it is used to forward release events to plugin panes
-                active_pane.end_selection(&relative_position, client_id);
-                if selecting && copy_on_release {
-                    let selected_text = active_pane.get_selected_text();
-                    active_pane.reset_selection();
+                if let PaneId::Terminal(_) = active_pane.pid() {
+                    if selecting && copy_on_release {
+                        active_pane.end_selection(&relative_position, client_id);
+                        let selected_text = active_pane.get_selected_text();
+                        active_pane.reset_selection();
 
-                    if let Some(selected_text) = selected_text {
-                        self.write_selection_to_clipboard(&selected_text);
+                        if let Some(selected_text) = selected_text {
+                            self.write_selection_to_clipboard(&selected_text);
+                        }
                     }
+                } else {
+                    active_pane.end_selection(&relative_position, client_id);
                 }
 
                 self.selecting_with_mouse = false;
