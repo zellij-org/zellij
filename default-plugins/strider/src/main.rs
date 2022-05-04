@@ -85,7 +85,13 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        for i in 0..rows {
+        let display_current_dir = FsEntry::DisplayDir(self.current_dir.clone())
+            .as_line(cols)
+            .normal()
+            .on_yellow()
+            .black();
+        println!("{}", display_current_dir);
+        for i in 0..rows - 1 {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
             }
@@ -97,9 +103,9 @@ impl ZellijPlugin for State {
             if let Some(entry) = self.files.get(i) {
                 let mut path = entry.as_line(cols).normal();
 
-                if let FsEntry::Dir(..) = entry {
+                if let FsEntry::OpenableDir(..) = entry {
                     path = path.dimmed().bold();
-                }
+                };
 
                 if i == self.selected() {
                     println!("{}", path.reversed());
