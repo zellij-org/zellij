@@ -65,41 +65,28 @@ fn write_changed_styles(
     }
 }
 
-fn serialize_character_chunks(
+fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
+    sixel_chunks: &Vec<SixelImageChunk>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_canvas: &SixelCanvas,
 ) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
+    let mut sixel_vte: Option<String> = None;
     for character_chunk in character_chunks {
         let chunk_selection_and_background_color = character_chunk.selection_and_background_color();
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = CharacterStyles::new();
         vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
         let mut chunk_width = character_chunk.x;
-        let mut sixel_vte: Option<String> = None;
-        // TODO: CONTINUE HERE
-        // figure out how to render partial sixel images that start outside the viewport
         for t_character in character_chunk.terminal_characters.iter() {
-            let mut serialized_image_or_images: Option<String> = None;
-            if let Some(sixel_anchor) = t_character.sixel_cell {
-                serialized_image_or_images = Some(sixel_canvas.serialize_cell(sixel_anchor));
-            }
             let current_character_styles = adjust_styles_for_possible_selection(
                 chunk_selection_and_background_color,
                 t_character.styles,
                 character_chunk.y,
                 chunk_width,
             );
-            if let Some(serialized_image_or_images) = serialized_image_or_images {
-                let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
-                let move_cursor_one_char_forward = "\u{1b}[1C";
-                let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", character_chunk.y + 1, chunk_width + 1);
-                sixel_vte.push_str(&goto_image_beginning_cursor_position);
-                sixel_vte.push_str(&serialized_image_or_images);
-                sixel_vte.push_str(&goto_image_beginning_cursor_position);
-            };
             write_changed_styles(
                 &mut character_styles,
                 current_character_styles,
@@ -110,7 +97,23 @@ fn serialize_character_chunks(
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
         }
-        if let Some(sixel_vte) = sixel_vte {
+        for sixel_chunk in sixel_chunks {
+            let serialized_sixel_image = sixel_canvas.serialize_image(
+                sixel_chunk.sixel_image_id,
+                sixel_chunk.sixel_image_pixel_x,
+                sixel_chunk.sixel_image_pixel_y,
+                sixel_chunk.sixel_image_pixel_width,
+                sixel_chunk.sixel_image_pixel_height
+            );
+            if let Some(serialized_sixel_image) = serialized_sixel_image {
+                let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
+                let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", sixel_chunk.cell_y + 1, sixel_chunk.cell_x + 1);
+                sixel_vte.push_str(&goto_image_beginning_cursor_position);
+                sixel_vte.push_str(&serialized_sixel_image);
+                sixel_vte.push_str(&goto_image_beginning_cursor_position);
+            }
+        }
+        if let Some(ref sixel_vte) = sixel_vte {
             // we do this at the end because of the implied z-index,
             // images should be above text unless the text was explicitly inserted after them
             let save_cursor_position = "\u{1b}[s";
@@ -173,6 +176,7 @@ pub struct Output {
     pre_vte_instructions: HashMap<ClientId, Vec<String>>,
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
+    sixel_chunks: Vec<SixelImageChunk>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
     sixel_canvas: Rc<RefCell<SixelCanvas>>,
     floating_panes_stack: Option<FloatingPanesStack>,
@@ -272,6 +276,9 @@ impl Output {
             .or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
+    pub fn add_sixel_image_chunks_to_all_clients(&mut self, mut sixel_image_chunks: Vec<SixelImageChunk>) {
+        self.sixel_chunks.append(&mut sixel_image_chunks);
+    }
     pub fn serialize(&mut self) -> HashMap<ClientId, String> {
         let mut serialized_render_instructions = HashMap::new();
 
@@ -288,8 +295,9 @@ impl Output {
             }
 
             // append the actual vte
-            client_serialized_render_instructions.push_str(&serialize_character_chunks(
+            client_serialized_render_instructions.push_str(&serialize_chunks(
                 client_character_chunks,
+                &self.sixel_chunks,
                 self.link_handler.as_mut(),
                 &self.sixel_canvas.borrow(),
             )); // TODO: less allocations?
@@ -412,6 +420,17 @@ pub struct CharacterChunk {
     selection_and_background_color: Option<(Selection, AnsiCode)>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SixelImageChunk {
+    pub cell_x: usize,
+    pub cell_y: usize,
+    pub sixel_image_pixel_x: usize,
+    pub sixel_image_pixel_y: usize,
+    pub sixel_image_pixel_width: usize,
+    pub sixel_image_pixel_height: usize,
+    pub sixel_image_id: usize,
+}
+
 impl CharacterChunk {
     pub fn new(terminal_characters: Vec<TerminalCharacter>, x: usize, y: usize) -> Self {
         CharacterChunk {
@@ -513,7 +532,7 @@ impl CharacterChunk {
 
 #[derive(Clone, Debug)]
 pub struct OutputBuffer {
-    changed_lines: Vec<usize>, // line index
+    pub changed_lines: Vec<usize>, // line index TODO: depubify
     should_update_all_lines: bool,
 }
 

@@ -133,6 +133,7 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
+        output: &mut Output,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)>; // TODO: better
     fn render_frame(
         &mut self,

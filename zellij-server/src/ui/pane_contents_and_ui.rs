@@ -45,7 +45,7 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         clients: impl Iterator<Item = ClientId>,
     ) {
-        if let Some((character_chunks, raw_vte_output)) = self.pane.render(None) {
+        if let Some((character_chunks, raw_vte_output)) = self.pane.render(None, &mut self.output) {
             let clients: Vec<ClientId> = clients.collect();
             self.output.add_character_chunks_to_multiple_clients(
                 character_chunks,
@@ -66,7 +66,7 @@ impl<'a> PaneContentsAndUi<'a> {
         }
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
-        if let Some((character_chunks, raw_vte_output)) = self.pane.render(Some(client_id)) {
+        if let Some((character_chunks, raw_vte_output)) = self.pane.render(Some(client_id), &mut self.output) {
             self.output
                 .add_character_chunks_to_client(client_id, character_chunks, self.z_index);
             if let Some(raw_vte_output) = raw_vte_output {

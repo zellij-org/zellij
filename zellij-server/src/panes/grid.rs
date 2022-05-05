@@ -31,7 +31,7 @@ use vte::{Params, Perform};
 use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
-use crate::output::{CharacterChunk, OutputBuffer};
+use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
 use crate::panes::selection::Selection;
@@ -95,14 +95,14 @@ pub struct PixelRect {
 }
 
 impl PixelRect {
-    pub fn new(x: usize, y: usize, width: usize, height: usize) -> Self {
+    pub fn new(x: usize, y: usize, height: usize, width: usize) -> Self {
         PixelRect { x, y, width, height }
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SixelCanvas {
-    sixel_images: HashMap<usize, (PixelRect, SixelImage)>, // usize is image id
+    sixel_images: HashMap<usize, (PixelRect, SixelImage)>, // usize is image id, PixelRect counts from the beginning of the scrollbuffer
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
 }
@@ -148,26 +148,39 @@ impl SixelCanvas {
         let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
         cell_images.push(image_id);
     }
-    pub fn serialize_cell(&self, cell_id: usize) -> String {
-        let mut serialized_images = String::new();
-        if let Some(sixel_image_ids) = self.sixel_cells.get(&cell_id) {
-            for image_id in sixel_image_ids {
-                if let Some(sixel_image) = self.sixel_images.get(image_id) {
-                    serialized_images.push_str(&sixel_image.serialize())
-                }
-            }
-        }
-        serialized_images
+    pub fn serialize_image(&self, image_id: usize, pixel_x: usize, pixel_y: usize, pixel_width: usize, pixel_height: usize) -> Option<String> {
+        self.sixel_images.get(&image_id).map(|(_sixel_image_rect, sixel_image)| {
+            // TODO: CONTINUE HERE - these numbers seem a little weird... x is 8 and y is 0? they
+            // let's find out what's up with them and either adjust them here or adjust the ones
+            // sent... probably both
+            // test this by running zellij and /usr/bin/catting ~/Downloads/hi.six
+            log::info!("sending serialize instruction to sixel_image: x: {:?}, y: {:?}, width: {:?}, height: {:?}", pixel_x, pixel_y, pixel_width, pixel_height);
+            sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height)
+        })
     }
-    pub fn dump_info(&self) {
-        // debugging method, TODO: removeme
-        log::info!("*** SIXEL INFO ***");
-        log::info!("number of images: {:?}", self.sixel_images.keys().len());
-        log::info!("IMAGES:");
-        for (key, image) in &self.sixel_images {
-            log::info!("{:?} - size in pixels: (height / width): {:?}", key, image.pixel_size());
-        }
+    pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
+        self.sixel_images.iter().map(|(image_id, (pixel_rect, sixel_image))| (*image_id, pixel_rect))
     }
+//     pub fn serialize_cell(&self, cell_id: usize) -> String {
+//         let mut serialized_images = String::new();
+//         if let Some(sixel_image_ids) = self.sixel_cells.get(&cell_id) {
+//             for image_id in sixel_image_ids {
+//                 if let Some(sixel_image) = self.sixel_images.get(image_id) {
+//                     serialized_images.push_str(&sixel_image.serialize())
+//                 }
+//             }
+//         }
+//         serialized_images
+//     }
+//     pub fn dump_info(&self) {
+//         // debugging method, TODO: removeme
+//         log::info!("*** SIXEL INFO ***");
+//         log::info!("number of images: {:?}", self.sixel_images.keys().len());
+//         log::info!("IMAGES:");
+//         for (key, image) in &self.sixel_images {
+//             log::info!("{:?} - size in pixels: (height / width): {:?}", key, image.pixel_size());
+//         }
+//     }
 }
 // TODO
 // Question: how do we deal with overlapping SixelImages?
@@ -958,16 +971,88 @@ impl Grid {
         }
         lines
     }
-    pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> Vec<CharacterChunk> {
-        let changed_chunks = self.output_buffer.changed_chunks_in_viewport(
+    pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
+        let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
             &self.viewport,
             self.width,
             self.height,
             x_offset,
             y_offset,
         );
+
+        // group the changed lines into "changed_rects", which indicate where the line starts (the
+        // hashmap key) and how many lines are in there (its value)
+        let mut changed_rects: HashMap<usize, usize> = HashMap::new(); // <start_line_index, line_count>
+        let mut last_changed_line_index: Option<usize> = None;
+        let mut changed_line_count = 0;
+        for line_index in &self.output_buffer.changed_lines {
+            match last_changed_line_index.as_mut() {
+                Some(changed_line_index) => {
+                    if *changed_line_index + changed_line_count == *line_index {
+                            changed_line_count += 1
+                    } else {
+                        changed_rects.insert(*changed_line_index, changed_line_count);
+                        last_changed_line_index = Some(*line_index);
+                        changed_line_count = 1;
+                    }
+                },
+                None => {
+                    last_changed_line_index = Some(*line_index);
+                    changed_line_count = 1;
+                }
+            }
+        }
+        if let Some(changed_line_index) = last_changed_line_index {
+            changed_rects.insert(changed_line_index, changed_line_count);
+        }
+
+        // find intersections between the sixel images and the changed_rects,
+        // create a SixelImageChunk out of them, which we'll use down the line in order to crop the
+        // sixel image to the desired size and place it in the desired place
+        let mut changed_sixel_image_chunks = vec![];
+        if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
+            log::info!("can has character_cell_size");
+            for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_canvas.borrow().image_coordinates() {
+                log::info!("looping through sixel image id: {:?}, pixel_rect: {:?}", sixel_image_id, sixel_image_pixel_rect);
+                for (line_index, line_count) in &changed_rects {
+                    let changed_rect_pixel_height = line_count * character_cell_size.height;
+                    let changed_rect_top_edge = (line_index + self.lines_above.len()) * character_cell_size.height;
+                    let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height;
+                    let sixel_image_top_edge = sixel_image_pixel_rect.y;
+                    let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height;
+                    if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_top_edge <= changed_rect_bottom_edge {
+                        // image top part intersects with changed rect
+                        let sixel_image_pixel_y = sixel_image_top_edge - changed_rect_top_edge;
+                        let sixel_image_pixel_height = changed_rect_bottom_edge - sixel_image_pixel_y;
+                        changed_sixel_image_chunks.push(SixelImageChunk {
+                            cell_x: x_offset,
+                            cell_y: y_offset + line_index,
+                            sixel_image_pixel_x: x_offset * character_cell_size.width,
+                            sixel_image_pixel_y,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_height,
+                            sixel_image_id,
+                        });
+                    } else if sixel_image_bottom_edge <= changed_rect_bottom_edge && sixel_image_bottom_edge >= changed_rect_top_edge {
+                        // image bottom part intersects with changed rect
+                        let sixel_image_pixel_y = changed_rect_top_edge;
+                        let sixel_image_pixel_height = sixel_image_bottom_edge - changed_rect_top_edge;
+                        changed_sixel_image_chunks.push(SixelImageChunk {
+                            cell_x: x_offset,
+                            cell_y: y_offset + line_index,
+                            sixel_image_pixel_x: x_offset * character_cell_size.width,
+                            sixel_image_pixel_y,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_height,
+                            sixel_image_id,
+                        });
+                    }
+                }
+            }
+        }
+        log::info!("changed_sixel_image_chunks: {:?}", changed_sixel_image_chunks);
         self.output_buffer.clear();
-        changed_chunks
+        (changed_character_chunks, changed_sixel_image_chunks)
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor.is_hidden {
@@ -1642,7 +1727,7 @@ impl Grid {
             let line_count_in_scrollback = self.lines_above.len();
             let y_coordinates = (line_count_in_scrollback + self.cursor.y) * character_cell_size.height;
             let x_coordinates = self.cursor.x * character_cell_size.width;
-            Some((y_coordinates, x_coordinates))
+            Some((x_coordinates, y_coordinates))
         } else {
             // TODO: what happens if it's not present?
             None
@@ -1701,9 +1786,11 @@ impl Perform for Grid {
 
     fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
         if c == 'q' {
-            if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+            // we only process sixel images if we know the pixel size of each character cell,
+            // otherwise we can't reliably display them
+            if self.current_cursor_pixel_coordinates().is_some() {
                 self.sixel_parser = Some(sixel_tokenizer::Parser::new());
-                self.sixel_canvas.borrow_mut().start_image(x_pixel_coordinates, y_pixel_coordinates);
+                self.sixel_canvas.borrow_mut().start_image();
             }
         }
     }
@@ -1720,36 +1807,32 @@ impl Perform for Grid {
     }
 
     fn unhook(&mut self) {
-        // TODO: CONTINUE HERE (02/05)
-        // - move the start-image coordinates here to end_image
-        // - then chagne the read_changes method to also return cropped sixel images inside the
-        // changes
-        // - it should group consecutive lines and crop the sixel images accordingly
-        // - that way we can render them in Output instead of doing the serializing there
-        let new_image_id = self.sixel_canvas.borrow_mut().end_image();
-        if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_image_id {
-            match self.get_character_under_cursor().as_mut() {
-                Some(character_under_cursor) => {
-                    if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
-                        self.sixel_canvas.borrow_mut().link_cell_to_image(sixel_cell_id, new_image_id);
-                    } else {
+        if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+            let new_image_id = self.sixel_canvas.borrow_mut().end_image(x_pixel_coordinates, y_pixel_coordinates);
+            if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_image_id {
+                match self.get_character_under_cursor().as_mut() {
+                    Some(character_under_cursor) => {
+                        if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
+                            self.sixel_canvas.borrow_mut().link_cell_to_image(sixel_cell_id, new_image_id);
+                        } else {
+                            let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
+                            character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
+                            self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                        }
+                    }
+                    None => {
                         let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
-                        character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
+                        let mut new_character = EMPTY_TERMINAL_CHARACTER;
+                        new_character.styles = self.cursor.pending_styles;
+                        new_character.sixel_cell = Some(new_sixel_cell_id);
                         self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                        self.add_character_at_cursor_position(new_character, false);
                     }
                 }
-                None => {
-                    let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
-                    let mut new_character = EMPTY_TERMINAL_CHARACTER;
-                    new_character.styles = self.cursor.pending_styles;
-                    new_character.sixel_cell = Some(new_sixel_cell_id);
-                    self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
-                    self.add_character_at_cursor_position(new_character, false);
-                }
+                self.move_cursor_down_by_pixels(image_pixel_height);
             }
-            self.move_cursor_down_by_pixels(image_pixel_height);
+            self.sixel_parser = None;
         }
-        self.sixel_parser = None;
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {

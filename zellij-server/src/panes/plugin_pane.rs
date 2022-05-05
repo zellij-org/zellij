@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 
-use crate::output::CharacterChunk;
+use crate::output::{CharacterChunk, Output};
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -139,6 +139,7 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
+        _output: &mut Output,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;
