@@ -2,7 +2,7 @@
 
 use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, screen::ScreenInstruction,
-    wasm_vm::PluginInstruction, ServerInstruction,
+    tty_writer::TtyWriteInstruction, wasm_vm::PluginInstruction, ServerInstruction,
 };
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
@@ -13,6 +13,7 @@ pub(crate) struct ThreadSenders {
     pub to_pty: Option<SenderWithContext<PtyInstruction>>,
     pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
     pub to_server: Option<SenderWithContext<ServerInstruction>>,
+    pub to_tty_writer: Option<SenderWithContext<TtyWriteInstruction>>,
     // this is a convenience for the unit tests
     // it's not advisable to set it to true in production code
     pub should_silently_fail: bool,
@@ -82,6 +83,22 @@ impl ThreadSenders {
             self.to_server.as_ref().unwrap().send(instruction)
         }
     }
+    pub fn send_to_tty_writer(
+        &self,
+        instruction: TtyWriteInstruction,
+    ) -> Result<(), channels::SendError<(TtyWriteInstruction, ErrorContext)>> {
+        if self.should_silently_fail {
+            let _ = self
+                .to_tty_writer
+                .as_ref()
+                .map(|sender| sender.send(instruction))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_tty_writer.as_ref().unwrap().send(instruction)
+        }
+    }
+
     #[allow(unused)]
     pub fn silently_fail_on_send(mut self) -> Self {
         // this is mostly used for the tests, see struct
@@ -105,6 +122,7 @@ impl<T> Bus<T> {
         to_pty: Option<&SenderWithContext<PtyInstruction>>,
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
         to_server: Option<&SenderWithContext<ServerInstruction>>,
+        to_tty_writer: Option<&SenderWithContext<TtyWriteInstruction>>,
         os_input: Option<Box<dyn ServerOsApi>>,
     ) -> Self {
         Bus {
@@ -114,6 +132,7 @@ impl<T> Bus<T> {
                 to_pty: to_pty.cloned(),
                 to_plugin: to_plugin.cloned(),
                 to_server: to_server.cloned(),
+                to_tty_writer: to_tty_writer.cloned(),
                 should_silently_fail: false,
             },
             os_input: os_input.clone(),
@@ -129,6 +148,7 @@ impl<T> Bus<T> {
                 to_pty: None,
                 to_plugin: None,
                 to_server: None,
+                to_tty_writer: None,
                 should_silently_fail: true,
             },
             os_input: None,

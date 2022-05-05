@@ -8,6 +8,7 @@ mod pty;
 mod route;
 mod screen;
 mod thread_bus;
+mod tty_writer;
 mod ui;
 mod wasm_vm;
 
@@ -18,6 +19,7 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use tty_writer::{tty_writer_main, TtyWriteInstruction};
 use zellij_tile::prelude::Style;
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
@@ -575,13 +577,18 @@ fn init_session(
     let to_screen = SenderWithContext::new(to_screen);
 
     let (to_screen_bounded, bounded_screen_receiver): ChannelWithContext<ScreenInstruction> =
-        channels::bounded(50);
+        channels::bounded(5000);
+    // i was here
     let to_screen_bounded = SenderWithContext::new(to_screen_bounded);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
     let to_plugin = SenderWithContext::new(to_plugin);
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
     let to_pty = SenderWithContext::new(to_pty);
+
+    let (to_tty_writer, tty_writer_receiver): ChannelWithContext<TtyWriteInstruction> =
+        channels::unbounded();
+    let to_tty_writer = SenderWithContext::new(to_tty_writer);
 
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
@@ -607,6 +614,7 @@ fn init_session(
                     None,
                     Some(&to_plugin),
                     Some(&to_server),
+                    Some(&to_tty_writer),
                     Some(os_input.clone()),
                 ),
                 opts.debug,
@@ -625,6 +633,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
+                Some(&to_tty_writer),
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
@@ -644,6 +653,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 None,
+                Some(&to_tty_writer),
                 None,
             );
             let store = Store::default();
@@ -651,11 +661,28 @@ fn init_session(
             move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
         })
         .unwrap();
+
+    let tty_writer_thread = thread::Builder::new()
+        .name("tty_writer".to_string())
+        .spawn({
+            let tty_writer_bus = Bus::new(
+                vec![tty_writer_receiver],
+                Some(&to_screen),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_server),
+                None,
+                Some(os_input.clone()),
+            );
+            || tty_writer_main(tty_writer_bus)
+        })
+        .unwrap();
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
+            to_tty_writer: Some(to_tty_writer),
             to_server: None,
             should_silently_fail: false,
         },
