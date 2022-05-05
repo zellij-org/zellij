@@ -113,8 +113,6 @@ keybinds:
           key: [Ctrl: 'b',]
         - action: [Quit,]
           key: [Ctrl: 'q',]
-        - action: [DumpScreen,]
-          key: [Char: '/']
         - action: [MoveFocus: Left,]
           key: [ Char: 'h', Left,]
         - action: [MoveFocus: Right,]

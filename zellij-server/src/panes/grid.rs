@@ -281,6 +281,8 @@ macro_rules! dump_screen {
                 buf.push_str("\n");
             }
             let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            // Replace the spaces at the end of the line. Sometimes, the lines are
+            // collected with spaces until the end of the panel.
             buf.push_str(&(s.replace("[ ]*$", "")));
             is_first = false;
         }
@@ -815,11 +817,11 @@ impl Grid {
     }
 
     pub fn dump_screen(&mut self) -> String {
-        let mut lines: String = dump_screen!(self.lines_above);
+        let mut scrollback: String = dump_screen!(self.lines_above);
         let viewport: String = dump_screen!(self.viewport);
-        lines.push_str("\n");
-        lines.push_str(&viewport);
-        return lines;
+        scrollback.push_str("\n");
+        scrollback.push_str(&viewport);
+        return scrollback;
     }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {
