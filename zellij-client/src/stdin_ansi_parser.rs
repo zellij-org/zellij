@@ -17,7 +17,7 @@ impl StdinAnsiParser {
         }
     }
     pub fn increment_expected_ansi_instructions(&mut self, to: usize) {
-        self.expected_ansi_instructions = to;
+        self.expected_ansi_instructions += to;
     }
     pub fn decrement_expected_ansi_instructions(&mut self, by: usize) {
         self.expected_ansi_instructions = self.expected_ansi_instructions.saturating_sub(by);
@@ -41,7 +41,7 @@ impl StdinAnsiParser {
                     ))
                 }
             }
-        } else if let Key::Alt(CharOrArrow::Char('\\')) = key {
+        } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key  {
             match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
                 Ok(color_instruction) => {
                     self.decrement_expected_ansi_instructions(1);
