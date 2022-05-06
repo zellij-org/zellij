@@ -41,7 +41,7 @@ impl StdinAnsiParser {
                     ))
                 }
             }
-        } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key  {
+        } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key {
             match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
                 Ok(color_instruction) => {
                     self.decrement_expected_ansi_instructions(1);
