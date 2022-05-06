@@ -108,6 +108,7 @@ pub(crate) struct SessionMetaData {
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
+    tty_writer_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for SessionMetaData {
@@ -118,6 +119,7 @@ impl Drop for SessionMetaData {
         let _ = self.screen_thread.take().unwrap().join();
         let _ = self.pty_thread.take().unwrap().join();
         let _ = self.wasm_thread.take().unwrap().join();
+        let _ = self.tty_writer_thread.take().unwrap().join();
     }
 }
 
@@ -677,6 +679,7 @@ fn init_session(
             || tty_writer_main(tty_writer_bus)
         })
         .unwrap();
+
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
@@ -692,5 +695,6 @@ fn init_session(
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
+        tty_writer_thread: Some(tty_writer_thread),
     }
 }
