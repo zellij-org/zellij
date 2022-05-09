@@ -20,7 +20,7 @@ zellij-server = { path = "zellij-server/", version = "0.30.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.30.0" }
 log = "0.4.16"
 dialoguer = "0.9.0"
-suggestion = "0.3"
+suggest = "0.4"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
