@@ -77,7 +77,7 @@ pub enum Sessions {
     #[clap(alias = "ls")]
     ListSessions,
 
-    /// Attach to session
+    /// Attach to a session
     #[clap(alias = "a")]
     Attach {
         /// Name of the session to attach to.
