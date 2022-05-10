@@ -74,11 +74,11 @@ pub enum SessionCommand {
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum Sessions {
     /// List active sessions
-    #[clap(alias = "ls")]
+    #[clap(visible_alias = "ls")]
     ListSessions,
 
     /// Attach to a session
-    #[clap(alias = "a")]
+    #[clap(visible_alias = "a")]
     Attach {
         /// Name of the session to attach to.
         session_name: Option<String>,
@@ -97,14 +97,14 @@ pub enum Sessions {
     },
 
     /// Kill the specific session
-    #[clap(alias = "k")]
+    #[clap(visible_alias = "k")]
     KillSession {
         /// Name of target session
         target_session: Option<String>,
     },
 
     /// Kill all sessions
-    #[clap(alias = "ka")]
+    #[clap(visible_alias = "ka")]
     KillAllSessions {
         /// Automatic yes to prompts
         #[clap(short, long)]
