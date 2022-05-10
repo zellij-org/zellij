@@ -2359,10 +2359,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "suggestion"
-version = "0.3.3"
+name = "suggest"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de6a8caa0781c40b2dfaafd9a5f39e7688d1c7b72173346469dc68e7ff04e927"
+checksum = "2558d0d6327d908558f161bc862d365c0d33aa796bdc81c13c0f954868576659"
 dependencies = [
  "clap",
  "lev_distance",
@@ -3215,7 +3215,7 @@ dependencies = [
  "names",
  "rand 0.8.5",
  "ssh2",
- "suggestion",
+ "suggest",
  "zellij-client",
  "zellij-server",
  "zellij-utils",

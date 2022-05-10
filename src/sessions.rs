@@ -1,7 +1,7 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
-use suggestion::Suggest;
+use suggest::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
