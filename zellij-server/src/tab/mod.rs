@@ -9,8 +9,8 @@ use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
-use crate::tty_writer::TtyWriteInstruction;
 use crate::ui::pane_boundaries_frame::FrameParams;
 
 use self::clipboard::ClipboardProvider;
@@ -881,7 +881,7 @@ impl Tab {
                 // });
 
                 self.senders
-                    .send_to_tty_writer(TtyWriteInstruction::Write(
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
                         adjusted_input,
                         active_terminal_id,
                     ))

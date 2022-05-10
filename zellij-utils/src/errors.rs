@@ -182,7 +182,7 @@ pub enum ContextType {
     IPCServer(ServerContext),
     StdinHandler,
     AsyncTask,
-    TtyWrite(TtyWriteContext),
+    PtyWrite(PtyWriteContext),
     /// An empty, placeholder call. This should be thought of as representing no call at all.
     /// A call stack representation filled with these is the representation of an empty call stack.
     Empty,
@@ -198,7 +198,7 @@ impl Display for ContextType {
             ContextType::IPCServer(c) => Some(("ipc_server:", format!("{:?}", c))),
             ContextType::StdinHandler => Some(("stdin_handler_thread:", "AcceptInput".to_string())),
             ContextType::AsyncTask => Some(("stream_terminal_bytes:", "AsyncTask".to_string())),
-            ContextType::TtyWrite(c) => Some(("tty_writer_thread:", format!("{:?}", c))),
+            ContextType::PtyWrite(c) => Some(("pty_writer_thread:", format!("{:?}", c))),
             ContextType::Empty => None,
         } {
             write!(f, "{} {}", left.purple(), right.green())
@@ -341,6 +341,6 @@ pub enum ServerContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum TtyWriteContext {
+pub enum PtyWriteContext {
     Write,
 }
