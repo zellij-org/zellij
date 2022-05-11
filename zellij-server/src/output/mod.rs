@@ -69,7 +69,14 @@ fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
     sixel_chunks: &Vec<SixelImageChunk>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
-    sixel_canvas: &SixelCanvas,
+    // TODO: CONTINUE HERE (09/05) - find a solution so that not all images will be in the same
+    // SixelCanvas, maybe somehow put it in a HashMap?
+    //
+    // SOLUTION:
+    // * sixel_canvas is global, it holds a hashmap of Ids to SixelImages
+    // * each Grid has a reference to SixelCanvas and in addition holds a hashmap of image ids to
+    // pixelrect
+    sixel_canvas: &mut SixelCanvas,
 ) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
@@ -97,32 +104,32 @@ fn serialize_chunks(
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
         }
-        for sixel_chunk in sixel_chunks {
-            let serialized_sixel_image = sixel_canvas.serialize_image(
-                sixel_chunk.sixel_image_id,
-                sixel_chunk.sixel_image_pixel_x,
-                sixel_chunk.sixel_image_pixel_y,
-                sixel_chunk.sixel_image_pixel_width,
-                sixel_chunk.sixel_image_pixel_height
-            );
-            if let Some(serialized_sixel_image) = serialized_sixel_image {
-                let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
-                let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", sixel_chunk.cell_y + 1, sixel_chunk.cell_x + 1);
-                sixel_vte.push_str(&goto_image_beginning_cursor_position);
-                sixel_vte.push_str(&serialized_sixel_image);
-                sixel_vte.push_str(&goto_image_beginning_cursor_position);
-            }
-        }
-        if let Some(ref sixel_vte) = sixel_vte {
-            // we do this at the end because of the implied z-index,
-            // images should be above text unless the text was explicitly inserted after them
-            let save_cursor_position = "\u{1b}[s";
-            let restore_cursor_position = "\u{1b}[u";
-            vte_output.push_str(save_cursor_position);
-            vte_output.push_str(&sixel_vte);
-            vte_output.push_str(restore_cursor_position);
-        }
         character_styles.clear();
+    }
+    for sixel_chunk in sixel_chunks {
+        let serialized_sixel_image = sixel_canvas.serialize_image(
+            sixel_chunk.sixel_image_id,
+            sixel_chunk.sixel_image_pixel_x,
+            sixel_chunk.sixel_image_pixel_y,
+            sixel_chunk.sixel_image_pixel_width,
+            sixel_chunk.sixel_image_pixel_height
+        );
+        if let Some(serialized_sixel_image) = serialized_sixel_image {
+            let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
+            let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", sixel_chunk.cell_y + 1, sixel_chunk.cell_x + 1);
+            sixel_vte.push_str(&goto_image_beginning_cursor_position);
+            sixel_vte.push_str(&serialized_sixel_image);
+            sixel_vte.push_str(&goto_image_beginning_cursor_position);
+        }
+    }
+    if let Some(ref sixel_vte) = sixel_vte {
+        // we do this at the end because of the implied z-index,
+        // images should be above text unless the text was explicitly inserted after them
+        let save_cursor_position = "\u{1b}[s";
+        let restore_cursor_position = "\u{1b}[u";
+        vte_output.push_str(save_cursor_position);
+        vte_output.push_str(&sixel_vte);
+        vte_output.push_str(restore_cursor_position);
     }
     vte_output
 }
@@ -299,7 +306,7 @@ impl Output {
                 client_character_chunks,
                 &self.sixel_chunks,
                 self.link_handler.as_mut(),
-                &self.sixel_canvas.borrow(),
+                &mut self.sixel_canvas.borrow_mut(),
             )); // TODO: less allocations?
 
             // append post-vte instructions for this client
@@ -533,7 +540,7 @@ impl CharacterChunk {
 #[derive(Clone, Debug)]
 pub struct OutputBuffer {
     pub changed_lines: Vec<usize>, // line index TODO: depubify
-    should_update_all_lines: bool,
+    pub should_update_all_lines: bool, // TODO: depubify
 }
 
 impl Default for OutputBuffer {

@@ -99,10 +99,11 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
+        self.set_should_render(true);
         for &byte in &bytes {
             self.vte_parser.advance(&mut self.grid, byte);
         }
-        self.set_should_render(true);
+        // self.set_should_render(true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
@@ -207,7 +208,9 @@ impl Pane for TerminalPane {
         _client_id: Option<ClientId>,
         output: &mut Output, // TODO: change it so that we also add the character_chunks etc. to the output instead of just returning them
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+        log::info!("terminal render method");
         if self.should_render() {
+            log::info!("should render is true, doing the rendering");
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();

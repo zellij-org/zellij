@@ -101,13 +101,13 @@ impl PixelRect {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SixelCanvas {
-    sixel_images: HashMap<usize, (PixelRect, SixelImage)>, // usize is image id, PixelRect counts from the beginning of the scrollbuffer
+pub struct SixelGrid { // TODO: naming of this and SixelCanvas
+    sixel_images: HashMap<usize, PixelRect>,
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
 }
 
-impl SixelCanvas {
+impl SixelGrid {
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
         match sixel_event {
             SixelEvent::Dcs { .. } => {
@@ -126,15 +126,15 @@ impl SixelCanvas {
     pub fn start_image(&mut self) {
         self.currently_parsing = Some(SixelDeserializer::new());
     }
-    pub fn end_image(&mut self, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
+    pub fn end_image(&mut self, new_image_id: usize, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<SixelImage> { // usize is image_id
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
-            let next_image_id = self.sixel_images.keys().len();
+            // let next_image_id = self.sixel_images.keys().len();
             let sixel_image = sixel_deserializer.create_image();
             let image_pixel_size = sixel_image.pixel_size();
             let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
-            self.sixel_images.insert(next_image_id, (image_size_and_coordinates, sixel_image)); // TODO: handle character_z_index
+            self.sixel_images.insert(new_image_id, image_size_and_coordinates); // TODO: handle character_z_index
             self.currently_parsing = None;
-            Some((next_image_id, image_pixel_size))
+            Some(sixel_image)
         } else {
             None
         }
@@ -148,39 +148,83 @@ impl SixelCanvas {
         let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
         cell_images.push(image_id);
     }
-    pub fn serialize_image(&self, image_id: usize, pixel_x: usize, pixel_y: usize, pixel_width: usize, pixel_height: usize) -> Option<String> {
-        self.sixel_images.get(&image_id).map(|(_sixel_image_rect, sixel_image)| {
-            // TODO: CONTINUE HERE - these numbers seem a little weird... x is 8 and y is 0? they
-            // let's find out what's up with them and either adjust them here or adjust the ones
-            // sent... probably both
-            // test this by running zellij and /usr/bin/catting ~/Downloads/hi.six
-            log::info!("sending serialize instruction to sixel_image: x: {:?}, y: {:?}, width: {:?}, height: {:?}", pixel_x, pixel_y, pixel_width, pixel_height);
-            sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height)
+    pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
+        self.sixel_images.iter().map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SixelCanvas {
+    sixel_images: HashMap<usize, (SixelImage, HashMap<(usize, usize, usize, usize), String>)>, // usize is image id, PixelRect counts from the beginning of the scrollbuffer, the HashMap is an image cache with a key of (x, y, width, height) and a value of the serialized image
+    currently_parsing: Option<SixelDeserializer>,
+    sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
+}
+
+
+impl SixelCanvas {
+    pub fn handle_event(&mut self, sixel_event: SixelEvent) {
+        match sixel_event {
+            SixelEvent::Dcs { .. } => {
+                // self.start_image();
+            }
+            SixelEvent::End => {
+                // self.end_image();
+            }
+            _ => {
+                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
+                    currently_parsing.handle_event(sixel_event);
+                }
+            }
+        }
+    }
+//     pub fn start_image(&mut self) {
+//         self.currently_parsing = Some(SixelDeserializer::new());
+//     }
+//     pub fn end_image(&mut self, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
+//         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
+//             let next_image_id = self.sixel_images.keys().len();
+//             let sixel_image = sixel_deserializer.create_image();
+//             let image_pixel_size = sixel_image.pixel_size();
+//             let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
+//             self.sixel_images.insert(next_image_id, (image_size_and_coordinates, sixel_image, HashMap::new())); // TODO: handle character_z_index
+//             self.currently_parsing = None;
+//             Some((next_image_id, image_pixel_size))
+//         } else {
+//             None
+//         }
+//     }
+//     pub fn new_cell(&mut self) -> usize { // usize is the cell id
+//         let next_cell_id = self.sixel_cells.keys().len();
+//         self.sixel_cells.insert(next_cell_id, vec![]);
+//         next_cell_id
+//     }
+//     pub fn link_cell_to_image(&mut self, cell_id: usize, image_id: usize) {
+//         let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
+//         cell_images.push(image_id);
+//     }
+    pub fn serialize_image(&mut self, image_id: usize, pixel_x: usize, pixel_y: usize, pixel_width: usize, pixel_height: usize) -> Option<String> {
+        self.sixel_images.get_mut(&image_id).and_then(|(sixel_image, sixel_image_cache)| {
+            // log::info!("serializing image: pixel_x: {:?}, pixel_y: {:?}, pixel_width: {:?}, pixel_height: {:?}", pixel_x, pixel_y, pixel_width, pixel_height);
+            if let Some(cached_image) = sixel_image_cache.get(&(pixel_x, pixel_y, pixel_width, pixel_height)) {
+                log::info!("using cached image");
+                Some(cached_image.clone())
+            } else if let serialized_image = sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height) {
+                sixel_image_cache.insert((pixel_x, pixel_y, pixel_width, pixel_height), serialized_image.clone());
+                Some(serialized_image)
+            } else {
+                None
+            }
         })
     }
-    pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
-        self.sixel_images.iter().map(|(image_id, (pixel_rect, sixel_image))| (*image_id, pixel_rect))
+//     pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
+//         self.sixel_images.iter().map(|(image_id, (pixel_rect, sixel_image, sixel_image_cache))| (*image_id, pixel_rect))
+//     }
+    pub fn next_image_id(&self) -> usize {
+        self.sixel_images.keys().len()
     }
-//     pub fn serialize_cell(&self, cell_id: usize) -> String {
-//         let mut serialized_images = String::new();
-//         if let Some(sixel_image_ids) = self.sixel_cells.get(&cell_id) {
-//             for image_id in sixel_image_ids {
-//                 if let Some(sixel_image) = self.sixel_images.get(image_id) {
-//                     serialized_images.push_str(&sixel_image.serialize())
-//                 }
-//             }
-//         }
-//         serialized_images
-//     }
-//     pub fn dump_info(&self) {
-//         // debugging method, TODO: removeme
-//         log::info!("*** SIXEL INFO ***");
-//         log::info!("number of images: {:?}", self.sixel_images.keys().len());
-//         log::info!("IMAGES:");
-//         for (key, image) in &self.sixel_images {
-//             log::info!("{:?} - size in pixels: (height / width): {:?}", key, image.pixel_size());
-//         }
-//     }
+    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
+        self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
+    }
 }
 // TODO
 // Question: how do we deal with overlapping SixelImages?
@@ -464,6 +508,7 @@ pub struct Grid {
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
     sixel_canvas: Rc<RefCell<SixelCanvas>>,
+    sixel_grid: SixelGrid,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -545,6 +590,7 @@ impl Grid {
             character_cell_size,
             sixel_parser: None,
             sixel_canvas,
+            sixel_grid: Default::default(),
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -972,6 +1018,10 @@ impl Grid {
         lines
     }
     pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
+        // log::info!("read changes");
+        // TODO: CONTINUE HERE (05/05) - test this when scrolling, eg. /usr/bin/cat
+        // ~/Downloads/hi.six, and enter until we start scrolling - right now it disappears - could
+        // we be bypassing this method when we need to update all lines?
         let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
             &self.viewport,
             self.width,
@@ -985,20 +1035,43 @@ impl Grid {
         let mut changed_rects: HashMap<usize, usize> = HashMap::new(); // <start_line_index, line_count>
         let mut last_changed_line_index: Option<usize> = None;
         let mut changed_line_count = 0;
-        for line_index in &self.output_buffer.changed_lines {
-            match last_changed_line_index.as_mut() {
-                Some(changed_line_index) => {
-                    if *changed_line_index + changed_line_count == *line_index {
-                            changed_line_count += 1
-                    } else {
-                        changed_rects.insert(*changed_line_index, changed_line_count);
+
+        // TODO: move this whole thing to output_buffer
+        if self.output_buffer.should_update_all_lines {
+            for line_index in 0..self.viewport.len() {
+                match last_changed_line_index.as_mut() {
+                    Some(changed_line_index) => {
+                        if *changed_line_index + changed_line_count == line_index {
+                                changed_line_count += 1
+                        } else {
+                            changed_rects.insert(*changed_line_index, changed_line_count);
+                            last_changed_line_index = Some(line_index);
+                            changed_line_count = 1;
+                        }
+                    },
+                    None => {
+                        last_changed_line_index = Some(line_index);
+                        changed_line_count = 1;
+                    }
+                }
+            }
+        } else {
+            // TODO: dedup these
+            for line_index in &self.output_buffer.changed_lines {
+                match last_changed_line_index.as_mut() {
+                    Some(changed_line_index) => {
+                        if *changed_line_index + changed_line_count == *line_index {
+                                changed_line_count += 1
+                        } else {
+                            changed_rects.insert(*changed_line_index, changed_line_count);
+                            last_changed_line_index = Some(*line_index);
+                            changed_line_count = 1;
+                        }
+                    },
+                    None => {
                         last_changed_line_index = Some(*line_index);
                         changed_line_count = 1;
                     }
-                },
-                None => {
-                    last_changed_line_index = Some(*line_index);
-                    changed_line_count = 1;
                 }
             }
         }
@@ -1009,40 +1082,72 @@ impl Grid {
         // find intersections between the sixel images and the changed_rects,
         // create a SixelImageChunk out of them, which we'll use down the line in order to crop the
         // sixel image to the desired size and place it in the desired place
+        // log::info!("changed_rects: {:?}", changed_rects);
         let mut changed_sixel_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
-            log::info!("can has character_cell_size");
-            for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_canvas.borrow().image_coordinates() {
-                log::info!("looping through sixel image id: {:?}, pixel_rect: {:?}", sixel_image_id, sixel_image_pixel_rect);
+            for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_grid.image_coordinates() {
                 for (line_index, line_count) in &changed_rects {
                     let changed_rect_pixel_height = line_count * character_cell_size.height;
                     let changed_rect_top_edge = (line_index + self.lines_above.len()) * character_cell_size.height;
                     let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height;
                     let sixel_image_top_edge = sixel_image_pixel_rect.y;
                     let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height;
-                    if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_top_edge <= changed_rect_bottom_edge {
-                        // image top part intersects with changed rect
-                        let sixel_image_pixel_y = sixel_image_top_edge - changed_rect_top_edge;
-                        let sixel_image_pixel_height = changed_rect_bottom_edge - sixel_image_pixel_y;
+                    if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_bottom_edge <= changed_rect_bottom_edge {
+                        // image contained completely within changed rect
+                        let sixel_image_pixel_height = sixel_image_pixel_rect.height;
+                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height;
+                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len());
+
+                        changed_sixel_image_chunks.push(SixelImageChunk {
+                            cell_x: x_offset,
+                            cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
+                            sixel_image_pixel_x: 0,
+                            sixel_image_pixel_y: 0,
+                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_height,
+                            sixel_image_id,
+                        });
+
+                    } else if sixel_image_top_edge <= changed_rect_top_edge && sixel_image_bottom_edge >= changed_rect_bottom_edge {
+                        // image larger on both ends than changed rect
+                        let sixel_image_pixel_height = changed_rect_bottom_edge - changed_rect_top_edge;
+
                         changed_sixel_image_chunks.push(SixelImageChunk {
                             cell_x: x_offset,
                             cell_y: y_offset + line_index,
-                            sixel_image_pixel_x: x_offset * character_cell_size.width,
-                            sixel_image_pixel_y,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_x: 0,
+                            sixel_image_pixel_y: changed_rect_top_edge - sixel_image_top_edge,
+                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_height,
+                            sixel_image_id,
+                        });
+
+                    } else if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_top_edge <= changed_rect_bottom_edge {
+                        // image top part intersects with changed rect
+                        let sixel_image_pixel_y = sixel_image_top_edge - changed_rect_top_edge;
+                        let sixel_image_pixel_height = changed_rect_bottom_edge - sixel_image_top_edge;
+                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height;
+                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len());
+                        changed_sixel_image_chunks.push(SixelImageChunk {
+                            cell_x: x_offset,
+                            cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
+                            sixel_image_pixel_x: 0,
+                            sixel_image_pixel_y: 0,
+                            sixel_image_pixel_width: self.width * character_cell_size.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
                     } else if sixel_image_bottom_edge <= changed_rect_bottom_edge && sixel_image_bottom_edge >= changed_rect_top_edge {
                         // image bottom part intersects with changed rect
-                        let sixel_image_pixel_y = changed_rect_top_edge;
+                        let sixel_image_pixel_y = changed_rect_top_edge - sixel_image_top_edge;
                         let sixel_image_pixel_height = sixel_image_bottom_edge - changed_rect_top_edge;
                         changed_sixel_image_chunks.push(SixelImageChunk {
                             cell_x: x_offset,
                             cell_y: y_offset + line_index,
-                            sixel_image_pixel_x: x_offset * character_cell_size.width,
+                            // sixel_image_pixel_x: x_offset * character_cell_size.width,
+                            sixel_image_pixel_x: 0,
                             sixel_image_pixel_y,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_width: self.width * character_cell_size.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1050,7 +1155,6 @@ impl Grid {
                 }
             }
         }
-        log::info!("changed_sixel_image_chunks: {:?}", changed_sixel_image_chunks);
         self.output_buffer.clear();
         (changed_character_chunks, changed_sixel_image_chunks)
     }
@@ -1711,13 +1815,15 @@ impl Grid {
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
     fn handle_sixel_event(&mut self, sixel_event: SixelEvent) {
-        self.sixel_canvas.borrow_mut().handle_event(sixel_event);
+        self.sixel_grid.handle_event(sixel_event);
     }
     fn move_cursor_down_by_pixels(&mut self, pixel_count: usize) {
-        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+        if let Some(character_cell_size) = { let c = *self.character_cell_size.borrow(); c } { // thanks borrow checker
             let pixel_height = character_cell_size.height;
             let to_move = (pixel_count as f64 / pixel_height as f64).ceil() as usize;
-            self.cursor.y += to_move
+            for _ in 0..to_move {
+                self.add_canonical_line();
+            }
         }
         // TODO: what happens if it's not present?
 
@@ -1790,7 +1896,7 @@ impl Perform for Grid {
             // otherwise we can't reliably display them
             if self.current_cursor_pixel_coordinates().is_some() {
                 self.sixel_parser = Some(sixel_tokenizer::Parser::new());
-                self.sixel_canvas.borrow_mut().start_image();
+                self.sixel_grid.start_image();
             }
         }
     }
@@ -1804,31 +1910,36 @@ impl Perform for Grid {
                 self.handle_sixel_event(event);
             }
         }
+        self.should_render = false;
     }
 
     fn unhook(&mut self) {
         if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
-            let new_image_id = self.sixel_canvas.borrow_mut().end_image(x_pixel_coordinates, y_pixel_coordinates);
-            if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_image_id {
+            let new_image_id = self.sixel_canvas.borrow().next_image_id();
+            let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
+            if let Some(new_sixel_image) = new_sixel_image {
+            // if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_sixel_image {
+                let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
                 match self.get_character_under_cursor().as_mut() {
                     Some(character_under_cursor) => {
                         if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
-                            self.sixel_canvas.borrow_mut().link_cell_to_image(sixel_cell_id, new_image_id);
+                            self.sixel_grid.link_cell_to_image(sixel_cell_id, new_image_id);
                         } else {
-                            let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
+                            let new_sixel_cell_id = self.sixel_grid.new_cell();
                             character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
-                            self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                            self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
                         }
                     }
                     None => {
-                        let new_sixel_cell_id = self.sixel_canvas.borrow_mut().new_cell();
+                        let new_sixel_cell_id = self.sixel_grid.new_cell();
                         let mut new_character = EMPTY_TERMINAL_CHARACTER;
                         new_character.styles = self.cursor.pending_styles;
                         new_character.sixel_cell = Some(new_sixel_cell_id);
-                        self.sixel_canvas.borrow_mut().link_cell_to_image(new_sixel_cell_id, new_image_id);
+                        self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
                         self.add_character_at_cursor_position(new_character, false);
                     }
                 }
+                self.sixel_canvas.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
                 self.move_cursor_down_by_pixels(image_pixel_height);
             }
             self.sixel_parser = None;
