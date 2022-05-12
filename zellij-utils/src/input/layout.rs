@@ -260,8 +260,14 @@ impl LayoutFromYamlIntermediate {
         layout_dir: Option<&PathBuf>,
     ) -> LayoutFromYamlIntermediateResult {
         match layout_dir {
-            Some(dir) => Self::from_path(&dir.join(layout))
-                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout)),
+            Some(dir) => {
+                let layout_path = &dir.join(layout);
+                if layout_path.exists() {
+                    Self::from_path(layout_path)
+                } else {
+                    LayoutFromYamlIntermediate::from_default_assets(layout)
+                }
+            }
             None => LayoutFromYamlIntermediate::from_default_assets(layout),
         }
     }
