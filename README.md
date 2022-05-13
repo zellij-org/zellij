@@ -79,14 +79,13 @@ Zellij should be ready for everyday use, but it's still classified as a beta. Th
 
 
 ## Roadmap
-This section contains an ever-changing list of the major features that are either currently being worked on, or planned for the near future.
+Presented here is the project roadmap, divided into three main sections.
 
-| Feature | Description | Status |
-| :-----: | ----------- | :----: |
-| **Share sessions with others** | See the focused window and cursor of other users, work on a problem or a code base together in real time. | :white_check_mark:<br>*(implemented in [`0.23.0`](https://github.com/zellij-org/zellij/releases/tag/v0.23.0))* |
-| **A web client/server** | Connect to Zellij through the browser instead of opening a terminal window. Either on a local or remote machine. |  |
-| **Support for multiple terminal windows across screens** | Transfer panes across different windows and screens by having them all belong to the same session. |  |
-| **Smart layouts** | Expand the current layout system so that it rearranges and hides panes intelligently when new ones are added or the window size is changed. |  |
+These are issues that are either being actively worked on or are planned for the near future.
+
+*If you'll click on the image, you'll be led to an SVG version of it on the website where you can directly click on every issue*
+
+[![roadmap](https://user-images.githubusercontent.com/795598/168313474-f6cb9754-77ea-4ce3-bc84-8840f2eadd75.png)](https://zellij.dev/roadmap)
 
 ## License
 
