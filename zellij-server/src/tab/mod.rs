@@ -134,6 +134,7 @@ pub trait Pane {
         &mut self,
         client_id: Option<ClientId>,
         output: &mut Output,
+        z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)>; // TODO: better
     fn render_frame(
         &mut self,
@@ -972,6 +973,8 @@ impl Tab {
         self.update_active_panes_in_pty_thread();
 
         let floating_panes_stack = self.floating_panes.stack();
+        if let Some(floating_panes_stack) = floating_panes_stack.as_ref() {
+        }
         output.add_clients(
             &connected_clients,
             self.link_handler.clone(),

@@ -140,6 +140,7 @@ impl Pane for PluginPane {
         &mut self,
         client_id: Option<ClientId>,
         _output: &mut Output,
+        _z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;

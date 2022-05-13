@@ -1083,6 +1083,9 @@ impl Grid {
         // create a SixelImageChunk out of them, which we'll use down the line in order to crop the
         // sixel image to the desired size and place it in the desired place
         // log::info!("changed_rects: {:?}", changed_rects);
+
+        // TODO: CONTINUE HERE - deal with situations in which the image is larger than the cell
+        // (probably need to do an std::cmp::min on self.width vs the image width)
         let mut changed_sixel_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
             for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_grid.image_coordinates() {
@@ -1103,7 +1106,7 @@ impl Grid {
                             cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1117,7 +1120,7 @@ impl Grid {
                             cell_y: y_offset + line_index,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: changed_rect_top_edge - sixel_image_top_edge,
-                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1133,7 +1136,7 @@ impl Grid {
                             cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1147,7 +1150,7 @@ impl Grid {
                             // sixel_image_pixel_x: x_offset * character_cell_size.width,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y,
-                            sixel_image_pixel_width: self.width * character_cell_size.width,
+                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });

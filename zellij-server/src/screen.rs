@@ -518,7 +518,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let mut output = Output::new(self.sixel_canvas.clone());
+        let mut output = Output::new(self.sixel_canvas.clone(), self.character_cell_size.clone());
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();

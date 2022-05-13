@@ -207,16 +207,15 @@ impl Pane for TerminalPane {
         &mut self,
         _client_id: Option<ClientId>,
         output: &mut Output, // TODO: change it so that we also add the character_chunks etc. to the output instead of just returning them
+        z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
-        log::info!("terminal render method");
         if self.should_render() {
-            log::info!("should render is true, doing the rendering");
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
 
             let (mut character_chunks, sixel_image_chunks) = self.grid.read_changes(content_x, content_y);
-            output.add_sixel_image_chunks_to_all_clients(sixel_image_chunks);
+            output.add_sixel_image_chunks_to_all_clients(sixel_image_chunks, z_index);
             for character_chunk in character_chunks.iter_mut() {
                 character_chunk.add_changed_colors(self.grid.changed_colors);
                 if self

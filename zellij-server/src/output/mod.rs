@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use crate::panes::selection::Selection;
 use crate::panes::Row;
 
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use crate::{
     panes::grid::SixelCanvas,
     panes::terminal_character::{AnsiCode, CharacterStyles},
@@ -69,13 +70,6 @@ fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
     sixel_chunks: &Vec<SixelImageChunk>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
-    // TODO: CONTINUE HERE (09/05) - find a solution so that not all images will be in the same
-    // SixelCanvas, maybe somehow put it in a HashMap?
-    //
-    // SOLUTION:
-    // * sixel_canvas is global, it holds a hashmap of Ids to SixelImages
-    // * each Grid has a reference to SixelCanvas and in addition holds a hashmap of image ids to
-    // pixelrect
     sixel_canvas: &mut SixelCanvas,
 ) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
@@ -119,7 +113,6 @@ fn serialize_chunks(
             let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", sixel_chunk.cell_y + 1, sixel_chunk.cell_x + 1);
             sixel_vte.push_str(&goto_image_beginning_cursor_position);
             sixel_vte.push_str(&serialized_sixel_image);
-            sixel_vte.push_str(&goto_image_beginning_cursor_position);
         }
     }
     if let Some(ref sixel_vte) = sixel_vte {
@@ -186,13 +179,15 @@ pub struct Output {
     sixel_chunks: Vec<SixelImageChunk>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
     sixel_canvas: Rc<RefCell<SixelCanvas>>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
 }
 
 impl Output {
-    pub fn new(sixel_canvas: Rc<RefCell<SixelCanvas>>) -> Self {
+    pub fn new(sixel_canvas: Rc<RefCell<SixelCanvas>>, character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
         Output {
             sixel_canvas,
+            character_cell_size,
             ..Default::default()
         }
     }
@@ -283,8 +278,16 @@ impl Output {
             .or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
-    pub fn add_sixel_image_chunks_to_all_clients(&mut self, mut sixel_image_chunks: Vec<SixelImageChunk>) {
-        self.sixel_chunks.append(&mut sixel_image_chunks);
+    pub fn add_sixel_image_chunks_to_all_clients(&mut self, mut sixel_image_chunks: Vec<SixelImageChunk>, z_index: Option<usize>) {
+        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            if let Some(floating_panes_stack) = &self.floating_panes_stack {
+                let mut visible_sixel_image_chunks =
+                    floating_panes_stack.visible_sixel_image_chunks(sixel_image_chunks, z_index, &character_cell_size);
+                self.sixel_chunks.append(&mut visible_sixel_image_chunks);
+            } else {
+                self.sixel_chunks.append(&mut sixel_image_chunks);
+            }
+        }
     }
     pub fn serialize(&mut self) -> HashMap<ClientId, String> {
         let mut serialized_render_instructions = HashMap::new();
@@ -367,6 +370,28 @@ impl FloatingPanesStack {
         }
         visible_chunks
     }
+    pub fn visible_sixel_image_chunks(
+        &self,
+        mut sixel_image_chunks: Vec<SixelImageChunk>,
+        z_index: Option<usize>,
+        character_cell_size: &SizeInPixels,
+    ) -> Vec<SixelImageChunk> {
+        let z_index = z_index.unwrap_or(0);
+        let mut chunks_to_check: Vec<SixelImageChunk> = sixel_image_chunks.drain(..).collect();
+
+        let panes_to_check = self.layers.iter().skip(z_index);
+        for pane_geom in panes_to_check {
+            let chunks_to_check_against_this_pane: Vec<SixelImageChunk> = chunks_to_check.drain(..).collect();
+            for s_chunk in chunks_to_check_against_this_pane {
+                // TODO: CONTINUE HERE (12/05) - something (probably) in the below
+                // remove_covered_parts isn't working, test this by moving a floating pane over a
+                // sixel image
+                let mut uncovered_chunks = self.remove_covered_sixel_parts(pane_geom, &s_chunk, character_cell_size);
+                chunks_to_check.append(&mut uncovered_chunks);
+            }
+        }
+        chunks_to_check
+    }
     fn remove_covered_parts(
         &self,
         pane_geom: &PaneGeom,
@@ -416,6 +441,110 @@ impl FloatingPanesStack {
         };
         None
     }
+    fn remove_covered_sixel_parts(
+        &self,
+        pane_geom: &PaneGeom,
+        s_chunk: &SixelImageChunk,
+        character_cell_size: &SizeInPixels,
+    ) -> Vec<SixelImageChunk> {
+        // TODO: saturating_sub all the things
+        let offset_from_screen_top_in_pixels = s_chunk.cell_y * character_cell_size.height;
+        let offset_from_screen_left_in_pixels = s_chunk.cell_x * character_cell_size.width;
+        let pane_top_edge = pane_geom.y * character_cell_size.height;
+        let pane_left_edge = pane_geom.x * character_cell_size.width;
+        let pane_bottom_edge = (pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1)) * character_cell_size.height;
+        let pane_right_edge = (pane_geom.x + pane_geom.cols.as_usize().saturating_sub(1)) * character_cell_size.width;
+        let s_chunk_top_edge = s_chunk.cell_y * character_cell_size.height;
+        let s_chunk_bottom_edge = s_chunk_top_edge + s_chunk.sixel_image_pixel_height;
+        let s_chunk_left_edge = s_chunk.cell_x * character_cell_size.width;
+        let s_chunk_right_edge = s_chunk_left_edge + s_chunk.sixel_image_pixel_width;
+
+        let mut uncovered_chunks = vec![];
+        let pane_covers_chunk_completely = pane_top_edge <= s_chunk_top_edge &&
+            pane_bottom_edge >= s_chunk_bottom_edge &&
+            pane_left_edge <= s_chunk_left_edge &&
+            pane_right_edge >= s_chunk_left_edge;
+        let pane_intersects_with_chunk_vertically =
+            (pane_left_edge >= s_chunk_left_edge && pane_left_edge <= s_chunk_right_edge) ||
+            (pane_right_edge >= s_chunk_left_edge && pane_right_edge <= s_chunk_right_edge) ||
+            (pane_left_edge <= s_chunk_left_edge && pane_right_edge >= s_chunk_right_edge);
+        let pane_intersects_with_chunk_horizontally =
+            (pane_top_edge >= s_chunk_top_edge && pane_top_edge <= s_chunk_bottom_edge) ||
+            (pane_bottom_edge >= s_chunk_top_edge && pane_bottom_edge <= s_chunk_bottom_edge) ||
+            (pane_top_edge <= s_chunk_top_edge && pane_bottom_edge >= s_chunk_bottom_edge);
+        if pane_covers_chunk_completely {
+            return uncovered_chunks;
+        }
+        if pane_top_edge > s_chunk_top_edge && pane_top_edge < s_chunk_bottom_edge && pane_intersects_with_chunk_vertically {
+            let top_image_chunk = SixelImageChunk {
+                cell_x: s_chunk.cell_x,
+                cell_y: s_chunk.cell_y,
+                sixel_image_pixel_x: s_chunk.sixel_image_pixel_x,
+                sixel_image_pixel_y: s_chunk.sixel_image_pixel_y,
+                sixel_image_pixel_width: s_chunk.sixel_image_pixel_width,
+                sixel_image_pixel_height: pane_top_edge - s_chunk_top_edge,
+                sixel_image_id: s_chunk.sixel_image_id,
+            };
+            uncovered_chunks.push(top_image_chunk);
+        }
+        if pane_bottom_edge < s_chunk_bottom_edge && pane_bottom_edge > s_chunk_top_edge && pane_intersects_with_chunk_vertically {
+            let bottom_image_chunk = SixelImageChunk {
+                cell_x: s_chunk.cell_x,
+                cell_y: (pane_bottom_edge / character_cell_size.height) + 1,
+                sixel_image_pixel_x: s_chunk.sixel_image_pixel_x,
+                sixel_image_pixel_y: s_chunk.sixel_image_pixel_y + (pane_bottom_edge - s_chunk_top_edge) + character_cell_size.height,
+                sixel_image_pixel_width: s_chunk.sixel_image_pixel_width,
+                sixel_image_pixel_height: s_chunk.sixel_image_pixel_height - (pane_bottom_edge - s_chunk_top_edge) - character_cell_size.height,
+                sixel_image_id: s_chunk.sixel_image_id,
+            };
+            uncovered_chunks.push(bottom_image_chunk);
+        }
+        if pane_left_edge > s_chunk_left_edge && pane_left_edge < s_chunk_right_edge && pane_intersects_with_chunk_horizontally {
+            let sixel_image_pixel_y = if s_chunk_top_edge < pane_top_edge {
+                s_chunk.sixel_image_pixel_y + (pane_top_edge - s_chunk_top_edge)
+            } else {
+                s_chunk.sixel_image_pixel_y
+            };
+            let left_image_chunk = SixelImageChunk {
+                cell_x: s_chunk.cell_x,
+                // if the pane_top_edge is lower than the image, we want to start there, because we
+                // already cut that part above when checking if the pane covered the chunk bottom
+                cell_y: std::cmp::max(s_chunk.cell_y, pane_top_edge / character_cell_size.height),
+                sixel_image_pixel_x: s_chunk.sixel_image_pixel_x,
+                sixel_image_pixel_y,
+                sixel_image_pixel_width: s_chunk.sixel_image_pixel_width - (s_chunk_right_edge - pane_left_edge),
+                sixel_image_pixel_height: pane_bottom_edge - pane_top_edge + character_cell_size.height,
+                sixel_image_id: s_chunk.sixel_image_id,
+            };
+            uncovered_chunks.push(left_image_chunk);
+        }
+        if pane_right_edge < s_chunk_right_edge && pane_right_edge > s_chunk_left_edge && pane_intersects_with_chunk_horizontally {
+            let sixel_image_pixel_y = if s_chunk_top_edge < pane_top_edge {
+                s_chunk.sixel_image_pixel_y + (pane_top_edge - s_chunk_top_edge)
+            } else {
+                s_chunk.sixel_image_pixel_y
+            };
+            let sixel_image_pixel_x = s_chunk.sixel_image_pixel_x + (pane_right_edge - s_chunk_left_edge) + character_cell_size.width;
+            let right_image_chunk = SixelImageChunk {
+                cell_x: (pane_right_edge / character_cell_size.width) + 1,
+                // if the pane_top_edge is lower than the image, we want to start there, because we
+                // already cut that part above when checking if the pane covered the chunk bottom
+                cell_y: std::cmp::max(s_chunk.cell_y, pane_top_edge / character_cell_size.height),
+                sixel_image_pixel_x,
+                sixel_image_pixel_y,
+                sixel_image_pixel_width: s_chunk.sixel_image_pixel_width - (pane_right_edge - s_chunk_left_edge) - character_cell_size.width,
+                // sixel_image_pixel_height: if s_chunk_bottom_edge > pane_bottom_edge { pane_bottom_edge - sixel_image_pixel_y } else { s_chunk_bottom_edge - sixel_image_pixel_y },
+                sixel_image_pixel_height: pane_bottom_edge - pane_top_edge + character_cell_size.height,
+                sixel_image_id: s_chunk.sixel_image_id,
+            };
+            uncovered_chunks.push(right_image_chunk);
+        }
+        if uncovered_chunks.is_empty() {
+            // the pane doesn't cover the chunk at all, so we return it as is
+            uncovered_chunks.push(*s_chunk);
+        }
+        uncovered_chunks
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -427,7 +556,7 @@ pub struct CharacterChunk {
     selection_and_background_color: Option<(Selection, AnsiCode)>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct SixelImageChunk {
     pub cell_x: usize,
     pub cell_y: usize,
