@@ -863,7 +863,6 @@ impl Tab {
         }
     }
     pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
-        log::info!("writing {} bytes to pane", input_bytes.len());
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self
@@ -871,14 +870,6 @@ impl Tab {
                     .get(&pane_id)
                     .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                // std::thread::spawn(move || {
-                //     if let Err(e) = os_api.write_to_tty_stdin(active_terminal_id, &adjusted_input) {
-                //         log::error!("failed to write to terminal: {}", e);
-                //     }
-                //     if let Err(e) = os_api.tcdrain(active_terminal_id) {
-                //         log::error!("failed to drain terminal: {}", e);
-                //     }
-                // });
 
                 self.senders
                     .send_to_pty_writer(PtyWriteInstruction::Write(
@@ -886,16 +877,6 @@ impl Tab {
                         active_terminal_id,
                     ))
                     .unwrap();
-
-                // if let Err(e) = self
-                //     .os_api
-                //     .write_to_tty_stdin(active_terminal_id, &adjusted_input)
-                // {
-                //     log::error!("failed to write to terminal: {}", e);
-                // }
-                // if let Err(e) = self.os_api.tcdrain(active_terminal_id) {
-                //     log::error!("failed to drain terminal: {}", e);
-                // }
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
@@ -905,7 +886,6 @@ impl Tab {
                 }
             }
         }
-        log::info!("finished write_to_pane_id");
     }
     pub fn get_active_terminal_cursor_position(
         &self,
