@@ -580,7 +580,6 @@ fn init_session(
 
     let (to_screen_bounded, bounded_screen_receiver): ChannelWithContext<ScreenInstruction> =
         channels::bounded(50);
-    // i was here
     let to_screen_bounded = SenderWithContext::new(to_screen_bounded);
 
     let (to_plugin, plugin_receiver): ChannelWithContext<PluginInstruction> = channels::unbounded();
