@@ -206,7 +206,6 @@ impl SixelCanvas {
         self.sixel_images.get_mut(&image_id).and_then(|(sixel_image, sixel_image_cache)| {
             // log::info!("serializing image: pixel_x: {:?}, pixel_y: {:?}, pixel_width: {:?}, pixel_height: {:?}", pixel_x, pixel_y, pixel_width, pixel_height);
             if let Some(cached_image) = sixel_image_cache.get(&(pixel_x, pixel_y, pixel_width, pixel_height)) {
-                log::info!("using cached image");
                 Some(cached_image.clone())
             } else if let serialized_image = sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height) {
                 sixel_image_cache.insert((pixel_x, pixel_y, pixel_width, pixel_height), serialized_image.clone());
@@ -1085,6 +1084,7 @@ impl Grid {
         // log::info!("changed_rects: {:?}", changed_rects);
 
         // TODO: CONTINUE HERE - deal with situations in which the image is larger than the cell
+        // <== TODO: THIS (16/05)
         // (probably need to do an std::cmp::min on self.width vs the image width)
         let mut changed_sixel_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
