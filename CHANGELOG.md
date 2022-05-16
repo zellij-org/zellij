@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: show subcommand aliases in help output (https://github.com/zellij-org/zellij/pull/1409)
 * chore(dependencies): rename crate `suggestion` -> `suggest` (https://github.com/zellij-org/zellij/pull/1387)
 * fix: update to output error when using `--layout` (https://github.com/zellij-org/zellij/pull/1413)
+* fix: ANSI output sent to terminal on resize in certain cases (https://github.com/zellij-org/zellij/pull/1384)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
