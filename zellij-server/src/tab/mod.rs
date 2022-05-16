@@ -9,6 +9,7 @@ use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::ui::pane_boundaries_frame::FrameParams;
 
@@ -869,15 +870,13 @@ impl Tab {
                     .get(&pane_id)
                     .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                if let Err(e) = self
-                    .os_api
-                    .write_to_tty_stdin(active_terminal_id, &adjusted_input)
-                {
-                    log::error!("failed to write to terminal: {}", e);
-                }
-                if let Err(e) = self.os_api.tcdrain(active_terminal_id) {
-                    log::error!("failed to drain terminal: {}", e);
-                }
+
+                self.senders
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                        adjusted_input,
+                        active_terminal_id,
+                    ))
+                    .unwrap();
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
