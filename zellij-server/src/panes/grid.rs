@@ -1106,7 +1106,7 @@ impl Grid {
                             cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1120,7 +1120,7 @@ impl Grid {
                             cell_y: y_offset + line_index,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: changed_rect_top_edge - sixel_image_top_edge,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1136,7 +1136,7 @@ impl Grid {
                             cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1150,7 +1150,7 @@ impl Grid {
                             // sixel_image_pixel_x: x_offset * character_cell_size.width,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y,
-                            sixel_image_pixel_width: sixel_image_pixel_rect.width,
+                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1241,6 +1241,8 @@ impl Grid {
         self.output_buffer.update_all_lines();
     }
     pub fn add_canonical_line(&mut self) {
+        log::info!("");
+        log::info!("add_canonical_line");
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y == scroll_region_bottom {
                 // end of scroll region
@@ -1253,8 +1255,11 @@ impl Grid {
                     // the state is corrupted
                     return;
                 }
+                log::info!("scroll_region_bottom: {:?}, self.height - 1: {:?}", scroll_region_bottom, self.height - 1);
                 if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
+                    log::info!("is bottom of viewport");
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                        log::info!("scrolling up by one");
                         self.transfer_rows_to_lines_above(1);
                     } else {
                         self.viewport.remove(0);
@@ -1281,6 +1286,7 @@ impl Grid {
                 return;
             }
         }
+        log::info!("self.viewport.len(): {:?}, self.cursor.y + 1: {:?}", self.viewport.len(), self.cursor.y + 1);
         if self.viewport.len() <= self.cursor.y + 1 {
             // FIXME: this should add an empty line with the pad_character
             // but for some reason this breaks rendering in various situations
@@ -1288,9 +1294,11 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
+        log::info!("self.cursor.y: {:?} == self.height - 1: {:?}", self.cursor.y, self.height - 1);
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
                 if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                    log::info!("transfer rows");
                     self.transfer_rows_to_lines_above(1);
                 } else {
                     self.viewport.remove(0);
@@ -1300,6 +1308,7 @@ impl Grid {
             }
             self.output_buffer.update_all_lines();
         } else {
+            log::info!("just cursor.y + 1");
             self.cursor.y += 1;
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -1944,6 +1953,7 @@ impl Perform for Grid {
                 }
                 self.sixel_canvas.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
                 self.move_cursor_down_by_pixels(image_pixel_height);
+                self.mark_for_rerender();
             }
             self.sixel_parser = None;
         }
