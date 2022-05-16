@@ -17,7 +17,7 @@ impl StdinAnsiParser {
         }
     }
     pub fn increment_expected_ansi_instructions(&mut self, to: usize) {
-        self.expected_ansi_instructions = to;
+        self.expected_ansi_instructions += to;
     }
     pub fn decrement_expected_ansi_instructions(&mut self, by: usize) {
         self.expected_ansi_instructions = self.expected_ansi_instructions.saturating_sub(by);
@@ -26,6 +26,16 @@ impl StdinAnsiParser {
         self.expected_ansi_instructions
     }
     pub fn parse(&mut self, key: Key, raw_bytes: Vec<u8>) -> Option<AnsiStdinInstructionOrKeys> {
+        if self.current_buffer.is_empty()
+            && (key != Key::Esc && key != Key::Alt(CharOrArrow::Char(']')))
+        {
+            // the first key of a sequence is always Esc, but termwiz interprets esc + ] as Alt+]
+            self.current_buffer.push((key, raw_bytes));
+            self.expected_ansi_instructions = 0;
+            return Some(AnsiStdinInstructionOrKeys::Keys(
+                self.current_buffer.drain(..).collect(),
+            ));
+        }
         if let Key::Char('t') = key {
             self.current_buffer.push((key, raw_bytes));
             match AnsiStdinInstructionOrKeys::pixel_dimensions_from_keys(&self.current_buffer) {
@@ -41,7 +51,7 @@ impl StdinAnsiParser {
                     ))
                 }
             }
-        } else if let Key::Alt(CharOrArrow::Char('\\')) = key {
+        } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key {
             match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
                 Ok(color_instruction) => {
                     self.decrement_expected_ansi_instructions(1);
@@ -67,12 +77,6 @@ impl StdinAnsiParser {
         }
     }
     fn key_is_valid(&self, key: Key) -> bool {
-        if self.current_buffer.is_empty()
-            && (key != Key::Esc && key != Key::Alt(CharOrArrow::Char(']')))
-        {
-            // the first key of a sequence is always Esc, but termwiz interprets esc + ] as Alt+]
-            return false;
-        }
         match key {
             Key::Esc => {
                 // this is a UX improvement
