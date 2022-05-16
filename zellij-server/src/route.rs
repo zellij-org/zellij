@@ -29,14 +29,24 @@ fn route_action(
     client_id: ClientId,
 ) -> bool {
     let mut should_break = false;
-    session
-        .senders
-        .send_to_plugin(PluginInstruction::Update(
-            None,
-            Some(client_id),
-            Event::InputReceived,
-        ))
-        .unwrap();
+
+    // forward the action to plugins unless it is a mousehold
+    // this is a bit of a hack around the unfortunate architecture we use with plugins
+    // this will change as soon as we refactor
+    match action {
+        Action::MouseHold(_) => {},
+        _ => {
+            session
+                .senders
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    Some(client_id),
+                    Event::InputReceived,
+                ))
+                .unwrap();
+        }
+    }
+
     match action {
         Action::ToggleTab => {
             session

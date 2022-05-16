@@ -518,6 +518,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
+        log::info!("screen render");
         let mut output = Output::new(self.sixel_canvas.clone(), self.character_cell_size.clone());
         let mut tabs_to_close = vec![];
         let size = self.size;
@@ -1396,12 +1397,14 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::MouseHold(point, client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.handle_mouse_hold(&point, client_id);
+                    let should_render = active_tab.handle_mouse_hold(&point, client_id);
+                    if should_render {
+                        screen.render();
+                    }
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }
-
-                screen.render();
+                // screen.render();
             }
             ScreenInstruction::Copy(client_id) => {
                 if let Some(active_tab) = screen.get_active_tab(client_id) {
