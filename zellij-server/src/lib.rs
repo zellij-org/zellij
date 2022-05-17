@@ -116,6 +116,7 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         let _ = self.screen_thread.take().unwrap().join();
         let _ = self.pty_thread.take().unwrap().join();
         let _ = self.wasm_thread.take().unwrap().join();

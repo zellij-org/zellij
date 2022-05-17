@@ -343,4 +343,5 @@ pub enum ServerContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyWriteContext {
     Write,
+    Exit,
 }
