@@ -5,7 +5,7 @@ use crate::panes::Row;
 
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use crate::{
-    panes::grid::SixelCanvas,
+    panes::grid::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
     panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
     ClientId,
@@ -70,7 +70,7 @@ fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
     sixel_chunks: &Vec<SixelImageChunk>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
-    sixel_canvas: &mut SixelCanvas,
+    sixel_image_store: &mut SixelImageStore,
 ) -> String {
     let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
     let link_handler = link_handler.map(|l_h| l_h.borrow());
@@ -101,7 +101,7 @@ fn serialize_chunks(
         character_styles.clear();
     }
     for sixel_chunk in sixel_chunks {
-        let serialized_sixel_image = sixel_canvas.serialize_image(
+        let serialized_sixel_image = sixel_image_store.serialize_image(
             sixel_chunk.sixel_image_id,
             sixel_chunk.sixel_image_pixel_x,
             sixel_chunk.sixel_image_pixel_y,
@@ -178,15 +178,15 @@ pub struct Output {
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
     sixel_chunks: Vec<SixelImageChunk>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
-    sixel_canvas: Rc<RefCell<SixelCanvas>>,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     floating_panes_stack: Option<FloatingPanesStack>,
 }
 
 impl Output {
-    pub fn new(sixel_canvas: Rc<RefCell<SixelCanvas>>, character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
+    pub fn new(sixel_image_store: Rc<RefCell<SixelImageStore>>, character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
         Output {
-            sixel_canvas,
+            sixel_image_store,
             character_cell_size,
             ..Default::default()
         }
@@ -309,7 +309,7 @@ impl Output {
                 client_character_chunks,
                 &self.sixel_chunks,
                 self.link_handler.as_mut(),
-                &mut self.sixel_canvas.borrow_mut(),
+                &mut self.sixel_image_store.borrow_mut(),
             )); // TODO: less allocations?
 
             // append post-vte instructions for this client

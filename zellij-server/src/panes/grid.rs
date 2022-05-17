@@ -101,26 +101,16 @@ impl PixelRect {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SixelGrid { // TODO: naming of this and SixelCanvas
-    sixel_images: HashMap<usize, PixelRect>,
+pub struct SixelGrid {
+    sixel_image_locations: HashMap<usize, PixelRect>,
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
 }
 
 impl SixelGrid {
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        match sixel_event {
-            SixelEvent::Dcs { .. } => {
-                // self.start_image();
-            }
-            SixelEvent::End => {
-                // self.end_image();
-            }
-            _ => {
-                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
-                    currently_parsing.handle_event(sixel_event);
-                }
-            }
+        if let Some(currently_parsing) = self.currently_parsing.as_mut() {
+            currently_parsing.handle_event(sixel_event);
         }
     }
     pub fn start_image(&mut self) {
@@ -132,7 +122,7 @@ impl SixelGrid {
             let sixel_image = sixel_deserializer.create_image();
             let image_pixel_size = sixel_image.pixel_size();
             let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
-            self.sixel_images.insert(new_image_id, image_size_and_coordinates); // TODO: handle character_z_index
+            self.sixel_image_locations.insert(new_image_id, image_size_and_coordinates);
             self.currently_parsing = None;
             Some(sixel_image)
         } else {
@@ -149,62 +139,19 @@ impl SixelGrid {
         cell_images.push(image_id);
     }
     pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
-        self.sixel_images.iter().map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
+        self.sixel_image_locations.iter().map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
     }
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SixelCanvas {
+pub struct SixelImageStore {
     sixel_images: HashMap<usize, (SixelImage, HashMap<(usize, usize, usize, usize), String>)>, // usize is image id, PixelRect counts from the beginning of the scrollbuffer, the HashMap is an image cache with a key of (x, y, width, height) and a value of the serialized image
-    currently_parsing: Option<SixelDeserializer>,
-    sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
 }
 
 
-impl SixelCanvas {
-    pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        match sixel_event {
-            SixelEvent::Dcs { .. } => {
-                // self.start_image();
-            }
-            SixelEvent::End => {
-                // self.end_image();
-            }
-            _ => {
-                if let Some(currently_parsing) = self.currently_parsing.as_mut() {
-                    currently_parsing.handle_event(sixel_event);
-                }
-            }
-        }
-    }
-//     pub fn start_image(&mut self) {
-//         self.currently_parsing = Some(SixelDeserializer::new());
-//     }
-//     pub fn end_image(&mut self, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<(usize, (usize, usize))> { // returns (image id, (image_height, image_width)))
-//         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
-//             let next_image_id = self.sixel_images.keys().len();
-//             let sixel_image = sixel_deserializer.create_image();
-//             let image_pixel_size = sixel_image.pixel_size();
-//             let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
-//             self.sixel_images.insert(next_image_id, (image_size_and_coordinates, sixel_image, HashMap::new())); // TODO: handle character_z_index
-//             self.currently_parsing = None;
-//             Some((next_image_id, image_pixel_size))
-//         } else {
-//             None
-//         }
-//     }
-//     pub fn new_cell(&mut self) -> usize { // usize is the cell id
-//         let next_cell_id = self.sixel_cells.keys().len();
-//         self.sixel_cells.insert(next_cell_id, vec![]);
-//         next_cell_id
-//     }
-//     pub fn link_cell_to_image(&mut self, cell_id: usize, image_id: usize) {
-//         let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
-//         cell_images.push(image_id);
-//     }
+impl SixelImageStore {
     pub fn serialize_image(&mut self, image_id: usize, pixel_x: usize, pixel_y: usize, pixel_width: usize, pixel_height: usize) -> Option<String> {
         self.sixel_images.get_mut(&image_id).and_then(|(sixel_image, sixel_image_cache)| {
-            // log::info!("serializing image: pixel_x: {:?}, pixel_y: {:?}, pixel_width: {:?}, pixel_height: {:?}", pixel_x, pixel_y, pixel_width, pixel_height);
             if let Some(cached_image) = sixel_image_cache.get(&(pixel_x, pixel_y, pixel_width, pixel_height)) {
                 Some(cached_image.clone())
             } else if let serialized_image = sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height) {
@@ -215,9 +162,6 @@ impl SixelCanvas {
             }
         })
     }
-//     pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
-//         self.sixel_images.iter().map(|(image_id, (pixel_rect, sixel_image, sixel_image_cache))| (*image_id, pixel_rect))
-//     }
     pub fn next_image_id(&self) -> usize {
         self.sixel_images.keys().len()
     }
@@ -225,26 +169,6 @@ impl SixelCanvas {
         self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
     }
 }
-// TODO
-// Question: how do we deal with overlapping SixelImages?
-// Thoughts:
-// * All SixelImages should be separate entities, because they do not cancel out each other,
-// they're only on top of each other
-// * we'll have to have z indices
-// * their location is relative to the character to their left and above
-// * they expand and contract relative to font size, but stay fixed to the upper-left corner where
-// they were created
-// * when text goes over a SixelImages, it'll "eat away" at it, removing those pixels
-// * when linewrapping, if the SixelImage needs to be wrapped completely, it is destroyed
-// * when creating the image, we calculate which cells it covers, and for each cell calculate the
-// start_coordinates in the image so that we can access the pixels we need when rendering - we
-// recalculate this on SIGWINCH
-// * the calculated cells should be their own struct called SixelCell, this is because they need to
-// hold a few images potentially and we only want to link to them from TerminalCharacter
-//
-// TODO:
-// 1. create a SixelImage from the sixel events we get
-// 2. serialize this image, and when its first cell is on screen, render it, otherwise don't
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -506,7 +430,7 @@ pub struct Grid {
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
-    sixel_canvas: Rc<RefCell<SixelCanvas>>,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     sixel_grid: SixelGrid,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
@@ -548,7 +472,7 @@ impl Grid {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-        sixel_canvas: Rc<RefCell<SixelCanvas>>,
+        sixel_image_store: Rc<RefCell<SixelImageStore>>,
     ) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(
@@ -588,7 +512,7 @@ impl Grid {
             mouse_mode: false,
             character_cell_size,
             sixel_parser: None,
-            sixel_canvas,
+            sixel_image_store,
             sixel_grid: Default::default(),
         }
     }
@@ -1321,6 +1245,13 @@ impl Grid {
         terminal_character: TerminalCharacter,
         should_insert_character: bool,
     ) {
+        // TODO: CONTINUE HERE (16/05)
+        // start developing the "text over images" part of Sixel
+        // first approach (does this harm performance?)
+        // * go to SixelImageStore, query whether there is an image there
+        // * if there is, break it
+        // down around the character (top/bottom/left/right)
+
         // this function assumes the current line has enough room for terminal_character (that its
         // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
@@ -1927,7 +1858,7 @@ impl Perform for Grid {
 
     fn unhook(&mut self) {
         if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
-            let new_image_id = self.sixel_canvas.borrow().next_image_id();
+            let new_image_id = self.sixel_image_store.borrow().next_image_id();
             let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
             if let Some(new_sixel_image) = new_sixel_image {
             // if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_sixel_image {
@@ -1951,7 +1882,7 @@ impl Perform for Grid {
                         self.add_character_at_cursor_position(new_character, false);
                     }
                 }
-                self.sixel_canvas.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
+                self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
                 self.move_cursor_down_by_pixels(image_pixel_height);
                 self.mark_for_rerender();
             }

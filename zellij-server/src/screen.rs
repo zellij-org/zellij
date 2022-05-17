@@ -20,7 +20,7 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::PaneId,
-    panes::grid::SixelCanvas,
+    panes::grid::SixelImageStore,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
@@ -242,7 +242,7 @@ pub(crate) struct Screen {
     size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    sixel_canvas: Rc<RefCell<SixelCanvas>>,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
@@ -275,7 +275,7 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
-            sixel_canvas: Rc::new(RefCell::new(SixelCanvas::default())),
+            sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
@@ -519,7 +519,7 @@ impl Screen {
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
         log::info!("screen render");
-        let mut output = Output::new(self.sixel_canvas.clone(), self.character_cell_size.clone());
+        let mut output = Output::new(self.sixel_image_store.clone(), self.character_cell_size.clone());
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();
@@ -597,7 +597,7 @@ impl Screen {
             String::new(),
             self.size,
             self.character_cell_size.clone(),
-            self.sixel_canvas.clone(),
+            self.sixel_image_store.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
