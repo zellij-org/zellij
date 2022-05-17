@@ -98,6 +98,31 @@ impl PixelRect {
     pub fn new(x: usize, y: usize, height: usize, width: usize) -> Self {
         PixelRect { x, y, width, height }
     }
+    pub fn intersecting_rect(&self, other: &PixelRect) -> Option<PixelRect> {
+        // if the two rects intersect, this returns a PixelRect *relative to self*
+        let self_top_edge = self.y;
+        let self_bottom_edge = self.y + self.height;
+        let self_left_edge = self.x;
+        let self_right_edge = self.x + self.width;
+        let other_top_edge = other.y;
+        let other_bottom_edge = other.y + other.height;
+        let other_left_edge = other.x;
+        let other_right_edge = other.x + other.width;
+
+        let absolute_x = std::cmp::max(self_left_edge, other_left_edge);
+        let absolute_y = std::cmp::max(self_top_edge, other_top_edge);
+        let absolute_right_edge = std::cmp::min(self_right_edge, other_right_edge);
+        let absolute_bottom_edge = std::cmp::min(self_bottom_edge, other_bottom_edge);
+        let width = absolute_right_edge.saturating_sub(absolute_x);
+        let height = absolute_bottom_edge.saturating_sub(absolute_y);
+        let x = absolute_x - self.x;
+        let y = absolute_y - self.y;
+        if width > 0 && height > 0 {
+            return Some(PixelRect {x, y, width, height});
+        } else {
+            return None;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -118,7 +143,6 @@ impl SixelGrid {
     }
     pub fn end_image(&mut self, new_image_id: usize, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<SixelImage> { // usize is image_id
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
-            // let next_image_id = self.sixel_images.keys().len();
             let sixel_image = sixel_deserializer.create_image();
             let image_pixel_size = sixel_image.pixel_size();
             let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
@@ -140,6 +164,17 @@ impl SixelGrid {
     }
     pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
         self.sixel_image_locations.iter().map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
+    }
+    pub fn cut_off_rect_from_images(&mut self, rect_to_cut_out: PixelRect) -> Option<Vec<(usize, PixelRect)>> {
+        // if there is an image at this cursor location, this returns the image ID and the PixelRect inside the image to be removed
+        let mut ret = None;
+        for (image_id, pixel_rect) in &self.sixel_image_locations {
+            if let Some(intersecting_rect) = pixel_rect.intersecting_rect(&rect_to_cut_out) {
+                let ret = ret.get_or_insert(vec![]);
+                ret.push((*image_id, intersecting_rect));
+            }
+        }
+        ret
     }
 }
 
@@ -167,6 +202,14 @@ impl SixelImageStore {
     }
     pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
         self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
+    }
+    pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
+        log::info!("remove_pixels_from_image: {:?} / {:?}", image_id, pixel_rect);
+        if let Some((sixel_image, sixel_image_cache)) = self.sixel_images.get_mut(&image_id) {
+            log::info!("cutting out: x: {:?}, y: {:?}, width: {:?}, height: {:?}", pixel_rect.x, pixel_rect.y, pixel_rect.width, pixel_rect.height);
+            sixel_image.cut_out(pixel_rect.x, pixel_rect.y, pixel_rect.width, pixel_rect.height);
+            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
+        }
     }
 }
 
@@ -1083,6 +1126,9 @@ impl Grid {
             }
         }
         self.output_buffer.clear();
+        log::info!("*** READ CHANGES ***");
+        log::info!("changed_chunks: {:?}", changed_character_chunks);
+        log::info!("changed_sixel_image_chunks: {:?}", changed_sixel_image_chunks);
         (changed_character_chunks, changed_sixel_image_chunks)
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
@@ -1248,7 +1294,7 @@ impl Grid {
         // TODO: CONTINUE HERE (16/05)
         // start developing the "text over images" part of Sixel
         // first approach (does this harm performance?)
-        // * go to SixelImageStore, query whether there is an image there
+        // * go to SixelGrid, query whether there is an image there
         // * if there is, break it
         // down around the character (top/bottom/left/right)
 
@@ -1263,6 +1309,23 @@ impl Grid {
                     }
                 } else {
                     row.add_character_at(terminal_character, self.cursor.x);
+                }
+                if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                    let scrollback_size_in_pixels = self.lines_above.len() * character_cell_size.height;
+                    let absolute_x_in_pixels = self.cursor.x * character_cell_size.width;
+                    let absolute_y_in_pixels = scrollback_size_in_pixels + (self.cursor.y * character_cell_size.height);
+                    let rect_to_cut_out = PixelRect {
+                        x: absolute_x_in_pixels,
+                        y: absolute_y_in_pixels,
+                        width: character_cell_size.width,
+                        height: character_cell_size.height,
+                    };
+                    log::info!("rect to cut out: {:?}", rect_to_cut_out);
+                    if let Some(images_to_cut_out) = self.sixel_grid.cut_off_rect_from_images(rect_to_cut_out) {
+                        for (image_id, rect_in_image_to_cut_out) in images_to_cut_out {
+                            self.sixel_image_store.borrow_mut().remove_pixels_from_image(image_id, rect_in_image_to_cut_out);
+                        }
+                    }
                 }
                 self.output_buffer.update_line(self.cursor.y);
             }
