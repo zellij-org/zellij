@@ -1093,8 +1093,11 @@ impl Grid {
                     let sixel_image_pixel_width = if sixel_image_pixel_rect.x + sixel_image_pixel_rect.width <= (self.width * character_cell_size.width) {
                         sixel_image_pixel_rect.width
                     } else {
-                        (self.width * character_cell_size.width) - sixel_image_pixel_rect.x
+                        (self.width * character_cell_size.width).saturating_sub(sixel_image_pixel_rect.x)
                     };
+                    if sixel_image_pixel_width <= 0 {
+                        continue;
+                    }
 
                     if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_bottom_edge <= changed_rect_bottom_edge {
                         // image contained completely within changed rect
