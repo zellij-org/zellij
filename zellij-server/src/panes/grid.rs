@@ -1021,10 +1021,6 @@ impl Grid {
         lines
     }
     pub fn read_changes(&mut self, x_offset: usize, y_offset: usize) -> (Vec<CharacterChunk>, Vec<SixelImageChunk>) {
-        // log::info!("read changes");
-        // TODO: CONTINUE HERE (05/05) - test this when scrolling, eg. /usr/bin/cat
-        // ~/Downloads/hi.six, and enter until we start scrolling - right now it disappears - could
-        // we be bypassing this method when we need to update all lines?
         let changed_character_chunks = self.output_buffer.changed_chunks_in_viewport(
             &self.viewport,
             self.width,
@@ -1082,14 +1078,6 @@ impl Grid {
             changed_rects.insert(changed_line_index, changed_line_count);
         }
 
-        // find intersections between the sixel images and the changed_rects,
-        // create a SixelImageChunk out of them, which we'll use down the line in order to crop the
-        // sixel image to the desired size and place it in the desired place
-        // log::info!("changed_rects: {:?}", changed_rects);
-
-        // TODO: CONTINUE HERE - deal with situations in which the image is larger than the cell
-        // <== TODO: THIS (16/05)
-        // (probably need to do an std::cmp::min on self.width vs the image width)
         let mut changed_sixel_image_chunks = vec![];
         if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
             for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_grid.image_coordinates() {
@@ -1099,6 +1087,15 @@ impl Grid {
                     let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height as isize;
                     let sixel_image_top_edge = sixel_image_pixel_rect.y;
                     let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height as isize;
+
+                    let cell_x_in_current_pane = sixel_image_pixel_rect.x / character_cell_size.width;
+                    let cell_x = x_offset + cell_x_in_current_pane;
+                    let sixel_image_pixel_width = if sixel_image_pixel_rect.x + sixel_image_pixel_rect.width <= (self.width * character_cell_size.width) {
+                        sixel_image_pixel_rect.width
+                    } else {
+                        (self.width * character_cell_size.width) - sixel_image_pixel_rect.x
+                    };
+
                     if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_bottom_edge <= changed_rect_bottom_edge {
                         // image contained completely within changed rect
                         let sixel_image_pixel_height = sixel_image_pixel_rect.height;
@@ -1106,11 +1103,11 @@ impl Grid {
                         let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len()) as isize;
 
                         changed_sixel_image_chunks.push(SixelImageChunk {
-                            cell_x: x_offset,
+                            cell_x,
                             cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top as usize,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
+                            sixel_image_pixel_width,
                             sixel_image_pixel_height,
                             sixel_image_id,
                         });
@@ -1120,11 +1117,11 @@ impl Grid {
                         let sixel_image_pixel_height = changed_rect_bottom_edge - changed_rect_top_edge;
 
                         changed_sixel_image_chunks.push(SixelImageChunk {
-                            cell_x: x_offset,
+                            cell_x,
                             cell_y: y_offset + line_index,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: (changed_rect_top_edge - sixel_image_top_edge) as usize,
-                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
+                            sixel_image_pixel_width,
                             sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
@@ -1136,11 +1133,11 @@ impl Grid {
                         let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height as isize;
                         let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len()) as isize;
                         changed_sixel_image_chunks.push(SixelImageChunk {
-                            cell_x: x_offset,
+                            cell_x,
                             cell_y: (y_offset as isize + *line_index as isize + sixel_image_cell_distance_from_changed_rect_top) as usize,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
-                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
+                            sixel_image_pixel_width,
                             sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
@@ -1149,12 +1146,11 @@ impl Grid {
                         let sixel_image_pixel_y = changed_rect_top_edge - sixel_image_top_edge;
                         let sixel_image_pixel_height = sixel_image_bottom_edge - changed_rect_top_edge;
                         changed_sixel_image_chunks.push(SixelImageChunk {
-                            cell_x: x_offset,
+                            cell_x,
                             cell_y: y_offset + line_index,
-                            // sixel_image_pixel_x: x_offset * character_cell_size.width,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: sixel_image_pixel_y as usize,
-                            sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
+                            sixel_image_pixel_width,
                             sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
@@ -1962,7 +1958,6 @@ impl Perform for Grid {
             let new_image_id = self.sixel_image_store.borrow().next_image_id();
             let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
             if let Some(new_sixel_image) = new_sixel_image {
-            // if let Some((new_image_id, (image_pixel_height, image_pixel_width))) = new_sixel_image {
                 let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
                 match self.get_character_under_cursor().as_mut() {
                     Some(character_under_cursor) => {
