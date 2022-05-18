@@ -1,8 +1,8 @@
-use crate::Mutex;
-use crate::Arc;
 use super::{Output, Tab};
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
+use crate::Arc;
+use crate::Mutex;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -19,9 +19,9 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::io::RawFd;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use zellij_utils::nix;
@@ -34,7 +34,7 @@ use zellij_utils::{
 
 #[derive(Clone)]
 struct FakeInputOutput {
-    file_dumps: Arc<Mutex<HashMap<String, String>>>
+    file_dumps: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl ServerOsApi for FakeInputOutput {
@@ -206,14 +206,11 @@ fn dump_screen() {
     let mut tab = create_new_tab(size);
     let map = Arc::new(Mutex::new(HashMap::new()));
     tab.os_api = Box::new(FakeInputOutput {
-        file_dumps: map.clone()
+        file_dumps: map.clone(),
     });
     let new_pane_id = PaneId::Terminal(2);
     tab.new_pane(new_pane_id, Some(client_id));
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("scratch".as_bytes()),
-    );
+    tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()));
     let file = "/tmp/log.sh";
     tab.dump_active_terminal(Some(file.to_string()), client_id);
     assert_eq!(
