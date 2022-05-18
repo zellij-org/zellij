@@ -82,7 +82,7 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn write_to_file(&self, buf: String, name: Option<String>) {
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
         unimplemented!()
     }
 }

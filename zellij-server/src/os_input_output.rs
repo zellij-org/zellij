@@ -271,7 +271,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Writes the given buffer to a string
-    fn write_to_file(&self, buf: String, file: Option<String>);
+    fn write_to_file(&mut self, buf: String, file: Option<String>);
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -349,7 +349,7 @@ impl ServerOsApi for ServerOsInputOutput {
         }
         None
     }
-    fn write_to_file(&self, buf: String, name: Option<String>) {
+    fn write_to_file(&mut self, buf: String, name: Option<String>) {
         let mut f: File;
         match name {
             Some(x) => f = File::create(x).unwrap(),
