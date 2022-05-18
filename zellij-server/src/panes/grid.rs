@@ -89,23 +89,23 @@ impl Iterator for SixelPixelIterator {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PixelRect {
     x: usize,
-    y: usize,
+    y: isize, // this can potentially be negative (eg. when the image top has scrolled past the edge of the scrollbuffer)
     width: usize,
     height: usize,
 }
 
 impl PixelRect {
     pub fn new(x: usize, y: usize, height: usize, width: usize) -> Self {
-        PixelRect { x, y, width, height }
+        PixelRect { x, y: y as isize, width, height }
     }
     pub fn intersecting_rect(&self, other: &PixelRect) -> Option<PixelRect> {
         // if the two rects intersect, this returns a PixelRect *relative to self*
         let self_top_edge = self.y;
-        let self_bottom_edge = self.y + self.height;
+        let self_bottom_edge = self.y + self.height as isize;
         let self_left_edge = self.x;
         let self_right_edge = self.x + self.width;
         let other_top_edge = other.y;
-        let other_bottom_edge = other.y + other.height;
+        let other_bottom_edge = other.y + other.height as isize;
         let other_left_edge = other.x;
         let other_right_edge = other.x + other.width;
 
@@ -118,7 +118,7 @@ impl PixelRect {
         let x = absolute_x - self.x;
         let y = absolute_y - self.y;
         if width > 0 && height > 0 {
-            return Some(PixelRect {x, y, width, height});
+            return Some(PixelRect {x, y, width, height: height as usize});
         } else {
             return None;
         }
@@ -128,8 +128,10 @@ impl PixelRect {
 #[derive(Debug, Clone, Default)]
 pub struct SixelGrid {
     sixel_image_locations: HashMap<usize, PixelRect>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
+    image_ids_to_reap: Vec<usize>,
 }
 
 impl SixelGrid {
@@ -176,6 +178,28 @@ impl SixelGrid {
         }
         ret
     }
+    pub fn offset_grid_top(&mut self) {
+        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            let height_to_reduce = character_cell_size.height as isize;
+            for (sixel_image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
+                pixel_rect.y -= height_to_reduce;
+                if pixel_rect.y + pixel_rect.height as isize <= 0 {
+                    self.image_ids_to_reap.push(*sixel_image_id);
+                }
+            }
+            for image_id in &self.image_ids_to_reap {
+                drop(self.sixel_image_locations.remove(&image_id));
+            }
+        }
+    }
+    pub fn drain_image_ids_to_reap(&mut self) -> Option<Vec<usize>> {
+        let images_to_reap = self.image_ids_to_reap.drain(..);
+        if images_to_reap.len() > 0 {
+            Some(images_to_reap.collect())
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -204,11 +228,14 @@ impl SixelImageStore {
         self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
     }
     pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        log::info!("remove_pixels_from_image: {:?} / {:?}", image_id, pixel_rect);
         if let Some((sixel_image, sixel_image_cache)) = self.sixel_images.get_mut(&image_id) {
-            log::info!("cutting out: x: {:?}, y: {:?}, width: {:?}, height: {:?}", pixel_rect.x, pixel_rect.y, pixel_rect.width, pixel_rect.height);
-            sixel_image.cut_out(pixel_rect.x, pixel_rect.y, pixel_rect.width, pixel_rect.height);
+            sixel_image.cut_out(pixel_rect.x, pixel_rect.y as usize, pixel_rect.width, pixel_rect.height);
             sixel_image_cache.clear(); // TODO: more intelligent cache clearing
+        }
+    }
+    pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
+        for id in ids_to_reap {
+            drop(self.sixel_images.remove(&id));
         }
     }
 }
@@ -292,6 +319,7 @@ fn get_top_canonical_row_and_wraps(rows: &mut Vec<Row>) -> Vec<Row> {
 fn transfer_rows_from_lines_above_to_viewport(
     lines_above: &mut VecDeque<Row>,
     viewport: &mut Vec<Row>,
+    sixel_grid: &mut SixelGrid,
     count: usize,
     max_viewport_width: usize,
 ) -> usize {
@@ -323,7 +351,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     }
     if !next_lines.is_empty() {
         let excess_row = Row::from_rows(next_lines, 0);
-        bounded_push(lines_above, excess_row);
+        bounded_push(lines_above, sixel_grid, excess_row);
     }
     match usize::try_from(lines_added_to_viewport) {
         Ok(n) => n,
@@ -334,6 +362,7 @@ fn transfer_rows_from_lines_above_to_viewport(
 fn transfer_rows_from_viewport_to_lines_above(
     viewport: &mut Vec<Row>,
     lines_above: &mut VecDeque<Row>,
+    sixel_grid: &mut SixelGrid,
     count: usize,
     max_viewport_width: usize,
 ) -> isize {
@@ -356,7 +385,7 @@ fn transfer_rows_from_viewport_to_lines_above(
                 break; // no more rows
             }
         }
-        let dropped_line_width = bounded_push(lines_above, next_lines.remove(0));
+        let dropped_line_width = bounded_push(lines_above, sixel_grid, next_lines.remove(0));
         if let Some(width) = dropped_line_width {
             transferred_rows_count -=
                 calculate_row_display_height(width, max_viewport_width) as isize;
@@ -412,11 +441,12 @@ fn transfer_rows_from_lines_below_to_viewport(
     }
 }
 
-fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
+fn bounded_push(vec: &mut VecDeque<Row>, sixel_grid: &mut SixelGrid, value: Row) -> Option<usize> {
     let mut dropped_line_width = None;
     if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
         let line = vec.pop_front();
         if let Some(line) = line {
+            sixel_grid.offset_grid_top();
             dropped_line_width = Some(line.width());
         }
     }
@@ -517,6 +547,8 @@ impl Grid {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
     ) -> Self {
+        let mut sixel_grid = SixelGrid::default();
+        sixel_grid.character_cell_size = character_cell_size.clone();
         Grid {
             lines_above: VecDeque::with_capacity(
                 // .get_or_init() is used instead of .get().unwrap() to prevent
@@ -556,7 +588,7 @@ impl Grid {
             character_cell_size,
             sixel_parser: None,
             sixel_image_store,
-            sixel_grid: Default::default(),
+            sixel_grid,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -701,6 +733,7 @@ impl Grid {
             let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
                 &mut self.lines_above,
                 &mut self.viewport,
+                &mut self.sixel_grid,
                 1,
                 self.width,
             );
@@ -727,7 +760,7 @@ impl Grid {
                 last_line_above
             };
 
-            let dropped_line_width = bounded_push(&mut self.lines_above, line_to_push_up);
+            let dropped_line_width = bounded_push(&mut self.lines_above, &mut self.sixel_grid, line_to_push_up);
             if let Some(width) = dropped_line_width {
                 let dropped_line_height = calculate_row_display_height(width, self.width);
 
@@ -863,6 +896,7 @@ impl Grid {
                     transfer_rows_from_lines_above_to_viewport(
                         &mut self.lines_above,
                         &mut self.viewport,
+                        &mut self.sixel_grid,
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -879,6 +913,7 @@ impl Grid {
                     transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
                         &mut self.lines_above,
+                        &mut self.sixel_grid,
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -912,6 +947,7 @@ impl Grid {
                     transfer_rows_from_lines_above_to_viewport(
                         &mut self.lines_above,
                         &mut self.viewport,
+                        &mut self.sixel_grid,
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -940,6 +976,7 @@ impl Grid {
                         transfer_rows_from_viewport_to_lines_above(
                             &mut self.viewport,
                             &mut self.lines_above,
+                            &mut self.sixel_grid,
                             row_count_to_transfer,
                             new_columns,
                         );
@@ -1058,19 +1095,19 @@ impl Grid {
             for (sixel_image_id, sixel_image_pixel_rect) in self.sixel_grid.image_coordinates() {
                 for (line_index, line_count) in &changed_rects {
                     let changed_rect_pixel_height = line_count * character_cell_size.height;
-                    let changed_rect_top_edge = (line_index + self.lines_above.len()) * character_cell_size.height;
-                    let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height;
+                    let changed_rect_top_edge = ((line_index + self.lines_above.len()) * character_cell_size.height) as isize;
+                    let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height as isize;
                     let sixel_image_top_edge = sixel_image_pixel_rect.y;
-                    let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height;
+                    let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height as isize;
                     if sixel_image_top_edge >= changed_rect_top_edge && sixel_image_bottom_edge <= changed_rect_bottom_edge {
                         // image contained completely within changed rect
                         let sixel_image_pixel_height = sixel_image_pixel_rect.height;
-                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height;
-                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len());
+                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height as isize;
+                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len()) as isize;
 
                         changed_sixel_image_chunks.push(SixelImageChunk {
                             cell_x: x_offset,
-                            cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
+                            cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top as usize,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
                             sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
@@ -1086,9 +1123,9 @@ impl Grid {
                             cell_x: x_offset,
                             cell_y: y_offset + line_index,
                             sixel_image_pixel_x: 0,
-                            sixel_image_pixel_y: changed_rect_top_edge - sixel_image_top_edge,
+                            sixel_image_pixel_y: (changed_rect_top_edge - sixel_image_top_edge) as usize,
                             sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
-                            sixel_image_pixel_height,
+                            sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
 
@@ -1096,15 +1133,15 @@ impl Grid {
                         // image top part intersects with changed rect
                         let sixel_image_pixel_y = sixel_image_top_edge - changed_rect_top_edge;
                         let sixel_image_pixel_height = changed_rect_bottom_edge - sixel_image_top_edge;
-                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height;
-                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len());
+                        let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge / character_cell_size.height as isize;
+                        let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top - (line_index + self.lines_above.len()) as isize;
                         changed_sixel_image_chunks.push(SixelImageChunk {
                             cell_x: x_offset,
-                            cell_y: y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top,
+                            cell_y: (y_offset as isize + *line_index as isize + sixel_image_cell_distance_from_changed_rect_top) as usize,
                             sixel_image_pixel_x: 0,
                             sixel_image_pixel_y: 0,
                             sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
-                            sixel_image_pixel_height,
+                            sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
                     } else if sixel_image_bottom_edge <= changed_rect_bottom_edge && sixel_image_bottom_edge >= changed_rect_top_edge {
@@ -1116,19 +1153,19 @@ impl Grid {
                             cell_y: y_offset + line_index,
                             // sixel_image_pixel_x: x_offset * character_cell_size.width,
                             sixel_image_pixel_x: 0,
-                            sixel_image_pixel_y,
+                            sixel_image_pixel_y: sixel_image_pixel_y as usize,
                             sixel_image_pixel_width: std::cmp::min(sixel_image_pixel_rect.width, self.width * character_cell_size.width),
-                            sixel_image_pixel_height,
+                            sixel_image_pixel_height: sixel_image_pixel_height as usize,
                             sixel_image_id,
                         });
                     }
                 }
             }
         }
+        if let Some(image_ids_to_reap) = self.sixel_grid.drain_image_ids_to_reap() {
+            self.sixel_image_store.borrow_mut().reap_images(image_ids_to_reap);
+        }
         self.output_buffer.clear();
-        log::info!("*** READ CHANGES ***");
-        log::info!("changed_chunks: {:?}", changed_character_chunks);
-        log::info!("changed_sixel_image_chunks: {:?}", changed_sixel_image_chunks);
         (changed_character_chunks, changed_sixel_image_chunks)
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
@@ -1316,7 +1353,7 @@ impl Grid {
                     let absolute_y_in_pixels = scrollback_size_in_pixels + (self.cursor.y * character_cell_size.height);
                     let rect_to_cut_out = PixelRect {
                         x: absolute_x_in_pixels,
-                        y: absolute_y_in_pixels,
+                        y: absolute_y_in_pixels as isize,
                         width: character_cell_size.width,
                         height: character_cell_size.height,
                     };
@@ -1813,6 +1850,7 @@ impl Grid {
         let transferred_rows_count = transfer_rows_from_viewport_to_lines_above(
             &mut self.viewport,
             &mut self.lines_above,
+            &mut self.sixel_grid,
             count,
             self.width,
         );
