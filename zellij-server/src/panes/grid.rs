@@ -128,6 +128,7 @@ impl PixelRect {
 #[derive(Debug, Clone, Default)]
 pub struct SixelGrid {
     sixel_image_locations: HashMap<usize, PixelRect>,
+    previous_cell_size: Option<SizeInPixels>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     currently_parsing: Option<SixelDeserializer>,
     sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
@@ -135,6 +136,14 @@ pub struct SixelGrid {
 }
 
 impl SixelGrid {
+    pub fn new(character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
+        let previous_cell_size = *character_cell_size.borrow();
+        SixelGrid {
+            previous_cell_size,
+            character_cell_size,
+            ..Default::default()
+        }
+    }
     pub fn handle_event(&mut self, sixel_event: SixelEvent) {
         if let Some(currently_parsing) = self.currently_parsing.as_mut() {
             currently_parsing.handle_event(sixel_event);
@@ -199,6 +208,20 @@ impl SixelGrid {
         } else {
             None
         }
+    }
+    pub fn character_cell_size_possibly_changed(&mut self) {
+        match (self.previous_cell_size, *self.character_cell_size.borrow()) {
+            (Some(previous_cell_size), Some(character_cell_size)) => {
+                if previous_cell_size != character_cell_size {
+                    for (image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
+                        pixel_rect.x = (pixel_rect.x / previous_cell_size.width) * character_cell_size.width;
+                        pixel_rect.y = (pixel_rect.y / previous_cell_size.height as isize) * character_cell_size.height as isize;
+                    }
+                }
+            },
+            _ => {}
+        }
+        self.previous_cell_size = *self.character_cell_size.borrow();
     }
 }
 
@@ -547,8 +570,7 @@ impl Grid {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
     ) -> Self {
-        let mut sixel_grid = SixelGrid::default();
-        sixel_grid.character_cell_size = character_cell_size.clone();
+        let sixel_grid = SixelGrid::new(character_cell_size.clone());
         Grid {
             lines_above: VecDeque::with_capacity(
                 // .get_or_init() is used instead of .get().unwrap() to prevent
@@ -807,6 +829,7 @@ impl Grid {
             return;
         }
         self.selection.reset();
+        self.sixel_grid.character_cell_size_possibly_changed();
         if new_columns != self.width && self.alternate_lines_above_viewport_and_cursor.is_none() {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
@@ -1247,8 +1270,6 @@ impl Grid {
         self.output_buffer.update_all_lines();
     }
     pub fn add_canonical_line(&mut self) {
-        log::info!("");
-        log::info!("add_canonical_line");
         if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
             if self.cursor.y == scroll_region_bottom {
                 // end of scroll region
@@ -1261,11 +1282,8 @@ impl Grid {
                     // the state is corrupted
                     return;
                 }
-                log::info!("scroll_region_bottom: {:?}, self.height - 1: {:?}", scroll_region_bottom, self.height - 1);
                 if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
-                    log::info!("is bottom of viewport");
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
-                        log::info!("scrolling up by one");
                         self.transfer_rows_to_lines_above(1);
                     } else {
                         self.viewport.remove(0);
@@ -1292,7 +1310,6 @@ impl Grid {
                 return;
             }
         }
-        log::info!("self.viewport.len(): {:?}, self.cursor.y + 1: {:?}", self.viewport.len(), self.cursor.y + 1);
         if self.viewport.len() <= self.cursor.y + 1 {
             // FIXME: this should add an empty line with the pad_character
             // but for some reason this breaks rendering in various situations
@@ -1300,11 +1317,9 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
-        log::info!("self.cursor.y: {:?} == self.height - 1: {:?}", self.cursor.y, self.height - 1);
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
                 if self.alternate_lines_above_viewport_and_cursor.is_none() {
-                    log::info!("transfer rows");
                     self.transfer_rows_to_lines_above(1);
                 } else {
                     self.viewport.remove(0);
@@ -1314,7 +1329,6 @@ impl Grid {
             }
             self.output_buffer.update_all_lines();
         } else {
-            log::info!("just cursor.y + 1");
             self.cursor.y += 1;
             self.output_buffer.update_line(self.cursor.y);
         }
@@ -1356,7 +1370,6 @@ impl Grid {
                         width: character_cell_size.width,
                         height: character_cell_size.height,
                     };
-                    log::info!("rect to cut out: {:?}", rect_to_cut_out);
                     if let Some(images_to_cut_out) = self.sixel_grid.cut_off_rect_from_images(rect_to_cut_out) {
                         for (image_id, rect_in_image_to_cut_out) in images_to_cut_out {
                             self.sixel_image_store.borrow_mut().remove_pixels_from_image(image_id, rect_in_image_to_cut_out);
