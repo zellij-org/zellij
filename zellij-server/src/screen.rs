@@ -518,7 +518,6 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        log::info!("screen render");
         let mut output = Output::new(self.sixel_image_store.clone(), self.character_cell_size.clone());
         let mut tabs_to_close = vec![];
         let size = self.size;

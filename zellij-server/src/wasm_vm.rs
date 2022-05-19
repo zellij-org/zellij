@@ -130,7 +130,6 @@ pub(crate) fn wasm_thread_main(
                 plugin_id += 1;
             }
             PluginInstruction::Update(pid, cid, event) => {
-                log::info!("plugin update event: {:?}", event);
                 for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
                     let subs = plugin_env.subscriptions.lock().unwrap();
                     // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?

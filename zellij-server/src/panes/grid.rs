@@ -511,7 +511,7 @@ pub struct Grid {
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
     horizontal_tabstops: BTreeSet<usize>,
-    alternate_lines_above_viewport_and_cursor: Option<(VecDeque<Row>, Vec<Row>, Cursor)>,
+    alternate_lines_above_viewport_cursor_and_sixelgrid: Option<(VecDeque<Row>, Vec<Row>, Cursor, SixelGrid)>, // TODO: rename this clunky thing and outsource it to a struct
     cursor: Cursor,
     saved_cursor_position: Option<Cursor>,
     // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
@@ -592,7 +592,7 @@ impl Grid {
             erasure_mode: false,
             insert_mode: false,
             disable_linewrap: false,
-            alternate_lines_above_viewport_and_cursor: None,
+            alternate_lines_above_viewport_cursor_and_sixelgrid: None,
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
@@ -830,7 +830,7 @@ impl Grid {
         }
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
-        if new_columns != self.width && self.alternate_lines_above_viewport_and_cursor.is_none() {
+        if new_columns != self.width && self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -952,7 +952,7 @@ impl Grid {
                     saved_cursor_position.x = new_cursor_x;
                 });
         } else if new_columns != self.width
-            && self.alternate_lines_above_viewport_and_cursor.is_some()
+            && self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_some()
         {
             // in alternate screen just truncate exceeding width
             for row in &mut self.viewport {
@@ -995,7 +995,7 @@ impl Grid {
                                 saved_cursor_position.y -= row_count_to_transfer
                             });
                     }
-                    if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                    if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
                             &mut self.viewport,
                             &mut self.lines_above,
@@ -1257,7 +1257,7 @@ impl Grid {
         }
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
-        if self.alternate_lines_above_viewport_and_cursor.is_some() {
+        if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_some() {
             self.viewport.clear();
         } else {
             self.transfer_rows_to_lines_above(self.viewport.len())
@@ -1283,7 +1283,7 @@ impl Grid {
                     return;
                 }
                 if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
-                    if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                    if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
                         self.transfer_rows_to_lines_above(1);
                     } else {
                         self.viewport.remove(0);
@@ -1319,9 +1319,10 @@ impl Grid {
         }
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
-                if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
                     self.transfer_rows_to_lines_above(1);
                 } else {
+                    self.sixel_grid.offset_grid_top();
                     self.viewport.remove(0);
                 }
 
@@ -1467,7 +1468,7 @@ impl Grid {
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
         if self.cursor.y == self.height - 1 {
-            if self.alternate_lines_above_viewport_and_cursor.is_none() {
+            if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {
                 self.viewport.remove(0);
@@ -1712,7 +1713,7 @@ impl Grid {
         self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];
-        self.alternate_lines_above_viewport_and_cursor = None;
+        self.alternate_lines_above_viewport_cursor_and_sixelgrid = None;
         self.cursor_key_mode = false;
         self.scroll_region = None;
         self.clear_viewport_before_rendering = true;
@@ -2260,13 +2261,15 @@ impl Perform for Grid {
                             alternative_lines_above,
                             alternative_viewport,
                             alternative_cursor,
-                        )) = &mut self.alternate_lines_above_viewport_and_cursor
+                            alternative_sixelgrid,
+                        )) = &mut self.alternate_lines_above_viewport_cursor_and_sixelgrid
                         {
                             std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
                             std::mem::swap(&mut self.cursor, alternative_cursor);
+                            std::mem::swap(&mut self.sixel_grid, alternative_sixelgrid);
                         }
-                        self.alternate_lines_above_viewport_and_cursor = None;
+                        self.alternate_lines_above_viewport_cursor_and_sixelgrid = None;
                         self.clear_viewport_before_rendering = true;
                         self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
@@ -2325,8 +2328,9 @@ impl Perform for Grid {
                             vec![Row::new(self.width).canonical()],
                         );
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        self.alternate_lines_above_viewport_and_cursor =
-                            Some((current_lines_above, current_viewport, current_cursor));
+                        let alternate_sixelgrid = std::mem::replace(&mut self.sixel_grid, SixelGrid::new(self.character_cell_size.clone()));
+                        self.alternate_lines_above_viewport_cursor_and_sixelgrid =
+                            Some((current_lines_above, current_viewport, current_cursor, alternate_sixelgrid));
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
                         self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
