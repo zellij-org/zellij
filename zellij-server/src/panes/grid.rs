@@ -2465,9 +2465,46 @@ impl Perform for Grid {
             let line_count = next_param_or(1);
             self.rotate_scroll_region_up(line_count as usize);
         } else if c == 'S' {
-            // move scroll up
-            let count = next_param_or(1);
-            self.rotate_scroll_region_down(count);
+            let first_intermediate_is_questionmark = match intermediates.get(0) {
+                Some(b'?') => true,
+                None => false,
+                _ => false,
+            };
+            if first_intermediate_is_questionmark {
+                let query_type = params_iter.next();
+                let is_query = params_iter.next() == Some(&[1]);
+                if is_query {
+                    match query_type {
+                        Some(&[1]) => {
+                            // number of color registers
+                            let response = "\u{1b}[?1;0;1024S"; // TODO: is this accurate?
+                            self.pending_messages_to_pty
+                                .push(response.as_bytes().to_vec());
+                        },
+                        Some(&[2]) => {
+                            // Sixel graphics geometry in pixels
+                            if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                                let sixel_area_geometry = format!(
+                                    "\u{1b}[?2;0;{};{}S",
+                                    character_cell_size.width * self.width,
+                                    character_cell_size.height * self.height,
+                                );
+                                self.pending_messages_to_pty
+                                    .push(sixel_area_geometry.as_bytes().to_vec());
+                                }
+                            }
+                        _ => {
+                            // unsupported (eg. ReGIS graphics geometry)
+                        }
+                    }
+
+                }
+                return;
+            } else {
+                // move scroll up
+                let count = next_param_or(1);
+                self.rotate_scroll_region_down(count);
+            }
         } else if c == 's' {
             self.save_cursor_position();
         } else if c == 'u' {
@@ -2529,7 +2566,7 @@ impl Perform for Grid {
             match intermediates.get(0) {
                 None | Some(0) => {
                     // primary device attributes
-                    let terminal_capabilities = "\u{1b}[?6c";
+                    let terminal_capabilities = "\u{1b}[?64;4c";
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
                 }
