@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
+use zellij_utils::regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -283,7 +284,8 @@ macro_rules! dump_screen {
             let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
             // Replace the spaces at the end of the line. Sometimes, the lines are
             // collected with spaces until the end of the panel.
-            buf.push_str(&(s.replace("[ ]*$", "")));
+            let re = Regex::new("([^ ])[ ]*$").unwrap();
+            buf.push_str(&(re.replace(&s, "${1}")));
             is_first = false;
         }
         buf
