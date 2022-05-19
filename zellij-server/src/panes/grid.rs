@@ -149,8 +149,15 @@ impl SixelGrid {
             currently_parsing.handle_event(sixel_event);
         }
     }
-    pub fn start_image(&mut self) {
-        self.currently_parsing = Some(SixelDeserializer::new());
+    pub fn start_image(&mut self, max_height_in_pixels: Option<usize>) {
+        match max_height_in_pixels {
+            Some(max_height_in_pixels) => {
+                self.currently_parsing = Some(SixelDeserializer::new().max_height(max_height_in_pixels));
+            },
+            None => {
+                self.currently_parsing = Some(SixelDeserializer::new());
+            }
+        }
     }
     pub fn end_image(&mut self, new_image_id: usize, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<SixelImage> { // usize is image_id
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
@@ -542,6 +549,7 @@ pub struct Grid {
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
     pub bracketed_paste_mode: bool, // when set, paste instructions to the terminal should be escaped with a special sequence
     pub erasure_mode: bool,         // ERM
+    pub sixel_scrolling: bool, // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
     pub clear_viewport_before_rendering: bool,
@@ -599,6 +607,7 @@ impl Grid {
             cursor_key_mode: false,
             bracketed_paste_mode: false,
             erasure_mode: false,
+            sixel_scrolling: false,
             insert_mode: false,
             disable_linewrap: false,
             alternate_lines_above_viewport_cursor_and_sixelgrid: None,
@@ -1735,6 +1744,7 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
         self.scrollback_buffer_lines = 0;
+        self.sixel_scrolling = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_image_store.borrow_mut().reap_images(images_to_reap);
         }
@@ -1965,7 +1975,13 @@ impl Perform for Grid {
             // otherwise we can't reliably display them
             if self.current_cursor_pixel_coordinates().is_some() {
                 self.sixel_parser = Some(sixel_tokenizer::Parser::new());
-                self.sixel_grid.start_image();
+                let max_sixel_height_in_pixels = if self.sixel_scrolling {
+                    let character_cell_height = self.character_cell_size.borrow().unwrap().height; // unwrap here is safe because `current_cursor_pixel_coordinates` above is only Some if it exists
+                    Some(self.height * character_cell_height)
+                } else {
+                    None
+                };
+                self.sixel_grid.start_image(max_sixel_height_in_pixels);
             }
         }
     }
@@ -1984,10 +2000,18 @@ impl Perform for Grid {
 
     fn unhook(&mut self) {
         if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+            // TODO: if parsing Sixel image...
+            let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
+                (0, 0)
+            } else {
+                (x_pixel_coordinates, y_pixel_coordinates)
+            };
             let new_image_id = self.sixel_image_store.borrow().next_image_id();
             let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
             if let Some(new_sixel_image) = new_sixel_image {
                 let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
+                // TODO: get rid of sixel cells (but if we don't for some reason, not that we don't
+                // handle sixel_scrolling here)
                 match self.get_character_under_cursor().as_mut() {
                     Some(character_under_cursor) => {
                         if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
@@ -2008,7 +2032,10 @@ impl Perform for Grid {
                     }
                 }
                 self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
-                self.move_cursor_down_by_pixels(image_pixel_height);
+                if !self.sixel_scrolling {
+                    self.move_cursor_down_by_pixels(image_pixel_height);
+                    self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
+                }
                 self.mark_for_rerender();
             }
             self.sixel_parser = None;
@@ -2306,6 +2333,9 @@ impl Perform for Grid {
                     Some(7) => {
                         self.disable_linewrap = true;
                     }
+                    Some(80) => {
+                        self.sixel_scrolling = false;
+                    }
                     Some(1006) => {
                         self.mouse_mode = false;
                     }
@@ -2362,6 +2392,9 @@ impl Perform for Grid {
                     }
                     Some(7) => {
                         self.disable_linewrap = false;
+                    }
+                    Some(80) => {
+                        self.sixel_scrolling = true;
                     }
                     Some(1006) => {
                         self.mouse_mode = true;
