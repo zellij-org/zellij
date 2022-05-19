@@ -12,6 +12,7 @@ pub mod setup;
 pub mod shared;
 
 pub use anyhow;
+pub use tempfile;
 pub use async_std;
 pub use clap;
 pub use interprocess;

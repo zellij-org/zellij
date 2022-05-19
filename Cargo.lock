@@ -3249,7 +3249,6 @@ dependencies = [
  "log",
  "serde_json",
  "sysinfo",
- "tempfile",
  "typetag",
  "unicode-width",
  "url",

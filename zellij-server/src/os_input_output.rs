@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::{fs::File, io::Write};
 
 use crate::panes::PaneId;
-use tempfile::tempfile;
+use zellij_utils::tempfile::tempfile;
 
 use std::env;
 use std::os::unix::io::RawFd;

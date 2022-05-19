@@ -1041,7 +1041,7 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::DumpScreen(file, client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.dump_active_terminal(Some(file.to_string()), client_id);
+                    active_tab.dump_active_terminal_screen(Some(file.to_string()), client_id);
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }
