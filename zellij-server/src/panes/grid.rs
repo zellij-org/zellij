@@ -223,6 +223,15 @@ impl SixelGrid {
         }
         self.previous_cell_size = *self.character_cell_size.borrow();
     }
+    pub fn clear(&mut self) -> Option<Vec<usize>> { // returns image ids to reap
+        let mut image_ids: Vec<usize> = self.sixel_image_locations.drain().map(|(image_id, _image_rect)| image_id).collect();
+        image_ids.append(&mut self.image_ids_to_reap);
+        if image_ids.len() > 0 {
+            Some(image_ids)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1726,6 +1735,9 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
         self.scrollback_buffer_lines = 0;
+        if let Some(images_to_reap) = self.sixel_grid.clear() {
+            self.sixel_image_store.borrow_mut().reap_images(images_to_reap);
+        }
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
         self.preceding_char = Some(terminal_character);
