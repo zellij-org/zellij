@@ -83,6 +83,13 @@ pub fn start_fake_client(
             move || stdin_loop(os_input, send_input_instructions)
         });
 
+    // get client ids
+    // os_input.connect_to_server(&*zellij_ipc_pipe);
+    os_input.send_to_server(ClientToServerMsg::ListClients);
+    let (clients, _) =  os_input.recv_from_server();
+    log::error!("{:?}", clients);
+
+
     let session_name = session_name.to_string().clone();
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())

@@ -318,6 +318,7 @@ pub enum ClientContext {
     ServerError,
     SwitchToMode,
     Connected,
+    ActiveClients,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -333,4 +334,5 @@ pub enum ServerContext {
     DetachSession,
     AttachClient,
     ConnStatus,
+    ActiveClients,
 }

@@ -12,7 +12,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
-use zellij_tile::prelude::Style;
+use zellij_tile::prelude::{ClientId, Style};
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -39,6 +39,7 @@ pub(crate) enum ClientInstruction {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -51,6 +52,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::SwitchToMode(input_mode)
             }
             ServerToClientMsg::Connected => ClientInstruction::Connected,
+            ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
         }
     }
 }
@@ -64,6 +66,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
+            ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
         }
     }
 }

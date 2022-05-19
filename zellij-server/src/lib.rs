@@ -73,6 +73,7 @@ pub enum ServerInstruction {
     DetachSession(ClientId),
     AttachClient(ClientAttributes, Options, ClientId),
     ConnStatus(ClientId),
+    ActiveClients(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -88,6 +89,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
+            ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
         }
     }
 }
@@ -513,6 +515,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::ConnStatus(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
+            }
+            ServerInstruction::ActiveClients(client_id) => {
+                let client_ids = session_state.read().unwrap().client_ids();
+                log::error!("Sending client_ids {}", client_id);
+                os_input.send_to_client(client_id, ServerToClientMsg::ActiveClients(client_ids));
             }
         }
     }

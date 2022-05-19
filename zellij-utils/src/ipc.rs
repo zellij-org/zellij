@@ -74,6 +74,7 @@ pub enum ClientToServerMsg {
     ClientExited,
     KillSession,
     ConnStatus,
+    ListClients,
 }
 
 // Types of messages sent from the server to the client
@@ -88,6 +89,7 @@ pub enum ServerToClientMsg {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
