@@ -212,7 +212,7 @@ fn dump_screen() {
     tab.new_pane(new_pane_id, Some(client_id));
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()));
     let file = "/tmp/log.sh";
-    tab.dump_active_terminal(Some(file.to_string()), client_id);
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id);
     assert_eq!(
         map.lock().unwrap().get(file).unwrap(),
         "scratch",
