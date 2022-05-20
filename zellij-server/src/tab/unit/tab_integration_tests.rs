@@ -1,6 +1,8 @@
 use super::{Output, Tab};
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
+use crate::Arc;
+use crate::Mutex;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -17,6 +19,7 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
@@ -30,7 +33,9 @@ use zellij_utils::{
 };
 
 #[derive(Clone)]
-struct FakeInputOutput {}
+struct FakeInputOutput {
+    file_dumps: Arc<Mutex<HashMap<String, String>>>,
+}
 
 impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
@@ -83,6 +88,14 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+    fn write_to_file(&mut self, buf: String, name: Option<String>) {
+        let f: String;
+        match name {
+            Some(x) => f = x,
+            None => f = "tmp-name".to_owned(),
+        }
+        self.file_dumps.lock().unwrap().insert(f, buf);
+    }
 }
 
 // TODO: move to shared thingy with other test file
@@ -91,7 +104,9 @@ fn create_new_tab(size: Size) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
-    let os_api = Box::new(FakeInputOutput {});
+    let os_api = Box::new(FakeInputOutput {
+        file_dumps: Arc::new(Mutex::new(HashMap::new())),
+    });
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
     let mode_info = ModeInfo::default();
@@ -181,6 +196,30 @@ fn take_snapshot_and_cursor_position(
         vte_parser.advance(&mut grid, byte);
     }
     (format!("{:?}", grid), grid.cursor_coordinates())
+}
+
+#[test]
+fn dump_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    tab.os_api = Box::new(FakeInputOutput {
+        file_dumps: map.clone(),
+    });
+    let new_pane_id = PaneId::Terminal(2);
+    tab.new_pane(new_pane_id, Some(client_id));
+    tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()));
+    let file = "/tmp/log.sh";
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id);
+    assert_eq!(
+        map.lock().unwrap().get(file).unwrap(),
+        "scratch",
+        "screen was dumped properly"
+    );
 }
 
 #[test]

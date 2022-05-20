@@ -22,6 +22,7 @@ pub use regex;
 pub use serde;
 pub use serde_yaml;
 pub use signal_hook;
+pub use tempfile;
 pub use termwiz;
 pub use vte;
 pub use zellij_tile;

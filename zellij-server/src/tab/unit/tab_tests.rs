@@ -81,6 +81,10 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
+        unimplemented!()
+    }
 }
 
 fn create_new_tab(size: Size) -> Tab {

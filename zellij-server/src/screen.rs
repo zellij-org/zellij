@@ -66,6 +66,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
+    DumpScreen(String, ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
     ScrollDown(ClientId),
@@ -146,6 +147,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
@@ -1062,6 +1064,15 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MoveFocusUp(client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     active_tab.move_focus_up(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::DumpScreen(file, client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.dump_active_terminal_screen(Some(file.to_string()), client_id);
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }
