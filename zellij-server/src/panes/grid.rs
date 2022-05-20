@@ -2474,6 +2474,7 @@ impl Perform for Grid {
                 let query_type = params_iter.next();
                 let is_query = params_iter.next() == Some(&[1]);
                 if is_query {
+                    // XTMSGRAPHICS
                     match query_type {
                         Some(&[1]) => {
                             // number of color registers
