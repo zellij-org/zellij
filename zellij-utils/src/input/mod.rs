@@ -11,16 +11,15 @@ pub mod plugins;
 pub mod theme;
 
 use crate::envs;
-use termion::input::TermRead;
-use zellij_tile::data::{InputMode, Key, ModeInfo, Palette, PluginCapabilities};
+use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
+use zellij_tile::{
+    data::{InputMode, Key, ModeInfo, PluginCapabilities},
+    prelude::{CharOrArrow, Direction, Style},
+};
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).
-pub fn get_mode_info(
-    mode: InputMode,
-    palette: Palette,
-    capabilities: PluginCapabilities,
-) -> ModeInfo {
+pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabilities) -> ModeInfo {
     let keybinds = match mode {
         InputMode::Normal | InputMode::Locked | InputMode::Prompt => Vec::new(),
         InputMode::Resize => vec![
@@ -77,40 +76,85 @@ pub fn get_mode_info(
     ModeInfo {
         mode,
         keybinds,
-        palette,
+        style,
         capabilities,
         session_name,
     }
 }
 
 pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
-    input_bytes.keys().flatten().map(cast_termion_key).collect()
+    let mut ret = vec![];
+    let mut input_parser = InputParser::new(); // this is the termwiz InputParser
+    let maybe_more = false;
+    let parse_input_event = |input_event: InputEvent| {
+        if let InputEvent::Key(key_event) = input_event {
+            ret.push(cast_termwiz_key(key_event, input_bytes));
+        }
+    };
+    input_parser.parse(input_bytes, parse_input_event, maybe_more);
+    ret
 }
 
 // FIXME: This is an absolutely cursed function that should be destroyed as soon
 // as an alternative that doesn't touch zellij-tile can be developed...
-pub fn cast_termion_key(event: termion::event::Key) -> Key {
-    match event {
-        termion::event::Key::Backspace => Key::Backspace,
-        termion::event::Key::Left => Key::Left,
-        termion::event::Key::Right => Key::Right,
-        termion::event::Key::Up => Key::Up,
-        termion::event::Key::Down => Key::Down,
-        termion::event::Key::Home => Key::Home,
-        termion::event::Key::End => Key::End,
-        termion::event::Key::PageUp => Key::PageUp,
-        termion::event::Key::PageDown => Key::PageDown,
-        termion::event::Key::BackTab => Key::BackTab,
-        termion::event::Key::Delete => Key::Delete,
-        termion::event::Key::Insert => Key::Insert,
-        termion::event::Key::F(n) => Key::F(n),
-        termion::event::Key::Char(c) => Key::Char(c),
-        termion::event::Key::Alt(c) => Key::Alt(c),
-        termion::event::Key::Ctrl(c) => Key::Ctrl(c),
-        termion::event::Key::Null => Key::Null,
-        termion::event::Key::Esc => Key::Esc,
-        _ => {
-            unimplemented!("Encountered an unknown key!")
+pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
+    let modifiers = event.modifiers;
+
+    // *** THIS IS WHERE WE SHOULD WORK AROUND ISSUES WITH TERMWIZ ***
+    if raw_bytes == [8] {
+        return Key::Ctrl('h');
+    };
+
+    match event.key {
+        KeyCode::Char(c) => {
+            if modifiers.contains(Modifiers::CTRL) {
+                Key::Ctrl(c.to_lowercase().next().unwrap_or_default())
+            } else if modifiers.contains(Modifiers::ALT) {
+                Key::Alt(CharOrArrow::Char(c))
+            } else {
+                Key::Char(c)
+            }
         }
+        KeyCode::Backspace => Key::Backspace,
+        KeyCode::LeftArrow | KeyCode::ApplicationLeftArrow => {
+            if modifiers.contains(Modifiers::ALT) {
+                Key::Alt(CharOrArrow::Direction(Direction::Left))
+            } else {
+                Key::Left
+            }
+        }
+        KeyCode::RightArrow | KeyCode::ApplicationRightArrow => {
+            if modifiers.contains(Modifiers::ALT) {
+                Key::Alt(CharOrArrow::Direction(Direction::Right))
+            } else {
+                Key::Right
+            }
+        }
+        KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
+            if modifiers.contains(Modifiers::ALT) {
+                //Key::AltPlusUpArrow
+                Key::Alt(CharOrArrow::Direction(Direction::Up))
+            } else {
+                Key::Up
+            }
+        }
+        KeyCode::DownArrow | KeyCode::ApplicationDownArrow => {
+            if modifiers.contains(Modifiers::ALT) {
+                Key::Alt(CharOrArrow::Direction(Direction::Down))
+            } else {
+                Key::Down
+            }
+        }
+        KeyCode::Home => Key::Home,
+        KeyCode::End => Key::End,
+        KeyCode::PageUp => Key::PageUp,
+        KeyCode::PageDown => Key::PageDown,
+        KeyCode::Tab => Key::BackTab, // TODO: ???
+        KeyCode::Delete => Key::Delete,
+        KeyCode::Insert => Key::Insert,
+        KeyCode::Function(n) => Key::F(n),
+        KeyCode::Escape => Key::Esc,
+        KeyCode::Enter => Key::Char('\n'),
+        _ => Key::Esc, // there are other keys we can implement here, but we might need additional terminal support to implement them, not just exhausting this enum
     }
 }

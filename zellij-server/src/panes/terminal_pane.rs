@@ -13,8 +13,10 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::time::{self, Instant};
+use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
+    pane_size::SizeInPixels,
     pane_size::{Dimension, PaneGeom},
     position::Position,
     shared::make_terminal_title,
@@ -41,7 +43,7 @@ pub struct TerminalPane {
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
     pub active_at: Instant,
-    pub colors: Palette,
+    pub style: Style,
     vte_parser: vte::Parser,
     selection_scrolled_at: time::Instant,
     content_offset: Offset,
@@ -138,6 +140,19 @@ impl Pane for TerminalPane {
                     return "OA".as_bytes().to_vec();
                 }
             }
+
+            [27, 91, 72] => {
+                // home key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 72]; // ESC O H
+                }
+            }
+            [27, 91, 70] => {
+                // end key
+                if self.grid.cursor_key_mode {
+                    return vec![27, 79, 70]; // ESC O F
+                }
+            }
             [27, 91, 66] => {
                 // down arrow
                 if self.grid.cursor_key_mode {
@@ -203,7 +218,7 @@ impl Pane for TerminalPane {
                     .selection
                     .contains_row(character_chunk.y.saturating_sub(content_y))
                 {
-                    let background_color = match self.colors.bg {
+                    let background_color = match self.style.colors.bg {
                         PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                         PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                     };
@@ -371,6 +386,9 @@ impl Pane for TerminalPane {
         self.geom.y -= count;
         self.reflow_lines();
     }
+    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+        return self.grid.dump_screen();
+    }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
@@ -431,7 +449,7 @@ impl Pane for TerminalPane {
         self.set_should_render(true);
     }
 
-    fn end_selection(&mut self, end: Option<&Position>, _client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, _client_id: ClientId) {
         self.grid.end_selection(end);
         self.set_should_render(true);
     }
@@ -459,23 +477,30 @@ impl Pane for TerminalPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+
+    fn mouse_mode(&self) -> bool {
+        self.grid.mouse_mode
+    }
 }
 
 impl TerminalPane {
     pub fn new(
         pid: RawFd,
         position_and_size: PaneGeom,
-        palette: Palette,
+        style: Style,
         pane_index: usize,
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
-            palette,
+            terminal_emulator_colors,
             link_handler,
+            character_cell_size,
         );
         TerminalPane {
             frame: HashMap::new(),
@@ -487,7 +512,7 @@ impl TerminalPane {
             geom_override: None,
             vte_parser: vte::Parser::new(),
             active_at: Instant::now(),
-            colors: palette,
+            style,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
             pane_name,

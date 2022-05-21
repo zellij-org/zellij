@@ -1,5 +1,6 @@
+use super::is_inside_viewport;
 use super::pane_resizer::PaneResizer;
-use crate::tab::{is_inside_viewport, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
+use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
@@ -12,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const RESIZE_PERCENT: f64 = 5.0;
-const CURSOR_HEIGHT_WIDTH_RATIO: usize = 4; // this is not accurate and kind of a magic number, TODO: look into this
+const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
 
@@ -40,54 +41,33 @@ impl<'a> TiledPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    pub fn resize_pane_left(&'a mut self, pane_id: &PaneId) {
+    pub fn resize_pane_left(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            // let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
-        } else if self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            self.increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
-        } else if self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            self.reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+        if self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+            return;
         }
+        self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
     }
     pub fn resize_increase(&mut self, pane_id: &PaneId) {
         if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
@@ -139,138 +119,99 @@ impl<'a> TiledPaneGrid<'a> {
         self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
     }
     fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        let panes = self.panes.borrow();
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
-            panes_to_the_right.iter().all(|id| {
-                let p = panes.get(id).unwrap();
-                if let Some(cols) = p.position_and_size().cols.as_percent() {
-                    let current_fixed_cols = p.position_and_size().cols.as_usize();
-                    let will_reduce_by =
-                        ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
-                    cols - increase_by >= RESIZE_PERCENT
-                        && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
-                } else {
-                    false
-                }
-            })
+            panes_to_the_right
+                .iter()
+                .all(|id| self.can_reduce_pane_width(id, increase_by))
         } else {
             false
         }
     }
     fn can_increase_pane_and_surroundings_left(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        let panes = self.panes.borrow();
         if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
-            panes_to_the_left.iter().all(|id| {
-                let p = panes.get(id).unwrap();
-                if let Some(cols) = p.position_and_size().cols.as_percent() {
-                    let current_fixed_cols = p.position_and_size().cols.as_usize();
-                    let will_reduce_by =
-                        ((self.display_area.cols as f64 / 100.0) * increase_by) as usize;
-                    cols - increase_by >= RESIZE_PERCENT
-                        && current_fixed_cols.saturating_sub(will_reduce_by) >= p.min_width()
-                } else {
-                    false
-                }
-            })
+            panes_to_the_left
+                .iter()
+                .all(|id| self.can_reduce_pane_width(id, increase_by))
         } else {
             false
         }
     }
     fn can_increase_pane_and_surroundings_down(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        let panes = self.panes.borrow();
         if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
-            panes_below.iter().all(|id| {
-                let p = panes.get(id).unwrap();
-                if let Some(rows) = p.position_and_size().rows.as_percent() {
-                    let current_fixed_rows = p.position_and_size().rows.as_usize();
-                    let will_reduce_by =
-                        ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
-                    rows - increase_by >= RESIZE_PERCENT
-                        && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
-                } else {
-                    false
-                }
-            })
+            panes_below
+                .iter()
+                .all(|id| self.can_reduce_pane_height(id, increase_by))
         } else {
             false
         }
     }
-
     fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        let panes = self.panes.borrow();
         if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
-            panes_above.iter().all(|id| {
-                let p = panes.get(id).unwrap();
-                if let Some(rows) = p.position_and_size().rows.as_percent() {
-                    let current_fixed_rows = p.position_and_size().rows.as_usize();
-                    let will_reduce_by =
-                        ((self.display_area.rows as f64 / 100.0) * increase_by) as usize;
-                    rows - increase_by >= RESIZE_PERCENT
-                        && current_fixed_rows.saturating_sub(will_reduce_by) >= p.min_height()
-                } else {
-                    false
-                }
-            })
+            panes_above
+                .iter()
+                .all(|id| self.can_reduce_pane_height(id, increase_by))
+        } else {
+            false
+        }
+    }
+    fn can_reduce_pane_width(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
+        let panes = self.panes.borrow();
+        let pane = panes.get(pane_id).unwrap();
+        let current_fixed_cols = pane.position_and_size().cols.as_usize();
+        let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
+        if current_fixed_cols.saturating_sub(will_reduce_by) < pane.min_width() {
+            false
+        } else if let Some(cols) = pane.position_and_size().cols.as_percent() {
+            cols - reduce_by >= RESIZE_PERCENT
+        } else {
+            false
+        }
+    }
+    fn can_reduce_pane_height(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
+        let panes = self.panes.borrow();
+        let pane = panes.get(pane_id).unwrap();
+        let current_fixed_rows = pane.position_and_size().rows.as_usize();
+        let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
+        if current_fixed_rows.saturating_sub(will_reduce_by) < pane.min_height() {
+            false
+        } else if let Some(rows) = pane.position_and_size().rows.as_percent() {
+            rows - reduce_by >= RESIZE_PERCENT
         } else {
             false
         }
     }
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
-        if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            let current_fixed_cols = pane.position_and_size().cols.as_usize();
-            let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
-            let ids_left = self.pane_ids_directly_left_of(pane_id);
-            let flexible_left = self.ids_are_flexible(Direction::Horizontal, ids_left);
-            cols - reduce_by >= RESIZE_PERCENT
-                && flexible_left
-                && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
+        let ids_left = self.pane_ids_directly_left_of(pane_id);
+        let flexible_left = self.ids_are_flexible(Direction::Horizontal, ids_left);
+        if flexible_left {
+            self.can_reduce_pane_width(pane_id, reduce_by)
         } else {
             false
         }
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
-        if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            let current_fixed_cols = pane.position_and_size().cols.as_usize();
-            let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
-            let ids_right = self.pane_ids_directly_right_of(pane_id);
-            let flexible_right = self.ids_are_flexible(Direction::Horizontal, ids_right);
-            cols - reduce_by >= RESIZE_PERCENT
-                && flexible_right
-                && current_fixed_cols.saturating_sub(will_reduce_by) >= pane.min_width()
+        let ids_right = self.pane_ids_directly_right_of(pane_id);
+        let flexible_right = self.ids_are_flexible(Direction::Horizontal, ids_right);
+        if flexible_right {
+            self.can_reduce_pane_width(pane_id, reduce_by)
         } else {
             false
         }
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
-        if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            let current_fixed_rows = pane.position_and_size().rows.as_usize();
-            let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
-            let ids_above = self.pane_ids_directly_above(pane_id);
-            let flexible_above = self.ids_are_flexible(Direction::Vertical, ids_above);
-            rows - reduce_by >= RESIZE_PERCENT
-                && flexible_above
-                && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
+        let ids_above = self.pane_ids_directly_above(pane_id);
+        let flexible_above = self.ids_are_flexible(Direction::Vertical, ids_above);
+        if flexible_above {
+            self.can_reduce_pane_height(pane_id, reduce_by)
         } else {
             false
         }
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
-        if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            let current_fixed_rows = pane.position_and_size().rows.as_usize();
-            let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
-            let ids_below = self.pane_ids_directly_below(pane_id);
-            let flexible_below = self.ids_are_flexible(Direction::Vertical, ids_below);
-            rows - reduce_by >= RESIZE_PERCENT
-                && flexible_below
-                && current_fixed_rows.saturating_sub(will_reduce_by) >= pane.min_height()
+        let ids_below = self.pane_ids_directly_below(pane_id);
+        let flexible_below = self.ids_are_flexible(Direction::Vertical, ids_below);
+        if flexible_below {
+            self.can_reduce_pane_height(pane_id, reduce_by)
         } else {
             false
         }
@@ -1665,7 +1606,10 @@ impl<'a> TiledPaneGrid<'a> {
         }
         false
     }
-    pub fn find_room_for_new_pane(&self) -> Option<(PaneId, Direction)> {
+    pub fn find_room_for_new_pane(
+        &self,
+        cursor_height_width_ratio: Option<usize>,
+    ) -> Option<(PaneId, Direction)> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
@@ -1673,8 +1617,9 @@ impl<'a> TiledPaneGrid<'a> {
             (0, None),
             |(current_largest_pane_size, current_pane_id_to_split), id_and_pane_to_check| {
                 let (id_of_pane_to_check, pane_to_check) = id_and_pane_to_check;
-                let pane_size =
-                    (pane_to_check.rows() * CURSOR_HEIGHT_WIDTH_RATIO) * pane_to_check.cols();
+                let pane_size = (pane_to_check.rows()
+                    * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO))
+                    * pane_to_check.cols();
                 let pane_can_be_split = pane_to_check.cols() >= MIN_TERMINAL_WIDTH
                     && pane_to_check.rows() >= MIN_TERMINAL_HEIGHT
                     && ((pane_to_check.cols() > pane_to_check.min_width() * 2)
@@ -1688,7 +1633,8 @@ impl<'a> TiledPaneGrid<'a> {
         );
         pane_id_to_split.and_then(|t_id_to_split| {
             let pane_to_split = panes.get(t_id_to_split).unwrap();
-            let direction = if pane_to_split.rows() * CURSOR_HEIGHT_WIDTH_RATIO
+            let direction = if pane_to_split.rows()
+                * cursor_height_width_ratio.unwrap_or(DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO)
                 > pane_to_split.cols()
                 && pane_to_split.rows() > pane_to_split.min_height() * 2
             {

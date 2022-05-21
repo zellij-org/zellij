@@ -2,8 +2,9 @@ use crate::output::CharacterChunk;
 use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
+use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::Viewport;
-use zellij_utils::zellij_tile::prelude::{client_id_to_colors, Palette, PaletteColor};
+use zellij_utils::zellij_tile::prelude::{client_id_to_colors, PaletteColor};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -65,7 +66,7 @@ pub struct FrameParams {
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool,
     pub other_focused_clients: Vec<ClientId>,
-    pub colors: Palette,
+    pub style: Style,
     pub color: Option<PaletteColor>,
     pub other_cursors_exist_in_session: bool,
 }
@@ -75,7 +76,7 @@ pub struct PaneFrame {
     pub geom: Viewport,
     pub title: String,
     pub scroll_position: (usize, usize), // (position, length)
-    pub colors: Palette,
+    pub style: Style,
     pub color: Option<PaletteColor>,
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool,
@@ -94,7 +95,7 @@ impl PaneFrame {
             geom,
             title: main_title,
             scroll_position,
-            colors: frame_params.colors,
+            style: frame_params.style,
             color: frame_params.color,
             focused_client: frame_params.focused_client,
             is_main_client: frame_params.is_main_client,
@@ -103,8 +104,21 @@ impl PaneFrame {
         }
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
-        let color = client_id_to_colors(client_id, self.colors);
+        let color = client_id_to_colors(client_id, self.style.colors);
         background_color(" ", color.map(|c| c.0))
+    }
+    fn get_corner(&self, corner: &'static str) -> &'static str {
+        if self.style.rounded_corners {
+            match corner {
+                boundary_type::TOP_RIGHT => boundary_type::TOP_RIGHT_ROUND,
+                boundary_type::TOP_LEFT => boundary_type::TOP_LEFT_ROUND,
+                boundary_type::BOTTOM_RIGHT => boundary_type::BOTTOM_RIGHT_ROUND,
+                boundary_type::BOTTOM_LEFT => boundary_type::BOTTOM_LEFT_ROUND,
+                _ => corner,
+            }
+        } else {
+            corner
+        }
     }
     fn render_title_right_side(
         &self,
@@ -298,10 +312,7 @@ impl PaneFrame {
         if max_length <= 6 || self.title.is_empty() {
             None
         } else if full_text.width() <= max_length {
-            Some((
-                foreground_color(&full_text, self.color),
-                full_text.chars().count(),
-            ))
+            Some((foreground_color(&full_text, self.color), full_text.width()))
         } else {
             let length_of_each_half = (max_length - middle_truncated_sign.width()) / 2;
 
@@ -364,9 +375,15 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_LEFT),
+                    self.color,
+                ));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_RIGHT),
+                    self.color,
+                ));
             } else if col == left_side_start_position {
                 title_line.append(&mut left_side);
                 col += left_side_len;
@@ -404,9 +421,15 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_LEFT),
+                    self.color,
+                ));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_RIGHT),
+                    self.color,
+                ));
             } else if col == left_side_start_position {
                 title_line.append(&mut left_side);
                 col += *left_side_len;
@@ -437,9 +460,15 @@ impl PaneFrame {
         let mut col = self.geom.x;
         loop {
             if col == self.geom.x {
-                title_line.append(&mut foreground_color(boundary_type::TOP_LEFT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_LEFT),
+                    self.color,
+                ));
             } else if col == self.geom.x + self.geom.cols - 1 {
-                title_line.append(&mut foreground_color(boundary_type::TOP_RIGHT, self.color));
+                title_line.append(&mut foreground_color(
+                    self.get_corner(boundary_type::TOP_RIGHT),
+                    self.color,
+                ));
             } else if col == middle_start_position {
                 title_line.append(&mut middle);
                 col += *middle_len;
@@ -461,8 +490,10 @@ impl PaneFrame {
         mut right_side: Vec<TerminalCharacter>,
         right_side_len: &usize,
     ) -> Vec<TerminalCharacter> {
-        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
-        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle = String::new();
         for _ in (left_side_len + right_side_len)..total_title_length {
@@ -481,8 +512,10 @@ impl PaneFrame {
         mut left_side: Vec<TerminalCharacter>,
         left_side_len: &usize,
     ) -> Vec<TerminalCharacter> {
-        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
-        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in *left_side_len..total_title_length {
@@ -496,8 +529,10 @@ impl PaneFrame {
         ret
     }
     fn empty_title_line(&self) -> Vec<TerminalCharacter> {
-        let mut left_boundary = foreground_color(boundary_type::TOP_LEFT, self.color);
-        let mut right_boundary = foreground_color(boundary_type::TOP_RIGHT, self.color);
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let mut middle_padding = String::new();
         for _ in 0..total_title_length {
@@ -575,10 +610,10 @@ impl PaneFrame {
                 for col in 0..self.geom.cols {
                     let boundary = if col == 0 {
                         // bottom left corner
-                        boundary_type::BOTTOM_LEFT
+                        self.get_corner(boundary_type::BOTTOM_LEFT)
                     } else if col == self.geom.cols - 1 {
                         // bottom right corner
-                        boundary_type::BOTTOM_RIGHT
+                        self.get_corner(boundary_type::BOTTOM_RIGHT)
                     } else {
                         boundary_type::HORIZONTAL
                     };

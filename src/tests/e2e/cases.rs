@@ -58,15 +58,16 @@ pub const BRACKETED_PASTE_START: [u8; 6] = [27, 91, 50, 48, 48, 126]; // \u{1b}[
 pub const BRACKETED_PASTE_END: [u8; 6] = [27, 91, 50, 48, 49, 126]; // \u{1b}[201
 pub const SLEEP: [u8; 0] = [];
 
-// simplified, slighty adapted version of alacritty mouse reporting code
-pub fn normal_mouse_report(position: Position, button: u8) -> Vec<u8> {
+pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
+    // button: (release is with lower case m, not supported here yet)
+    // 0 => left click
+    // 2 => right click
+    // 64 => scroll up
+    // 65 => scroll down
     let Position { line, column } = position;
-
-    let mut command = vec![b'\x1b', b'[', b'M', 32 + button];
-    command.push(32 + 1 + column.0 as u8);
-    command.push(32 + 1 + line.0 as u8);
-
-    command
+    format!("\u{1b}[<{};{};{}M", button, column.0, line.0)
+        .as_bytes()
+        .to_vec()
 }
 
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
@@ -247,7 +248,9 @@ pub fn scrolling_inside_a_pane() {
                         write!(&mut content_to_send, "{:0<58}", "line19 ").unwrap();
                         write!(&mut content_to_send, "{:0<57}", "line20 ").unwrap();
 
+                        remote_terminal.send_key(&BRACKETED_PASTE_START);
                         remote_terminal.send_key(content_to_send.as_bytes());
+                        remote_terminal.send_key(&BRACKETED_PASTE_END);
 
                         step_is_complete = true;
                     }
@@ -477,6 +480,7 @@ pub fn close_tab() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && !remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.tip_appears()
                 {
                     // cursor is in the first tab again
                     step_is_complete = true;
@@ -946,7 +950,8 @@ pub fn detach_and_attach_session() {
             name: "Wait for session to be attached",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
                     // we're back inside the session
                     step_is_complete = true;
                 }
@@ -1029,7 +1034,7 @@ fn focus_pane_with_mouse() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(5, 2), 0));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(5, 2), 0));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1120,7 +1125,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(118, 20) {
                         // all lines have been written to the pane
-                        remote_terminal.send_key(&normal_mouse_report(Position::new(2, 64), 64));
+                        remote_terminal.send_key(&sgr_mouse_report(Position::new(2, 64), 64));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1637,8 +1642,10 @@ pub fn bracketed_paste() {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
                     remote_terminal.send_key(&NEW_TAB_IN_TAB_MODE);
+                    remote_terminal.send_key("a".as_bytes());
+                    remote_terminal.send_key("b".as_bytes());
+                    remote_terminal.send_key("c".as_bytes());
                     remote_terminal.send_key(&BRACKETED_PASTE_END);
-                    remote_terminal.send_key("abc".as_bytes());
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1650,7 +1657,7 @@ pub fn bracketed_paste() {
             name: "Wait for terminal to render sent keys",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(9, 2) {
+                if remote_terminal.snapshot_contains("abc") {
                     // text has been entered into the only terminal pane
                     step_is_complete = true;
                 }

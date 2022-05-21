@@ -1,5 +1,8 @@
 use super::{Output, Tab};
+use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
+use crate::Arc;
+use crate::Mutex;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -8,14 +11,15 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
+use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
@@ -29,7 +33,9 @@ use zellij_utils::{
 };
 
 #[derive(Clone)]
-struct FakeInputOutput {}
+struct FakeInputOutput {
+    file_dumps: Arc<Mutex<HashMap<String, String>>>,
+}
 
 impl ServerOsApi for FakeInputOutput {
     fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
@@ -82,6 +88,14 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+    fn write_to_file(&mut self, buf: String, name: Option<String>) {
+        let f: String;
+        match name {
+            Some(x) => f = x,
+            None => f = "tmp-name".to_owned(),
+        }
+        self.file_dumps.lock().unwrap().insert(f, buf);
+    }
 }
 
 // TODO: move to shared thingy with other test file
@@ -90,35 +104,39 @@ fn create_new_tab(size: Size) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
-    let os_api = Box::new(FakeInputOutput {});
+    let os_api = Box::new(FakeInputOutput {
+        file_dumps: Arc::new(Mutex::new(HashMap::new())),
+    });
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
     let mode_info = ModeInfo::default();
-    let colors = Palette::default();
+    let style = Style::default();
     let draw_pane_frames = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let copy_command = None;
-    let clipboard = Clipboard::default();
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
+        character_cell_info,
         os_api,
         senders,
         max_panes,
+        style,
         mode_info,
-        colors,
         draw_pane_frames,
         connected_clients,
         session_is_mirrored,
         client_id,
-        copy_command,
-        clipboard,
+        copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -127,6 +145,16 @@ fn create_new_tab(size: Size) -> Tab {
         client_id,
     );
     tab
+}
+
+fn read_fixture(fixture_name: &str) -> Vec<u8> {
+    let mut path_to_file = std::path::PathBuf::new();
+    path_to_file.push("../src");
+    path_to_file.push("tests");
+    path_to_file.push("fixtures");
+    path_to_file.push(fixture_name);
+    std::fs::read(path_to_file)
+        .unwrap_or_else(|_| panic!("could not read fixture {:?}", &fixture_name))
 }
 
 use crate::panes::grid::Grid;
@@ -138,8 +166,9 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -158,14 +187,39 @@ fn take_snapshot_and_cursor_position(
     let mut grid = Grid::new(
         rows,
         columns,
-        palette,
+        Rc::new(RefCell::new(palette)),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
         vte_parser.advance(&mut grid, byte);
     }
     (format!("{:?}", grid), grid.cursor_coordinates())
+}
+
+#[test]
+fn dump_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    tab.os_api = Box::new(FakeInputOutput {
+        file_dumps: map.clone(),
+    });
+    let new_pane_id = PaneId::Terminal(2);
+    tab.new_pane(new_pane_id, Some(client_id));
+    tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()));
+    let file = "/tmp/log.sh";
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id);
+    assert_eq!(
+        map.lock().unwrap().get(file).unwrap(),
+        "scratch",
+        "screen was dumped properly"
+    );
 }
 
 #[test]
@@ -1047,6 +1101,129 @@ fn cannot_float_only_embedded_pane() {
         Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
     );
     tab.toggle_pane_embed_or_floating(client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn replacing_existing_wide_characters() {
+    // this is a real world use case using ncmpcpp with wide characters and scrolling
+    // the reason we don't break it down is that it exposes quite a few edge cases with wide
+    // characters that we should handle properly
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("ncmpcpp-wide-chars");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn rename_embedded_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
+    );
+    tab.update_active_pane_name("Renamed empedded pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn rename_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.new_pane(new_pane_id, Some(client_id));
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
+    );
+    tab.toggle_pane_embed_or_floating(client_id);
+    tab.update_active_pane_name("Renamed floating pane".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn wide_characters_in_left_title_side() {
+    // this test makes sure the title doesn't overflow when it has wide characters
+    let size = Size {
+        cols: 238,
+        rows: 48,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("title-wide-chars");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn save_cursor_position_across_resizes() {
+    // the save cursor position ANSI instruction (CSI s) needs to point to the same character after we
+    // resize the pane
+    let size = Size { cols: 100, rows: 5 };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+
+    tab.handle_pty_bytes(
+        1,
+        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+    );
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 });
+    tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()));
+
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),

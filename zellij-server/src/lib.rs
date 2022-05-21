@@ -5,6 +5,7 @@ pub mod tab;
 
 mod logging_pipe;
 mod pty;
+mod pty_writer;
 mod route;
 mod screen;
 mod thread_bus;
@@ -12,19 +13,21 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
+use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex, RwLock},
     thread,
 };
+use zellij_tile::prelude::Style;
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
 use zellij_utils::zellij_tile;
 
 use wasmer::Store;
-use zellij_tile::data::{Event, Palette, PluginCapabilities};
+use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -100,11 +103,12 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
-    pub palette: Palette,
+    pub style: Style,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
+    pty_writer_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for SessionMetaData {
@@ -112,9 +116,11 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         let _ = self.screen_thread.take().unwrap().join();
         let _ = self.pty_thread.take().unwrap().join();
         let _ = self.wasm_thread.take().unwrap().join();
+        let _ = self.pty_writer_thread.take().unwrap().join();
     }
 }
 
@@ -229,7 +235,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
-                set_permissions(&socket_path).unwrap();
+                set_permissions(&socket_path, 0o700).unwrap();
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
@@ -371,8 +377,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info =
-                    get_mode_info(default_mode, attrs.palette, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, attrs.style, session_data.capabilities);
                 let mode = mode_info.mode;
                 session_data
                     .senders
@@ -583,6 +588,10 @@ fn init_session(
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
     let to_pty = SenderWithContext::new(to_pty);
 
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
@@ -607,6 +616,7 @@ fn init_session(
                     None,
                     Some(&to_plugin),
                     Some(&to_server),
+                    Some(&to_pty_writer),
                     Some(os_input.clone()),
                 ),
                 opts.debug,
@@ -625,6 +635,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
+                Some(&to_pty_writer),
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
@@ -644,6 +655,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 None,
+                Some(&to_pty_writer),
                 None,
             );
             let store = Store::default();
@@ -651,19 +663,38 @@ fn init_session(
             move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
         })
         .unwrap();
+
+    let pty_writer_thread = thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            let pty_writer_bus = Bus::new(
+                vec![pty_writer_receiver],
+                Some(&to_screen),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_server),
+                None,
+                Some(os_input.clone()),
+            );
+            || pty_writer_main(pty_writer_bus)
+        })
+        .unwrap();
+
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
+            to_pty_writer: Some(to_pty_writer),
             to_server: None,
             should_silently_fail: false,
         },
         capabilities,
         default_shell,
-        palette: client_attributes.palette,
+        style: client_attributes.style,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
+        pty_writer_thread: Some(pty_writer_thread),
     }
 }

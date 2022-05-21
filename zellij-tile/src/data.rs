@@ -46,24 +46,39 @@ pub enum Key {
     Insert,
     F(u8),
     Char(char),
-    Alt(char),
+    Alt(CharOrArrow),
     Ctrl(char),
     Null,
     Esc,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CharOrArrow {
+    Char(char),
+    Direction(Direction),
+}
 
+/// The four directions (left, right, up, down).
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize)]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 // FIXME: This should be extended to handle different button clicks (not just
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be
 // merged into a single `Scroll(isize)` event.
 pub enum Mouse {
-    ScrollUp(usize),                 // number of lines
-    ScrollDown(usize),               // number of lines
-    LeftClick(isize, usize),         // line and column
-    RightClick(isize, usize),        // line and column
-    Hold(isize, usize),              // line and column
-    Release(Option<(isize, usize)>), // line and column
+    ScrollUp(usize),          // number of lines
+    ScrollDown(usize),        // number of lines
+    LeftClick(isize, usize),  // line and column
+    RightClick(isize, usize), // line and column
+    Hold(isize, usize),       // line and column
+    Release(isize, usize),    // line and column
 }
 
 #[derive(Debug, Clone, PartialEq, EnumDiscriminants, ToString, Serialize, Deserialize)]
@@ -208,6 +223,12 @@ pub struct Palette {
     pub brown: PaletteColor,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub struct Style {
+    pub colors: Palette,
+    pub rounded_corners: bool,
+}
+
 /// Represents the contents of the help message that is printed in the status bar,
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
@@ -216,7 +237,7 @@ pub struct ModeInfo {
     pub mode: InputMode,
     // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
     pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
-    pub palette: Palette,
+    pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
 }

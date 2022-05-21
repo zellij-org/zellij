@@ -2,8 +2,8 @@ use crate::install::populate_data_dir;
 use crate::sessions::kill_session as kill_session_impl;
 use crate::sessions::{
     assert_session, assert_session_ne, get_active_session, get_sessions,
-    get_sessions_sorted_by_creation_date, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession,
+    get_sessions_sorted_by_mtime, match_session_name, print_sessions, print_sessions_with_index,
+    session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
 use std::path::PathBuf;
@@ -25,7 +25,7 @@ pub(crate) use crate::sessions::list_sessions;
 pub(crate) fn kill_all_sessions(yes: bool) {
     match get_sessions() {
         Ok(sessions) if sessions.is_empty() => {
-            println!("No active zellij sessions found.");
+            eprintln!("No active zellij sessions found.");
             process::exit(1);
         }
         Ok(sessions) => {
@@ -89,7 +89,6 @@ fn create_new_client() -> ClientInfo {
 
 fn install_default_assets(opts: &CliArgs) {
     let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-    #[cfg(not(disable_automatic_asset_installation))]
     populate_data_dir(&data_dir);
 }
 
@@ -115,12 +114,12 @@ fn find_indexed_session(
 
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
     // Ignore the session_name when `--index` is provided
-    match get_sessions_sorted_by_creation_date() {
+    match get_sessions_sorted_by_mtime() {
         Ok(sessions) if sessions.is_empty() => {
             if create {
                 create_new_client()
             } else {
-                println!("No active zellij sessions found.");
+                eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
         }
@@ -145,19 +144,32 @@ fn attach_with_session_name(
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
         }
-        Some(session) => {
-            assert_session(session);
-            ClientInfo::Attach(session_name.unwrap(), config_options)
-        }
+        Some(prefix) => match match_session_name(prefix).unwrap() {
+            SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
+                ClientInfo::Attach(s, config_options)
+            }
+            SessionNameMatch::AmbiguousPrefix(sessions) => {
+                println!(
+                    "Ambiguous selection: multiple sessions names start with '{}':",
+                    prefix
+                );
+                print_sessions(sessions);
+                process::exit(1);
+            }
+            SessionNameMatch::None => {
+                eprintln!("No session with the name '{}' found!", prefix);
+                process::exit(1);
+            }
+        },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
-                println!("No active zellij sessions found.");
+                eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
-                println!("Please specify the session name to attach to. The following sessions are active:");
+                println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
                 process::exit(1);
             }

@@ -70,7 +70,7 @@ pub fn atomic_create_file(file_name: &Path) -> io::Result<()> {
         .append(true)
         .create(true)
         .open(file_name)?;
-    set_permissions(file_name)
+    set_permissions(file_name, 0o600)
 }
 
 pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
@@ -84,7 +84,7 @@ pub fn atomic_create_dir(dir_name: &Path) -> io::Result<()> {
         Ok(())
     };
     if result.is_ok() {
-        set_permissions(dir_name)?;
+        set_permissions(dir_name, 0o700)?;
     }
     result
 }
@@ -98,6 +98,6 @@ pub fn debug_to_file(message: &[u8], pid: RawFd) -> io::Result<()> {
         .append(true)
         .create(true)
         .open(&path)?;
-    set_permissions(&path)?;
+    set_permissions(&path, 0o600)?;
     file.write_all(message)
 }

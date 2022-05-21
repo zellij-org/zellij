@@ -46,13 +46,14 @@ lazy_static! {
     pub static ref ZELLIJ_IPC_PIPE: PathBuf = {
         let mut sock_dir = ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
-        set_permissions(&sock_dir).unwrap();
+        set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(envs::get_session_name().unwrap());
         sock_dir
     };
     pub static ref ZELLIJ_TMP_DIR: PathBuf = PathBuf::from(format!("/tmp/zellij-{}", *UID));
     pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
     pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
+    pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
 }
 
 pub const FEATURES: &[&str] = &[

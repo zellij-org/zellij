@@ -29,7 +29,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
@@ -92,7 +92,9 @@ pub(crate) fn wasm_thread_main(
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-    fs::create_dir_all(&plugin_global_data_dir).unwrap();
+
+    #[cfg(not(feature = "disable_automatic_asset_installation"))]
+    fs::create_dir_all(&plugin_global_data_dir).unwrap_or_else(|e| log::error!("{:?}", e));
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -104,14 +106,7 @@ pub(crate) fn wasm_thread_main(
                     .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
 
                 let (instance, plugin_env) = start_plugin(
-                    plugin_id,
-                    client_id,
-                    &plugin,
-                    tab_index,
-                    &bus,
-                    &store,
-                    &data_dir,
-                    &plugin_global_data_dir,
+                    plugin_id, client_id, &plugin, tab_index, &bus, &store, &data_dir,
                 );
 
                 let mut main_user_instance = instance.clone();
@@ -202,16 +197,8 @@ pub(crate) fn wasm_thread_main(
                 // load headless plugins
                 for plugin in plugins.iter() {
                     if let PluginType::Headless = plugin.run {
-                        let (instance, plugin_env) = start_plugin(
-                            plugin_id,
-                            client_id,
-                            plugin,
-                            0,
-                            &bus,
-                            &store,
-                            &data_dir,
-                            &plugin_global_data_dir,
-                        );
+                        let (instance, plugin_env) =
+                            start_plugin(plugin_id, client_id, plugin, 0, &bus, &store, &data_dir);
                         headless_plugins.insert(plugin_id, (instance, plugin_env));
                         plugin_id += 1;
                     }
@@ -236,7 +223,6 @@ fn start_plugin(
     bus: &Bus<PluginInstruction>,
     store: &Store,
     data_dir: &Path,
-    plugin_global_data_dir: &Path,
 ) -> (Instance, PluginEnv) {
     if plugin._allow_exec_host_cmd {
         info!(
@@ -269,8 +255,23 @@ fn start_plugin(
     let output = Pipe::new();
     let input = Pipe::new();
     let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
-    let plugin_own_data_dir = plugin_global_data_dir.join(Url::from(&plugin.location).to_string());
-    fs::create_dir_all(&plugin_own_data_dir).unwrap();
+    let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
+    fs::create_dir_all(&plugin_own_data_dir).unwrap_or_else(|e| {
+        log::error!(
+            "Could not create plugin_own_data_dir in {:?} \n Error: {:?}",
+            &plugin_own_data_dir,
+            e
+        )
+    });
+
+    // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
+    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path()).unwrap_or_else(|e| {
+        log::error!(
+            "Could not create ZELLIJ_TMP_DIR at {:?} \n Error: {:?}",
+            &ZELLIJ_TMP_DIR.as_path(),
+            e
+        )
+    });
 
     let mut wasi_env = WasiState::new("Zellij")
         .env("CLICOLOR_FORCE", "1")

@@ -115,6 +115,24 @@ pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     "assets/completions/comp.fish"
 ));
 
+pub const BASH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.bash"
+));
+
+pub const FISH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.fish"
+));
+
+pub const ZSH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/shell/auto-start.zsh"
+));
+
 pub fn dump_default_config() -> std::io::Result<()> {
     dump_asset(DEFAULT_CONFIG)
 }
@@ -136,10 +154,12 @@ pub struct Setup {
     /// Dump the default configuration file to stdout
     #[clap(long)]
     pub dump_config: bool,
+
     /// Disables loading of configuration file at default location,
     /// loads the defaults that zellij ships with
     #[clap(long)]
     pub clean: bool,
+
     /// Checks the configuration of zellij and displays
     /// currently used directories
     #[clap(long)]
@@ -148,9 +168,14 @@ pub struct Setup {
     /// Dump the specified layout file to stdout
     #[clap(long)]
     pub dump_layout: Option<String>,
+
     /// Generates completion for the specified shell
     #[clap(long, value_name = "SHELL")]
     pub generate_completion: Option<String>,
+
+    /// Generates auto-start script for the specified shell
+    #[clap(long, value_name = "SHELL")]
+    pub generate_auto_start: Option<String>,
 }
 
 impl Setup {
@@ -239,6 +264,11 @@ impl Setup {
 
         if let Some(shell) = &self.generate_completion {
             Self::generate_completion(shell);
+            std::process::exit(0);
+        }
+
+        if let Some(shell) = &self.generate_auto_start {
+            Self::generate_auto_start(shell);
             std::process::exit(0);
         }
 
@@ -392,18 +422,42 @@ impl Setup {
             }
         };
         let mut out = std::io::stdout();
-        clap_complete::generate(shell, &mut CliArgs::into_app(), "zellij", &mut out);
+        clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
             Shell::Bash => {}
             Shell::Elvish => {}
             Shell::Fish => {
-                let _ = out.write_all(&FISH_EXTRA_COMPLETION);
+                let _ = out.write_all(FISH_EXTRA_COMPLETION);
             }
             Shell::PowerShell => {}
             Shell::Zsh => {}
             _ => {}
         };
+    }
+
+    fn generate_auto_start(shell: &str) {
+        let shell: Shell = match shell.to_lowercase().parse() {
+            Ok(shell) => shell,
+            _ => {
+                eprintln!("Unsupported shell: {}", shell);
+                std::process::exit(1);
+            }
+        };
+
+        let mut out = std::io::stdout();
+        match shell {
+            Shell::Bash => {
+                let _ = out.write_all(BASH_AUTO_START_SCRIPT);
+            }
+            Shell::Fish => {
+                let _ = out.write_all(FISH_AUTO_START_SCRIPT);
+            }
+            Shell::Zsh => {
+                let _ = out.write_all(ZSH_AUTO_START_SCRIPT);
+            }
+            _ => {}
+        }
     }
 }
 

@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
+* feat: Attach to sessions more conveniently by only typing their name's first character(s) (https://github.com/zellij-org/zellij/pull/1360)
+* fix: a small typo (https://github.com/zellij-org/zellij/pull/1390)
+* feat: show subcommand aliases in help output (https://github.com/zellij-org/zellij/pull/1409)
+* chore(dependencies): rename crate `suggestion` -> `suggest` (https://github.com/zellij-org/zellij/pull/1387)
+* fix: update to output error when using `--layout` (https://github.com/zellij-org/zellij/pull/1413)
+* fix: ANSI output sent to terminal on resize in certain cases (https://github.com/zellij-org/zellij/pull/1384)
+* fix: freeze when pasting large amounts of text to vim (https://github.com/zellij-org/zellij/pull/1383)
+* feat: new action to dump the scrollbuffer to a file (https://github.com/zellij-org/zellij/pull/1375)
+
+## [0.29.1] - 2022-05-02
+* fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
+
+## [0.29.0] - 2022-05-02
+* add: clarify copy to clipboard message (https://github.com/zellij-org/zellij/pull/1321)
+* Terminal compatibility: fix ANSI scrolling regression (https://github.com/zellij-org/zellij/pull/1324)
+* fix: send SIGHUP instead of SIGTERM when closing a pane (https://github.com/zellij-org/zellij/pull/1320)
+* add: `copy_on_select` option to configure automatic copy behavior (https://github.com/zellij-org/zellij/pull/1298)
+* fix: minor system improvements (https://github.com/zellij-org/zellij/pull/1328)
+* add: add command for auto-start script (https://github.com/zellij-org/zellij/pull/1281)
+* Terminal compatibility: fix cursor pane escape and invalid ansi crash (https://github.com/zellij-org/zellij/pull/1349)
+* fix: recover from corrupted ipc bus state (https://github.com/zellij-org/zellij/pull/1351)
+* Terminal compatibility: respond to foreground/background color ansi requests (OSC 10 and 11) (https://github.com/zellij-org/zellij/pull/1358)
+* fix: avoid panic in link_handler.rs (https://github.com/zellij-org/zellij/pull/1356)
+* Terminal compatibility: prevent wide chars from overflowing the title line (https://github.com/zellij-org/zellij/pull/1361)
+* Terminal compatibility: adjust saved cursor position on resize (https://github.com/zellij-org/zellij/pull/1362)
+* fix: avoid panic on renaming a floating pane (https://github.com/zellij-org/zellij/pull/1357)
+* fix: change the way sessions are sorted (https://github.com/zellij-org/zellij/pull/1347)
+* fix: improve mouse event reporting, avoid clicks on plugin panes causing active pane scrolling (https://github.com/zellij-org/zellij/pull/1329)
+
+## [0.28.1] - 2022-04-13
+* (BREAKING CHANGE) Feature: Improve theme usage and add default themes. Remove gray color from themes. (https://github.com/zellij-org/zellij/pull/1274)
+* repo: add `.git-blame-ignore-revs-file` (https://github.com/zellij-org/zellij/pull/1295)
+* add: `musl` target to `rust-toolchain` (https://github.com/zellij-org/zellij/pull/1294)
+* fix: update termwiz to fix crash when pasting on wsl (https://github.com/zellij-org/zellij/pull/1303)
+* add: nord theme example (https://github.com/zellij-org/zellij/pull/1304)
+* Terminal compatibility: preserve background color when scrolling (https://github.com/zellij-org/zellij/pull/1305 and https://github.com/zellij-org/zellij/pull/1307)
+* add: `overlays` to the `flake` `outputs`  (https://github.com/zellij-org/zellij/pull/1312)
+* refactor: reduce code duplication in tiled_panes (https://github.com/zellij-org/zellij/pull/1299)
+* Terminal compatibility: support XTWINOPS CSI 14 + 16 to query terminal pixel info (https://github.com/zellij-org/zellij/pull/1316)
+* Fix: Update UI when next-to-last user manually detaches from the session (https://github.com/zellij-org/zellij/pull/1317)
+
+## [0.27.0] - 2022-03-31
+* Fix: feature `disable_automatic_asset_installation` (https://github.com/zellij-org/zellij/pull/1226)
+* Fix: `wasm_vm` use `cache_dirs` for ephemeral plugin data (https://github.com/zellij-org/zellij/pull/1230)
+* Bump `nix` version to `0.23.1` (https://github.com/zellij-org/zellij/pull/1234)
+* Refactor: move tiled_panes to their own module (https://github.com/zellij-org/zellij/pull/1239)
+* Add: allow rounded frame corners to be selected in the config (https://github.com/zellij-org/zellij/pull/1227)
+* Deps: move from termion to termwiz (https://github.com/zellij-org/zellij/pull/1249)
+* Fix: resolve crash when opening tab and zellij tmp dir does not exist (https://github.com/zellij-org/zellij/pull/1256)
+* Fix: Behave properly when embedding floating pane into a fullscreen tiled pane (https://github.com/zellij-org/zellij/pull/1267)
+* Fix: various screen crashes in some edge cases (https://github.com/zellij-org/zellij/pull/1269)
+* Feat: Add Alt+Arrows quick navigation (https://github.com/zellij-org/zellij/pull/1264)
+* Fix: don't crash on bad intermediate tab state (https://github.com/zellij-org/zellij/pull/1272)
+* Fix: resolve crash when closing panes on single core systems (https://github.com/zellij-org/zellij/pull/1051)
+* Terminal Compatibility: Behave properly when ansi scrolling down with an undefined scroll region (https://github.com/zellij-org/zellij/pull/1279)
+* Fix: properly render selection when background color of characters is not set (https://github.com/zellij-org/zellij/pull/1250)
+* Terminal Compatibility: revert previous incorrect change to csi erase display (https://github.com/zellij-org/zellij/pull/1283)
+
+## [0.26.1] - 2022-03-16
+* HOTFIX: Paste regression (https://github.com/zellij-org/zellij/commit/08d2014cfea1583059338a338bc4d5f632763fdb)
+* Add: add error reporting system (https://github.com/zellij-org/zellij/pull/1038)
+* Fix: switch to annotated release tags (https://github.com/zellij-org/zellij/pull/1223)
+
+## [0.26.0] - 2022-03-11
 * Fix: invalid assignment of `client_id` (https://github.com/zellij-org/zellij/pull/1052)
 * Add: action to send `^b` in `tmux-mode` (https://github.com/zellij-org/zellij/pull/1106)
 * Add: various action bindings to `tmux-mode` (https://github.com/zellij-org/zellij/pull/1098)
@@ -25,8 +90,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Add: binary cache to zellij `cachix use zellij` (https://github.com/zellij-org/zellij/pull/1157)
 * Fix: improve layout naming (https://github.com/zellij-org/zellij/pull/1160)
 * Add: installation instructions for `Void Linux` (https://github.com/zellij-org/zellij/pull/1165)
-* Fix: `list-session` to stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+* (BREAKING CHANGE) Fix: `list-session` to error and stderr on fail (https://github.com/zellij-org/zellij/pull/1174)
+  This is a BREAKING CHANGE for people that relied on the
+  error code and the stdout of this command on fail.
 * Add: dynamic completions for `fish` shell (https://github.com/zellij-org/zellij/pull/1176)
+* Fix: typo in completion (https://github.com/zellij-org/zellij/pull/1183)
+* Fix: improve detach instruction (https://github.com/zellij-org/zellij/pull/1161)
+* Fix: update tooltip after hiding floating panes with mouse (https://github.com/zellij-org/zellij/pull/1186)
+* Fix: do not start move floating pane when selecting with mouse and cursor leaves pane (https://github.com/zellij-org/zellij/pull/1186)
+* Terminal compatibility: replace wide-characters under cursor properly (https://github.com/zellij-org/zellij/pull/1196)
+* Terminal compatibility: only adjust home and end keys in cursor keys mode (https://github.com/zellij-org/zellij/pull/1190)
+* Add: initial support for forwarding mouse events to applications (`SGR` format only) (https://github.com/zellij-org/zellij/pull/1191)
+* Fix: allow `POSIX` style overrides for most config flags (https://github.com/zellij-org/zellij/pull/1205)
 
 ## [0.25.0] - 2022-02-22
 * Fix: replace the library with the dependency problem (https://github.com/zellij-org/zellij/pull/1001)

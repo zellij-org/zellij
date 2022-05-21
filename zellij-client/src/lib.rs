@@ -2,6 +2,7 @@ pub mod os_input_output;
 
 mod command_is_executing;
 mod input_handler;
+mod stdin_ansi_parser;
 mod stdin_handler;
 
 use log::info;
@@ -10,6 +11,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use zellij_tile::prelude::Style;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -23,7 +25,7 @@ use zellij_utils::{
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    termion,
+    termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
@@ -105,9 +107,9 @@ impl ClientInfo {
 
 #[derive(Debug, Clone)]
 pub(crate) enum InputInstruction {
-    KeyEvent(termion::event::Event, Vec<u8>),
+    KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
-    PastedText(Vec<u8>),
+    PossiblePixelRatioChange,
 }
 
 pub fn start_client(
@@ -146,7 +148,10 @@ pub fn start_client(
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
-        palette,
+        style: Style {
+            colors: palette,
+            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+        },
     };
 
     let first_msg = match info {
@@ -194,7 +199,9 @@ pub fn start_client(
     std::panic::set_hook({
         use zellij_utils::errors::handle_panic;
         let send_client_instructions = send_client_instructions.clone();
+        let os_input = os_input.clone();
         Box::new(move |info| {
+            os_input.unset_raw_mode(0);
             handle_panic(info, &send_client_instructions);
         })
     });
@@ -232,6 +239,7 @@ pub fn start_client(
     let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
+            let send_input_instructions = send_input_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 os_input.handle_signals(
@@ -241,6 +249,8 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
+                            let _ = send_input_instructions
+                                .send(InputInstruction::PossiblePixelRatioChange);
                         }
                     }),
                     Box::new({
@@ -260,14 +270,23 @@ pub fn start_client(
             let os_input = os_input.clone();
             let mut should_break = false;
             move || loop {
-                let (instruction, err_ctx) = os_input.recv_from_server();
-                err_ctx.update_thread_ctx();
-                if let ServerToClientMsg::Exit(_) = instruction {
-                    should_break = true;
-                }
-                send_client_instructions.send(instruction.into()).unwrap();
-                if should_break {
-                    break;
+                match os_input.recv_from_server() {
+                    Some((instruction, err_ctx)) => {
+                        err_ctx.update_thread_ctx();
+                        if let ServerToClientMsg::Exit(_) = instruction {
+                            should_break = true;
+                        }
+                        send_client_instructions.send(instruction.into()).unwrap();
+                        if should_break {
+                            break;
+                        }
+                    }
+                    None => {
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        log::error!("Received empty message from server");
+                    }
                 }
             }
         })

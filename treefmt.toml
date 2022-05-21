@@ -1,0 +1,3 @@
+[formatter.nix]
+command = "alejandra"
+includes = ["*.nix"]

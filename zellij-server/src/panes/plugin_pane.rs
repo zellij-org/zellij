@@ -360,14 +360,12 @@ impl Pane for PluginPane {
             ))
             .unwrap();
     }
-    fn end_selection(&mut self, end: Option<&Position>, client_id: ClientId) {
+    fn end_selection(&mut self, end: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(
                 Some(self.pid),
                 Some(client_id),
-                Event::Mouse(Mouse::Release(
-                    end.map(|Position { line, column }| (line.0, column.0)),
-                )),
+                Event::Mouse(Mouse::Release(end.line(), end.column())),
             ))
             .unwrap();
     }
@@ -402,5 +400,8 @@ impl Pane for PluginPane {
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();
+    }
+    fn mouse_mode(&self) -> bool {
+        false
     }
 }

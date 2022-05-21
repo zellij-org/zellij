@@ -3,7 +3,7 @@ use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::{position::Position, vte, zellij_tile::data::Palette};
+use zellij_utils::{pane_size::SizeInPixels, position::Position, vte, zellij_tile::data::Palette};
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -21,8 +21,9 @@ fn vttest1_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -38,8 +39,9 @@ fn vttest1_1() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -55,8 +57,9 @@ fn vttest1_2() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -72,8 +75,9 @@ fn vttest1_3() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -89,8 +93,9 @@ fn vttest1_4() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -106,8 +111,9 @@ fn vttest1_5() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -123,8 +129,9 @@ fn vttest2_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -140,8 +147,9 @@ fn vttest2_1() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -157,8 +165,9 @@ fn vttest2_2() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -174,8 +183,9 @@ fn vttest2_3() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -191,8 +201,9 @@ fn vttest2_4() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -208,8 +219,9 @@ fn vttest2_5() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -225,8 +237,9 @@ fn vttest2_6() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -242,8 +255,9 @@ fn vttest2_7() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -259,8 +273,9 @@ fn vttest2_8() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -276,8 +291,9 @@ fn vttest2_9() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -293,8 +309,9 @@ fn vttest2_10() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -310,8 +327,9 @@ fn vttest2_11() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -327,8 +345,9 @@ fn vttest2_12() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -344,8 +363,9 @@ fn vttest2_13() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -361,8 +381,9 @@ fn vttest2_14() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -378,8 +399,9 @@ fn vttest3_0() {
     let mut grid = Grid::new(
         41,
         110,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -395,8 +417,9 @@ fn vttest8_0() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -412,8 +435,9 @@ fn vttest8_1() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -429,8 +453,9 @@ fn vttest8_2() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -446,8 +471,9 @@ fn vttest8_3() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -463,8 +489,9 @@ fn vttest8_4() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -480,8 +507,9 @@ fn vttest8_5() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -497,8 +525,9 @@ fn csi_b() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -514,8 +543,9 @@ fn csi_capital_i() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -531,8 +561,9 @@ fn csi_capital_z() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -548,8 +579,9 @@ fn terminal_reports() {
     let mut grid = Grid::new(
         51,
         97,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -565,8 +597,9 @@ fn wide_characters() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -582,8 +615,9 @@ fn wide_characters_line_wrap() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -599,8 +633,9 @@ fn insert_character_in_line_with_wide_character() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -616,8 +651,9 @@ fn delete_char_in_middle_of_line_with_widechar() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -633,8 +669,9 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -650,8 +687,9 @@ fn fish_wide_characters_override_clock() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -667,8 +705,9 @@ fn bash_delete_wide_characters() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -684,8 +723,9 @@ fn delete_wide_characters_before_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -701,8 +741,9 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -718,8 +759,9 @@ fn delete_wide_character_under_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -735,8 +777,9 @@ fn replace_wide_character_under_cursor() {
     let mut grid = Grid::new(
         21,
         104,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -752,8 +795,9 @@ fn wrap_wide_characters() {
     let mut grid = Grid::new(
         21,
         90,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -769,8 +813,9 @@ fn wrap_wide_characters_on_size_change() {
     let mut grid = Grid::new(
         21,
         93,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -787,8 +832,9 @@ fn unwrap_wide_characters_on_size_change() {
     let mut grid = Grid::new(
         21,
         93,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -806,8 +852,9 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
     let mut grid = Grid::new(
         21,
         91,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -823,8 +870,9 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
     let mut grid = Grid::new(
         21,
         90,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -840,8 +888,9 @@ fn copy_selected_text_from_viewport() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -851,7 +900,7 @@ fn copy_selected_text_from_viewport() {
 
     grid.start_selection(&Position::new(23, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(25, 35)));
+    grid.end_selection(&Position::new(25, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -865,8 +914,9 @@ fn copy_wrapped_selected_text_from_viewport() {
     let mut grid = Grid::new(
         22,
         73,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -875,7 +925,7 @@ fn copy_wrapped_selected_text_from_viewport() {
     }
 
     grid.start_selection(&Position::new(5, 0));
-    grid.end_selection(Some(&Position::new(8, 42)));
+    grid.end_selection(&Position::new(8, 42));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -889,8 +939,9 @@ fn copy_selected_text_from_lines_above() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -900,7 +951,7 @@ fn copy_selected_text_from_lines_above() {
 
     grid.start_selection(&Position::new(-2, 10));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(2, 8)));
+    grid.end_selection(&Position::new(2, 8));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -914,8 +965,9 @@ fn copy_selected_text_from_lines_below() {
     let mut grid = Grid::new(
         27,
         125,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -927,7 +979,7 @@ fn copy_selected_text_from_lines_below() {
 
     grid.start_selection(&Position::new(63, 6));
     // check for widechar, 📦 occupies columns 34, 35, and gets selected even if only the first column is selected
-    grid.end_selection(Some(&Position::new(65, 35)));
+    grid.end_selection(&Position::new(65, 35));
     let text = grid.get_selected_text();
     assert_eq!(
         text.unwrap(),
@@ -947,8 +999,9 @@ fn run_bandwhich_from_fish_shell() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -964,8 +1017,9 @@ fn fish_tab_completion_options() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -986,8 +1040,9 @@ pub fn fish_select_tab_completion_options() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1011,8 +1066,9 @@ pub fn vim_scroll_region_down() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1034,8 +1090,9 @@ pub fn vim_ctrl_d() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1056,8 +1113,9 @@ pub fn vim_ctrl_u() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1073,8 +1131,9 @@ pub fn htop() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1090,8 +1149,9 @@ pub fn htop_scrolling() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1107,8 +1167,9 @@ pub fn htop_right_scrolling() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1132,8 +1193,9 @@ pub fn vim_overwrite() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1151,8 +1213,9 @@ pub fn clear_scroll_region() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1168,8 +1231,9 @@ pub fn display_tab_characters_properly() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1185,8 +1249,9 @@ pub fn neovim_insert_mode() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -1202,8 +1267,9 @@ pub fn bash_cursor_linewrap() {
     let mut grid = Grid::new(
         28,
         116,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -1221,8 +1287,9 @@ pub fn fish_paste_multiline() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -1238,8 +1305,9 @@ pub fn git_log() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -1257,8 +1325,9 @@ pub fn git_diff_scrollup() {
     let mut grid = Grid::new(
         28,
         149,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -1274,8 +1343,9 @@ pub fn emacs_longbuf() {
     let mut grid = Grid::new(
         60,
         284,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -1291,8 +1361,9 @@ pub fn top_and_quit() {
     let mut grid = Grid::new(
         56,
         235,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -1314,8 +1385,9 @@ pub fn exa_plus_omf_theme() {
     let mut grid = Grid::new(
         56,
         235,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -1331,8 +1403,9 @@ pub fn scroll_up() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1349,8 +1422,9 @@ pub fn scroll_down() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1368,8 +1442,9 @@ pub fn scroll_up_with_line_wraps() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1386,8 +1461,9 @@ pub fn scroll_down_with_line_wraps() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1405,8 +1481,9 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut grid = Grid::new(
         10,
         50,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1429,8 +1506,9 @@ pub fn scroll_up_increase_width_and_scroll_down() {
     let mut grid = Grid::new(
         10,
         25,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1453,8 +1531,9 @@ pub fn move_cursor_below_scroll_region() {
     let mut grid = Grid::new(
         34,
         114,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1470,8 +1549,9 @@ pub fn insert_wide_characters_in_existing_line() {
     let mut grid = Grid::new(
         21,
         86,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1492,8 +1572,9 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     let mut grid = Grid::new(
         54,
         80,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -1512,8 +1593,9 @@ pub fn ring_bell() {
     let mut grid = Grid::new(
         134,
         64,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -1529,8 +1611,9 @@ pub fn alternate_screen_change_size() {
     let mut grid = Grid::new(
         20,
         20,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -1550,13 +1633,179 @@ pub fn fzf_fullscreen() {
     let mut grid = Grid::new(
         51,
         112,
-        Palette::default(),
+        Rc::new(RefCell::new(Palette::default())),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
     for byte in content {
         vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn replace_multiple_wide_characters_under_cursor() {
+    // this test makes sure that if we replace a wide character with a non-wide character, it
+    // properly pads the excess width in the proper place (either before the replaced non-wide
+    // character if the cursor was "in the middle" of the wide character, or after the character if
+    // it was "in the beginning" of the wide character)
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let fixture_name = "replace_multiple_wide_characters";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn replace_non_wide_characters_with_wide_characters() {
+    // this test makes sure that if we replace a wide character with a non-wide character, it
+    // properly pads the excess width in the proper place (either before the replaced non-wide
+    // character if the cursor was "in the middle" of the wide character, or after the character if
+    // it was "in the beginning" of the wide character)
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let fixture_name = "replace_non_wide_characters_with_wide_characters";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn scroll_down_ansi() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let fixture_name = "scroll_down";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn ansi_capital_t() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let content = "foo\u{1b}[14Tbar".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn ansi_capital_s() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+fn terminal_pixel_size_reports() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(Some(SizeInPixels {
+            height: 21,
+            width: 8,
+        }))),
+    );
+    let fixture_name = "terminal_pixel_size_reports";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_eq!(
+        grid.pending_messages_to_pty
+            .iter()
+            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
+            .collect::<Vec<String>>(),
+        vec!["\x1b[4;1071;776t", "\x1b[6;21;8t"]
+    );
+}
+
+#[test]
+fn terminal_pixel_size_reports_in_unsupported_terminals() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
+    );
+    let fixture_name = "terminal_pixel_size_reports";
+    let content = read_fixture(fixture_name);
+    for byte in content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    let expected: Vec<String> = vec![];
+    assert_eq!(
+        grid.pending_messages_to_pty
+            .iter()
+            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
+            .collect::<Vec<String>>(),
+        expected,
+    );
+}
+
+#[test]
+pub fn ansi_csi_at_sign() {
+    let mut vte_parser = vte::Parser::new();
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+    );
+    let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
+    for byte in content {
+        vte_parser.advance(&mut grid, *byte);
     }
     assert_snapshot!(format!("{:?}", grid));
 }
