@@ -239,12 +239,21 @@ impl LayoutFromYamlIntermediate {
 
     pub fn from_path_or_default(
         layout: Option<&PathBuf>,
-        layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
     ) -> Option<LayoutFromYamlIntermediateResult> {
         layout
-            .map(|p| LayoutFromYamlIntermediate::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| LayoutFromYamlIntermediate::from_path(p)))
+            .map(|layout| {
+                // The way we determine where to look for the layout is similar to
+                // how a path would look for an executable.
+                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
+                if layout.extension().is_some() || layout.components().count() > 1 {
+                    // We look localy!
+                    LayoutFromYamlIntermediate::from_path(layout)
+                } else {
+                    // We look in the default dir
+                    LayoutFromYamlIntermediate::from_dir(layout, layout_dir.as_ref())
+                }
+            })
             .or_else(|| {
                 Some(LayoutFromYamlIntermediate::from_dir(
                     &std::path::PathBuf::from("default"),

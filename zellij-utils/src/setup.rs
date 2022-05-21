@@ -223,11 +223,8 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
-            opts.layout.as_ref(),
-            opts.layout_path.as_ref(),
-            layout_dir,
-        );
+        let layout_result =
+            LayoutFromYamlIntermediate::from_path_or_default(opts.layout.as_ref(), layout_dir);
         let layout = match layout_result {
             None => None,
             Some(Ok(layout)) => Some(layout),
