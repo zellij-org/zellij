@@ -14,12 +14,12 @@ rust-version = "1.59"
 
 [dependencies]
 anyhow = "1.0"
-names = "0.11.0"
+names = "0.13.0"
 zellij-client = { path = "zellij-client/", version = "0.30.0" }
 zellij-server = { path = "zellij-server/", version = "0.30.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.30.0" }
 log = "0.4.17"
-dialoguer = "0.9.0"
+dialoguer = "0.10.1"
 suggest = "0.4"
 
 [dev-dependencies]
