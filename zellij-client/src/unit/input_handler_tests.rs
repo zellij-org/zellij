@@ -1,3 +1,4 @@
+use zellij_utils::nix;
 use super::input_loop;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
@@ -125,7 +126,7 @@ impl ClientOsApi for FakeClientOsApi {
     fn set_raw_mode(&mut self, _fd: RawFd) {
         unimplemented!()
     }
-    fn unset_raw_mode(&self, _fd: RawFd) {
+    fn unset_raw_mode(&self, _fd: RawFd) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
