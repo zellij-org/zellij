@@ -1989,7 +1989,8 @@ impl Perform for Grid {
     fn put(&mut self, byte: u8) {
         if let Some(sixel_parser) = self.sixel_parser.as_mut() {
             // TODO: better
-            let mut pending_sixel_events: ArrayVec<SixelEvent, 2> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better
+            // let mut pending_sixel_events: ArrayVec<SixelEvent, 2> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better
+            let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
             sixel_parser.advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
             for event in pending_sixel_events.drain(..) {
                 self.handle_sixel_event(event);
