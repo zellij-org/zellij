@@ -75,15 +75,23 @@ impl InputHandler {
         // <ESC>[16t => get character cell size in pixels
         // <ESC>]11;?<ESC>\ => get background color
         // <ESC>]10;?<ESC>\ => get foreground color
-        let get_cell_pixel_info =
+
+        let mut startup_terminal_emulator_query =
+            String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+        for i in 0..256 {
+            log::info!("pushing: {:?}", format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+            startup_terminal_emulator_query.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+        }
+        let winchange_terminal_emulator_query =
             "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}";
         let _ = self
             .os_input
             .get_stdout_writer()
-            .write(get_cell_pixel_info.as_bytes())
+            .write(startup_terminal_emulator_query.as_bytes())
             .unwrap();
         let mut ansi_stdin_parser = StdinAnsiParser::new();
-        ansi_stdin_parser.increment_expected_ansi_instructions(4);
+        // ansi_stdin_parser.increment_expected_ansi_instructions(4);
+        ansi_stdin_parser.increment_expected_ansi_instructions(260);
         loop {
             if self.should_exit {
                 break;
@@ -125,7 +133,7 @@ impl InputHandler {
                     let _ = self
                         .os_input
                         .get_stdout_writer()
-                        .write(get_cell_pixel_info.as_bytes())
+                        .write(winchange_terminal_emulator_query.as_bytes())
                         .unwrap();
                     ansi_stdin_parser.increment_expected_ansi_instructions(4);
                 }
@@ -161,6 +169,13 @@ impl InputHandler {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ForegroundColor(
                         foreground_color_instruction,
+                    ));
+            }
+            Some(AnsiStdinInstructionOrKeys::ColorRegister(color_register, color_code)) => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::ColorRegister(
+                        color_register,
+                        color_code
                     ));
             }
             Some(AnsiStdinInstructionOrKeys::Keys(keys)) => {

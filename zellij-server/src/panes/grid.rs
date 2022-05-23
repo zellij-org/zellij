@@ -538,6 +538,7 @@ pub struct Grid {
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -583,6 +584,7 @@ impl Grid {
         rows: usize,
         columns: usize,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
+        terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
@@ -615,6 +617,7 @@ impl Grid {
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
             terminal_emulator_colors,
+            terminal_emulator_color_codes,
             output_buffer: Default::default(),
             selection: Default::default(),
             title_stack: vec![],
@@ -2076,6 +2079,16 @@ impl Perform for Grid {
                         }
                         self.changed_colors.as_mut().unwrap()[i as usize] = Some(c);
                         return;
+                    } else if chunk.get(1).as_ref().and_then(|c| c.get(0)) == Some(&b'?') {
+                        if let Some(index) = index {
+                            let terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow();
+                            let color = terminal_emulator_color_codes.get(&(index as usize));
+                            if let Some(color) = color {
+                                let color_response_message = format!("\u{1b}]4;{};{};{}", index, color, terminator);
+                                self.pending_messages_to_pty
+                                    .push(color_response_message.as_bytes().to_vec());
+                            }
+                        }
                     }
                 }
             }

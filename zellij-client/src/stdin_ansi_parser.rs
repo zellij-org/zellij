@@ -109,6 +109,7 @@ pub enum AnsiStdinInstructionOrKeys {
     PixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
+    ColorRegister(usize, String),
     Keys(Vec<(Key, Vec<u8>)>),
 }
 
@@ -170,14 +171,18 @@ impl AnsiStdinInstructionOrKeys {
     }
     pub fn color_sequence_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
         lazy_static! {
-            static ref BACKGROUND_RE: Regex = Regex::new(r"11;(.*)$").unwrap();
+            static ref BACKGROUND_RE: Regex = Regex::new(r"\]11;(.*)$").unwrap();
         }
         lazy_static! {
-            static ref FOREGROUND_RE: Regex = Regex::new(r"10;(.*)$").unwrap();
+            static ref FOREGROUND_RE: Regex = Regex::new(r"\]10;(.*)$").unwrap();
+        }
+        lazy_static! {
+            static ref COLOR_REGISTER_RE: Regex = Regex::new(r"\]4;(.*);(.*)$").unwrap();
         }
         let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
             match key {
                 Key::Char(c) => acc.push(*c),
+                Key::Alt(CharOrArrow::Char(c)) => acc.push(*c),
                 _ => {}
             };
             acc
@@ -192,6 +197,10 @@ impl AnsiStdinInstructionOrKeys {
             Ok(AnsiStdinInstructionOrKeys::ForegroundColor(
                 foreground_query_response.unwrap(),
             ))
+        } else if let Some(captures) = COLOR_REGISTER_RE.captures_iter(&key_string).next() {
+            let color_register_response = captures[1].parse::<usize>();
+            let color_response = captures[2].parse::<String>();
+            Ok(AnsiStdinInstructionOrKeys::ColorRegister(color_register_response.unwrap(), color_response.unwrap()))
         } else {
             Err("invalid_instruction")
         }

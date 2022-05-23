@@ -94,6 +94,7 @@ pub(crate) struct Tab {
     copy_on_select: bool,
     last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -291,6 +292,7 @@ impl Tab {
         client_id: ClientId,
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
+        terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -363,6 +365,7 @@ impl Tab {
             copy_on_select: copy_options.copy_on_select,
             last_mouse_hold_position: None,
             terminal_emulator_colors,
+            terminal_emulator_color_codes,
         }
     }
 
@@ -432,6 +435,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -662,6 +666,7 @@ impl Tab {
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -686,6 +691,7 @@ impl Tab {
                         self.character_cell_size.clone(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -717,6 +723,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -746,6 +753,7 @@ impl Tab {
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);

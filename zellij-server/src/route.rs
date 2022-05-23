@@ -479,6 +479,17 @@ pub(crate) fn route_thread_main(
                             ))
                             .unwrap();
                     }
+                    ClientToServerMsg::ColorRegister(color_register, color_code) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalColorRegister(
+                                color_register,
+                                color_code,
+                            ))
+                            .unwrap();
+                    }
                     ClientToServerMsg::NewClient(
                         client_attributes,
                         cli_args,

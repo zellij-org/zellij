@@ -1,7 +1,7 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, HashMap};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
@@ -95,6 +95,7 @@ pub enum ScreenInstruction {
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
+    TerminalColorRegister(usize, String),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -179,6 +180,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalForegroundColor(..) => {
                 ScreenContext::TerminalForegroundColor
             }
+            ScreenInstruction::TerminalColorRegister(..) => {
+                ScreenContext::TerminalColorRegister
+            }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -246,6 +250,7 @@ pub(crate) struct Screen {
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
@@ -282,6 +287,7 @@ impl Screen {
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
+            terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
@@ -515,6 +521,14 @@ impl Screen {
             self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
         }
     }
+    pub fn update_terminal_color_register(&mut self, color_register: usize, color_code: String) {
+        if let Some(AnsiCode::RgbCode((r, g, b))) =
+            xparse_color(color_code.as_bytes())
+        {
+            let color_code_palette = PaletteColor::Rgb((r, g, b));
+            self.terminal_emulator_color_codes.borrow_mut().insert(color_register, color_code); // TODO: combine this with above fg/bg somehow, maybe even parse this so we can use it elsewhere
+        }
+    }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
@@ -608,6 +622,7 @@ impl Screen {
             client_id,
             self.copy_options.clone(),
             self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -1349,6 +1364,9 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
                 screen.update_terminal_foreground_color(background_color_instruction);
+            }
+            ScreenInstruction::TerminalColorRegister(color_register, color_code) => {
+                screen.update_terminal_color_register(color_register, color_code);
             }
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);

@@ -77,6 +77,7 @@ pub enum ClientToServerMsg {
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
+    ColorRegister(usize, String),
     TerminalResize(Size),
     NewClient(
         ClientAttributes,
