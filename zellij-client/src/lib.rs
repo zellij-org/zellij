@@ -124,7 +124,7 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
 
     let _ = os_input
         .get_stdout_writer()
@@ -201,8 +201,9 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            os_input.unset_raw_mode(0);
-            handle_panic(info, &send_client_instructions);
+            if let Ok(()) = os_input.unset_raw_mode(0) {
+                handle_panic(info, &send_client_instructions);
+            }
         })
     });
 
@@ -293,7 +294,7 @@ pub fn start_client(
         .unwrap();
 
     let handle_error = |backtrace: String| {
-        os_input.unset_raw_mode(0);
+        os_input.unset_raw_mode(0).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse();
@@ -364,7 +365,7 @@ pub fn start_client(
 
     os_input.disable_mouse();
     info!("{}", exit_msg);
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
     stdout.flush().unwrap();

@@ -3,6 +3,7 @@ use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
 
 use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};
+use nix::errno::Errno;
 use nix::pty::Winsize;
 use nix::sys::termios;
 use signal_hook::{consts::signal::*, iterator::Signals};
@@ -32,11 +33,8 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
-    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios) {
-        Ok(_) => {}
-        Err(e) => panic!("error {:?}", e),
-    };
+fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), Errno> {
+    termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
 }
 
 pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
@@ -81,7 +79,7 @@ pub trait ClientOsApi: Send + Sync {
     fn set_raw_mode(&mut self, fd: RawFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&self, fd: RawFd);
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), Errno>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn get_stdin_reader(&self) -> Box<dyn io::Read>;
@@ -111,9 +109,9 @@ impl ClientOsApi for ClientOsInputOutput {
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
-    fn unset_raw_mode(&self, fd: RawFd) {
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), Errno> {
         let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(fd, orig_termios.clone());
+        unset_raw_mode(fd, orig_termios.clone())
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
