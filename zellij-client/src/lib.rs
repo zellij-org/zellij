@@ -5,8 +5,8 @@ mod input_handler;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
-use log::info;
 use log::error;
+use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
