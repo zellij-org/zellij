@@ -161,12 +161,15 @@ impl SixelGrid {
     }
     pub fn end_image(&mut self, new_image_id: usize, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<SixelImage> { // usize is image_id
         if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
-            let sixel_image = sixel_deserializer.create_image();
-            let image_pixel_size = sixel_image.pixel_size();
-            let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
-            self.sixel_image_locations.insert(new_image_id, image_size_and_coordinates);
-            self.currently_parsing = None;
-            Some(sixel_image)
+            if let Ok(sixel_image) = sixel_deserializer.create_image() {
+                let image_pixel_size = sixel_image.pixel_size();
+                let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
+                self.sixel_image_locations.insert(new_image_id, image_size_and_coordinates);
+                self.currently_parsing = None;
+                Some(sixel_image)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -1985,6 +1988,28 @@ impl Perform for Grid {
                     None
                 };
                 self.sixel_grid.start_image(max_sixel_height_in_pixels);
+
+                // send these bytes to the parser so it has its DCS event and doesn't interpret
+                // this image as corrupted
+                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
+                self.sixel_parser.as_mut().unwrap().advance(&27, |sixel_event| pending_sixel_events.push(sixel_event));
+                self.sixel_parser.as_mut().unwrap().advance(&b'P', |sixel_event| pending_sixel_events.push(sixel_event));
+                for event in pending_sixel_events.drain(..) {
+                    self.handle_sixel_event(event);
+                }
+                for byte in intermediates {
+                    let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
+                    self.sixel_parser.as_mut().unwrap().advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
+                    for event in pending_sixel_events.drain(..) {
+                        self.handle_sixel_event(event);
+                    }
+                }
+                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
+                self.sixel_parser.as_mut().unwrap().advance(&(c as u8), |sixel_event| pending_sixel_events.push(sixel_event));
+                for event in pending_sixel_events.drain(..) {
+                    self.handle_sixel_event(event);
+                }
+
             }
         }
     }
@@ -2003,46 +2028,48 @@ impl Perform for Grid {
     }
 
     fn unhook(&mut self) {
-        if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
-            // TODO: if parsing Sixel image...
-            let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
-                (0, 0)
-            } else {
-                (x_pixel_coordinates, y_pixel_coordinates)
-            };
-            let new_image_id = self.sixel_image_store.borrow().next_image_id();
-            let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
-            if let Some(new_sixel_image) = new_sixel_image {
-                let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
-                // TODO: get rid of sixel cells (but if we don't for some reason, not that we don't
-                // handle sixel_scrolling here)
-                match self.get_character_under_cursor().as_mut() {
-                    Some(character_under_cursor) => {
-                        if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
-                            self.sixel_grid.link_cell_to_image(sixel_cell_id, new_image_id);
-                        } else {
+        if self.sixel_parser.is_some() {
+            if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+                // TODO: if parsing Sixel image...
+                let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
+                    (0, 0)
+                } else {
+                    (x_pixel_coordinates, y_pixel_coordinates)
+                };
+                let new_image_id = self.sixel_image_store.borrow().next_image_id();
+                let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
+                if let Some(new_sixel_image) = new_sixel_image {
+                    let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
+                    // TODO: get rid of sixel cells (but if we don't for some reason, not that we don't
+                    // handle sixel_scrolling here)
+                    match self.get_character_under_cursor().as_mut() {
+                        Some(character_under_cursor) => {
+                            if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
+                                self.sixel_grid.link_cell_to_image(sixel_cell_id, new_image_id);
+                            } else {
+                                let new_sixel_cell_id = self.sixel_grid.new_cell();
+                                character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
+                                self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
+                            }
+                        }
+                        None => {
                             let new_sixel_cell_id = self.sixel_grid.new_cell();
-                            character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
+                            let mut new_character = EMPTY_TERMINAL_CHARACTER;
+                            new_character.styles = self.cursor.pending_styles;
+                            new_character.sixel_cell = Some(new_sixel_cell_id);
                             self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
+                            self.add_character_at_cursor_position(new_character, false);
                         }
                     }
-                    None => {
-                        let new_sixel_cell_id = self.sixel_grid.new_cell();
-                        let mut new_character = EMPTY_TERMINAL_CHARACTER;
-                        new_character.styles = self.cursor.pending_styles;
-                        new_character.sixel_cell = Some(new_sixel_cell_id);
-                        self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
-                        self.add_character_at_cursor_position(new_character, false);
+                    self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
+                    if !self.sixel_scrolling {
+                        self.move_cursor_down_by_pixels(image_pixel_height);
+                        self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
                     }
+                    self.mark_for_rerender();
                 }
-                self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
-                if !self.sixel_scrolling {
-                    self.move_cursor_down_by_pixels(image_pixel_height);
-                    self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
-                }
-                self.mark_for_rerender();
+                self.sixel_parser = None;
             }
-            self.sixel_parser = None;
         }
     }
 
