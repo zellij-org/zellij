@@ -262,7 +262,7 @@ impl LayoutFromYamlIntermediate {
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
-                if layout_path.exists() {
+                if layout_path.with_extension("yaml").exists() {
                     Self::from_path(layout_path)
                 } else {
                     LayoutFromYamlIntermediate::from_default_assets(layout)
