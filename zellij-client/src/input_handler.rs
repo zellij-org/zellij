@@ -10,7 +10,7 @@ use zellij_utils::{
 
 use crate::{
     os_input_output::ClientOsApi,
-    stdin_ansi_parser::{AnsiStdinInstructionOrKeys, StdinAnsiParser},
+    stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser},
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
@@ -71,27 +71,6 @@ impl InputHandler {
         if self.options.mouse_mode.unwrap_or(true) {
             self.os_input.enable_mouse();
         }
-        // <ESC>[14t => get text area size in pixels,
-        // <ESC>[16t => get character cell size in pixels
-        // <ESC>]11;?<ESC>\ => get background color
-        // <ESC>]10;?<ESC>\ => get foreground color
-
-        let mut startup_terminal_emulator_query =
-            String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
-        for i in 0..256 {
-            log::info!("pushing: {:?}", format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
-            startup_terminal_emulator_query.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
-        }
-        let winchange_terminal_emulator_query =
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}";
-        let _ = self
-            .os_input
-            .get_stdout_writer()
-            .write(startup_terminal_emulator_query.as_bytes())
-            .unwrap();
-        let mut ansi_stdin_parser = StdinAnsiParser::new();
-        // ansi_stdin_parser.increment_expected_ansi_instructions(4);
-        ansi_stdin_parser.increment_expected_ansi_instructions(260);
         loop {
             if self.should_exit {
                 break;
@@ -101,13 +80,7 @@ impl InputHandler {
                     match input_event {
                         InputEvent::Key(key_event) => {
                             let key = cast_termwiz_key(key_event, &raw_bytes);
-                            if ansi_stdin_parser.expected_instructions() > 0 {
-                                self.handle_possible_pixel_instruction(
-                                    ansi_stdin_parser.parse(key, raw_bytes),
-                                );
-                            } else {
-                                self.handle_key(&key, raw_bytes);
-                            }
+                            self.handle_key(&key, raw_bytes);
                         }
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event =
@@ -129,13 +102,10 @@ impl InputHandler {
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
                 }
-                Ok((InputInstruction::PossiblePixelRatioChange, _error_context)) => {
-                    let _ = self
-                        .os_input
-                        .get_stdout_writer()
-                        .write(winchange_terminal_emulator_query.as_bytes())
-                        .unwrap();
-                    ansi_stdin_parser.increment_expected_ansi_instructions(4);
+                Ok((InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions), _error_context)) => {
+                    for ansi_instruction in ansi_stdin_instructions {
+                        self.handle_stdin_ansi_instruction(ansi_instruction); // TODO: move it out of that function or rename or whatnot
+                    }
                 }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
@@ -150,40 +120,31 @@ impl InputHandler {
             }
         }
     }
-    fn handle_possible_pixel_instruction(
+    fn handle_stdin_ansi_instruction(
         &mut self,
-        pixel_instruction_or_keys: Option<AnsiStdinInstructionOrKeys>,
+        pixel_instruction_or_keys: AnsiStdinInstruction,
     ) {
         match pixel_instruction_or_keys {
-            Some(AnsiStdinInstructionOrKeys::PixelDimensions(pixel_dimensions)) => {
+            AnsiStdinInstruction::PixelDimensions(pixel_dimensions) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
             }
-            Some(AnsiStdinInstructionOrKeys::BackgroundColor(background_color_instruction)) => {
+            AnsiStdinInstruction::BackgroundColor(background_color_instruction) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::BackgroundColor(
                         background_color_instruction,
                     ));
             }
-            Some(AnsiStdinInstructionOrKeys::ForegroundColor(foreground_color_instruction)) => {
+            AnsiStdinInstruction::ForegroundColor(foreground_color_instruction) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ForegroundColor(
                         foreground_color_instruction,
                     ));
             }
-            Some(AnsiStdinInstructionOrKeys::ColorRegister(color_register, color_code)) => {
+            AnsiStdinInstruction::ColorRegisters(color_registers) => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::ColorRegister(
-                        color_register,
-                        color_code
-                    ));
+                    .send_to_server(ClientToServerMsg::ColorRegisters(color_registers));
             }
-            Some(AnsiStdinInstructionOrKeys::Keys(keys)) => {
-                for (key, raw_bytes) in keys {
-                    self.handle_key(&key, raw_bytes);
-                }
-            }
-            None => {}
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

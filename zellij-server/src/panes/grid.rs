@@ -2111,7 +2111,7 @@ impl Perform for Grid {
                             let terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow();
                             let color = terminal_emulator_color_codes.get(&(index as usize));
                             if let Some(color) = color {
-                                let color_response_message = format!("\u{1b}]4;{};{};{}", index, color, terminator);
+                                let color_response_message = format!("\u{1b}]4;{};{}{}", index, color, terminator);
                                 self.pending_messages_to_pty
                                     .push(color_response_message.as_bytes().to_vec());
                             }

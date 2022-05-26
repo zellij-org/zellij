@@ -270,7 +270,7 @@ pub enum ScreenContext {
     TerminalPixelDimensions,
     TerminalBackgroundColor,
     TerminalForegroundColor,
-    TerminalColorRegister,
+    TerminalColorRegisters,
     ChangeMode,
     LeftClick,
     RightClick,

@@ -95,7 +95,7 @@ pub enum ScreenInstruction {
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
-    TerminalColorRegister(usize, String),
+    TerminalColorRegisters(Vec<(usize, String)>),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -180,8 +180,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalForegroundColor(..) => {
                 ScreenContext::TerminalForegroundColor
             }
-            ScreenInstruction::TerminalColorRegister(..) => {
-                ScreenContext::TerminalColorRegister
+            ScreenInstruction::TerminalColorRegisters(..) => {
+                ScreenContext::TerminalColorRegisters
             }
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
@@ -521,12 +521,10 @@ impl Screen {
             self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
         }
     }
-    pub fn update_terminal_color_register(&mut self, color_register: usize, color_code: String) {
-        if let Some(AnsiCode::RgbCode((r, g, b))) =
-            xparse_color(color_code.as_bytes())
-        {
-            let color_code_palette = PaletteColor::Rgb((r, g, b));
-            self.terminal_emulator_color_codes.borrow_mut().insert(color_register, color_code); // TODO: combine this with above fg/bg somehow, maybe even parse this so we can use it elsewhere
+    pub fn update_terminal_color_registers(&mut self, color_registers: Vec<(usize, String)>) {
+        let mut terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow_mut();
+        for (color_register, color_sequence) in color_registers {
+            terminal_emulator_color_codes.insert(color_register, color_sequence);
         }
     }
 
@@ -1365,8 +1363,8 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
                 screen.update_terminal_foreground_color(background_color_instruction);
             }
-            ScreenInstruction::TerminalColorRegister(color_register, color_code) => {
-                screen.update_terminal_color_register(color_register, color_code);
+            ScreenInstruction::TerminalColorRegisters(color_registers) => {
+                screen.update_terminal_color_registers(color_registers);
             }
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);

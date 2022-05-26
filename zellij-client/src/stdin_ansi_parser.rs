@@ -1,208 +1,237 @@
 use zellij_utils::pane_size::SizeInPixels;
+use std::time::{Instant, Duration};
 
 use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
-use zellij_tile::data::{CharOrArrow, Key};
-
+#[derive(Debug)]
 pub struct StdinAnsiParser {
-    expected_ansi_instructions: usize,
-    current_buffer: Vec<(Key, Vec<u8>)>,
+    current_raw_buffer: Vec<u8>,
+    pending_color_sequences: Vec<(usize, String)>,
+    pending_events: Vec<AnsiStdinInstruction>,
+    parse_deadline: Option<Instant>,
 }
 
 impl StdinAnsiParser {
     pub fn new() -> Self {
         StdinAnsiParser {
-            expected_ansi_instructions: 0,
-            current_buffer: vec![],
+            current_raw_buffer: vec![],
+            pending_color_sequences: vec![],
+            pending_events: vec![],
+            parse_deadline: None,
         }
     }
-    pub fn increment_expected_ansi_instructions(&mut self, to: usize) {
-        self.expected_ansi_instructions = to;
+    pub fn terminal_emulator_query_string(&mut self) -> String {
+        // note that this assumes the String will be sent to the terminal emulator and so starts a
+        // deadline timeout (self.parse_deadline)
+
+        // <ESC>[14t => get text area size in pixels,
+        // <ESC>[16t => get character cell size in pixels
+        // <ESC>]11;?<ESC>\ => get background color
+        // <ESC>]10;?<ESC>\ => get foreground color
+        let mut query_string =
+            String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+
+        // query colors
+        // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
+        for i in 0..256 {
+            query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+        }
+        self.parse_deadline = Some(Instant::now() + Duration::from_millis(1000));
+        query_string
     }
-    pub fn decrement_expected_ansi_instructions(&mut self, by: usize) {
-        self.expected_ansi_instructions = self.expected_ansi_instructions.saturating_sub(by);
+    pub fn window_size_change_query_string(&mut self) -> String {
+        // note that this assumes the String will be sent to the terminal emulator and so starts a
+        // deadline timeout (self.parse_deadline)
+
+        // <ESC>[14t => get text area size in pixels,
+        // <ESC>[16t => get character cell size in pixels
+        let query_string =
+            String::from("\u{1b}[14t\u{1b}[16t");
+
+        self.parse_deadline = Some(Instant::now() + Duration::from_millis(200));
+        query_string
     }
-    pub fn expected_instructions(&self) -> usize {
-        self.expected_ansi_instructions
+    fn drain_pending_events(&mut self) -> Vec<AnsiStdinInstruction> {
+        let mut events = vec![];
+        events.append(&mut self.pending_events);
+        events.push(AnsiStdinInstruction::color_registers_from_bytes(&mut self.pending_color_sequences));
+        events
     }
-    pub fn parse(&mut self, key: Key, raw_bytes: Vec<u8>) -> Option<AnsiStdinInstructionOrKeys> {
-        if let Key::Char('t') = key {
-            self.current_buffer.push((key, raw_bytes));
-            match AnsiStdinInstructionOrKeys::pixel_dimensions_from_keys(&self.current_buffer) {
-                Ok(pixel_instruction) => {
-                    self.decrement_expected_ansi_instructions(1);
-                    self.current_buffer.clear();
-                    Some(pixel_instruction)
-                }
+    pub fn should_parse(&self) -> bool {
+        if let Some(parse_deadline) = self.parse_deadline {
+            if parse_deadline >= Instant::now() {
+                return true;
+            }
+        }
+        false
+    }
+    pub fn parse(&mut self, mut raw_bytes: Vec<u8>) -> Vec<AnsiStdinInstruction> { // Vec<u8> is unparsed bytes
+        for byte in raw_bytes.drain(..) {
+            self.parse_byte(byte);
+        }
+        return self.drain_pending_events()
+    }
+    fn parse_byte(&mut self, byte: u8) {
+        if byte == b't' {
+            self.current_raw_buffer.push(byte);
+            match AnsiStdinInstruction::pixel_dimensions_from_bytes(&self.current_raw_buffer) {
+                Ok(ansi_sequence) => {
+                    self.pending_events.push(ansi_sequence);
+                    self.current_raw_buffer.clear();
+                },
                 Err(_) => {
-                    self.expected_ansi_instructions = 0;
-                    Some(AnsiStdinInstructionOrKeys::Keys(
-                        self.current_buffer.drain(..).collect(),
-                    ))
+                    self.current_raw_buffer.clear();
                 }
             }
-        } else if let Key::Alt(CharOrArrow::Char('\\')) = key {
-            match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
-                Ok(color_instruction) => {
-                    self.decrement_expected_ansi_instructions(1);
-                    self.current_buffer.clear();
-                    Some(color_instruction)
-                }
-                Err(_) => {
-                    self.expected_ansi_instructions = 0;
-                    Some(AnsiStdinInstructionOrKeys::Keys(
-                        self.current_buffer.drain(..).collect(),
-                    ))
-                }
+        } else if byte == b'\\' {
+            self.current_raw_buffer.push(byte);
+            if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.current_raw_buffer) {
+                self.pending_events.push(ansi_sequence);
+                self.current_raw_buffer.clear();
+            } else if let Ok((color_register, color_sequence)) = color_sequence_from_bytes(&self.current_raw_buffer) {
+                self.current_raw_buffer.clear();
+                self.pending_color_sequences.push((color_register, color_sequence));
+            } else {
+                self.current_raw_buffer.clear();
             }
-        } else if self.key_is_valid(key) {
-            self.current_buffer.push((key, raw_bytes));
-            None
         } else {
-            self.current_buffer.push((key, raw_bytes));
-            self.expected_ansi_instructions = 0;
-            Some(AnsiStdinInstructionOrKeys::Keys(
-                self.current_buffer.drain(..).collect(),
-            ))
-        }
-    }
-    fn key_is_valid(&self, key: Key) -> bool {
-        if self.current_buffer.is_empty()
-            && (key != Key::Esc && key != Key::Alt(CharOrArrow::Char(']')))
-        {
-            // the first key of a sequence is always Esc, but termwiz interprets esc + ] as Alt+]
-            return false;
-        }
-        match key {
-            Key::Esc => {
-                // this is a UX improvement
-                // in case the user's terminal doesn't support one or more of these signals,
-                // if they spam ESC they need to be able to get back to normal mode and not "us
-                // waiting for ansi instructions" mode
-                !self.current_buffer.iter().any(|(key, _)| *key == Key::Esc)
-            }
-            Key::Char(';')
-            | Key::Char('[')
-            | Key::Char(']')
-            | Key::Char('r')
-            | Key::Char('g')
-            | Key::Char('b')
-            | Key::Char('\\')
-            | Key::Char(':')
-            | Key::Char('/') => true,
-            Key::Alt(CharOrArrow::Char(']')) => true,
-            Key::Alt(CharOrArrow::Char('\\')) => true,
-            Key::Char(c) => {
-                if let '0'..='9' | 'a'..='f' = c {
-                    true
-                } else {
-                    false
-                }
-            }
-            _ => false,
+            self.current_raw_buffer.push(byte);
         }
     }
 }
 
-#[derive(Debug)]
-pub enum AnsiStdinInstructionOrKeys {
+#[derive(Debug, Clone)]
+pub enum AnsiStdinInstruction {
     PixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
-    ColorRegister(usize, String),
-    Keys(Vec<(Key, Vec<u8>)>),
+    ColorRegisters(Vec<(usize, String)>),
 }
 
-impl AnsiStdinInstructionOrKeys {
-    pub fn pixel_dimensions_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+impl AnsiStdinInstruction {
+    pub fn pixel_dimensions_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
         }
-        let key_sequence: Vec<Option<char>> = keys
-            .iter()
-            .map(|(key, _)| match key {
-                Key::Char(c) => Some(*c),
-                Key::Esc => Some('\u{1b}'),
-                _ => None,
-            })
-            .collect();
-        if key_sequence.iter().all(|k| k.is_some()) {
-            let key_string: String = key_sequence.iter().map(|k| k.unwrap()).collect();
-            let captures = RE
-                .captures_iter(&key_string)
-                .next()
-                .ok_or("invalid_instruction")?;
-            let csi_index = captures[1].parse::<usize>();
-            let first_field = captures[2].parse::<usize>();
-            let second_field = captures[3].parse::<usize>();
-            if csi_index.is_err() || first_field.is_err() || second_field.is_err() {
-                return Err("invalid_instruction");
+        let key_string = String::from_utf8_lossy(bytes); // TODO: handle error
+        let captures = RE
+            .captures_iter(&key_string)
+            .next()
+            .ok_or("invalid_instruction")?;
+        let csi_index = captures[1].parse::<usize>();
+        let first_field = captures[2].parse::<usize>();
+        let second_field = captures[3].parse::<usize>();
+        if csi_index.is_err() || first_field.is_err() || second_field.is_err() {
+            return Err("invalid_instruction");
+        }
+        match csi_index {
+            Ok(4) => {
+                // text area size
+                Ok(AnsiStdinInstruction::PixelDimensions(
+                    PixelDimensions {
+                        character_cell_size: None,
+                        text_area_size: Some(SizeInPixels {
+                            height: first_field.unwrap(),
+                            width: second_field.unwrap(),
+                        }),
+                    },
+                ))
             }
-            match csi_index {
-                Ok(4) => {
-                    // text area size
-                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
-                        PixelDimensions {
-                            character_cell_size: None,
-                            text_area_size: Some(SizeInPixels {
-                                height: first_field.unwrap(),
-                                width: second_field.unwrap(),
-                            }),
-                        },
-                    ))
-                }
-                Ok(6) => {
-                    // character cell size
-                    Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
-                        PixelDimensions {
-                            character_cell_size: Some(SizeInPixels {
-                                height: first_field.unwrap(),
-                                width: second_field.unwrap(),
-                            }),
-                            text_area_size: None,
-                        },
-                    ))
-                }
-                _ => Err("invalid sequence"),
+            Ok(6) => {
+                // character cell size
+                Ok(AnsiStdinInstruction::PixelDimensions(
+                    PixelDimensions {
+                        character_cell_size: Some(SizeInPixels {
+                            height: first_field.unwrap(),
+                            width: second_field.unwrap(),
+                        }),
+                        text_area_size: None,
+                    },
+                ))
             }
-        } else {
-            Err("invalid sequence")
+            _ => {
+                Err("invalid sequence")
+            }
         }
     }
-    pub fn color_sequence_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+    pub fn bg_or_fg_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
         lazy_static! {
-            static ref BACKGROUND_RE: Regex = Regex::new(r"\]11;(.*)$").unwrap();
+            static ref BACKGROUND_RE: Regex = Regex::new(r"\]11;(.*)\u{1b}\\$").unwrap();
         }
         lazy_static! {
-            static ref FOREGROUND_RE: Regex = Regex::new(r"\]10;(.*)$").unwrap();
+            static ref FOREGROUND_RE: Regex = Regex::new(r"\]10;(.*)\u{1b}\\$").unwrap();
         }
-        lazy_static! {
-            static ref COLOR_REGISTER_RE: Regex = Regex::new(r"\]4;(.*);(.*)$").unwrap();
-        }
-        let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
-            match key {
-                Key::Char(c) => acc.push(*c),
-                Key::Alt(CharOrArrow::Char(c)) => acc.push(*c),
-                _ => {}
-            };
-            acc
-        });
+        let key_string = String::from_utf8_lossy(bytes);
         if let Some(captures) = BACKGROUND_RE.captures_iter(&key_string).next() {
             let background_query_response = captures[1].parse::<String>();
-            Ok(AnsiStdinInstructionOrKeys::BackgroundColor(
-                background_query_response.unwrap(),
-            ))
+            match background_query_response {
+                Ok(background_query_response) => {
+                    Ok(AnsiStdinInstruction::BackgroundColor(
+                        background_query_response
+                    ))
+                },
+                _ => {
+                    Err("invalid_instruction")
+                }
+            }
         } else if let Some(captures) = FOREGROUND_RE.captures_iter(&key_string).next() {
             let foreground_query_response = captures[1].parse::<String>();
-            Ok(AnsiStdinInstructionOrKeys::ForegroundColor(
-                foreground_query_response.unwrap(),
-            ))
-        } else if let Some(captures) = COLOR_REGISTER_RE.captures_iter(&key_string).next() {
-            let color_register_response = captures[1].parse::<usize>();
-            let color_response = captures[2].parse::<String>();
-            Ok(AnsiStdinInstructionOrKeys::ColorRegister(color_register_response.unwrap(), color_response.unwrap()))
+            match foreground_query_response {
+                Ok(foreground_query_response) => {
+                    Ok(AnsiStdinInstruction::ForegroundColor(
+                        foreground_query_response
+                    ))
+                },
+                _ => {
+                    Err("invalid_instruction")
+                }
+            }
         } else {
             Err("invalid_instruction")
         }
+    }
+    pub fn color_registers_from_bytes(color_sequences: &mut Vec<(usize, String)>) -> Self {
+        // this assumes it is handed only SingleColorRegister events and drops everything else
+        let mut registers = vec![];
+        for (color_register, color_sequence) in color_sequences.drain(..) {
+            registers.push((color_register, color_sequence));
+        }
+        AnsiStdinInstruction::ColorRegisters(registers)
+    }
+}
+
+fn color_sequence_from_bytes(bytes: &Vec<u8>) -> Result<(usize, String), &'static str> {
+    lazy_static! {
+        static ref COLOR_REGISTER_RE: Regex = Regex::new(r"\]4;(.*);(.*)\u{1b}\\$").unwrap();
+    }
+    lazy_static! {
+        // this form is used by eg. Alacritty, where the leading 4 is dropped in the response
+        static ref ALTERNATIVE_COLOR_REGISTER_RE: Regex = Regex::new(r"\](.*);(.*)\u{1b}\\$").unwrap();
+    }
+    let key_string = String::from_utf8_lossy(bytes);
+    if let Some(captures) = COLOR_REGISTER_RE.captures_iter(&key_string).next() {
+        let color_register_response = captures[1].parse::<usize>();
+        let color_response = captures[2].parse::<String>();
+        match (color_register_response, color_response) {
+            (Ok(crr), Ok(cr)) => {
+                Ok((crr, cr))
+            },
+            _ => {
+                Err("invalid_instruction")
+            }
+        }
+    } else if let Some(captures) = ALTERNATIVE_COLOR_REGISTER_RE.captures_iter(&key_string).next() {
+        let color_register_response = captures[1].parse::<usize>();
+        let color_response = captures[2].parse::<String>();
+        match (color_register_response, color_response) {
+            (Ok(crr), Ok(cr)) => {
+                Ok((crr, cr))
+            },
+            _ => {
+                Err("invalid_instruction")
+            }
+        }
+    } else {
+        Err("invalid_instruction")
     }
 }

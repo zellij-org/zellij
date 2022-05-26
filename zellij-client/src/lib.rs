@@ -11,12 +11,14 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
+use std::sync::{Arc, Mutex};
 use zellij_tile::prelude::Style;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
@@ -109,7 +111,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
-    PossiblePixelRatioChange,
+    AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
 }
 
 pub fn start_client(
@@ -207,13 +209,15 @@ pub fn start_client(
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
+    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            move || stdin_loop(os_input, send_input_instructions)
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
+            move || stdin_loop(os_input, send_input_instructions, stdin_ansi_parser)
         });
 
     let _input_thread = thread::Builder::new()
@@ -239,8 +243,8 @@ pub fn start_client(
     let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
-            let send_input_instructions = send_input_instructions.clone();
             let os_input = os_input.clone();
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 os_input.handle_signals(
                     Box::new({
@@ -249,8 +253,13 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
-                            let _ = send_input_instructions
-                                .send(InputInstruction::PossiblePixelRatioChange);
+                            // send a query to the terminal emulator in case the font size changed
+                            // as well - we'll parse the response through STDIN
+                            let terminal_emulator_query_string = stdin_ansi_parser.lock().unwrap().window_size_change_query_string();
+                            let _ = os_api
+                                .get_stdout_writer()
+                                .write(terminal_emulator_query_string.as_bytes())
+                                .unwrap();
                         }
                     }),
                     Box::new({

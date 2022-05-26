@@ -479,15 +479,12 @@ pub(crate) fn route_thread_main(
                             ))
                             .unwrap();
                     }
-                    ClientToServerMsg::ColorRegister(color_register, color_code) => {
+                    ClientToServerMsg::ColorRegisters(color_registers) => {
                         rlocked_sessions
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_screen(ScreenInstruction::TerminalColorRegister(
-                                color_register,
-                                color_code,
-                            ))
+                            .send_to_screen(ScreenInstruction::TerminalColorRegisters(color_registers))
                             .unwrap();
                     }
                     ClientToServerMsg::NewClient(
