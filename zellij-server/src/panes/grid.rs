@@ -2519,7 +2519,7 @@ impl Perform for Grid {
                     match query_type {
                         Some(&[1]) => {
                             // number of color registers
-                            let response = "\u{1b}[?1;0;1024S"; // TODO: is this accurate?
+                            let response = "\u{1b}[?1;0;65535S";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
