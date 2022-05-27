@@ -164,6 +164,21 @@ impl SixelGrid {
             if let Ok(sixel_image) = sixel_deserializer.create_image() {
                 let image_pixel_size = sixel_image.pixel_size();
                 let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
+
+                // here we remove images which this image covers completely to save on system
+                // resources - TODO: also do this with partial covers, eg. if several images
+                // together cover one image
+                for (image_id, pixel_rect) in &self.sixel_image_locations {
+                    if let Some(intersecting_rect) = pixel_rect.intersecting_rect(&image_size_and_coordinates) {
+                        if intersecting_rect.x == pixel_rect.x && intersecting_rect.y == pixel_rect.y && intersecting_rect.height == pixel_rect.height && intersecting_rect.width == pixel_rect.width {
+                            self.image_ids_to_reap.push(*image_id);
+                        }
+                    }
+                }
+                for image_id in &self.image_ids_to_reap {
+                    drop(self.sixel_image_locations.remove(&image_id));
+                }
+
                 self.sixel_image_locations.insert(new_image_id, image_size_and_coordinates);
                 self.currently_parsing = None;
                 Some(sixel_image)
