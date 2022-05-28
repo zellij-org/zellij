@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore(dependencies): update `names` and `dialoguer` crates (https://github.com/zellij-org/zellij/pull/1430)
 * fix: add checking for missing extensions (https://github.com/zellij-org/zellij/pull/1432)
 * fix: client process hanging / not exiting when terminal emulator was closed (https://github.com/zellij-org/zellij/pull/1433)
+* BREAKING CHANGE: merge `--layout` and `--layout-path` (https://github.com/zellij-org/zellij/pull/1426)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
