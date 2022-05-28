@@ -26,8 +26,7 @@ pub struct CliArgs {
     #[clap(long, short, overrides_with = "session")]
     pub session: Option<String>,
 
-    /// If it's a bare name it's interpreted as the name of a layout file in the layout dir,
-    /// Otherwise it's interpreted as a path to a layout yaml file
+    /// Name of a predefined layout or path to a layout file
     #[clap(short, long, parse(from_os_str), overrides_with = "layout")]
     pub layout: Option<PathBuf>,
 
