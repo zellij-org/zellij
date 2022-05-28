@@ -127,7 +127,7 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel
         .write_all(
             format!(
-                "{} --layout-path {} --session {} --data-dir {}\n",
+                "{} --layout {} --session {} --data-dir {}\n",
                 ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
