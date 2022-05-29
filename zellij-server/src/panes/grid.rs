@@ -197,8 +197,9 @@ fn transfer_rows_from_lines_below_to_viewport(
     viewport: &mut Vec<Row>,
     count: usize,
     max_viewport_width: usize,
-) {
+) -> usize {
     let mut next_lines: Vec<Row> = vec![];
+    let mut transferred_rows_count: usize = 0;
     for _ in 0..count {
         let mut lines_pulled_from_viewport = 0;
         if next_lines.is_empty() {
@@ -223,6 +224,7 @@ fn transfer_rows_from_lines_below_to_viewport(
         for _ in 0..(lines_pulled_from_viewport + 1) {
             if !next_lines.is_empty() {
                 viewport.push(next_lines.remove(0));
+                transferred_rows_count += 1;
             }
         }
     }
@@ -230,6 +232,7 @@ fn transfer_rows_from_lines_below_to_viewport(
         let excess_row = Row::from_rows(next_lines, 0);
         lines_below.insert(0, excess_row);
     }
+    transferred_rows_count
 }
 
 fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
@@ -297,6 +300,7 @@ pub struct SearchResult {
     pub selections: Vec<Selection>,
     pub active: usize,
     pub initialized: bool,
+    pub needle: String,
 }
 
 #[derive(Clone)]
@@ -555,6 +559,19 @@ impl Grid {
                 .selections
                 .iter_mut()
                 .for_each(|x| x.move_down(1));
+            if !self.search_results.needle.is_empty() {
+                for (ridx, row) in self
+                    .viewport
+                    .iter()
+                    .take(transferred_rows_height)
+                    .enumerate()
+                {
+                    let selections = Self::search_row(&self.search_results.needle, ridx, row);
+                    for selection in selections {
+                        self.search_results.selections.push(selection);
+                    }
+                }
+            }
         }
         self.output_buffer.update_all_lines();
     }
@@ -582,7 +599,7 @@ impl Grid {
                     .saturating_sub(dropped_line_height);
             }
 
-            transfer_rows_from_lines_below_to_viewport(
+            let transferred_rows_height = transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
                 1,
@@ -594,6 +611,25 @@ impl Grid {
                 .selections
                 .iter_mut()
                 .for_each(|x| x.move_up(1));
+
+            if !self.search_results.needle.is_empty() {
+                for (ridx, row) in self
+                    .viewport
+                    .iter()
+                    .rev()
+                    .take(transferred_rows_height)
+                    .enumerate()
+                {
+                    let selections = Self::search_row(
+                        &self.search_results.needle,
+                        self.viewport.len() - ridx - 1,
+                        row,
+                    );
+                    for selection in selections {
+                        self.search_results.selections.push(selection);
+                    }
+                }
+            }
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
@@ -1563,27 +1599,42 @@ impl Grid {
         self.search_results = Default::default();
     }
 
-    fn search_viewport(&mut self, needle: &str, forward: bool) {
-        for (ridx, row) in self.viewport.iter().enumerate() {
-            let mut nidx = 0; // Needle index
-            let mut hidx = 0; // Haystack index
-            while hidx < row.columns.len() {
-                if row.columns[hidx].character == needle.chars().nth(nidx).unwrap() {
-                    if nidx == needle.len() - 1 {
-                        let mut selection = Selection::default();
-                        selection
-                            .start(Position::new(ridx as i32, (hidx + 1 - needle.len()) as u16));
-                        selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
-                        self.search_results.selections.push(selection);
-                        self.output_buffer.update_line(ridx);
-                        nidx = 0;
-                    } else {
-                        nidx += 1;
-                    }
-                } else {
+    fn search_row(needle: &str, ridx: usize, row: &Row) -> Vec<Selection> {
+        let mut res = Vec::new();
+        let mut nidx = 0; // Needle index
+        let mut hidx = 0; // Haystack index
+        while hidx < row.columns.len() {
+            if row.columns[hidx].character == needle.chars().nth(nidx).unwrap() {
+                if nidx == needle.len() - 1 {
+                    let mut selection = Selection::default();
+                    selection.start(Position::new(ridx as i32, (hidx + 1 - needle.len()) as u16));
+                    selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
+                    res.push(selection);
+                    // self.search_results.selections.push(selection);
+                    // self.output_buffer.update_line(ridx);
                     nidx = 0;
+                } else {
+                    nidx += 1;
                 }
-                hidx += 1;
+            } else {
+                nidx = 0;
+            }
+            hidx += 1;
+        }
+        res
+    }
+
+    fn search_viewport(&mut self, needle: &str, forward: bool) {
+        self.search_results.needle = needle.to_string();
+
+        for (ridx, row) in self.viewport.iter().enumerate() {
+            let selections = Self::search_row(needle, ridx, row);
+            if !selections.is_empty() {
+                self.output_buffer.update_line(ridx);
+            }
+
+            for selection in selections {
+                self.search_results.selections.push(selection);
             }
         }
 

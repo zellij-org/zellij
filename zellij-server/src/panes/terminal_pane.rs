@@ -268,6 +268,7 @@ impl Pane for TerminalPane {
             // Not sure if this is the right position for this, but we need to clear all search results
             // upon leaving Search-related modes.
             self.grid.clear_search();
+            self.search_term.clear();
         }
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()
@@ -530,6 +531,11 @@ impl Pane for TerminalPane {
                 self.search_term.push_str(c);
             }
         }
+        self.grid.clear_search();
+        if !self.search_term.is_empty() {
+            self.grid.search_forward(&self.search_term);
+        }
+        self.set_should_render(true);
     }
     fn search_forward(&mut self) {
         if self.search_term.is_empty() {
