@@ -1555,6 +1555,14 @@ impl Grid {
         }
     }
 
+    pub fn clear_search(&mut self) {
+        // Clearing all previous highlights
+        for res in &self.search_results.selections {
+            self.output_buffer.update_line(res.start.line() as usize);
+        }
+        self.search_results = Default::default();
+    }
+
     fn search_viewport(&mut self, needle: &str, forward: bool) {
         for (ridx, row) in self.viewport.iter().enumerate() {
             let mut nidx = 0; // Needle index

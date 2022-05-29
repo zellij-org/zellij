@@ -264,6 +264,11 @@ impl Pane for TerminalPane {
         frame_params: FrameParams,
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+        if ![InputMode::EnterSearch, InputMode::Search, InputMode::Scroll].contains(&input_mode) {
+            // Not sure if this is the right position for this, but we need to clear all search results
+            // upon leaving Search-related modes.
+            self.grid.clear_search();
+        }
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
