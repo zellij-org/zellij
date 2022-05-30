@@ -197,6 +197,7 @@ MODES
 * __locked__ - disables all keybindings except the one that would switch the
   mode to normal (_ctrl-g_ by default). Useful when Zellij's keybindings
   conflict with those of a chosen terminal app. 
+* __tmux__ - provides convenience keybindings emulating simple tmux behaviour
 * __pane__ - includes instructions that manipulate the panes (adding new panes,
   moving, closing).
 * __tab__ - includes instructions that manipulate the tabs (adding new tabs,
@@ -254,9 +255,18 @@ _tab-bar_.
 FILES
 =====
 
-Default user configuration file location:
-* Linux: _/home/alice/.config/zellij_
+Default user configuration directory location:
+* Linux: _$XDG_HOME/zellij /home/alice/.config/zellij_
 * macOS: _/Users/Alice/Library/Application Support/com.Zellij-Contributors.zellij_
+
+Default user layout directory location:
+* Subdirectory called `layouts` inside of the configuration directory.
+* Linux: _$XDG_HOME/zellij/layouts /home/alice/.config/zellij/layouts
+* macOS: _/Users/Alice/Library/Application/layouts Support/com.Zellij-Contributors.zellij/layouts_
+
+Default plugin directory location:
+* Linux: _$XDG_DATA_HOME/zellij/plugins /home/alice/.local/share/plugins
+
 
 ENVIRONMENT
 ===========
