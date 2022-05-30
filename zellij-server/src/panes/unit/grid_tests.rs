@@ -1,7 +1,9 @@
 use super::super::Grid;
 use crate::panes::link_handler::LinkHandler;
+use crate::panes::grid::SixelImageStore;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::{pane_size::SizeInPixels, position::Position, vte, zellij_tile::data::Palette};
 
@@ -18,12 +20,16 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 #[test]
 fn vttest1_0() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-0";
     let content = read_fixture(fixture_name);
@@ -36,12 +42,16 @@ fn vttest1_0() {
 #[test]
 fn vttest1_1() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-1";
     let content = read_fixture(fixture_name);
@@ -54,12 +64,16 @@ fn vttest1_1() {
 #[test]
 fn vttest1_2() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-2";
     let content = read_fixture(fixture_name);
@@ -72,12 +86,16 @@ fn vttest1_2() {
 #[test]
 fn vttest1_3() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-3";
     let content = read_fixture(fixture_name);
@@ -90,12 +108,16 @@ fn vttest1_3() {
 #[test]
 fn vttest1_4() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-4";
     let content = read_fixture(fixture_name);
@@ -108,12 +130,16 @@ fn vttest1_4() {
 #[test]
 fn vttest1_5() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest1-5";
     let content = read_fixture(fixture_name);
@@ -126,12 +152,16 @@ fn vttest1_5() {
 #[test]
 fn vttest2_0() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-0";
     let content = read_fixture(fixture_name);
@@ -144,12 +174,16 @@ fn vttest2_0() {
 #[test]
 fn vttest2_1() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-1";
     let content = read_fixture(fixture_name);
@@ -162,12 +196,16 @@ fn vttest2_1() {
 #[test]
 fn vttest2_2() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-2";
     let content = read_fixture(fixture_name);
@@ -180,12 +218,16 @@ fn vttest2_2() {
 #[test]
 fn vttest2_3() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-3";
     let content = read_fixture(fixture_name);
@@ -198,12 +240,16 @@ fn vttest2_3() {
 #[test]
 fn vttest2_4() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-4";
     let content = read_fixture(fixture_name);
@@ -216,12 +262,16 @@ fn vttest2_4() {
 #[test]
 fn vttest2_5() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-5";
     let content = read_fixture(fixture_name);
@@ -234,12 +284,16 @@ fn vttest2_5() {
 #[test]
 fn vttest2_6() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-6";
     let content = read_fixture(fixture_name);
@@ -252,12 +306,16 @@ fn vttest2_6() {
 #[test]
 fn vttest2_7() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-7";
     let content = read_fixture(fixture_name);
@@ -270,12 +328,16 @@ fn vttest2_7() {
 #[test]
 fn vttest2_8() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-8";
     let content = read_fixture(fixture_name);
@@ -288,12 +350,16 @@ fn vttest2_8() {
 #[test]
 fn vttest2_9() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-9";
     let content = read_fixture(fixture_name);
@@ -306,12 +372,16 @@ fn vttest2_9() {
 #[test]
 fn vttest2_10() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-10";
     let content = read_fixture(fixture_name);
@@ -324,12 +394,16 @@ fn vttest2_10() {
 #[test]
 fn vttest2_11() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-11";
     let content = read_fixture(fixture_name);
@@ -342,12 +416,16 @@ fn vttest2_11() {
 #[test]
 fn vttest2_12() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-12";
     let content = read_fixture(fixture_name);
@@ -360,12 +438,16 @@ fn vttest2_12() {
 #[test]
 fn vttest2_13() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-13";
     let content = read_fixture(fixture_name);
@@ -378,12 +460,16 @@ fn vttest2_13() {
 #[test]
 fn vttest2_14() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest2-14";
     let content = read_fixture(fixture_name);
@@ -396,12 +482,16 @@ fn vttest2_14() {
 #[test]
 fn vttest3_0() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         41,
         110,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest3-0";
     let content = read_fixture(fixture_name);
@@ -414,12 +504,16 @@ fn vttest3_0() {
 #[test]
 fn vttest8_0() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-0";
     let content = read_fixture(fixture_name);
@@ -432,12 +526,16 @@ fn vttest8_0() {
 #[test]
 fn vttest8_1() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-1";
     let content = read_fixture(fixture_name);
@@ -450,12 +548,16 @@ fn vttest8_1() {
 #[test]
 fn vttest8_2() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-2";
     let content = read_fixture(fixture_name);
@@ -468,12 +570,16 @@ fn vttest8_2() {
 #[test]
 fn vttest8_3() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-3";
     let content = read_fixture(fixture_name);
@@ -486,12 +592,16 @@ fn vttest8_3() {
 #[test]
 fn vttest8_4() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-4";
     let content = read_fixture(fixture_name);
@@ -504,12 +614,16 @@ fn vttest8_4() {
 #[test]
 fn vttest8_5() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vttest8-5";
     let content = read_fixture(fixture_name);
@@ -522,12 +636,16 @@ fn vttest8_5() {
 #[test]
 fn csi_b() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "csi-b";
     let content = read_fixture(fixture_name);
@@ -540,12 +658,16 @@ fn csi_b() {
 #[test]
 fn csi_capital_i() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "csi-capital-i";
     let content = read_fixture(fixture_name);
@@ -558,12 +680,16 @@ fn csi_capital_i() {
 #[test]
 fn csi_capital_z() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "csi-capital-z";
     let content = read_fixture(fixture_name);
@@ -576,12 +702,16 @@ fn csi_capital_z() {
 #[test]
 fn terminal_reports() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "terminal_reports";
     let content = read_fixture(fixture_name);
@@ -594,12 +724,16 @@ fn terminal_reports() {
 #[test]
 fn wide_characters() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters";
     let content = read_fixture(fixture_name);
@@ -612,12 +746,16 @@ fn wide_characters() {
 #[test]
 fn wide_characters_line_wrap() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_line_wrap";
     let content = read_fixture(fixture_name);
@@ -630,12 +768,16 @@ fn wide_characters_line_wrap() {
 #[test]
 fn insert_character_in_line_with_wide_character() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_middle_line_insert";
     let content = read_fixture(fixture_name);
@@ -648,12 +790,16 @@ fn insert_character_in_line_with_wide_character() {
 #[test]
 fn delete_char_in_middle_of_line_with_widechar() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide-chars-delete-middle";
     let content = read_fixture(fixture_name);
@@ -666,12 +812,16 @@ fn delete_char_in_middle_of_line_with_widechar() {
 #[test]
 fn delete_char_in_middle_of_line_with_multiple_widechars() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide-chars-delete-middle-after-multi";
     let content = read_fixture(fixture_name);
@@ -684,12 +834,16 @@ fn delete_char_in_middle_of_line_with_multiple_widechars() {
 #[test]
 fn fish_wide_characters_override_clock() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fish_wide_characters_override_clock";
     let content = read_fixture(fixture_name);
@@ -702,12 +856,16 @@ fn fish_wide_characters_override_clock() {
 #[test]
 fn bash_delete_wide_characters() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "bash_delete_wide_characters";
     let content = read_fixture(fixture_name);
@@ -720,12 +878,16 @@ fn bash_delete_wide_characters() {
 #[test]
 fn delete_wide_characters_before_cursor() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "delete_wide_characters_before_cursor";
     let content = read_fixture(fixture_name);
@@ -738,12 +900,16 @@ fn delete_wide_characters_before_cursor() {
 #[test]
 fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "delete_wide_characters_before_cursor_when_cursor_is_on_wide_character";
     let content = read_fixture(fixture_name);
@@ -756,12 +922,16 @@ fn delete_wide_characters_before_cursor_when_cursor_is_on_wide_character() {
 #[test]
 fn delete_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "delete_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -774,12 +944,16 @@ fn delete_wide_character_under_cursor() {
 #[test]
 fn replace_wide_character_under_cursor() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         104,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "replace_wide_character_under_cursor";
     let content = read_fixture(fixture_name);
@@ -792,12 +966,16 @@ fn replace_wide_character_under_cursor() {
 #[test]
 fn wrap_wide_characters() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         90,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -810,12 +988,16 @@ fn wrap_wide_characters() {
 #[test]
 fn wrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         93,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -829,12 +1011,16 @@ fn wrap_wide_characters_on_size_change() {
 #[test]
 fn unwrap_wide_characters_on_size_change() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         93,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_full";
     let content = read_fixture(fixture_name);
@@ -849,12 +1035,16 @@ fn unwrap_wide_characters_on_size_change() {
 #[test]
 fn wrap_wide_characters_in_the_middle_of_the_line() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         91,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -867,12 +1057,16 @@ fn wrap_wide_characters_in_the_middle_of_the_line() {
 #[test]
 fn wrap_wide_characters_at_the_end_of_the_line() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         90,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "wide_characters_line_end";
     let content = read_fixture(fixture_name);
@@ -885,12 +1079,16 @@ fn wrap_wide_characters_at_the_end_of_the_line() {
 #[test]
 fn copy_selected_text_from_viewport() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         27,
         125,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -911,12 +1109,16 @@ fn copy_selected_text_from_viewport() {
 #[test]
 fn copy_wrapped_selected_text_from_viewport() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         22,
         73,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "grid_copy_wrapped";
     let content = read_fixture(fixture_name);
@@ -936,12 +1138,16 @@ fn copy_wrapped_selected_text_from_viewport() {
 #[test]
 fn copy_selected_text_from_lines_above() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         27,
         125,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -962,12 +1168,16 @@ fn copy_selected_text_from_lines_above() {
 #[test]
 fn copy_selected_text_from_lines_below() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         27,
         125,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "grid_copy";
     let content = read_fixture(fixture_name);
@@ -996,12 +1206,16 @@ fn copy_selected_text_from_lines_below() {
 #[test]
 fn run_bandwhich_from_fish_shell() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fish_and_bandwhich";
     let content = read_fixture(fixture_name);
@@ -1014,12 +1228,16 @@ fn run_bandwhich_from_fish_shell() {
 #[test]
 fn fish_tab_completion_options() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fish_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1036,13 +1254,18 @@ pub fn fish_select_tab_completion_options() {
     // changes.
     // this is not clearly seen in the snapshot because it does not include styles,
     // but we can see the command line change and the cursor staying in place
+    // terminal_emulator_color_codes,
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fish_select_tab_completion_options";
     let content = read_fixture(fixture_name);
@@ -1059,16 +1282,22 @@ pub fn vim_scroll_region_down() {
     // the region is defined here by vim as 1-26 (there are 28 rows)
     // then the cursor is moved to line 26 and a new line is added
     // what should happen is that the first line in the scroll region (1) is deleted
+    // terminal_emulator_color_codes,
     // and an empty line is inserted in the last scroll region line (26)
     // this tests also has other steps afterwards that fills the line with the next line in the
+    // sixel_image_store,
     // file
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vim_scroll_region_down";
     let content = read_fixture(fixture_name);
@@ -1085,14 +1314,19 @@ pub fn vim_ctrl_d() {
     // this case) lines inside the scroll region and push the other lines up
     // what happens here is that 13 lines are deleted and instead 13 empty lines are added at the
     // end of the scroll region
+    // terminal_emulator_color_codes,
     // vim makes sure to fill these empty lines with the rest of the file
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vim_ctrl_d";
     let content = read_fixture(fixture_name);
@@ -1109,13 +1343,18 @@ pub fn vim_ctrl_u() {
     // this case) lines at the cursor, pushing away (deleting) the last line in the scroll region
     // this causes the effect of scrolling up X lines (vim replaces the lines with the ones in the
     // file above the current content)
+    // terminal_emulator_color_codes,
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vim_ctrl_u";
     let content = read_fixture(fixture_name);
@@ -1128,12 +1367,16 @@ pub fn vim_ctrl_u() {
 #[test]
 pub fn htop() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "htop";
     let content = read_fixture(fixture_name);
@@ -1146,12 +1389,16 @@ pub fn htop() {
 #[test]
 pub fn htop_scrolling() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "htop_scrolling";
     let content = read_fixture(fixture_name);
@@ -1164,12 +1411,16 @@ pub fn htop_scrolling() {
 #[test]
 pub fn htop_right_scrolling() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "htop_right_scrolling";
     let content = read_fixture(fixture_name);
@@ -1186,16 +1437,22 @@ pub fn vim_overwrite() {
     // * open a file in vim
     // * open the same file in another window
     // * change the file in the other window and save
+    // terminal_emulator_color_codes,
     // * change the file in the original vim window and save
     // * confirm you would like to change the file by pressing 'y' and then ENTER
+    // sixel_image_store,
     // * if everything looks fine, this test passed :)
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "vim_overwrite";
     let content = read_fixture(fixture_name);
@@ -1210,12 +1467,16 @@ pub fn clear_scroll_region() {
     // this is actually a test of 1049h/l (alternative buffer)
     // @imsnif - the name is a monument to the time I didn't fully understand this mechanism :)
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "clear_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1228,12 +1489,16 @@ pub fn clear_scroll_region() {
 #[test]
 pub fn display_tab_characters_properly() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "tab_characters";
     let content = read_fixture(fixture_name);
@@ -1246,12 +1511,16 @@ pub fn display_tab_characters_properly() {
 #[test]
 pub fn neovim_insert_mode() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "nvim_insert";
     let content = read_fixture(fixture_name);
@@ -1264,12 +1533,16 @@ pub fn neovim_insert_mode() {
 #[test]
 pub fn bash_cursor_linewrap() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         116,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "bash_cursor_linewrap";
     let content = read_fixture(fixture_name);
@@ -1284,12 +1557,16 @@ pub fn fish_paste_multiline() {
     // here we paste a multiline command in fish shell, making sure we support it
     // going up and changing the colors of our line-wrapped pasted text
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         149,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fish_paste_multiline";
     let content = read_fixture(fixture_name);
@@ -1302,12 +1579,16 @@ pub fn fish_paste_multiline() {
 #[test]
 pub fn git_log() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         149,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "git_log";
     let content = read_fixture(fixture_name);
@@ -1322,12 +1603,16 @@ pub fn git_diff_scrollup() {
     // this tests makes sure that when we have a git diff that exceeds the screen size
     // we are able to scroll up
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         28,
         149,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "git_diff_scrollup";
     let content = read_fixture(fixture_name);
@@ -1340,12 +1625,16 @@ pub fn git_diff_scrollup() {
 #[test]
 pub fn emacs_longbuf() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         60,
         284,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "emacs_longbuf_tutorial";
     let content = read_fixture(fixture_name);
@@ -1358,12 +1647,16 @@ pub fn emacs_longbuf() {
 #[test]
 pub fn top_and_quit() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         56,
         235,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "top_and_quit";
     let content = read_fixture(fixture_name);
@@ -1380,14 +1673,19 @@ pub fn exa_plus_omf_theme() {
     // this is a potential bug because the \t character is a goto
     // if we forwarded it as is to the terminal, we would be skipping
     // over existing on-screen content without deleting it, so we must
+    // terminal_emulator_color_codes,
     // convert it to spaces
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         56,
         235,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+    sixel_image_store,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -1400,12 +1698,16 @@ pub fn exa_plus_omf_theme() {
 #[test]
 pub fn scroll_up() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         50,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1419,12 +1721,16 @@ pub fn scroll_up() {
 #[test]
 pub fn scroll_down() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         50,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1439,12 +1745,16 @@ pub fn scroll_down() {
 #[test]
 pub fn scroll_up_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         25,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1458,12 +1768,16 @@ pub fn scroll_up_with_line_wraps() {
 #[test]
 pub fn scroll_down_with_line_wraps() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         25,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1478,12 +1792,16 @@ pub fn scroll_down_with_line_wraps() {
 #[test]
 pub fn scroll_up_decrease_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         50,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1503,12 +1821,16 @@ pub fn scroll_up_decrease_width_and_scroll_down() {
 #[test]
 pub fn scroll_up_increase_width_and_scroll_down() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         10,
         25,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scrolling";
     let content = read_fixture(fixture_name);
@@ -1528,12 +1850,16 @@ pub fn scroll_up_increase_width_and_scroll_down() {
 #[test]
 pub fn move_cursor_below_scroll_region() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         34,
         114,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "move_cursor_below_scroll_region";
     let content = read_fixture(fixture_name);
@@ -1546,12 +1872,16 @@ pub fn move_cursor_below_scroll_region() {
 #[test]
 pub fn insert_wide_characters_in_existing_line() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         21,
         86,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "chinese_characters_line_middle";
     let content = read_fixture(fixture_name);
@@ -1568,13 +1898,18 @@ pub fn full_screen_scroll_region_and_scroll_up() {
     // full viewport and then scrolling up would cause
     // lines to get deleted from the viewport rather
     // than moving to "lines_above"
+    // terminal_emulator_color_codes,
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         54,
         80,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scroll_region_full_screen";
     let content = read_fixture(fixture_name);
@@ -1590,12 +1925,16 @@ pub fn full_screen_scroll_region_and_scroll_up() {
 #[test]
 pub fn ring_bell() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         134,
         64,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "ring_bell";
     let content = read_fixture(fixture_name);
@@ -1608,12 +1947,16 @@ pub fn ring_bell() {
 #[test]
 pub fn alternate_screen_change_size() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         20,
         20,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "alternate_screen_change_size";
     let content = read_fixture(fixture_name);
@@ -1630,12 +1973,16 @@ pub fn alternate_screen_change_size() {
 #[test]
 pub fn fzf_fullscreen() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "fzf_fullscreen";
     let content = read_fixture(fixture_name);
@@ -1652,12 +1999,16 @@ pub fn replace_multiple_wide_characters_under_cursor() {
     // character if the cursor was "in the middle" of the wide character, or after the character if
     // it was "in the beginning" of the wide character)
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "replace_multiple_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1674,12 +2025,16 @@ pub fn replace_non_wide_characters_with_wide_characters() {
     // character if the cursor was "in the middle" of the wide character, or after the character if
     // it was "in the beginning" of the wide character)
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "replace_non_wide_characters_with_wide_characters";
     let content = read_fixture(fixture_name);
@@ -1692,12 +2047,16 @@ pub fn replace_non_wide_characters_with_wide_characters() {
 #[test]
 pub fn scroll_down_ansi() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let fixture_name = "scroll_down";
     let content = read_fixture(fixture_name);
@@ -1710,12 +2069,16 @@ pub fn scroll_down_ansi() {
 #[test]
 pub fn ansi_capital_t() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let content = "foo\u{1b}[14Tbar".as_bytes();
     for byte in content {
@@ -1727,12 +2090,16 @@ pub fn ansi_capital_t() {
 #[test]
 pub fn ansi_capital_s() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let content = "\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfoo\u{1b}[14Sbar".as_bytes();
     for byte in content {
@@ -1744,15 +2111,19 @@ pub fn ansi_capital_s() {
 #[test]
 fn terminal_pixel_size_reports() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(Some(SizeInPixels {
             height: 21,
             width: 8,
         }))),
+        sixel_image_store,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -1771,12 +2142,16 @@ fn terminal_pixel_size_reports() {
 #[test]
 fn terminal_pixel_size_reports_in_unsupported_terminals() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         97,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)), // in an unsupported terminal, we don't have this info
+        sixel_image_store,
     );
     let fixture_name = "terminal_pixel_size_reports";
     let content = read_fixture(fixture_name);
@@ -1796,12 +2171,16 @@ fn terminal_pixel_size_reports_in_unsupported_terminals() {
 #[test]
 pub fn ansi_csi_at_sign() {
     let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         51,
         112,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let content = "foo\u{1b}[2D\u{1b}[2@".as_bytes();
     for byte in content {

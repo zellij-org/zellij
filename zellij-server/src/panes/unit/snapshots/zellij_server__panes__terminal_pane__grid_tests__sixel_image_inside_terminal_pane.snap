@@ -1,9 +1,9 @@
 ---
-source: zellij-server/src/panes/./unit/grid_tests.rs
-assertion_line: 963
-expression: "format!(\"{:?}\", grid)"
+source: zellij-server/src/panes/./unit/terminal_pane_tests.rs
+assertion_line: 85
+expression: "format!(\"{:?}\", terminal_pane.grid)"
 ---
-00 (C): 12  4
+00 (C): Si
 01 (C): 
 02 (C): 
 03 (C): 
@@ -23,5 +23,4 @@ expression: "format!(\"{:?}\", grid)"
 17 (C): 
 18 (C): 
 19 (C): 
-20 (C): 
 

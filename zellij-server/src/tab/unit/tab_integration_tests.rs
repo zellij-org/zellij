@@ -1,6 +1,7 @@
 use super::{Output, Tab};
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
+use crate::panes::grid::SixelImageStore;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -17,7 +18,7 @@ use zellij_utils::pane_size::Size;
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -105,12 +106,15 @@ fn create_new_tab(size: Size) -> Tab {
     let character_cell_info = Rc::new(RefCell::new(None));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
         character_cell_info,
+        sixel_image_store,
         os_api,
         senders,
         max_panes,
@@ -122,6 +126,7 @@ fn create_new_tab(size: Size) -> Tab {
         client_id,
         copy_options,
         terminal_emulator_colors,
+        terminal_emulator_color_codes,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -148,12 +153,16 @@ use ::insta::assert_snapshot;
 use zellij_utils::vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         rows,
         columns,
         Rc::new(RefCell::new(palette)),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
@@ -169,12 +178,16 @@ fn take_snapshot_and_cursor_position(
     palette: Palette,
 ) -> (String, Option<(usize, usize)>) {
     // snapshot, x_coordinates, y_coordinates
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut grid = Grid::new(
         rows,
         columns,
         Rc::new(RefCell::new(palette)),
+        terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
     );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
