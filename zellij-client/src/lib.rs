@@ -256,7 +256,10 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
+                            os_api.send_to_server(ClientToServerMsg::Action(
+                                on_force_close.into(),
+                                None,
+                            ));
                         }
                     }),
                 );
@@ -319,7 +322,7 @@ pub fn start_client(
                 break;
             }
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
+                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
             }
             ClientInstruction::Render(output) => {

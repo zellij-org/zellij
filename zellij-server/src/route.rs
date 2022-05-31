@@ -402,7 +402,8 @@ pub(crate) fn route_thread_main(
         let rlocked_sessions = session_data.read().unwrap();
 
         match instruction {
-            ClientToServerMsg::Action(action) => {
+            ClientToServerMsg::Action(action, maybe_client_id) => {
+                let client_id = maybe_client_id.unwrap_or(client_id);
                 if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                     if let Action::SwitchToMode(input_mode) = action {
                         os_input

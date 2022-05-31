@@ -2,7 +2,7 @@ use log::info;
 use std::io::Write;
 use std::path::PathBuf;
 use std::{fs, thread};
-use zellij_tile::prelude::Style;
+use zellij_tile::prelude::{ClientId, Style};
 use zellij_utils::errors::ContextType;
 
 use crate::input_handler::input_actions;
@@ -85,10 +85,17 @@ pub fn start_fake_client(
 
     // get client ids
     // os_input.connect_to_server(&*zellij_ipc_pipe);
+    let clients: Vec<ClientId>;
     os_input.send_to_server(ClientToServerMsg::ListClients);
-    let (clients, _) =  os_input.recv_from_server();
-    log::error!("{:?}", clients);
-
+    loop {
+        let (msg, _) = os_input.recv_from_server();
+        log::error!("{:?}", msg);
+        if let ServerToClientMsg::ActiveClients(active_clients) = msg {
+            clients = active_clients;
+            break;
+        }
+    }
+    log::error!("The clients are: {:?}", clients);
 
     let session_name = session_name.to_string().clone();
     let _input_thread = thread::Builder::new()
@@ -104,6 +111,7 @@ pub fn start_fake_client(
                     config,
                     config_options,
                     command_is_executing,
+                    clients,
                     send_client_instructions,
                     default_mode,
                     receive_input_instructions,
@@ -130,7 +138,10 @@ pub fn start_fake_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
+                            os_api.send_to_server(ClientToServerMsg::Action(
+                                on_force_close.into(),
+                                None,
+                            ));
                         }
                     }),
                 );
@@ -195,7 +206,7 @@ pub fn start_fake_client(
                 break;
             }
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
+                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
             }
             ClientInstruction::Render(_) => {

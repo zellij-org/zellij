@@ -70,7 +70,7 @@ pub enum ClientToServerMsg {
         Option<PluginsConfig>,
     ),
     AttachClient(ClientAttributes, Options),
-    Action(Action),
+    Action(Action, Option<ClientId>),
     ClientExited,
     KillSession,
     ConnStatus,
