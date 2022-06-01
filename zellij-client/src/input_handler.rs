@@ -168,14 +168,11 @@ impl InputHandler {
                 }
                 Action::Detach => {
                     // self.should_exit = true;
-                    for client_id in clients
-                        // .clone()
-                        // .into_iter()
-                        // .take_while(|x| *x as usize != clients.len())
-                    {
+                    // clients.split_last().into_iter().for_each(|(client_id, _)| {
+                    let client_id = clients.last().unwrap();
                         self.os_input
-                            .send_to_server(ClientToServerMsg::DetachSession(client_id));
-                    }
+                            .send_to_server(ClientToServerMsg::DetachSession(*client_id));
+                    // });
                     break;
                 }
                 // Actions, that are indepenedent from the specific client
@@ -251,7 +248,7 @@ impl InputHandler {
             }
             _ => self
                 .os_input
-                .send_to_server(ClientToServerMsg::Action(action, None)),
+                .send_to_server(ClientToServerMsg::Action(action, client_id)),
         }
 
         should_break
