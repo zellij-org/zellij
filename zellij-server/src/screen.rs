@@ -776,7 +776,6 @@ impl Screen {
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) {
         if let Some(active_tab) = self.get_active_tab_mut(client_id) {
             if !active_tab.move_focus_left(client_id) {
-                println!("can has true");
                 self.switch_tab_prev(client_id);
             }
         } else {

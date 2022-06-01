@@ -608,7 +608,8 @@ impl Debug for Grid {
                 let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
                 let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
                 let sixel_indication_word = "Sixel";
-                for y in image_y..image_y + image_height + height_remainder {
+                // for y in image_y..image_y + image_height + height_remainder {
+                for y in image_y..std::cmp::min(image_y + image_height + height_remainder, self.height) {
                     let row = buffer.get_mut(y).unwrap();
                     for x in image_x..image_x + image_width + width_remainder {
                         let fake_sixel_terminal_character = TerminalCharacter {
@@ -2077,7 +2078,8 @@ impl Perform for Grid {
             if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
                 // TODO: if parsing Sixel image...
                 let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
-                    (0, 0)
+                    let scrollback_pixel_height = self.lines_above.len() * self.character_cell_size.borrow().unwrap().height;
+                    (0, scrollback_pixel_height)
                 } else {
                     (x_pixel_coordinates, y_pixel_coordinates)
                 };
@@ -2109,8 +2111,8 @@ impl Perform for Grid {
                     self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
                     if !self.sixel_scrolling {
                         self.move_cursor_down_by_pixels(image_pixel_height);
-                        self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
                     }
+                    self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
                     self.mark_for_rerender();
                 }
                 self.sixel_parser = None;
@@ -2387,12 +2389,14 @@ impl Perform for Grid {
                             alternative_viewport,
                             alternative_cursor,
                             alternative_sixelgrid,
-                        )) = &mut self.alternate_lines_above_viewport_cursor_and_sixelgrid
-                        {
+                        )) = &mut self.alternate_lines_above_viewport_cursor_and_sixelgrid {
                             std::mem::swap(&mut self.lines_above, alternative_lines_above);
                             std::mem::swap(&mut self.viewport, alternative_viewport);
                             std::mem::swap(&mut self.cursor, alternative_cursor);
                             std::mem::swap(&mut self.sixel_grid, alternative_sixelgrid);
+                            if let Some(image_ids_to_reap) = alternative_sixelgrid.clear() {
+                                self.sixel_image_store.borrow_mut().reap_images(image_ids_to_reap);
+                            }
                         }
                         self.alternate_lines_above_viewport_cursor_and_sixelgrid = None;
                         self.clear_viewport_before_rendering = true;

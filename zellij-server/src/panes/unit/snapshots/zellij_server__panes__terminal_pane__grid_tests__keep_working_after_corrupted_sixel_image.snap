@@ -1,0 +1,26 @@
+---
+source: zellij-server/src/panes/./unit/terminal_pane_tests.rs
+assertion_line: 364
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): line 1
+01 (C): line 2
+02 (C): line 3
+03 (C): line 4
+04 (C): line 5
+05 (C): 
+06 (C): 
+07 (C): 
+08 (C): 
+09 (C): 
+10 (C): 
+11 (C): 
+12 (C): 
+13 (C): 
+14 (C): 
+15 (C): 
+16 (C): 
+17 (C): 
+18 (C): 
+19 (C): 
+

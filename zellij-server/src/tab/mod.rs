@@ -982,6 +982,7 @@ impl Tab {
 
         let floating_panes_stack = self.floating_panes.stack();
         if let Some(floating_panes_stack) = floating_panes_stack.as_ref() {
+            // TODO: what's going on here??
         }
         output.add_clients(
             &connected_clients,

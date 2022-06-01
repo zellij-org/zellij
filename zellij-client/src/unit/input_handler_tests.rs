@@ -1,4 +1,7 @@
+// TODO: rename this file to reflect it also including stdin_loop tests
 use super::input_loop;
+use crate::stdin_loop;
+use crate::stdin_ansi_parser::StdinAnsiParser;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
@@ -12,11 +15,13 @@ use crate::{
     ClientInstruction, CommandIsExecuting,
 };
 
+use ::insta::assert_snapshot;
 use std::path::Path;
 
 use zellij_utils::zellij_tile;
 
 use std::io;
+use std::thread;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 use zellij_tile::data::InputMode;
@@ -26,6 +31,16 @@ use zellij_utils::{
 };
 
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
+
+fn read_fixture(fixture_name: &str) -> Vec<u8> {
+    let mut path_to_file = std::path::PathBuf::new();
+    path_to_file.push("../src");
+    path_to_file.push("tests");
+    path_to_file.push("fixtures");
+    path_to_file.push(fixture_name);
+    std::fs::read(path_to_file)
+        .unwrap_or_else(|_| panic!("could not read fixture {:?}", &fixture_name))
+}
 
 #[allow(unused)]
 pub mod commands {
@@ -95,6 +110,7 @@ struct FakeClientOsApi {
     events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
     command_is_executing: Arc<Mutex<CommandIsExecuting>>,
     stdout_buffer: Arc<Mutex<Vec<u8>>>,
+    stdin_buffer: Vec<u8>,
 }
 
 impl FakeClientOsApi {
@@ -111,7 +127,12 @@ impl FakeClientOsApi {
             events_sent_to_server,
             command_is_executing,
             stdout_buffer,
+            stdin_buffer: vec![],
         }
+    }
+    pub fn with_stdin_buffer(mut self, stdin_buffer: Vec<u8>) -> Self {
+        self.stdin_buffer = stdin_buffer;
+        self
     }
     pub fn stdout_buffer(&self) -> Vec<u8> {
         self.stdout_buffer.lock().unwrap().drain(..).collect()
@@ -135,8 +156,8 @@ impl ClientOsApi for FakeClientOsApi {
     fn get_stdin_reader(&self) -> Box<dyn io::Read> {
         unimplemented!()
     }
-    fn read_from_stdin(&self) -> Vec<u8> {
-        unimplemented!()
+    fn read_from_stdin(&mut self) -> Vec<u8> {
+        self.stdin_buffer.drain(..).collect()
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         unimplemented!()
@@ -308,135 +329,61 @@ pub fn move_focus_left_in_normal_mode() {
 }
 
 #[test]
-pub fn pixel_info_queried_from_terminal_emulator() {
-    let stdin_events = vec![(
-        commands::QUIT.to_vec(),
-        InputEvent::Key(KeyEvent {
-            key: KeyCode::Char('q'),
-            modifiers: Modifiers::CTRL,
-        }),
-    )];
-
+pub fn terminal_info_queried_from_terminal_emulator() {
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
     let client_os_api = FakeClientOsApi::new(events_sent_to_server, command_is_executing.clone());
-    let config = Config::from_default_assets().unwrap();
-    let options = Options::default();
 
-    let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
-        ClientInstruction,
-    > = channels::bounded(50);
-    let send_client_instructions = SenderWithContext::new(send_client_instructions);
-
-    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
+    let client_os_api_clone = client_os_api.clone();
+    let (send_input_instructions, _receive_input_instructions): ChannelWithContext<
         InputInstruction,
     > = channels::bounded(50);
     let send_input_instructions = SenderWithContext::new(send_input_instructions);
-    for event in stdin_events {
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(event.1, event.0))
-            .unwrap();
-    }
+    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
-    let default_mode = InputMode::Normal;
-    let client_os_api_clone = client_os_api.clone();
-    input_loop(
-        Box::new(client_os_api),
-        config,
-        options,
-        command_is_executing,
-        send_client_instructions,
-        default_mode,
-        receive_input_instructions,
-    );
+    let stdin_thread = thread::Builder::new()
+        .name("stdin_handler".to_string())
+        .spawn({
+            let client_os_api = client_os_api.clone();
+            let send_input_instructions = send_input_instructions.clone();
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
+            move || stdin_loop(Box::new(client_os_api), send_input_instructions, stdin_ansi_parser)
+        });
+    std::thread::sleep(std::time::Duration::from_millis(500)); // wait for initial query to be sent
+
     let extracted_stdout_buffer = client_os_api_clone.stdout_buffer();
+    let mut expected_query =
+        String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+    for i in 0..256 {
+        expected_query.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+    }
     assert_eq!(
         String::from_utf8(extracted_stdout_buffer),
-        Ok(String::from(
-            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\\\u{1b}]10;?\u{1b}\\"
-        )),
+        Ok(expected_query),
     );
+    drop(stdin_thread);
 }
 
 #[test]
 pub fn pixel_info_sent_to_server() {
-    let stdin_events = vec![
-        (
-            vec![27],
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Escape,
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "[".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('['),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "6".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('6'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "1".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('1'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "0".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('0'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "5".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('5'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "t".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('t'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            commands::QUIT.to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('q'),
-                modifiers: Modifiers::CTRL,
-            }),
-        ),
-    ];
+    // TODO:
+    // * copy/paste the previous test
+    // * start the input_loop as well as the stdin_loop
+    // * send a simulated terminal emulator response to the stdin loop
+    // * assert the events_sent_to_server
 
+
+
+
+    // TODO: CONTINUE HERE (31/05) - adjust this test to the new STDIN format (see the different
+    // thread in stdin_loop above
+
+
+    let fake_stdin_buffer = read_fixture("terminal_emulator_startup_response");
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api =
-        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
+    let client_os_api = FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone())
+        .with_stdin_buffer(fake_stdin_buffer);
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -449,287 +396,32 @@ pub fn pixel_info_sent_to_server() {
         InputInstruction,
     > = channels::bounded(50);
     let send_input_instructions = SenderWithContext::new(send_input_instructions);
-    for event in stdin_events {
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(event.1, event.0))
-            .unwrap();
-    }
+    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
+    let stdin_thread = thread::Builder::new()
+        .name("stdin_handler".to_string())
+        .spawn({
+            let client_os_api = client_os_api.clone();
+            let send_input_instructions = send_input_instructions.clone();
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
+            move || stdin_loop(Box::new(client_os_api), send_input_instructions, stdin_ansi_parser)
+        });
 
     let default_mode = InputMode::Normal;
-    input_loop(
-        Box::new(client_os_api),
-        config,
-        options,
-        command_is_executing,
-        send_client_instructions,
-        default_mode,
-        receive_input_instructions,
-    );
-    let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
-    assert_eq!(actions_sent_to_server, vec![Action::Quit]);
-    assert_eq!(
-        pixel_events_sent_to_server,
-        vec![PixelDimensions {
-            character_cell_size: Some(SizeInPixels {
-                height: 10,
-                width: 5
-            }),
-            text_area_size: None
-        }],
-    );
-}
-
-#[test]
-pub fn corrupted_pixel_info_sent_as_key_events() {
-    let stdin_events = vec![
-        (
-            vec![27],
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Escape,
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "[".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('['),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "f".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('f'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "1".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('1'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "0".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('0'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "5".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('5'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "t".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('t'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            commands::QUIT.to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('q'),
-                modifiers: Modifiers::CTRL,
-            }),
-        ),
-    ];
-
-    let events_sent_to_server = Arc::new(Mutex::new(vec![]));
-    let command_is_executing = CommandIsExecuting::new();
-    let client_os_api =
-        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
-    let config = Config::from_default_assets().unwrap();
-    let options = Options::default();
-
-    let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
-        ClientInstruction,
-    > = channels::bounded(50);
-    let send_client_instructions = SenderWithContext::new(send_client_instructions);
-
-    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
-        InputInstruction,
-    > = channels::bounded(50);
-    let send_input_instructions = SenderWithContext::new(send_input_instructions);
-    for event in stdin_events {
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(event.1, event.0))
-            .unwrap();
-    }
-
-    let default_mode = InputMode::Normal;
-    input_loop(
-        Box::new(client_os_api),
-        config,
-        options,
-        command_is_executing,
-        send_client_instructions,
-        default_mode,
-        receive_input_instructions,
-    );
-    let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
-    assert_eq!(
-        actions_sent_to_server,
-        vec![
-            Action::Write(vec![27]),
-            Action::Write(vec![b'[']),
-            Action::Write(vec![b'f']),
-            Action::Write(vec![b';']),
-            Action::Write(vec![b'1']),
-            Action::Write(vec![b'0']),
-            Action::Write(vec![b';']),
-            Action::Write(vec![b'5']),
-            Action::Write(vec![b't']),
-            Action::Quit
-        ]
-    );
-    assert_eq!(pixel_events_sent_to_server, vec![],);
-}
-
-#[test]
-pub fn esc_in_the_middle_of_pixelinfo_breaks_out_of_it() {
-    let stdin_events = vec![
-        (
-            vec![27],
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Escape,
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "[".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('['),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            vec![27],
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Escape,
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "1".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('1'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "0".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('0'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            ";".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char(';'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "5".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('5'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            "t".as_bytes().to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('t'),
-                modifiers: Modifiers::NONE,
-            }),
-        ),
-        (
-            commands::QUIT.to_vec(),
-            InputEvent::Key(KeyEvent {
-                key: KeyCode::Char('q'),
-                modifiers: Modifiers::CTRL,
-            }),
-        ),
-    ];
-
-    let events_sent_to_server = Arc::new(Mutex::new(vec![]));
-    let command_is_executing = CommandIsExecuting::new();
-    let client_os_api =
-        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone());
-    let config = Config::from_default_assets().unwrap();
-    let options = Options::default();
-
-    let (send_client_instructions, _receive_client_instructions): ChannelWithContext<
-        ClientInstruction,
-    > = channels::bounded(50);
-    let send_client_instructions = SenderWithContext::new(send_client_instructions);
-
-    let (send_input_instructions, receive_input_instructions): ChannelWithContext<
-        InputInstruction,
-    > = channels::bounded(50);
-    let send_input_instructions = SenderWithContext::new(send_input_instructions);
-    for event in stdin_events {
-        send_input_instructions
-            .send(InputInstruction::KeyEvent(event.1, event.0))
-            .unwrap();
-    }
-
-    let default_mode = InputMode::Normal;
-    input_loop(
-        Box::new(client_os_api),
-        config,
-        options,
-        command_is_executing,
-        send_client_instructions,
-        default_mode,
-        receive_input_instructions,
-    );
-    let actions_sent_to_server = extract_actions_sent_to_server(events_sent_to_server.clone());
-    let pixel_events_sent_to_server = extract_pixel_events_sent_to_server(events_sent_to_server);
-    assert_eq!(
-        actions_sent_to_server,
-        vec![
-            Action::Write(vec![27]),
-            Action::Write(vec![b'[']),
-            Action::Write(vec![27]),
-            Action::Write(vec![b';']),
-            Action::Write(vec![b'1']),
-            Action::Write(vec![b'0']),
-            Action::Write(vec![b';']),
-            Action::Write(vec![b'5']),
-            Action::Write(vec![b't']),
-            Action::Quit
-        ]
-    );
-    assert_eq!(pixel_events_sent_to_server, vec![],);
+    let input_thread = thread::Builder::new()
+        .name("input_handler".to_string())
+        .spawn({
+            move || input_loop(
+                Box::new(client_os_api),
+                config,
+                options,
+                command_is_executing,
+                send_client_instructions,
+                default_mode,
+                receive_input_instructions,
+            )
+        });
+    std::thread::sleep(std::time::Duration::from_millis(1000)); // wait for initial query to be sent
+    assert_snapshot!(*format!("{:?}", events_sent_to_server.lock().unwrap()));
+    drop(stdin_thread);
+    drop(input_thread);
 }

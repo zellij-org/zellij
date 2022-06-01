@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::{pane_size::SizeInPixels, position::Position, vte, zellij_tile::data::Palette};
 
+use std::fmt::Write;
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");
@@ -2187,4 +2189,279 @@ pub fn ansi_csi_at_sign() {
         vte_parser.advance(&mut grid, *byte);
     }
     assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn sixel_images_are_reaped_when_scrolled_off() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store.clone(),
+    );
+    let pane_content = read_fixture("sixel-image-500px.six");
+    for byte in pane_content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    for _ in 0..10_051 { // scrollbuffer limit + viewport height
+        grid.add_canonical_line();
+    }
+    let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
+    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store");
+}
+
+#[test]
+pub fn sixel_images_are_reaped_when_resetting() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        51,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store.clone(),
+    );
+    let pane_content = read_fixture("sixel-image-500px.six");
+    for byte in pane_content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    grid.reset_terminal_state();
+    let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
+    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store");
+}
+
+#[test]
+pub fn sixel_image_in_alternate_buffer() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        30,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store.clone(),
+    );
+
+    let move_to_alternate_screen = "\u{1b}[?1049h";
+    for byte in move_to_alternate_screen.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    let pane_content = read_fixture("sixel-image-500px.six");
+    for byte in pane_content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    assert_snapshot!(format!("{:?}", grid)); // should include the image
+                                             //
+    let move_away_from_alternate_screen = "\u{1b}[?1049l";
+    for byte in move_away_from_alternate_screen.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_snapshot!(format!("{:?}", grid)); // should note include the image
+    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store when we moved back from alternate screen");
+}
+
+#[test]
+pub fn sixel_with_image_scrolling_decsdm() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        30,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store.clone(),
+    );
+
+    // enter DECSDM
+    let move_to_decsdm = "\u{1b}[?80h";
+    for byte in move_to_decsdm.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    // write some text
+    let mut text_to_fill_pane = String::new();
+    for i in 0..10 {
+        writeln!(&mut text_to_fill_pane, "\rline {}", i + 1).unwrap();
+    }
+    for byte in text_to_fill_pane.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    // render a sixel image (will appear on the top left and partially cover the text)
+    let pane_content = read_fixture("sixel-image-100px.six");
+    for byte in pane_content {
+        vte_parser.advance(&mut grid, byte);
+    }
+    // image should be on the top left corner of the grid
+    assert_snapshot!(format!("{:?}", grid));
+
+    // leave DECSDM
+    let move_away_from_decsdm = "\u{1b}[?80l";
+    for byte in move_away_from_decsdm.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    // Go down to the beginning of the next line
+    let mut go_down_once = String::new();
+    writeln!(&mut go_down_once, "\n\r").unwrap();
+    for byte in go_down_once.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+
+    // render another sixel image, should appear under the cursor
+    let pane_content = read_fixture("sixel-image-100px.six");
+    for byte in pane_content {
+        vte_parser.advance(&mut grid, byte);
+    }
+
+    // image should appear in cursor position
+    assert_snapshot!(format!("{:?}", grid));
+}
+
+#[test]
+pub fn osc_4_background_query() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+    );
+    let content = "\u{1b}]10;?\u{1b}\\";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
+        acc.push_str(&s);
+        acc
+    });
+    assert_eq!(message_string, "\u{1b}]10;rgb:0000/0000/0000\u{1b}\\");
+}
+
+#[test]
+pub fn osc_4_foreground_query() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+    );
+    let content = "\u{1b}]11;?\u{1b}\\";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
+        acc.push_str(&s);
+        acc
+    });
+    assert_eq!(message_string, "\u{1b}]11;rgb:0000/0000/0000\u{1b}\\");
+}
+
+#[test]
+pub fn osc_4_color_query() {
+    let mut color_codes = HashMap::new();
+    color_codes.insert(222, String::from("rgb:ffff/d7d7/8787"));
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(color_codes));
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+    );
+    let content = "\u{1b}]4;222;?\u{1b}\\";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
+        acc.push_str(&s);
+        acc
+    });
+    assert_eq!(message_string, "\u{1b}]4;222;rgb:ffff/d7d7/8787\u{1b}\\");
+}
+
+#[test]
+pub fn xtsmgraphics_color_register_count() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        sixel_image_store,
+    );
+    let content = "\u{1b}[?1;1;S\u{1b}\\";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
+        acc.push_str(&s);
+        acc
+    });
+    assert_eq!(message_string, "\u{1b}[?1;0;65535S");
+}
+
+#[test]
+pub fn xtsmgraphics_pixel_graphics_geometry() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        51,
+        97,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+    );
+    let content = "\u{1b}[?2;1;S\u{1b}\\";
+    for byte in content.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
+        acc.push_str(&s);
+        acc
+    });
+    assert_eq!(message_string, "\u{1b}[?2;0;776;1071S");
 }

@@ -1,0 +1,26 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 1312
+expression: snapshot
+---
+00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+01 (C): │                                                                                                                       │
+02 (C): │                                                                                                                       │
+03 (C): │                                                                                                                       │
+04 (C): │                                                                                                                       │
+05 (C): │                                                                                                                       │
+06 (C): │                                                                                                                       │
+07 (C): │                                 ┌ Pane #2 ────────────────────────────────── SCROLL:  0/17 ┐                          │
+08 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+09 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+10 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+11 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+12 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+13 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+14 (C): │                                 │SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix│                          │
+15 (C): │                                 │                                                          │                          │
+16 (C): │                                 └──────────────────────────────────────────────────────────┘                          │
+17 (C): │                                                                                                                       │
+18 (C): │                                                                                                                       │
+19 (C): └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+

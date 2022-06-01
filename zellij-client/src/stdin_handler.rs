@@ -6,7 +6,7 @@ use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 use std::sync::{Arc, Mutex};
 
 pub(crate) fn stdin_loop(
-    os_input: Box<dyn ClientOsApi>,
+    mut os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
     stdin_ansi_parser: Arc<Mutex<StdinAnsiParser>>,
 ) {

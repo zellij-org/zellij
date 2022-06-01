@@ -54,7 +54,9 @@ impl StdinAnsiParser {
     fn drain_pending_events(&mut self) -> Vec<AnsiStdinInstruction> {
         let mut events = vec![];
         events.append(&mut self.pending_events);
-        events.push(AnsiStdinInstruction::color_registers_from_bytes(&mut self.pending_color_sequences));
+        if let Some(color_registers) = AnsiStdinInstruction::color_registers_from_bytes(&mut self.pending_color_sequences) {
+            events.push(color_registers);
+        }
         events
     }
     pub fn should_parse(&self) -> bool {
@@ -190,13 +192,16 @@ impl AnsiStdinInstruction {
             Err("invalid_instruction")
         }
     }
-    pub fn color_registers_from_bytes(color_sequences: &mut Vec<(usize, String)>) -> Self {
+    pub fn color_registers_from_bytes(color_sequences: &mut Vec<(usize, String)>) -> Option<Self> {
         // this assumes it is handed only SingleColorRegister events and drops everything else
+        if color_sequences.is_empty() {
+            return None;
+        }
         let mut registers = vec![];
         for (color_register, color_sequence) in color_sequences.drain(..) {
             registers.push((color_register, color_sequence));
         }
-        AnsiStdinInstruction::ColorRegisters(registers)
+        Some(AnsiStdinInstruction::ColorRegisters(registers))
     }
 }
 

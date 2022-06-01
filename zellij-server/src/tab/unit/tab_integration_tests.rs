@@ -14,7 +14,7 @@ use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
@@ -137,6 +137,57 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
+fn create_new_tab_with_sixel_support(size: Size, sixel_image_store: Rc<RefCell<SixelImageStore>>) -> Tab {
+    // this is like the create_new_tab function but includes stuff needed for sixel,
+    // eg. character_cell_size
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput {});
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = ModeInfo::default();
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_size,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
+        client_id,
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    );
+    tab.apply_layout(
+        LayoutTemplate::default().try_into().unwrap(),
+        vec![1],
+        index,
+        client_id,
+    );
+    tab
+}
+
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
     path_to_file.push("../src");
@@ -155,13 +206,33 @@ use zellij_utils::vte;
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
     let mut grid = Grid::new(
         rows,
         columns,
         Rc::new(RefCell::new(palette)),
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
-        Rc::new(RefCell::new(None)),
+        character_cell_size,
+        sixel_image_store,
+    );
+    let mut vte_parser = vte::Parser::new();
+    for &byte in ansi_instructions.as_bytes() {
+        vte_parser.advance(&mut grid, byte);
+    }
+    format!("{:?}", grid)
+}
+
+fn take_snapshot_with_sixel(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette, sixel_image_store: Rc<RefCell<SixelImageStore>>) -> String {
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut grid = Grid::new(
+        rows,
+        columns,
+        Rc::new(RefCell::new(palette)),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
         sixel_image_store,
     );
     let mut vte_parser = vte::Parser::new();
@@ -1206,4 +1277,73 @@ fn save_cursor_position_across_resizes() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+#[test]
+fn move_floating_pane_with_sixel_image() {
+    let new_pane_id = PaneId::Terminal(2);
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut tab = create_new_tab_with_sixel_support(size, sixel_image_store.clone());
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut output = Output::new(sixel_image_store.clone(), character_cell_size.clone());
+
+    tab.toggle_floating_panes(client_id, None);
+    tab.new_pane(new_pane_id, Some(client_id));
+    let fixture = read_fixture("sixel-image-500px.six");
+    tab.handle_pty_bytes(2, fixture);
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_release(&Position::new(7, 75), client_id);
+
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot_with_sixel(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+        sixel_image_store.clone(),
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn floating_pane_above_sixel_image() {
+    let new_pane_id = PaneId::Terminal(2);
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut tab = create_new_tab_with_sixel_support(size, sixel_image_store.clone());
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let mut output = Output::new(sixel_image_store.clone(), character_cell_size.clone());
+
+    tab.toggle_floating_panes(client_id, None);
+    tab.new_pane(new_pane_id, Some(client_id));
+    let fixture = read_fixture("sixel-image-500px.six");
+    tab.handle_pty_bytes(1, fixture);
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_release(&Position::new(7, 75), client_id);
+
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot_with_sixel(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+        sixel_image_store.clone(),
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn query_terminal_emulator_for_colors() {
+    // TODO: move to input tests
 }

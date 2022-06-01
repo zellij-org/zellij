@@ -86,7 +86,7 @@ pub trait ClientOsApi: Send + Sync {
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn get_stdin_reader(&self) -> Box<dyn io::Read>;
     /// Returns the raw contents of standard input.
-    fn read_from_stdin(&self) -> Vec<u8>;
+    fn read_from_stdin(&mut self) -> Vec<u8>;
     /// Returns a [`Box`] pointer to this [`ClientOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ClientOsApi>;
     /// Sends a message to the server.
@@ -118,7 +118,7 @@ impl ClientOsApi for ClientOsInputOutput {
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
     }
-    fn read_from_stdin(&self) -> Vec<u8> {
+    fn read_from_stdin(&mut self) -> Vec<u8> {
         let stdin = std::io::stdin();
         let mut stdin = stdin.lock();
         let buffer = stdin.fill_buf().unwrap();
