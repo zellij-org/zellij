@@ -46,7 +46,7 @@ pub fn start_fake_client(
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
-        zellij_utils::shared::set_permissions(&sock_dir).unwrap();
+        zellij_utils::shared::set_permissions(&sock_dir, 0o700).unwrap();
         sock_dir.push(session_name);
         sock_dir
     };
@@ -88,11 +88,12 @@ pub fn start_fake_client(
     let clients: Vec<ClientId>;
     os_input.send_to_server(ClientToServerMsg::ListClients);
     loop {
-        let (msg, _) = os_input.recv_from_server();
-        log::error!("{:?}", msg);
-        if let ServerToClientMsg::ActiveClients(active_clients) = msg {
-            clients = active_clients;
-            break;
+        if let Some((msg, _)) = os_input.recv_from_server() {
+            log::error!("{:?}", msg);
+            if let ServerToClientMsg::ActiveClients(active_clients) = msg {
+                clients = active_clients;
+                break;
+            }
         }
     }
     log::error!("The clients are: {:?}", clients);
@@ -155,14 +156,15 @@ pub fn start_fake_client(
             let os_input = os_input.clone();
             let mut should_break = false;
             move || loop {
-                let (instruction, err_ctx) = os_input.recv_from_server();
-                err_ctx.update_thread_ctx();
-                if let ServerToClientMsg::Exit(_) = instruction {
-                    should_break = true;
-                }
-                send_client_instructions.send(instruction.into()).unwrap();
-                if should_break {
-                    break;
+                if let Some((instruction, err_ctx)) = os_input.recv_from_server() {
+                    err_ctx.update_thread_ctx();
+                    if let ServerToClientMsg::Exit(_) = instruction {
+                        should_break = true;
+                    }
+                    send_client_instructions.send(instruction.into()).unwrap();
+                    if should_break {
+                        break;
+                    }
                 }
             }
         })

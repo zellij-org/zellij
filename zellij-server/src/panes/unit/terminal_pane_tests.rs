@@ -4,6 +4,7 @@ use crate::tab::Pane;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
+use zellij_tile::data::Palette;
 use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::PaneGeom;
 
@@ -25,6 +26,8 @@ pub fn scrolling_inside_a_pane() {
         0,
         String::new(),
         Rc::new(RefCell::new(LinkHandler::new())),
+        Rc::new(RefCell::new(None)),
+        Rc::new(RefCell::new(Palette::default())),
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {

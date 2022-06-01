@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
+use zellij_utils::regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -11,6 +12,7 @@ use std::{
 
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    pane_size::SizeInPixels,
     position::Position,
     vte, zellij_tile,
 };
@@ -270,6 +272,26 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     }
 }
 
+macro_rules! dump_screen {
+    ($lines:expr) => {{
+        let mut is_first = true;
+        let mut buf = "".to_owned();
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\n");
+            }
+            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            // Replace the spaces at the end of the line. Sometimes, the lines are
+            // collected with spaces until the end of the panel.
+            let re = Regex::new("([^ ])[ ]*$").unwrap();
+            buf.push_str(&(re.replace(&s, "${1}")));
+            is_first = false;
+        }
+        buf
+    }};
+}
+
 #[derive(Clone)]
 pub struct Grid {
     lines_above: VecDeque<Row>,
@@ -286,9 +308,10 @@ pub struct Grid {
     scroll_region: Option<(usize, usize)>,
     active_charset: CharsetIndex,
     preceding_char: Option<TerminalCharacter>,
-    colors: Palette,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
     pub cursor_key_mode: bool, // DECCKM - when set, cursor keys should send ANSI direction codes (eg. "OD") instead of the arrow keys (eg. "[D")
@@ -326,8 +349,9 @@ impl Grid {
     pub fn new(
         rows: usize,
         columns: usize,
-        colors: Palette,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
         link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     ) -> Self {
         Grid {
             lines_above: VecDeque::with_capacity(
@@ -354,7 +378,7 @@ impl Grid {
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
-            colors,
+            terminal_emulator_colors,
             output_buffer: Default::default(),
             selection: Default::default(),
             title_stack: vec![],
@@ -365,6 +389,7 @@ impl Grid {
             ring_bell: false,
             scrollback_buffer_lines: 0,
             mouse_mode: false,
+            character_cell_size,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -378,7 +403,7 @@ impl Grid {
             .horizontal_tabstops
             .iter()
             .copied()
-            .find(|&tabstop| tabstop > self.cursor.x);
+            .find(|&tabstop| tabstop > self.cursor.x && tabstop < self.width);
         match next_tabstop {
             Some(tabstop) => {
                 self.cursor.x = tabstop;
@@ -389,7 +414,7 @@ impl Grid {
         }
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = styles;
-        self.pad_current_line_until(self.cursor.x);
+        self.pad_current_line_until(self.cursor.x, empty_character);
         self.output_buffer.update_line(self.cursor.y);
     }
     pub fn move_to_previous_tabstop(&mut self) {
@@ -695,6 +720,12 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
+            self.saved_cursor_position
+                .as_mut()
+                .map(|saved_cursor_position| {
+                    saved_cursor_position.y = new_cursor_y;
+                    saved_cursor_position.x = new_cursor_x;
+                });
         } else if new_columns != self.width
             && self.alternate_lines_above_viewport_and_cursor.is_some()
         {
@@ -719,13 +750,24 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
+                    self.saved_cursor_position
+                        .as_mut()
+                        .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
                 }
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
                         self.cursor.y = 0;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| saved_cursor_position.y = 0);
                     } else {
                         self.cursor.y -= row_count_to_transfer;
+                        self.saved_cursor_position
+                            .as_mut()
+                            .map(|saved_cursor_position| {
+                                saved_cursor_position.y -= row_count_to_transfer
+                            });
                     }
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
@@ -792,6 +834,16 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
+
+    pub fn dump_screen(&mut self) -> String {
+        let mut scrollback: String = dump_screen!(self.lines_above);
+        let viewport: String = dump_screen!(self.viewport);
+        if !scrollback.is_empty() {
+            scrollback.push_str("\n");
+        }
+        scrollback.push_str(&viewport);
+        return scrollback;
+    }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {
             self.scroll_up_one_line();
@@ -814,13 +866,19 @@ impl Grid {
         }
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self
+            .scroll_region
+            .or(Some((0, self.height.saturating_sub(1))))
+        {
+            self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
             for _ in 0..count {
-                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
-                if scroll_region_bottom < self.viewport.len() {
-                    self.viewport.remove(scroll_region_bottom);
-                }
-                if scroll_region_top < self.viewport.len() {
+                if self.cursor.y >= scroll_region_top && self.cursor.y <= scroll_region_bottom {
+                    if self.viewport.get(scroll_region_bottom).is_some() {
+                        self.viewport.remove(scroll_region_bottom);
+                    }
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     self.viewport
                         .insert(scroll_region_top, Row::from_columns(columns).canonical());
                 }
@@ -829,16 +887,18 @@ impl Grid {
         }
     }
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
-        if let Some((scroll_region_top, scroll_region_bottom)) = self.scroll_region {
+        if let Some((scroll_region_top, scroll_region_bottom)) = self
+            .scroll_region
+            .or(Some((0, self.height.saturating_sub(1))))
+        {
+            self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             for _ in 0..count {
-                let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
                 self.viewport.remove(scroll_region_top);
-                if self.viewport.len() > scroll_region_top {
-                    self.viewport
-                        .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
-                } else {
-                    self.viewport.push(Row::from_columns(columns).canonical());
-                }
+                let columns = VecDeque::from(vec![pad_character; self.width]);
+                self.viewport
+                    .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
             }
             self.output_buffer.update_all_lines(); // TODO: only update scroll region lines
         }
@@ -876,12 +936,16 @@ impl Grid {
                         self.viewport.remove(0);
                     }
 
-                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     self.viewport.push(Row::from_columns(columns).canonical());
                     self.selection.move_up(1);
                 } else {
                     self.viewport.remove(scroll_region_top);
-                    let columns = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]);
+                    let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                    pad_character.styles = self.cursor.pending_styles;
+                    let columns = VecDeque::from(vec![pad_character; self.width]);
                     if self.viewport.len() >= scroll_region_bottom {
                         self.viewport
                             .insert(scroll_region_bottom, Row::from_columns(columns).canonical());
@@ -919,37 +983,22 @@ impl Grid {
     pub fn move_cursor_to_beginning_of_line(&mut self) {
         self.cursor.x = 0;
     }
-    pub fn insert_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
+    pub fn add_character_at_cursor_position(
+        &mut self,
+        terminal_character: TerminalCharacter,
+        should_insert_character: bool,
+    ) {
+        // this function assumes the current line has enough room for terminal_character (that its
+        // width has been checked beforehand)
         match self.viewport.get_mut(self.cursor.y) {
             Some(row) => {
-                row.insert_character_at(terminal_character, self.cursor.x);
-                if row.width() > self.width {
-                    row.truncate(self.width);
-                }
-                self.output_buffer.update_line(self.cursor.y);
-            }
-            None => {
-                // pad lines until cursor if they do not exist
-                for _ in self.viewport.len()..self.cursor.y {
-                    self.viewport.push(Row::new(self.width).canonical());
-                }
-                self.viewport.push(
-                    Row::new(self.width)
-                        .with_character(terminal_character)
-                        .canonical(),
-                );
-                self.output_buffer.update_all_lines();
-            }
-        }
-    }
-    pub fn add_character_at_cursor_position(&mut self, terminal_character: TerminalCharacter) {
-        match self.viewport.get_mut(self.cursor.y) {
-            Some(row) => {
-                if self.insert_mode {
+                if self.insert_mode || should_insert_character {
                     row.insert_character_at(terminal_character, self.cursor.x);
+                    if row.width() > self.width {
+                        row.truncate(self.width);
+                    }
                 } else {
                     row.add_character_at(terminal_character, self.cursor.x);
-                    // self.move_cursor_forward_until_edge(count_to_move_cursor);
                 }
                 self.output_buffer.update_line(self.cursor.y);
             }
@@ -968,7 +1017,6 @@ impl Grid {
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
-        // TODO: try to separate adding characters from moving the cursors in this function
         let character_width = terminal_character.width;
         if character_width == 0 {
             return;
@@ -977,28 +1025,9 @@ impl Grid {
             if self.disable_linewrap {
                 return;
             }
-            // line wrap
-            self.cursor.x = 0;
-            if self.cursor.y == self.height - 1 {
-                if self.alternate_lines_above_viewport_and_cursor.is_none() {
-                    self.transfer_rows_to_lines_above(1);
-                } else {
-                    self.viewport.remove(0);
-                }
-                let wrapped_row = Row::new(self.width);
-                self.viewport.push(wrapped_row);
-                self.selection.move_up(1);
-                self.output_buffer.update_all_lines();
-            } else {
-                self.cursor.y += 1;
-                if self.viewport.len() <= self.cursor.y {
-                    let line_wrapped_row = Row::new(self.width);
-                    self.viewport.push(line_wrapped_row);
-                    self.output_buffer.update_line(self.cursor.y);
-                }
-            }
+            self.line_wrap();
         }
-        self.add_character_at_cursor_position(terminal_character);
+        self.add_character_at_cursor_position(terminal_character, false);
         self.move_cursor_forward_until_edge(character_width);
     }
     pub fn get_character_under_cursor(&self) -> Option<TerminalCharacter> {
@@ -1059,15 +1088,39 @@ impl Grid {
         }
         self.output_buffer.update_all_lines();
     }
+    fn line_wrap(&mut self) {
+        self.cursor.x = 0;
+        if self.cursor.y == self.height - 1 {
+            if self.alternate_lines_above_viewport_and_cursor.is_none() {
+                self.transfer_rows_to_lines_above(1);
+            } else {
+                self.viewport.remove(0);
+            }
+            let wrapped_row = Row::new(self.width);
+            self.viewport.push(wrapped_row);
+            self.selection.move_up(1);
+            self.output_buffer.update_all_lines();
+        } else {
+            self.cursor.y += 1;
+            if self.viewport.len() <= self.cursor.y {
+                let line_wrapped_row = Row::new(self.width);
+                self.viewport.push(line_wrapped_row);
+                self.output_buffer.update_line(self.cursor.y);
+            }
+        }
+    }
     fn clear_lines_above(&mut self) {
         self.lines_above.clear();
         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
     }
 
-    fn pad_current_line_until(&mut self, position: usize) {
+    fn pad_current_line_until(&mut self, position: usize, pad_character: TerminalCharacter) {
+        if self.viewport.get(self.cursor.y).is_none() {
+            self.pad_lines_until(self.cursor.y, pad_character);
+        }
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for _ in current_row.width()..position {
-            current_row.push(EMPTY_TERMINAL_CHARACTER);
+            current_row.push(pad_character);
         }
         self.output_buffer.update_line(self.cursor.y);
     }
@@ -1093,13 +1146,13 @@ impl Grid {
                     self.cursor.y = std::cmp::min(self.height - 1, y + y_offset);
                 }
                 self.pad_lines_until(self.cursor.y, pad_character);
-                self.pad_current_line_until(self.cursor.x);
+                self.pad_current_line_until(self.cursor.x, pad_character);
             }
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
                 self.cursor.y = std::cmp::min(self.height - 1, y);
                 self.pad_lines_until(self.cursor.y, pad_character);
-                self.pad_current_line_until(self.cursor.x);
+                self.pad_current_line_until(self.cursor.x, pad_character);
             }
         }
     }
@@ -1172,7 +1225,9 @@ impl Grid {
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
         let bottom_line_index = bottom_line_index.unwrap_or(self.height);
         self.scroll_region = Some((top_line_index, bottom_line_index));
-        self.move_cursor_to(0, 0, EMPTY_TERMINAL_CHARACTER); // DECSTBM moves the cursor to column 1 line 1 of the page
+        let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+        pad_character.styles = self.cursor.pending_styles;
+        self.move_cursor_to(0, 0, pad_character); // DECSTBM moves the cursor to column 1 line 1 of the page
     }
     pub fn clear_scroll_region(&mut self) {
         self.scroll_region = None;
@@ -1234,18 +1289,20 @@ impl Grid {
     }
     pub fn move_cursor_to_column(&mut self, column: usize) {
         self.cursor.x = column;
-        self.pad_current_line_until(self.cursor.x);
+        let pad_character = EMPTY_TERMINAL_CHARACTER;
+        self.pad_current_line_until(self.cursor.x, pad_character);
     }
     pub fn move_cursor_to_line(&mut self, line: usize, pad_character: TerminalCharacter) {
         self.cursor.y = std::cmp::min(self.height - 1, line);
         self.pad_lines_until(self.cursor.y, pad_character);
-        self.pad_current_line_until(self.cursor.x);
+        let pad_character = EMPTY_TERMINAL_CHARACTER;
+        self.pad_current_line_until(self.cursor.x, pad_character);
     }
     pub fn replace_with_empty_chars(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let pad_until = std::cmp::min(self.width, self.cursor.x + count);
-        self.pad_current_line_until(pad_until);
+        self.pad_current_line_until(pad_until, empty_character);
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
         for i in 0..count {
             current_row.replace_character_at(empty_character, self.cursor.x + i);
@@ -1523,8 +1580,8 @@ impl Perform for Grid {
             // Set color index.
             b"4" => {
                 for chunk in params[1..].chunks(2) {
-                    let index = parse_number(chunk[0]);
-                    let color = xparse_color(chunk[1]);
+                    let index = chunk.get(0).and_then(|index| parse_number(index));
+                    let color = chunk.get(1).and_then(|color| xparse_color(color));
                     if let (Some(i), Some(c)) = (index, color) {
                         if self.changed_colors.is_none() {
                             self.changed_colors = Some([None; 256]);
@@ -1544,16 +1601,23 @@ impl Perform for Grid {
                     self.link_handler.borrow_mut().dispatch_osc8(params);
             }
 
-            // Get/set Foreground, Background, Cursor colors.
-            b"10" | b"11" | b"12" => {
+            // Get/set Foreground (b"10") or background (b"11") colors
+            b"10" | b"11" => {
                 if params.len() >= 2 {
                     if let Some(mut dynamic_code) = parse_number(params[0]) {
                         for param in &params[1..] {
                             // currently only getting the color sequence is supported,
                             // setting still isn't
                             if param == b"?" {
-                                let color_response_message = match self.colors.bg {
-                                    PaletteColor::Rgb((r, g, b)) => {
+                                let saved_terminal_color = if dynamic_code == 10 {
+                                    Some(self.terminal_emulator_colors.borrow().fg)
+                                } else if dynamic_code == 11 {
+                                    Some(self.terminal_emulator_colors.borrow().bg)
+                                } else {
+                                    None
+                                };
+                                let color_response_message = match saved_terminal_color {
+                                    Some(PaletteColor::Rgb((r, g, b))) => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
@@ -1575,6 +1639,10 @@ impl Perform for Grid {
                         }
                     }
                 }
+            }
+
+            b"12" => {
+                // get/set cursor color currently unimplemented
             }
 
             // Set cursor style.
@@ -1696,14 +1764,16 @@ impl Perform for Grid {
             };
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
+            let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+            char_to_replace.styles = self.cursor.pending_styles;
 
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
-                    self.clear_all_after_cursor(EMPTY_TERMINAL_CHARACTER);
+                    self.clear_all_after_cursor(char_to_replace);
                 } else if clear_type == 1 {
-                    self.clear_all_before_cursor(EMPTY_TERMINAL_CHARACTER);
+                    self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
-                    self.fill_viewport(EMPTY_TERMINAL_CHARACTER);
+                    self.fill_viewport(char_to_replace);
                 } else if clear_type == 3 {
                     self.clear_lines_above();
                 }
@@ -1713,8 +1783,7 @@ impl Perform for Grid {
             // we subtract 1 from the row/column because these are 1 indexed
             let row = next_param_or(1).saturating_sub(1);
             let col = next_param_or(1).saturating_sub(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
-            self.move_cursor_to(col, row, pad_character);
+            self.move_cursor_to(col, row, EMPTY_TERMINAL_CHARACTER);
         } else if c == 'A' {
             // move cursor up until edge of screen
             let move_up_count = next_param_or(1);
@@ -1858,15 +1927,18 @@ impl Perform for Grid {
         } else if c == 'M' {
             // delete lines if currently inside scroll region
             let line_count_to_delete = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.delete_lines_in_scroll_region(line_count_to_delete, pad_character);
         } else if c == 'L' {
             // insert blank lines if inside scroll region
             let line_count_to_add = next_param_or(1);
-            let pad_character = EMPTY_TERMINAL_CHARACTER;
+            let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+            pad_character.styles = self.cursor.pending_styles;
             self.add_empty_lines_in_scroll_region(line_count_to_add, pad_character);
         } else if c == 'G' || c == '`' {
             let column = next_param_or(1).saturating_sub(1);
+            let column = std::cmp::min(column, self.width.saturating_sub(1));
             self.move_cursor_to_column(column);
         } else if c == 'g' {
             let clear_type = next_param_or(0);
@@ -1907,8 +1979,9 @@ impl Perform for Grid {
         } else if c == '@' {
             let count = next_param_or(1);
             for _ in 0..count {
-                // TODO: should this be styled?
-                self.insert_character_at_cursor_position(EMPTY_TERMINAL_CHARACTER);
+                let mut pad_character = EMPTY_TERMINAL_CHARACTER;
+                pad_character.styles = self.cursor.pending_styles;
+                self.add_character_at_cursor_position(pad_character, true);
             }
         } else if c == 'b' {
             if let Some(c) = self.preceding_char {
@@ -1994,9 +2067,25 @@ impl Perform for Grid {
         } else if c == 't' {
             match next_param_or(1) as usize {
                 14 => {
-                    // TODO: report text area size in pixels, currently unimplemented
-                    // to solve this we probably need to query the user's terminal for the cursor
-                    // size and then use it as a multiplier
+                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                        let text_area_pixel_size_report = format!(
+                            "\x1b[4;{};{}t",
+                            character_cell_size.height * self.height,
+                            character_cell_size.width * self.width
+                        );
+                        self.pending_messages_to_pty
+                            .push(text_area_pixel_size_report.as_bytes().to_vec());
+                    }
+                }
+                16 => {
+                    if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+                        let character_cell_size_report = format!(
+                            "\x1b[6;{};{}t",
+                            character_cell_size.height, character_cell_size.width
+                        );
+                        self.pending_messages_to_pty
+                            .push(character_cell_size_report.as_bytes().to_vec());
+                    }
                 }
                 18 => {
                     // report text area
@@ -2285,9 +2374,10 @@ impl Row {
             self.columns.push_back(terminal_character);
             // this is much more performant than remove/insert
             let character = self.columns.swap_remove_back(absolute_x_index).unwrap();
-            let excess_width = character.width.saturating_sub(1);
+            let excess_width = character.width.saturating_sub(terminal_character.width);
             for _ in 0..excess_width {
-                self.columns.insert(absolute_x_index, terminal_character);
+                self.columns
+                    .insert(absolute_x_index, EMPTY_TERMINAL_CHARACTER);
             }
         }
         self.width = None;
@@ -2374,17 +2464,6 @@ impl Row {
         replace_with.append(&mut self.columns);
         self.width = None;
         self.columns = replace_with;
-    }
-    pub fn replace_beginning_with(&mut self, mut line_part: VecDeque<TerminalCharacter>) {
-        // this assumes line_part has no wide characters
-        if line_part.len() > self.columns.len() {
-            self.columns.clear();
-        } else {
-            drop(self.columns.drain(0..line_part.len()));
-        }
-        line_part.append(&mut self.columns);
-        self.width = None;
-        self.columns = line_part;
     }
     pub fn len(&self) -> usize {
         self.columns.len()

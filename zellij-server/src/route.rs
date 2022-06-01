@@ -146,6 +146,12 @@ fn route_action(
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         }
+        Action::DumpScreen(val) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::DumpScreen(val, client_id))
+                .unwrap();
+        }
         Action::ScrollUp => {
             session
                 .senders
@@ -397,81 +403,125 @@ pub(crate) fn route_thread_main(
     client_id: ClientId,
 ) {
     loop {
-        let (instruction, err_ctx) = receiver.recv();
-        err_ctx.update_thread_ctx();
-        let rlocked_sessions = session_data.read().unwrap();
+        match receiver.recv() {
+            Some((instruction, err_ctx)) => {
+                err_ctx.update_thread_ctx();
+                let rlocked_sessions = session_data.read().unwrap();
 
-        match instruction {
-            ClientToServerMsg::Action(action, maybe_client_id) => {
-                let client_id = maybe_client_id.unwrap_or(client_id);
-                if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                    if let Action::SwitchToMode(input_mode) = action {
-                        os_input
-                            .send_to_client(client_id, ServerToClientMsg::SwitchToMode(input_mode));
+                match instruction {
+                    ClientToServerMsg::Action(action, maybe_client_id) => {
+                        let client_id = maybe_client_id.unwrap_or(client_id);
+                        if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+                            if let Action::SwitchToMode(input_mode) = action {
+                                os_input.send_to_client(
+                                    client_id,
+                                    ServerToClientMsg::SwitchToMode(input_mode),
+                                );
+                            }
+                            if route_action(
+                                action,
+                                rlocked_sessions,
+                                &*os_input,
+                                &to_server,
+                                client_id,
+                            ) {
+                                break;
+                            }
+                        }
                     }
-                    if route_action(action, rlocked_sessions, &*os_input, &to_server, client_id) {
+                    ClientToServerMsg::TerminalResize(new_size) => {
+                        session_state
+                            .write()
+                            .unwrap()
+                            .set_client_size(client_id, new_size);
+                        let min_size = session_state
+                            .read()
+                            .unwrap()
+                            .min_client_terminal_size()
+                            .unwrap();
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                            .unwrap();
+                    }
+                    ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalPixelDimensions(
+                                pixel_dimensions,
+                            ))
+                            .unwrap();
+                    }
+                    ClientToServerMsg::BackgroundColor(background_color_instruction) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
+                                background_color_instruction,
+                            ))
+                            .unwrap();
+                    }
+                    ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
+                        rlocked_sessions
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalForegroundColor(
+                                foreground_color_instruction,
+                            ))
+                            .unwrap();
+                    }
+                    ClientToServerMsg::NewClient(
+                        client_attributes,
+                        cli_args,
+                        opts,
+                        layout,
+                        plugin_config,
+                    ) => {
+                        let new_client_instruction = ServerInstruction::NewClient(
+                            client_attributes,
+                            cli_args,
+                            opts,
+                            layout,
+                            client_id,
+                            plugin_config,
+                        );
+                        to_server.send(new_client_instruction).unwrap();
+                    }
+                    ClientToServerMsg::AttachClient(client_attributes, opts) => {
+                        let attach_client_instruction =
+                            ServerInstruction::AttachClient(client_attributes, opts, client_id);
+                        to_server.send(attach_client_instruction).unwrap();
+                    }
+                    ClientToServerMsg::ClientExited => {
+                        // we don't unwrap this because we don't really care if there's an error here (eg.
+                        // if the main server thread exited before this router thread did)
+                        let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                         break;
                     }
-                }
-            }
-            ClientToServerMsg::TerminalResize(new_size) => {
-                session_state
-                    .write()
-                    .unwrap()
-                    .set_client_size(client_id, new_size);
-                let min_size = session_state
-                    .read()
-                    .unwrap()
-                    .min_client_terminal_size()
-                    .unwrap();
-                rlocked_sessions
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                    .unwrap();
-            }
-            ClientToServerMsg::NewClient(
-                client_attributes,
-                cli_args,
-                opts,
-                layout,
-                plugin_config,
-            ) => {
-                let new_client_instruction = ServerInstruction::NewClient(
-                    client_attributes,
-                    cli_args,
-                    opts,
-                    layout,
-                    client_id,
-                    plugin_config,
-                );
-                to_server.send(new_client_instruction).unwrap();
-            }
-            ClientToServerMsg::AttachClient(client_attributes, opts) => {
-                let attach_client_instruction =
-                    ServerInstruction::AttachClient(client_attributes, opts, client_id);
-                to_server.send(attach_client_instruction).unwrap();
-            }
-            ClientToServerMsg::ClientExited => {
-                // we don't unwrap this because we don't really care if there's an error here (eg.
-                // if the main server thread exited before this router thread did)
-                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
-                break;
-            }
-            ClientToServerMsg::KillSession => {
-                to_server.send(ServerInstruction::KillSession).unwrap();
-            }
-            ClientToServerMsg::ConnStatus => {
-                let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
-                break;
-            }
+                    ClientToServerMsg::KillSession => {
+                        to_server.send(ServerInstruction::KillSession).unwrap();
+                    }
+                    ClientToServerMsg::ConnStatus => {
+                        let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                        break;
+                    }
             ClientToServerMsg::DetachSession(client_id) => {
                 let _ = to_server.send(ServerInstruction::DetachSession(client_id));
                 break;
             }
             ClientToServerMsg::ListClients => {
                 let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
+            }
+                }
+            }
+            None => {
+                log::error!("Received empty message from client");
             }
         }
     }

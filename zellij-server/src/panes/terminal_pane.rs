@@ -16,11 +16,12 @@ use std::time::{self, Instant};
 use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
+    pane_size::SizeInPixels,
     pane_size::{Dimension, PaneGeom},
     position::Position,
     shared::make_terminal_title,
     vte,
-    zellij_tile::data::{InputMode, PaletteColor},
+    zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
@@ -385,6 +386,9 @@ impl Pane for TerminalPane {
         self.geom.y -= count;
         self.reflow_lines();
     }
+    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+        return self.grid.dump_screen();
+    }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);
@@ -487,13 +491,16 @@ impl TerminalPane {
         pane_index: usize,
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
-            style.colors,
+            terminal_emulator_colors,
             link_handler,
+            character_cell_size,
         );
         TerminalPane {
             frame: HashMap::new(),

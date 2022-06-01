@@ -42,9 +42,13 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
             Event::TabUpdate(tabs) => {
-                // tabs are indexed starting from 1 so we need to add 1
-                self.active_tab_idx = tabs.iter().position(|t| t.active).unwrap() + 1;
-                self.tabs = tabs;
+                if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
+                    // tabs are indexed starting from 1 so we need to add 1
+                    self.active_tab_idx = active_tab_index + 1;
+                    self.tabs = tabs;
+                } else {
+                    eprintln!("Could not find active tab.");
+                }
             }
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
@@ -59,7 +63,9 @@ impl ZellijPlugin for State {
                 }
                 _ => {}
             },
-            _ => unimplemented!(), // FIXME: This should be unreachable, but this could be cleaner
+            _ => {
+                eprintln!("Got unrecognized event: {:?}", event);
+            }
         }
     }
 
@@ -113,7 +119,11 @@ impl ZellijPlugin for State {
             }
             len_cnt += bar_part.len;
         }
-        match self.mode_info.style.colors.gray {
+        let background = match self.mode_info.style.colors.theme_hue {
+            ThemeHue::Dark => self.mode_info.style.colors.black,
+            ThemeHue::Light => self.mode_info.style.colors.white,
+        };
+        match background {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
             }

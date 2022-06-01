@@ -1,4 +1,5 @@
 use super::Tab;
+use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -10,9 +11,8 @@ use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_tile::prelude::Style;
 use zellij_utils::input::layout::LayoutTemplate;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::ipc::IpcReceiverWithContext;
-use zellij_utils::pane_size::Size;
+use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -81,6 +81,10 @@ impl ServerOsApi for FakeInputOutput {
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
         unimplemented!()
     }
+
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
+        unimplemented!()
+    }
 }
 
 fn create_new_tab(size: Size) -> Tab {
@@ -96,15 +100,17 @@ fn create_new_tab(size: Size) -> Tab {
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
+    let character_cell_info = Rc::new(RefCell::new(None));
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let copy_command = None;
-    let copy_clipboard = Clipboard::default();
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
+        character_cell_info,
         os_api,
         senders,
         max_panes,
@@ -114,8 +120,55 @@ fn create_new_tab(size: Size) -> Tab {
         connected_clients,
         session_is_mirrored,
         client_id,
-        copy_command,
-        copy_clipboard,
+        copy_options,
+        terminal_emulator_colors,
+    );
+    tab.apply_layout(
+        LayoutTemplate::default().try_into().unwrap(),
+        vec![1],
+        index,
+        client_id,
+    );
+    tab
+}
+
+fn create_new_tab_with_cell_size(
+    size: Size,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+) -> Tab {
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput {});
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = ModeInfo::default();
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_size,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
+        client_id,
+        copy_options,
+        terminal_emulator_colors,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -13896,4 +13949,29 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
         36,
         "Pane 3 col count"
     );
+}
+
+#[test]
+pub fn custom_cursor_height_width_ratio() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let character_cell_size = Rc::new(RefCell::new(None));
+    let tab = create_new_tab_with_cell_size(size, character_cell_size.clone());
+    let initial_cursor_height_width_ratio = tab.tiled_panes.cursor_height_width_ratio();
+    *character_cell_size.borrow_mut() = Some(SizeInPixels {
+        height: 10,
+        width: 4,
+    });
+    let cursor_height_width_ratio_after_update = tab.tiled_panes.cursor_height_width_ratio();
+    assert_eq!(
+        initial_cursor_height_width_ratio, None,
+        "initially no ratio "
+    );
+    assert_eq!(
+        cursor_height_width_ratio_after_update,
+        Some(3),
+        "ratio updated successfully"
+    ); // 10 / 4 == 2.5, rounded: 3
 }

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
 use zellij_utils::vte;
+use zellij_utils::zellij_tile::data::Palette;
 use zellij_utils::zellij_tile::prelude::Style;
 
 use ssh2::Session;
@@ -126,7 +127,7 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel
         .write_all(
             format!(
-                "{} --layout-path {} --session {} --data-dir {}\n",
+                "{} --layout {} --session {} --data-dir {}\n",
                 ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
@@ -161,6 +162,8 @@ fn read_from_channel(
                     0,
                     String::new(),
                     Rc::new(RefCell::new(LinkHandler::new())),
+                    Rc::new(RefCell::new(None)),
+                    Rc::new(RefCell::new(Palette::default())),
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

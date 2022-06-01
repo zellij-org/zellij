@@ -4,8 +4,10 @@ mod command_is_executing;
 pub mod fake_client;
 mod input_handler;
 mod sessions;
+mod stdin_ansi_parser;
 mod stdin_handler;
 
+use log::error;
 use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
@@ -113,6 +115,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
+    PossiblePixelRatioChange,
 }
 
 pub fn start_client(
@@ -127,7 +130,7 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
 
     let _ = os_input
         .get_stdout_writer()
@@ -204,8 +207,10 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            os_input.unset_raw_mode(0);
-            handle_panic(info, &send_client_instructions);
+            error!("Panic occured in client:\n{:?}", info);
+            if let Ok(()) = os_input.unset_raw_mode(0) {
+                handle_panic(info, &send_client_instructions);
+            }
         })
     });
 
@@ -242,6 +247,7 @@ pub fn start_client(
     let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
+            let send_input_instructions = send_input_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 os_input.handle_signals(
@@ -251,6 +257,8 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
+                            let _ = send_input_instructions
+                                .send(InputInstruction::PossiblePixelRatioChange);
                         }
                     }),
                     Box::new({
@@ -273,21 +281,30 @@ pub fn start_client(
             let os_input = os_input.clone();
             let mut should_break = false;
             move || loop {
-                let (instruction, err_ctx) = os_input.recv_from_server();
-                err_ctx.update_thread_ctx();
-                if let ServerToClientMsg::Exit(_) = instruction {
-                    should_break = true;
-                }
-                send_client_instructions.send(instruction.into()).unwrap();
-                if should_break {
-                    break;
+                match os_input.recv_from_server() {
+                    Some((instruction, err_ctx)) => {
+                        err_ctx.update_thread_ctx();
+                        if let ServerToClientMsg::Exit(_) = instruction {
+                            should_break = true;
+                        }
+                        send_client_instructions.send(instruction.into()).unwrap();
+                        if should_break {
+                            break;
+                        }
+                    }
+                    None => {
+                        send_client_instructions
+                            .send(ClientInstruction::UnblockInputThread)
+                            .unwrap();
+                        log::error!("Received empty message from server");
+                    }
                 }
             }
         })
         .unwrap();
 
     let handle_error = |backtrace: String| {
-        os_input.unset_raw_mode(0);
+        os_input.unset_raw_mode(0).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse();
@@ -358,7 +375,7 @@ pub fn start_client(
 
     os_input.disable_mouse();
     info!("{}", exit_msg);
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
     stdout.flush().unwrap();

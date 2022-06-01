@@ -32,11 +32,8 @@ fn into_raw_mode(pid: RawFd) {
     };
 }
 
-fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) {
-    match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios) {
-        Ok(_) => {}
-        Err(e) => panic!("error {:?}", e),
-    };
+fn unset_raw_mode(pid: RawFd, orig_termios: termios::Termios) -> Result<(), nix::Error> {
+    termios::tcsetattr(pid, termios::SetArg::TCSANOW, &orig_termios)
 }
 
 pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
@@ -81,7 +78,7 @@ pub trait ClientOsApi: Send + Sync {
     fn set_raw_mode(&mut self, fd: RawFd);
     /// Set the terminal associated to file descriptor `fd` to
     /// [cooked mode](https://en.wikipedia.org/wiki/Terminal_mode).
-    fn unset_raw_mode(&self, fd: RawFd);
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error>;
     /// Returns the writer that allows writing to standard output.
     fn get_stdout_writer(&self) -> Box<dyn io::Write>;
     fn get_stdin_reader(&self) -> Box<dyn io::Read>;
@@ -93,7 +90,7 @@ pub trait ClientOsApi: Send + Sync {
     fn send_to_server(&self, msg: ClientToServerMsg);
     /// Receives a message on client-side IPC channel
     // This should be called from the client-side router thread only.
-    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext);
+    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)>;
     fn handle_signals(&self, sigwinch_cb: Box<dyn Fn()>, quit_cb: Box<dyn Fn()>);
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
@@ -111,9 +108,9 @@ impl ClientOsApi for ClientOsInputOutput {
     fn set_raw_mode(&mut self, fd: RawFd) {
         into_raw_mode(fd);
     }
-    fn unset_raw_mode(&self, fd: RawFd) {
+    fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
         let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(fd, orig_termios.clone());
+        unset_raw_mode(fd, orig_termios.clone())
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
@@ -144,7 +141,7 @@ impl ClientOsApi for ClientOsInputOutput {
             .unwrap()
             .send(msg);
     }
-    fn recv_from_server(&self) -> (ServerToClientMsg, ErrorContext) {
+    fn recv_from_server(&self) -> Option<(ServerToClientMsg, ErrorContext)> {
         self.receive_instructions_from_server
             .lock()
             .unwrap()

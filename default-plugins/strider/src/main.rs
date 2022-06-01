@@ -27,7 +27,7 @@ impl ZellijPlugin for State {
                 }
                 Key::Down | Key::Char('j') => {
                     let next = self.selected().saturating_add(1);
-                    *self.selected_mut() = min(self.files.len() - 1, next);
+                    *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
                 }
                 Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
                     self.traverse_dir_or_open_file();

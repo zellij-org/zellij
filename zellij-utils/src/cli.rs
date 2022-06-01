@@ -26,13 +26,9 @@ pub struct CliArgs {
     #[clap(long, short, overrides_with = "session")]
     pub session: Option<String>,
 
-    /// Name of a layout file in the layout directory
+    /// Name of a predefined layout inside the layout directory or the path to a layout file
     #[clap(short, long, parse(from_os_str), overrides_with = "layout")]
     pub layout: Option<PathBuf>,
-
-    /// Path to a layout yaml file
-    #[clap(long, parse(from_os_str), overrides_with = "layout_path")]
-    pub layout_path: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration file
     #[clap(short, long, overrides_with = "config", env = ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
@@ -74,11 +70,11 @@ pub enum SessionCommand {
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum Sessions {
     /// List active sessions
-    #[clap(alias = "ls")]
+    #[clap(visible_alias = "ls")]
     ListSessions,
 
-    /// Attach to session
-    #[clap(alias = "a")]
+    /// Attach to a session
+    #[clap(visible_alias = "a")]
     Attach {
         /// Name of the session to attach to.
         session_name: Option<String>,
@@ -97,14 +93,14 @@ pub enum Sessions {
     },
 
     /// Kill the specific session
-    #[clap(alias = "k")]
+    #[clap(visible_alias = "k")]
     KillSession {
         /// Name of target session
         target_session: Option<String>,
     },
 
     /// Kill all sessions
-    #[clap(alias = "ka")]
+    #[clap(visible_alias = "ka")]
     KillAllSessions {
         /// Automatic yes to prompts
         #[clap(short, long)]

@@ -6,10 +6,11 @@ mod copy_command;
 
 use copy_command::CopyCommand;
 use zellij_tile::prelude::Style;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
+use crate::pty_writer::PtyWriteInstruction;
+use crate::screen::CopyOptions;
 use crate::ui::pane_boundaries_frame::FrameParams;
 
 use self::clipboard::ClipboardProvider;
@@ -40,7 +41,7 @@ use zellij_utils::{
         layout::{Layout, Run},
         parse_keys,
     },
-    pane_size::{Offset, PaneGeom, Size, Viewport},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -72,6 +73,7 @@ pub(crate) struct Tab {
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -88,6 +90,9 @@ pub(crate) struct Tab {
     // TODO: used only to focus the pane when the layout is loaded
     // it seems that optimization is possible using `active_panes`
     focus_pane_id: Option<PaneId>,
+    copy_on_select: bool,
+    last_mouse_hold_position: Option<Position>,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -150,6 +155,9 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
+    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+        return "".to_owned();
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
@@ -270,6 +278,7 @@ impl Tab {
         position: usize,
         name: String,
         display_area: Size,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -279,8 +288,8 @@ impl Tab {
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
-        copy_command: Option<String>,
-        copy_clipboard: Clipboard,
+        copy_options: CopyOptions,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -302,6 +311,7 @@ impl Tab {
             connected_clients.clone(),
             connected_clients_in_app.clone(),
             mode_info.clone(),
+            character_cell_size.clone(),
             session_is_mirrored,
             draw_pane_frames,
             default_mode_info.clone(),
@@ -319,9 +329,9 @@ impl Tab {
             style,
         );
 
-        let clipboard_provider = match copy_command {
+        let clipboard_provider = match copy_options.command {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
-            None => ClipboardProvider::Osc52(copy_clipboard),
+            None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
 
         Tab {
@@ -333,6 +343,7 @@ impl Tab {
             max_panes,
             viewport,
             display_area,
+            character_cell_size,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -347,6 +358,9 @@ impl Tab {
             link_handler: Rc::new(RefCell::new(LinkHandler::new())),
             clipboard_provider,
             focus_pane_id: None,
+            copy_on_select: copy_options.copy_on_select,
+            last_mouse_hold_position: None,
+            terminal_emulator_colors,
         }
     }
 
@@ -413,6 +427,8 @@ impl Tab {
                     next_terminal_position,
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -554,6 +570,9 @@ impl Tab {
         self.connected_clients.borrow().is_empty()
     }
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) {
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
         if self.floating_panes.panes_are_visible() {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
@@ -637,6 +656,8 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -658,6 +679,8 @@ impl Tab {
                         next_terminal_position,
                         String::new(),
                         self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.terminal_emulator_colors.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -686,6 +709,8 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -712,6 +737,8 @@ impl Tab {
                     next_terminal_position,
                     String::new(),
                     self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -846,12 +873,13 @@ impl Tab {
                     .get(&pane_id)
                     .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-                self.os_api
-                    .write_to_tty_stdin(active_terminal_id, &adjusted_input)
-                    .expect("failed to write to terminal");
-                self.os_api
-                    .tcdrain(active_terminal_id)
-                    .expect("failed to drain terminal");
+
+                self.senders
+                    .send_to_pty_writer(PtyWriteInstruction::Write(
+                        adjusted_input,
+                        active_terminal_id,
+                    ))
+                    .unwrap();
             }
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
@@ -943,7 +971,8 @@ impl Tab {
         );
 
         self.hide_cursor_and_clear_display_as_needed(output);
-        self.tiled_panes.render(output);
+        self.tiled_panes
+            .render(output, self.floating_panes.panes_are_visible());
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.render(output);
         }
@@ -1034,6 +1063,10 @@ impl Tab {
             .get_panes()
             .filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0 || selectable_floating_panes.count() > 0
+    }
+    pub fn has_selectable_tiled_panes(&self) -> bool {
+        let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
+        selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);
@@ -1349,6 +1382,12 @@ impl Tab {
                 .unwrap();
         }
     }
+    pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let dump = active_pane.dump_screen(client_id);
+            self.os_api.write_to_file(dump, file);
+        }
+    }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_up(1, client_id);
@@ -1519,8 +1558,11 @@ impl Tab {
                 );
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else {
+                // TODO: rename this method, it is used to forward click events to plugin panes
                 pane.start_selection(&relative_position, client_id);
-                self.selecting_with_mouse = true;
+                if let PaneId::Terminal(_) = pane.pid() {
+                    self.selecting_with_mouse = true;
+                }
             }
         };
     }
@@ -1559,6 +1601,8 @@ impl Tab {
         }
     }
     pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
+
         if self.floating_panes.panes_are_visible()
             && self.floating_panes.pane_is_being_moved_with_mouse()
         {
@@ -1566,7 +1610,9 @@ impl Tab {
             return;
         }
 
+        // read these here to avoid use of borrowed `*self`, since we are holding active_pane
         let selecting = self.selecting_with_mouse;
+        let copy_on_release = self.copy_on_select;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
@@ -1582,18 +1628,35 @@ impl Tab {
                     .min(active_pane.get_content_rows() as isize);
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-            } else if selecting {
-                active_pane.end_selection(&relative_position, client_id);
-                let selected_text = active_pane.get_selected_text();
-                active_pane.reset_selection();
-                if let Some(selected_text) = selected_text {
-                    self.write_selection_to_clipboard(&selected_text);
+            } else {
+                // TODO: rename this method, it is used to forward release events to plugin panes
+                if let PaneId::Terminal(_) = active_pane.pid() {
+                    if selecting && copy_on_release {
+                        active_pane.end_selection(&relative_position, client_id);
+                        let selected_text = active_pane.get_selected_text();
+                        active_pane.reset_selection();
+
+                        if let Some(selected_text) = selected_text {
+                            self.write_selection_to_clipboard(&selected_text);
+                        }
+                    }
+                } else {
+                    active_pane.end_selection(&relative_position, client_id);
                 }
+
                 self.selecting_with_mouse = false;
             }
         }
     }
     pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
         let search_selectable = true;
 
         if self.floating_panes.panes_are_visible()
@@ -1611,7 +1674,7 @@ impl Tab {
 
         if let Some(active_pane) = active_pane {
             let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() {
+            if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
                 let col = (relative_position.column.0 + 1)
                     .max(1)
@@ -1714,10 +1777,14 @@ impl Tab {
 
     pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
+            let active_terminal = if self.are_floating_panes_visible() {
+                self.floating_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            } else {
+                self.tiled_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            }
+            .unwrap();
 
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
