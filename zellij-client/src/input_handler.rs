@@ -235,7 +235,9 @@ impl InputHandler {
                 // Actions, that are indepenedent from the specific client
                 // should be specified here.
                 Action::NewTab(_) | Action::Run(_) | Action::NewPane(_) => {
-                    self.dispatch_action(action, None);
+                    let client_id = clients.first().unwrap();
+                    log::error!("Sending action to client: {}", client_id);
+                    self.dispatch_action(action, Some(*client_id));
                 }
                 _ => {
                     // TODO only dispatch for each client, for actions that need it
@@ -296,10 +298,12 @@ impl InputHandler {
             | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
+                log::error!("Blocking input thread.");
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
+                log::error!("Input thread is not blocked anymore.");
             }
             _ => self
                 .os_input

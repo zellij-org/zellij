@@ -35,10 +35,21 @@ pub fn start_fake_client(
 
     let session_name = info.get_session_name();
 
+    let palette = config.themes.clone().map_or_else(
+        || os_input.load_palette(),
+        |t| {
+            t.theme_config(&config_options)
+                .unwrap_or_else(|| os_input.load_palette())
+        },
+    );
+
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
-        style: Style::default(),
+        style: Style {
+            colors: palette,
+            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+        },
     };
 
     let first_msg = ClientToServerMsg::AttachClient(client_attributes, config_options.clone());

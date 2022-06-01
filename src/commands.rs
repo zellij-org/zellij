@@ -120,7 +120,10 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
             eprintln!("There is no active session!");
             std::process::exit(1);
         }
-        ActiveSession::One(_) | ActiveSession::Many => {
+        ActiveSession::One(session_name) => {
+            attach_with_fake_client(opts, &session_name);
+        }
+        ActiveSession::Many => {
             if let Some(session_name) = opts.session.clone() {
                 attach_with_fake_client(opts, &session_name);
             } else if let Ok(session_name) = envs::get_session_name() {
