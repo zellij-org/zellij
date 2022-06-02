@@ -147,7 +147,12 @@ fn right_more_message(
     }
 }
 
-fn tab_line_prefix(session_name: Option<&str>, mode: InputMode, palette: Palette, cols: usize) -> Vec<LinePart> {
+fn tab_line_prefix(
+    session_name: Option<&str>,
+    mode: InputMode,
+    palette: Palette,
+    cols: usize,
+) -> Vec<LinePart> {
     let prefix_text = " Zellij ".to_string();
 
     let prefix_text_len = prefix_text.chars().count();
@@ -179,14 +184,14 @@ fn tab_line_prefix(session_name: Option<&str>, mode: InputMode, palette: Palette
             })
         }
     }
-        let mode_part = format!("({:<6?}) ", mode);
-        let mode_part_len = mode_part.width();
-        let mode_part_styled_text = style!(palette.white, palette.cyan).bold().paint(mode_part);
-        if cols.saturating_sub(prefix_text_len) >= mode_part_len {
-            parts.push(LinePart {
-                part: format!("{}", mode_part_styled_text),
-                len: mode_part_len,
-            })
+    let mode_part = format!("({:<6?}) ", mode);
+    let mode_part_len = mode_part.width();
+    let mode_part_styled_text = style!(palette.white, palette.cyan).bold().paint(mode_part);
+    if cols.saturating_sub(prefix_text_len) >= mode_part_len {
+        parts.push(LinePart {
+            part: format!("{}", mode_part_styled_text),
+            len: mode_part_len,
+        })
     }
     parts
 }
