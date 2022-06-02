@@ -124,7 +124,7 @@ flake-utils.lib.eachSystem [
     cp ${plugins.tab-bar}/bin/tab-bar.wasm assets/plugins/tab-bar.wasm
     cp ${plugins.status-bar}/bin/status-bar.wasm assets/plugins/status-bar.wasm
     cp ${plugins.strider}/bin/strider.wasm assets/plugins/strider.wasm
-    cp ${plugins.compact-bar}/bin/strider.wasm assets/plugins/strider.wasm
+    cp ${plugins.compact-bar}/bin/compact-bar.wasm assets/plugins/compact-bar.wasm
   '';
 
   desktopItems = [
