@@ -2050,6 +2050,24 @@ impl Perform for Grid {
                         self.handle_sixel_event(event);
                     }
                 }
+
+                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
+                for (i, param) in params.iter().enumerate() {
+                    if i != 0 {
+                        self.sixel_parser.as_mut().unwrap().advance(&b';', |sixel_event| pending_sixel_events.push(sixel_event));
+                    }
+                    // TODO: better
+                    for subparam in param.iter() {
+                        let mut b = [0; 4];
+                        for digit in subparam.to_string().chars() {
+                            let len = digit.encode_utf8(&mut b).len();
+                            for byte in b.iter().take(len) {
+                                self.sixel_parser.as_mut().unwrap().advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
+                            }
+                        }
+                    }
+                }
+
                 let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
                 self.sixel_parser.as_mut().unwrap().advance(&(c as u8), |sixel_event| pending_sixel_events.push(sixel_event));
                 for event in pending_sixel_events.drain(..) {
