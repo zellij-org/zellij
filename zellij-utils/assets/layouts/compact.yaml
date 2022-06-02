@@ -10,4 +10,4 @@ template:
         Fixed: 1
       run:
         plugin:
-          location: "zellij:compact-bar"
+          location: "zellij:tab-bar"
