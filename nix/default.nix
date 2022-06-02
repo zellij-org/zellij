@@ -69,6 +69,7 @@ flake-utils.lib.eachSystem [
   ];
 
   defaultPlugins = [
+    plugins.compact-bar
     plugins.status-bar
     plugins.tab-bar
     plugins.strider
