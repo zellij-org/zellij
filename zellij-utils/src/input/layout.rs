@@ -288,7 +288,7 @@ impl LayoutFromYamlIntermediate {
             Some("default") => Self::default_from_assets(),
             Some("strider") => Self::strider_from_assets(),
             Some("disable-status-bar") => Self::disable_status_from_assets(),
-            Some("compact") => Self::disable_status_from_assets(),
+            Some("compact") => Self::compact_from_assets(),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),

@@ -147,6 +147,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
