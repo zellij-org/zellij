@@ -109,6 +109,12 @@ pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/disable-status-bar.yaml"
 ));
 
+pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.yaml"
+));
+
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
