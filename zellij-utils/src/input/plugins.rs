@@ -271,7 +271,7 @@ mod tests {
         )?;
         let plugins = PluginsConfig::get_plugins_with_default(plugins.try_into()?);
 
-        assert_eq!(plugins.iter().count(), 4);
+        assert_eq!(plugins.iter().count(), 5);
         Ok(())
     }
 
