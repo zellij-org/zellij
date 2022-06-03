@@ -41,6 +41,7 @@ pub enum ClientOrTabIndex {
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
     SpawnTerminal(Option<TerminalAction>, ClientOrTabIndex),
+    OpenInPlaceEditor(PathBuf, ClientId),
     SpawnTerminalVertically(Option<TerminalAction>, ClientId),
     SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
     UpdateActivePane(Option<PaneId>, ClientId),
@@ -55,6 +56,7 @@ impl From<&PtyInstruction> for PtyContext {
     fn from(pty_instruction: &PtyInstruction) -> Self {
         match *pty_instruction {
             PtyInstruction::SpawnTerminal(..) => PtyContext::SpawnTerminal,
+            PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
             PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
             PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
@@ -89,6 +91,18 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                     .send_to_screen(ScreenInstruction::NewPane(
                         PaneId::Terminal(pid),
                         client_or_tab_index,
+                    ))
+                    .unwrap();
+            }
+            PtyInstruction::OpenInPlaceEditor(temp_file, client_id) => {
+                let name = String::from(temp_file.to_string_lossy());
+                let pid = pty.spawn_terminal(Some(TerminalAction::OpenFile(temp_file)), ClientOrTabIndex::ClientId(client_id));
+                pty.bus
+                    .senders
+                    .send_to_screen(ScreenInstruction::OpenInPlaceEditor(
+                        PaneId::Terminal(pid),
+                        name,
+                        client_id,
                     ))
                     .unwrap();
             }

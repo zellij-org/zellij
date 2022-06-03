@@ -4,6 +4,8 @@
 mod clipboard;
 mod copy_command;
 
+use uuid::Uuid;
+use std::env::temp_dir;
 use copy_command::CopyCommand;
 use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
@@ -64,12 +66,19 @@ pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 
+struct ReplacedPaneInfo {
+    pub pid: PaneId,
+    pub client_id: ClientId,
+    pub geom: PaneGeom
+}
+
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
     pub name: String,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
+    replaced_panes: HashMap<PaneId, ReplacedPaneInfo>,
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -339,6 +348,7 @@ impl Tab {
             position,
             tiled_panes,
             floating_panes,
+            replaced_panes: HashMap::new(),
             name,
             max_panes,
             viewport,
@@ -687,6 +697,34 @@ impl Tab {
                     if let Some(client_id) = client_id {
                         self.tiled_panes.focus_pane(pid, client_id);
                     }
+                }
+            }
+        }
+    }
+    pub fn create_pane(&mut self, pid: PaneId, client_id: Option<ClientId>, geom: PaneGeom) {
+        if self.floating_panes.panes_are_visible() {
+            self.new_pane(pid, client_id);
+        } else {
+            if self.tiled_panes.fullscreen_is_active() {
+                self.tiled_panes.unset_fullscreen();
+            }
+            if let PaneId::Terminal(term_pid) = pid {
+                let next_terminal_position = self.get_next_terminal_position();
+                let new_terminal = TerminalPane::new(
+                    term_pid,
+                    geom, // the initial size will be set later
+                    self.style,
+                    next_terminal_position,
+                    String::new(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    );
+                self.tiled_panes.add_pane_with_existing_geom(pid, Box::new(new_terminal));
+                // self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
+                // self.should_clear_display_before_rendering = true;
+                if let Some(client_id) = client_id {
+                    self.tiled_panes.focus_pane(pid, client_id);
                 }
             }
         }
@@ -1347,6 +1385,9 @@ impl Tab {
     }
     pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
         if self.floating_panes.panes_contain(&id) {
+            if self.replaced_panes.contains_key(&id) {
+                self.replaced_panes.remove(&id);
+            }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -1360,6 +1401,16 @@ impl Tab {
                 self.tiled_panes.unset_fullscreen();
             }
             let closed_pane = self.tiled_panes.remove_pane(id);
+            if self.replaced_panes.contains_key(&id) {
+                if let Some(info) = self.replaced_panes.get(&id) {
+                    self.tiled_panes.remove_from_hidden_panels((*info).pid);
+                    self.tiled_panes.focus_pane((*info).pid, (*info).client_id);
+                    // if let Some(pane) = self.tiled_panes.get_pane_mut((*info).pid) {
+                    //     resize_pty!(pane, self.os_api);
+                    //     pane.set_geom((*info).geom);
+                    // }
+                }
+            }
             self.set_force_render();
             self.tiled_panes.set_force_render();
             closed_pane
@@ -1387,6 +1438,17 @@ impl Tab {
             let dump = active_pane.dump_screen(client_id);
             self.os_api.write_to_file(dump, file);
         }
+    }
+    pub fn edit_scrollback(&mut self, client_id: ClientId) {
+        let mut file = temp_dir();
+        file.push(format!("{}.dump", Uuid::new_v4()));
+        self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
+        self.senders
+            .send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                    file,
+                    client_id,
+                    ))
+            .unwrap();
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
@@ -1816,6 +1878,12 @@ impl Tab {
     }
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
+    }
+    pub fn save_replaced_pane_id(&mut self, pid: PaneId, client_id: ClientId, geom: PaneGeom) {
+        if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
+            self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id, geom: geom});
+        }
+        self.tiled_panes.add_to_hidden_panels(pid);
     }
 }
 

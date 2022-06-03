@@ -152,6 +152,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id))
                 .unwrap();
         }
+        Action::EditScrollback => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::EditScrollback(client_id))
+                .unwrap();
+        }
         Action::ScrollUp => {
             session
                 .senders
