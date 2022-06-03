@@ -189,7 +189,7 @@ fn tab_line_prefix(
     let mode_part_styled_text = style!(text_color, bg_color).bold().paint(mode_part);
     if cols.saturating_sub(prefix_text_len) >= mode_part_len {
         parts.push(LinePart {
-            part: format!("({:^6})", mode_part_styled_text),
+            part: format!(" {:^6} ", mode_part_styled_text),
             len: mode_part_len,
         })
     }
