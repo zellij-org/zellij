@@ -791,6 +791,13 @@ impl Screen {
         self.update_tabs();
         self.render();
     }
+
+    fn unblock_input(&self) -> () {
+        self.bus
+            .senders
+            .send_to_server(ServerInstruction::UnblockInputThread)
+            .unwrap();
+    }
 }
 
 // The box is here in order to make the
@@ -863,11 +870,7 @@ pub(crate) fn screen_thread_main(
                         }
                     },
                 };
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs();
 
                 screen.render();
@@ -879,71 +882,29 @@ pub(crate) fn screen_thread_main(
                     log::error!("Active tab not found for client id: {:?}", client_id);
                     return;
                 }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs();
 
                 screen.render();
             },
             ScreenInstruction::TogglePaneEmbedOrFloating(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.toggle_pane_embed_or_floating(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
                 screen.render();
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.toggle_floating_panes(client_id, default_shell);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
                 screen.render();
             },
             ScreenInstruction::HorizontalSplit(pid, client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.horizontal_split(pid, client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs();
-
                 screen.render();
             },
             ScreenInstruction::VerticalSplit(pid, client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.vertical_split(pid, client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
                 screen.update_tabs();
-
                 screen.render();
             },
             ScreenInstruction::WriteCharacter(bytes, client_id) => {
@@ -1046,12 +1007,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id) => {
                 screen.move_focus_left_or_previous_tab(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::MoveFocusDown(client_id) => {
@@ -1074,12 +1030,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MoveFocusRightOrNextTab(client_id) => {
                 screen.move_focus_right_or_next_tab(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::MoveFocusUp(client_id) => {
@@ -1316,42 +1267,22 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
                 screen.switch_tab_next(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::SwitchTabPrev(client_id) => {
                 screen.switch_tab_prev(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::CloseTab(client_id) => {
                 screen.close_tab(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::NewTab(layout, new_pane_pids, client_id) => {
                 screen.new_tab(layout, new_pane_pids, client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
@@ -1359,23 +1290,16 @@ pub(crate) fn screen_thread_main(
                     client_id.or_else(|| screen.active_tab_indices.keys().next().copied())
                 {
                     screen.go_to_tab(tab_index as usize, client_id);
-                    screen
-                        .bus
-                        .senders
-                        .send_to_server(ServerInstruction::UnblockInputThread)
-                        .unwrap();
-
+                    screen.unblock_input();
                     screen.render();
                 }
             },
             ScreenInstruction::UpdateTabName(c, client_id) => {
                 screen.update_active_tab_name(c, client_id);
-
                 screen.render();
             },
             ScreenInstruction::TerminalResize(new_size) => {
                 screen.resize_to_screen(new_size);
-
                 screen.render();
             },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
@@ -1389,7 +1313,6 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);
-
                 screen.render();
             },
             ScreenInstruction::ToggleActiveSyncTab(client_id) => {
@@ -1399,7 +1322,6 @@ pub(crate) fn screen_thread_main(
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }
                 screen.update_tabs();
-
                 screen.render();
             },
             ScreenInstruction::LeftClick(point, client_id) => {
@@ -1454,42 +1376,27 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ToggleTab(client_id) => {
                 screen.toggle_tab(client_id);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
-
+                screen.unblock_input();
                 screen.render();
             },
             ScreenInstruction::AddClient(client_id) => {
                 screen.add_client(client_id);
                 screen.update_tabs();
-
                 screen.render();
             },
             ScreenInstruction::RemoveClient(client_id) => {
                 screen.remove_client(client_id);
-
                 screen.render();
             },
             ScreenInstruction::AddOverlay(overlay, _client_id) => {
                 screen.get_active_overlays_mut().pop();
                 screen.get_active_overlays_mut().push(overlay);
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
             },
             ScreenInstruction::RemoveOverlay(_client_id) => {
                 screen.get_active_overlays_mut().pop();
                 screen.render();
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
             },
             ScreenInstruction::ConfirmPrompt(_client_id) => {
                 let overlay = screen.get_active_overlays_mut().pop();
@@ -1497,20 +1404,12 @@ pub(crate) fn screen_thread_main(
                 if let Some(instruction) = instruction {
                     screen.bus.senders.send_to_server(*instruction).unwrap();
                 }
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
             },
             ScreenInstruction::DenyPrompt(_client_id) => {
                 screen.get_active_overlays_mut().pop();
                 screen.render();
-                screen
-                    .bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                screen.unblock_input();
             },
         }
     }
