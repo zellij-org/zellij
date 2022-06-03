@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::panes::selection::Selection;
 use crate::panes::Row;
 
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::SizeInPixels;
 use crate::{
     panes::grid::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
@@ -72,9 +72,9 @@ fn serialize_chunks(
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_image_store: &mut SixelImageStore,
 ) -> String {
-    let mut vte_output = String::new(); // TODO: preallocate character_chunks.len()?
-    let link_handler = link_handler.map(|l_h| l_h.borrow());
+    let mut vte_output = String::new();
     let mut sixel_vte: Option<String> = None;
+    let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_selection_and_background_color = character_chunk.selection_and_background_color();
         let chunk_changed_colors = character_chunk.changed_colors();
@@ -109,15 +109,15 @@ fn serialize_chunks(
             sixel_chunk.sixel_image_pixel_height
         );
         if let Some(serialized_sixel_image) = serialized_sixel_image {
-            let sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
-            let goto_image_beginning_cursor_position = format!("\u{1b}[{};{}H", sixel_chunk.cell_y + 1, sixel_chunk.cell_x + 1);
-            sixel_vte.push_str(&goto_image_beginning_cursor_position);
+            let mut sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
+            vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, &mut sixel_vte);
             sixel_vte.push_str(&serialized_sixel_image);
         }
     }
     if let Some(ref sixel_vte) = sixel_vte {
         // we do this at the end because of the implied z-index,
-        // images should be above text unless the text was explicitly inserted after them
+        // images should be above text unless the text was explicitly inserted after them (the
+        // latter being a case we handle in our own internal state and not in the output)
         let save_cursor_position = "\u{1b}[s";
         let restore_cursor_position = "\u{1b}[u";
         vte_output.push_str(save_cursor_position);
@@ -376,19 +376,12 @@ impl FloatingPanesStack {
         z_index: Option<usize>,
         character_cell_size: &SizeInPixels,
     ) -> Vec<SixelImageChunk> {
-
-        let should_log = !sixel_image_chunks.is_empty();
-
         let z_index = z_index.unwrap_or(0);
         let mut chunks_to_check: Vec<SixelImageChunk> = sixel_image_chunks.drain(..).collect();
-
         let panes_to_check = self.layers.iter().skip(z_index);
         for pane_geom in panes_to_check {
             let chunks_to_check_against_this_pane: Vec<SixelImageChunk> = chunks_to_check.drain(..).collect();
             for s_chunk in chunks_to_check_against_this_pane {
-                // TODO: CONTINUE HERE (12/05) - something (probably) in the below
-                // remove_covered_parts isn't working, test this by moving a floating pane over a
-                // sixel image
                 let mut uncovered_chunks = self.remove_covered_sixel_parts(pane_geom, &s_chunk, character_cell_size);
                 chunks_to_check.append(&mut uncovered_chunks);
             }
@@ -450,24 +443,19 @@ impl FloatingPanesStack {
         s_chunk: &SixelImageChunk,
         character_cell_size: &SizeInPixels,
     ) -> Vec<SixelImageChunk> {
-        // TODO: saturating_sub all the things
-        let offset_from_screen_top_in_pixels = s_chunk.cell_y * character_cell_size.height;
-        let offset_from_screen_left_in_pixels = s_chunk.cell_x * character_cell_size.width;
-
         // round these up to the nearest cell edge
         let rounded_sixel_image_pixel_height = if s_chunk.sixel_image_pixel_height % character_cell_size.height > 0 {
-            let modulus = s_chunk.sixel_image_pixel_height & character_cell_size.height;
+            let modulus = s_chunk.sixel_image_pixel_height % character_cell_size.height;
             s_chunk.sixel_image_pixel_height + (character_cell_size.height - modulus)
         } else {
             s_chunk.sixel_image_pixel_height
         };
         let rounded_sixel_image_pixel_width = if s_chunk.sixel_image_pixel_width % character_cell_size.width > 0 {
-            let modulus = s_chunk.sixel_image_pixel_width & character_cell_size.width;
+            let modulus = s_chunk.sixel_image_pixel_width % character_cell_size.width;
             s_chunk.sixel_image_pixel_width + (character_cell_size.width - modulus)
         } else {
             s_chunk.sixel_image_pixel_width
         };
-
 
         let pane_top_edge = pane_geom.y * character_cell_size.height;
         let pane_left_edge = pane_geom.x * character_cell_size.width;
@@ -539,8 +527,7 @@ impl FloatingPanesStack {
                 cell_y: std::cmp::max(s_chunk.cell_y, pane_top_edge / character_cell_size.height),
                 sixel_image_pixel_x: s_chunk.sixel_image_pixel_x,
                 sixel_image_pixel_y,
-                sixel_image_pixel_width: rounded_sixel_image_pixel_width - (s_chunk_right_edge - pane_left_edge),
-                // sixel_image_pixel_height: pane_bottom_edge - pane_top_edge + character_cell_size.height,
+                sixel_image_pixel_width: rounded_sixel_image_pixel_width.saturating_sub(s_chunk_right_edge.saturating_sub(pane_left_edge)),
                 sixel_image_pixel_height: std::cmp::min(pane_bottom_edge - pane_top_edge + character_cell_size.height, max_image_height),
                 sixel_image_id: s_chunk.sixel_image_id,
             };
@@ -566,8 +553,7 @@ impl FloatingPanesStack {
                 cell_y: std::cmp::max(s_chunk.cell_y, pane_top_edge / character_cell_size.height),
                 sixel_image_pixel_x,
                 sixel_image_pixel_y,
-                sixel_image_pixel_width: (rounded_sixel_image_pixel_width - (pane_right_edge - s_chunk_left_edge)).saturating_sub(character_cell_size.width),
-                // sixel_image_pixel_height: pane_bottom_edge - pane_top_edge + character_cell_size.height,
+                sixel_image_pixel_width: (rounded_sixel_image_pixel_width.saturating_sub(pane_right_edge - s_chunk_left_edge)).saturating_sub(character_cell_size.width),
                 sixel_image_pixel_height: std::cmp::min(pane_bottom_edge - pane_top_edge + character_cell_size.height, max_image_height),
                 sixel_image_id: s_chunk.sixel_image_id,
             };
@@ -702,8 +688,8 @@ impl CharacterChunk {
 
 #[derive(Clone, Debug)]
 pub struct OutputBuffer {
-    pub changed_lines: Vec<usize>, // line index TODO: depubify
-    pub should_update_all_lines: bool, // TODO: depubify
+    pub changed_lines: Vec<usize>, // line index
+    pub should_update_all_lines: bool,
 }
 
 impl Default for OutputBuffer {
@@ -736,21 +722,12 @@ impl OutputBuffer {
         viewport_height: usize,
         x_offset: usize,
         y_offset: usize,
-    ) -> Vec<CharacterChunk> { // Option<Vec<usize>> -> sixel image anchor ids to render
+    ) -> Vec<CharacterChunk> {
         if self.should_update_all_lines {
             let mut changed_chunks = Vec::with_capacity(viewport.len());
-            let mut sixel_image_anchor_ids_to_render: Option<Vec<usize>> = None;
             for line_index in 0..viewport_height {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
-
-                // TODO: performance? can we do this when adding them to the line? does it matter?
-//                 for character in terminal_characters {
-//                     if let Some(sixel_cell) = character.sixel_cell {
-//                         let mut sixel_image_anchor_ids_to_render = sixel_image_anchor_ids_to_render.get_or_insert(vec![]);
-//                         sixel_image_anchor_ids_to_render.push(sixel_cell);
-//                     }
-//                 }
 
                 let x = x_offset; // right now we only buffer full lines as this doesn't seem to have a huge impact on performance, but the infra is here if we want to change this
                 let y = line_index + y_offset;
@@ -762,19 +739,9 @@ impl OutputBuffer {
             line_changes.sort_unstable();
             line_changes.dedup();
             let mut changed_chunks = Vec::with_capacity(line_changes.len());
-            let mut sixel_image_anchor_ids_to_render: Option<Vec<usize>> = None;
             for line_index in line_changes {
                 let terminal_characters =
                     self.extract_line_from_viewport(line_index, viewport, viewport_width);
-
-                // TODO: performance? can we do this when adding them to the line? does it matter?
-  //               for character in terminal_characters {
-  //                   if let Some(sixel_cell) = character.sixel_cell {
-  //                       let mut sixel_image_anchor_ids_to_render = sixel_image_anchor_ids_to_render.get_or_insert(vec![]);
-  //                       sixel_image_anchor_ids_to_render.push(sixel_cell);
-  //                   }
-  //               }
-
                 let x = x_offset;
                 let y = line_index + y_offset;
                 changed_chunks.push(CharacterChunk::new(terminal_characters, x, y));
