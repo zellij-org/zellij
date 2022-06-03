@@ -50,4 +50,5 @@ in {
   status-bar = makeDefaultPlugin "status-bar";
   tab-bar = makeDefaultPlugin "tab-bar";
   strider = makeDefaultPlugin "strider";
+  compact-bar = makeDefaultPlugin "compact-bar";
 }

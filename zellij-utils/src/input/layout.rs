@@ -288,6 +288,7 @@ impl LayoutFromYamlIntermediate {
             Some("default") => Self::default_from_assets(),
             Some("strider") => Self::strider_from_assets(),
             Some("disable-status-bar") => Self::disable_status_from_assets(),
+            Some("compact") => Self::compact_from_assets(),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -312,6 +313,12 @@ impl LayoutFromYamlIntermediate {
     pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
         let layout: LayoutFromYamlIntermediate =
             serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn compact_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 }
