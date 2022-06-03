@@ -5,7 +5,7 @@ use crate::stdin_ansi_parser::StdinAnsiParser;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::Size;
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
 use zellij_utils::zellij_tile::data::Palette;
 
@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
-    ipc::{ClientToServerMsg, PixelDimensions, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
@@ -203,18 +203,6 @@ fn extract_actions_sent_to_server(
     })
 }
 
-fn extract_pixel_events_sent_to_server(
-    events_sent_to_server: Arc<Mutex<Vec<ClientToServerMsg>>>,
-) -> Vec<PixelDimensions> {
-    let events_sent_to_server = events_sent_to_server.lock().unwrap();
-    events_sent_to_server.iter().fold(vec![], |mut acc, event| {
-        if let ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) = event {
-            acc.push(*pixel_dimensions);
-        }
-        acc
-    })
-}
-
 #[test]
 pub fn quit_breaks_input_loop() {
     let stdin_events = vec![(
@@ -366,19 +354,6 @@ pub fn terminal_info_queried_from_terminal_emulator() {
 
 #[test]
 pub fn pixel_info_sent_to_server() {
-    // TODO:
-    // * copy/paste the previous test
-    // * start the input_loop as well as the stdin_loop
-    // * send a simulated terminal emulator response to the stdin loop
-    // * assert the events_sent_to_server
-
-
-
-
-    // TODO: CONTINUE HERE (31/05) - adjust this test to the new STDIN format (see the different
-    // thread in stdin_loop above
-
-
     let fake_stdin_buffer = read_fixture("terminal_emulator_startup_response");
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();

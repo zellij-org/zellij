@@ -378,3 +378,7 @@ pub fn start_client(
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
     stdout.flush().unwrap();
 }
+
+#[cfg(test)]
+#[path = "./unit/stdin_tests.rs"]
+mod stdin_tests;

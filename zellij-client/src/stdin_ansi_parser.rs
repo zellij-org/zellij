@@ -3,9 +3,12 @@ use std::time::{Instant, Duration};
 
 use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
+const STARTUP_PARSE_DEADLINE_MS: u64 = 1000;
+const SIGWINCH_PARSE_DEADLINE_MS: u64 = 1000;
+
 #[derive(Debug)]
 pub struct StdinAnsiParser {
-    current_raw_buffer: Vec<u8>,
+    raw_buffer: Vec<u8>,
     pending_color_sequences: Vec<(usize, String)>,
     pending_events: Vec<AnsiStdinInstruction>,
     parse_deadline: Option<Instant>,
@@ -14,7 +17,7 @@ pub struct StdinAnsiParser {
 impl StdinAnsiParser {
     pub fn new() -> Self {
         StdinAnsiParser {
-            current_raw_buffer: vec![],
+            raw_buffer: vec![],
             pending_color_sequences: vec![],
             pending_events: vec![],
             parse_deadline: None,
@@ -36,7 +39,7 @@ impl StdinAnsiParser {
         for i in 0..256 {
             query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
         }
-        self.parse_deadline = Some(Instant::now() + Duration::from_millis(1000));
+        self.parse_deadline = Some(Instant::now() + Duration::from_millis(STARTUP_PARSE_DEADLINE_MS));
         query_string
     }
     pub fn window_size_change_query_string(&mut self) -> String {
@@ -48,7 +51,7 @@ impl StdinAnsiParser {
         let query_string =
             String::from("\u{1b}[14t\u{1b}[16t");
 
-        self.parse_deadline = Some(Instant::now() + Duration::from_millis(200));
+        self.parse_deadline = Some(Instant::now() + Duration::from_millis(SIGWINCH_PARSE_DEADLINE_MS));
         query_string
     }
     fn drain_pending_events(&mut self) -> Vec<AnsiStdinInstruction> {
@@ -67,7 +70,7 @@ impl StdinAnsiParser {
         }
         false
     }
-    pub fn parse(&mut self, mut raw_bytes: Vec<u8>) -> Vec<AnsiStdinInstruction> { // Vec<u8> is unparsed bytes
+    pub fn parse(&mut self, mut raw_bytes: Vec<u8>) -> Vec<AnsiStdinInstruction> {
         for byte in raw_bytes.drain(..) {
             self.parse_byte(byte);
         }
@@ -75,29 +78,29 @@ impl StdinAnsiParser {
     }
     fn parse_byte(&mut self, byte: u8) {
         if byte == b't' {
-            self.current_raw_buffer.push(byte);
-            match AnsiStdinInstruction::pixel_dimensions_from_bytes(&self.current_raw_buffer) {
+            self.raw_buffer.push(byte);
+            match AnsiStdinInstruction::pixel_dimensions_from_bytes(&self.raw_buffer) {
                 Ok(ansi_sequence) => {
                     self.pending_events.push(ansi_sequence);
-                    self.current_raw_buffer.clear();
+                    self.raw_buffer.clear();
                 },
                 Err(_) => {
-                    self.current_raw_buffer.clear();
+                    self.raw_buffer.clear();
                 }
             }
         } else if byte == b'\\' {
-            self.current_raw_buffer.push(byte);
-            if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.current_raw_buffer) {
+            self.raw_buffer.push(byte);
+            if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.raw_buffer) {
                 self.pending_events.push(ansi_sequence);
-                self.current_raw_buffer.clear();
-            } else if let Ok((color_register, color_sequence)) = color_sequence_from_bytes(&self.current_raw_buffer) {
-                self.current_raw_buffer.clear();
+                self.raw_buffer.clear();
+            } else if let Ok((color_register, color_sequence)) = color_sequence_from_bytes(&self.raw_buffer) {
+                self.raw_buffer.clear();
                 self.pending_color_sequences.push((color_register, color_sequence));
             } else {
-                self.current_raw_buffer.clear();
+                self.raw_buffer.clear();
             }
         } else {
-            self.current_raw_buffer.push(byte);
+            self.raw_buffer.push(byte);
         }
     }
 }
@@ -112,6 +115,7 @@ pub enum AnsiStdinInstruction {
 
 impl AnsiStdinInstruction {
     pub fn pixel_dimensions_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
+        // eg. <ESC>[4;21;8t
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
         }
@@ -157,9 +161,11 @@ impl AnsiStdinInstruction {
         }
     }
     pub fn bg_or_fg_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
+        // eg. <ESC>]11;rgb:0000/0000/0000\
         lazy_static! {
             static ref BACKGROUND_RE: Regex = Regex::new(r"\]11;(.*)\u{1b}\\$").unwrap();
         }
+        // eg. <ESC>]10;rgb:ffff/ffff/ffff\
         lazy_static! {
             static ref FOREGROUND_RE: Regex = Regex::new(r"\]10;(.*)\u{1b}\\$").unwrap();
         }
@@ -193,7 +199,6 @@ impl AnsiStdinInstruction {
         }
     }
     pub fn color_registers_from_bytes(color_sequences: &mut Vec<(usize, String)>) -> Option<Self> {
-        // this assumes it is handed only SingleColorRegister events and drops everything else
         if color_sequences.is_empty() {
             return None;
         }

@@ -13,6 +13,8 @@ pub(crate) fn stdin_loop(
     let mut holding_mouse = false;
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
+    // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
+    // we get a response through STDIN, so it makes sense to do this here
     let terminal_emulator_query_string = stdin_ansi_parser.lock().unwrap().terminal_emulator_query_string();
     let _ = os_input
         .get_stdout_writer()
@@ -22,9 +24,7 @@ pub(crate) fn stdin_loop(
         let buf = os_input.read_from_stdin();
         {
             // here we check if we need to parse specialized ANSI instructions sent over STDIN
-            // this happens either on startup when we query the terminal emulator for various
-            // information (eg. pixel cell size and color registers)
-            // as well as on SIGWINCH
+            // this happens either on startup (see above) or on SIGWINCH
             //
             // if we need to parse them, we do so with an internal timeout - anything else we
             // receive on STDIN during that timeout is unceremoniously dropped

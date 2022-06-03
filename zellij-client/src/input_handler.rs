@@ -10,7 +10,7 @@ use zellij_utils::{
 
 use crate::{
     os_input_output::ClientOsApi,
-    stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser},
+    stdin_ansi_parser::AnsiStdinInstruction,
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
@@ -104,7 +104,7 @@ impl InputHandler {
                 }
                 Ok((InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions), _error_context)) => {
                     for ansi_instruction in ansi_stdin_instructions {
-                        self.handle_stdin_ansi_instruction(ansi_instruction); // TODO: move it out of that function or rename or whatnot
+                        self.handle_stdin_ansi_instruction(ansi_instruction);
                     }
                 }
                 Err(err) => panic!("Encountered read error: {:?}", err),
@@ -122,9 +122,9 @@ impl InputHandler {
     }
     fn handle_stdin_ansi_instruction(
         &mut self,
-        pixel_instruction_or_keys: AnsiStdinInstruction,
+        ansi_stdin_instructions: AnsiStdinInstruction,
     ) {
-        match pixel_instruction_or_keys {
+        match ansi_stdin_instructions {
             AnsiStdinInstruction::PixelDimensions(pixel_dimensions) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
@@ -270,7 +270,3 @@ pub(crate) fn input_loop(
     )
     .handle_input();
 }
-
-#[cfg(test)]
-#[path = "./unit/input_handler_tests.rs"]
-mod input_handler_tests;
