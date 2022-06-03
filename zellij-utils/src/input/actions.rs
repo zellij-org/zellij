@@ -103,6 +103,7 @@ pub enum Action {
     GoToTab(u32),
     ToggleTab,
     TabNameInput(Vec<u8>),
+    RevertTabName,
     /// Run speficied command in new pane.
     Run(RunCommandAction),
     /// Detach session and exit
