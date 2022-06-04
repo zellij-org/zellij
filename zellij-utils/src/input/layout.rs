@@ -239,12 +239,21 @@ impl LayoutFromYamlIntermediate {
 
     pub fn from_path_or_default(
         layout: Option<&PathBuf>,
-        layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
     ) -> Option<LayoutFromYamlIntermediateResult> {
         layout
-            .map(|p| LayoutFromYamlIntermediate::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| LayoutFromYamlIntermediate::from_path(p)))
+            .map(|layout| {
+                // The way we determine where to look for the layout is similar to
+                // how a path would look for an executable.
+                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
+                if layout.extension().is_some() || layout.components().count() > 1 {
+                    // We look localy!
+                    LayoutFromYamlIntermediate::from_path(layout)
+                } else {
+                    // We look in the default dir
+                    LayoutFromYamlIntermediate::from_dir(layout, layout_dir.as_ref())
+                }
+            })
             .or_else(|| {
                 Some(LayoutFromYamlIntermediate::from_dir(
                     &std::path::PathBuf::from("default"),
@@ -262,7 +271,7 @@ impl LayoutFromYamlIntermediate {
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
-                if layout_path.exists() {
+                if layout_path.with_extension("yaml").exists() {
                     Self::from_path(layout_path)
                 } else {
                     LayoutFromYamlIntermediate::from_default_assets(layout)
@@ -279,6 +288,7 @@ impl LayoutFromYamlIntermediate {
             Some("default") => Self::default_from_assets(),
             Some("strider") => Self::strider_from_assets(),
             Some("disable-status-bar") => Self::disable_status_from_assets(),
+            Some("compact") => Self::compact_from_assets(),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -303,6 +313,12 @@ impl LayoutFromYamlIntermediate {
     pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
         let layout: LayoutFromYamlIntermediate =
             serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
+
+    pub fn compact_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
 }

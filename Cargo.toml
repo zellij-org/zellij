@@ -8,18 +8,18 @@ license = "MIT"
 repository = "https://github.com/zellij-org/zellij"
 homepage = "https://zellij.dev"
 include = ["src/**/*", "assets/plugins/*", "assets/layouts/*", "assets/config/*", "LICENSE.md", "README.md", "!**/*_test.*", "!**/tests/**/*"]
-rust-version = "1.56"
+rust-version = "1.59"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0"
-names = "0.11.0"
+names = { version = "0.13.0", default-features = false }
 zellij-client = { path = "zellij-client/", version = "0.30.0" }
 zellij-server = { path = "zellij-server/", version = "0.30.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.30.0" }
 log = "0.4.17"
-dialoguer = "0.9.0"
+dialoguer = "0.10.1"
 suggest = "0.4"
 
 [dev-dependencies]
@@ -34,6 +34,7 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
+    "default-plugins/compact-bar",
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",
@@ -42,6 +43,7 @@ members = [
 
 [profile.release]
 lto = true
+strip = true
 
 [package.metadata.deb]
 depends = "$auto"

@@ -155,6 +155,9 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
+    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+        return "".to_owned();
+    }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
     fn clear_scroll(&mut self);
@@ -1377,6 +1380,12 @@ impl Tab {
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .unwrap();
+        }
+    }
+    pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            let dump = active_pane.dump_screen(client_id);
+            self.os_api.write_to_file(dump, file);
         }
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {

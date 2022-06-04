@@ -5,12 +5,14 @@ use crate::thread_bus::Bus;
 #[derive(Debug, Clone)]
 pub(crate) enum PtyWriteInstruction {
     Write(Vec<u8>, i32),
+    Exit,
 }
 
 impl From<&PtyWriteInstruction> for PtyWriteContext {
     fn from(tty_write_instruction: &PtyWriteInstruction) -> Self {
         match *tty_write_instruction {
             PtyWriteInstruction::Write(..) => PtyWriteContext::Write,
+            PtyWriteInstruction::Exit => PtyWriteContext::Exit,
         }
     }
 }
@@ -28,6 +30,9 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) {
                 if let Err(e) = os_input.tcdrain(terminal_id) {
                     log::error!("failed to drain terminal: {}", e);
                 };
+            }
+            PtyWriteInstruction::Exit => {
+                break;
             }
         }
     }

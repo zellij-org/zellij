@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
+use zellij_utils::regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -269,6 +270,26 @@ fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     } else {
         u + i as usize
     }
+}
+
+macro_rules! dump_screen {
+    ($lines:expr) => {{
+        let mut is_first = true;
+        let mut buf = "".to_owned();
+
+        for line in &$lines {
+            if line.is_canonical && !is_first {
+                buf.push_str("\n");
+            }
+            let s: String = (&line.columns).into_iter().map(|x| x.character).collect();
+            // Replace the spaces at the end of the line. Sometimes, the lines are
+            // collected with spaces until the end of the panel.
+            let re = Regex::new("([^ ])[ ]*$").unwrap();
+            buf.push_str(&(re.replace(&s, "${1}")));
+            is_first = false;
+        }
+        buf
+    }};
 }
 
 #[derive(Clone)]
@@ -812,6 +833,16 @@ impl Grid {
         } else {
             Some((self.cursor.x, self.cursor.y))
         }
+    }
+
+    pub fn dump_screen(&mut self) -> String {
+        let mut scrollback: String = dump_screen!(self.lines_above);
+        let viewport: String = dump_screen!(self.viewport);
+        if !scrollback.is_empty() {
+            scrollback.push_str("\n");
+        }
+        scrollback.push_str(&viewport);
+        return scrollback;
     }
     pub fn move_viewport_up(&mut self, count: usize) {
         for _ in 0..count {

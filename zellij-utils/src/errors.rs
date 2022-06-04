@@ -242,6 +242,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    DumpScreen,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,
@@ -343,4 +344,5 @@ pub enum ServerContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyWriteContext {
     Write,
+    Exit,
 }

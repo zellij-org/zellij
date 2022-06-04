@@ -109,6 +109,12 @@ pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/disable-status-bar.yaml"
 ));
 
+pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.yaml"
+));
+
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -141,6 +147,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -223,11 +230,8 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
-            opts.layout.as_ref(),
-            opts.layout_path.as_ref(),
-            layout_dir,
-        );
+        let layout_result =
+            LayoutFromYamlIntermediate::from_path_or_default(opts.layout.as_ref(), layout_dir);
         let layout = match layout_result {
             None => None,
             Some(Ok(layout)) => Some(layout),

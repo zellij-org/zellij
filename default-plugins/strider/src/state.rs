@@ -34,12 +34,14 @@ impl State {
         self.hide_hidden_files = !self.hide_hidden_files;
     }
     pub fn traverse_dir_or_open_file(&mut self) {
-        match self.files[self.selected()].clone() {
-            FsEntry::Dir(p, _) => {
-                self.path = p;
-                refresh_directory(self);
+        if let Some(f) = self.files.get(self.selected()) {
+            match f.clone() {
+                FsEntry::Dir(p, _) => {
+                    self.path = p;
+                    refresh_directory(self);
+                }
+                FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
             }
-            FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
         }
     }
 }
