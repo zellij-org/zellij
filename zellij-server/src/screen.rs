@@ -91,6 +91,7 @@ pub enum ScreenInstruction {
     GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy thie behaviour
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
+    RevertTabName(ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -170,6 +171,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
+            ScreenInstruction::RevertTabName(..) => ScreenContext::RevertTabName,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -738,6 +740,14 @@ impl Screen {
             log::error!("Active tab not found for client id: {:?}", client_id);
         }
     }
+    pub fn abort_active_tab_name(&mut self, client_id: ClientId) {
+        if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            active_tab.name = active_tab.prev_name.clone();
+            self.update_tabs();
+        } else {
+            log::error!("Active tab not found for client id: {:?}", client_id);
+        }
+    }
     pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         let previous_mode = self
             .mode_info
@@ -751,6 +761,13 @@ impl Screen {
                 active_tab.clear_active_terminal_scroll(client_id);
             }
         }
+
+        if mode_info.mode == InputMode::RenameTab {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                active_tab.prev_name = active_tab.name.clone();
+            }
+        }
+
         self.style = mode_info.style;
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
@@ -1340,6 +1357,11 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::UpdateTabName(c, client_id) => {
                 screen.update_active_tab_name(c, client_id);
+
+                screen.render();
+            }
+            ScreenInstruction::RevertTabName(client_id) => {
+                screen.abort_active_tab_name(client_id);
 
                 screen.render();
             }

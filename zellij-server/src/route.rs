@@ -324,6 +324,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::UpdateTabName(c, client_id))
                 .unwrap();
         }
+        Action::RevertTabName => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RevertTabName(client_id))
+                .unwrap();
+        }
         Action::Quit => {
             to_server
                 .send(ServerInstruction::ClientExit(client_id))
