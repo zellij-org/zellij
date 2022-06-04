@@ -1039,12 +1039,9 @@ impl TiledPanes {
     pub fn panes_to_hide_count(&self) -> usize {
         self.panes_to_hide.len()
     }
-    pub fn add_to_hidden_panels(&mut self, pid: PaneId) {
-        self.panes_to_hide.insert(pid);
-    }
-    pub fn remove_from_hidden_panels(&mut self, pid: PaneId) {
-        self.panes_to_hide.remove(&pid);
-    }
+    // pub fn add_to_hidden_panels(&mut self, pid: PaneId) {
+    //     self.panes_to_hide.insert(pid);
+    // }
 }
 
 #[allow(clippy::borrowed_box)]

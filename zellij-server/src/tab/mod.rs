@@ -78,6 +78,7 @@ pub(crate) struct Tab {
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     replaced_panes: HashMap<PaneId, ReplacedPaneInfo>,
+    suppressed_panes: HashMap<PaneId, Box<dyn Pane>>,
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -348,6 +349,7 @@ impl Tab {
             tiled_panes,
             floating_panes,
             replaced_panes: HashMap::new(),
+            suppressed_panes: HashMap::new(),
             name,
             max_panes,
             viewport,
@@ -1385,8 +1387,21 @@ impl Tab {
     pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
         if self.floating_panes.panes_contain(&id) {
             if self.replaced_panes.contains_key(&id) {
-                self.replaced_panes.remove(&id);
+                if let Some(info) = self.replaced_panes.get(&id) {
+                    if let Some(replaced_pane) = self.suppressed_panes.remove(&(*info).pid) {
+                        self.floating_panes.add_pane(replaced_pane.pid(), replaced_pane);
+                    }
+                    let mut geom = PaneGeom::default();
+                    if let Some(closing_pane) = self.floating_panes.get_pane(id) {
+                        geom = closing_pane.current_geom().clone();
+                    }
+                    if let Some(replaced_pane) = self.floating_panes.get_pane_mut((*info).pid){
+                        replaced_pane.set_geom(geom);
+                    }
+                }
             }
+
+
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -1401,7 +1416,9 @@ impl Tab {
             }
             let closed_pane = if self.replaced_panes.contains_key(&id) {
                 if let Some(info) = self.replaced_panes.get(&id) {
-                    self.tiled_panes.remove_from_hidden_panels((*info).pid);
+                    if let Some(replaced_pane) = self.suppressed_panes.remove(&(*info).pid) {
+                        self.tiled_panes.add_pane_with_existing_geom(replaced_pane.pid(), replaced_pane);
+                    }
                     let mut geom = PaneGeom::default();
                     if let Some(closing_pane) = self.tiled_panes.get_pane(id) {
                         geom = closing_pane.current_geom().clone();
@@ -1893,8 +1910,8 @@ impl Tab {
         if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
             self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id});
         }
-        if (!self.are_floating_panes_visible()) {
-            self.tiled_panes.add_to_hidden_panels(pid);
+        if let Some(replaced_pane) = if self.are_floating_panes_visible() { self.floating_panes.remove_pane(pid) } else { self.tiled_panes.extract_pane(pid) } {
+            self.suppressed_panes.insert(pid, replaced_pane);
         }
     }
 }
