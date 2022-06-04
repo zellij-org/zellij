@@ -1,7 +1,5 @@
 //! Things related to [`Screen`]s.
 
-use zellij_utils::pane_size::Dimension;
-use zellij_utils::pane_size::PaneGeom;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
@@ -891,12 +889,11 @@ pub(crate) fn screen_thread_main(
             }
             ScreenInstruction::OpenInPlaceEditor(pid, file_name, client_id) => {
                 let mut original_pid: PaneId = pid;
-                let mut geom: PaneGeom = PaneGeom {x: 0, y: 0, rows: Dimension::percent(100.0), cols: Dimension::percent(100.0)};
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     if let Some(pane1) = active_tab.get_active_pane(client_id) {
                         original_pid = pane1.pid();
                         scrollbacks.insert(file_name, pane1.pid());
-                        geom = pane1.current_geom().clone();
+                        let geom = pane1.current_geom().clone();
                         active_tab.create_pane(pid, Some(client_id), geom);
                         if active_tab.are_floating_panes_visible() {
                             if let Some(pane2) = active_tab.get_active_pane_mut(client_id) {
@@ -917,7 +914,7 @@ pub(crate) fn screen_thread_main(
                     return ;
                 }
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.save_replaced_pane_id(original_pid, client_id, geom);
+                    active_tab.save_replaced_pane_id(original_pid, client_id);
                 }
                 if let Some(active_tab) = screen.get_active_tab(client_id) {
                     if let Some(pane) = active_tab.get_active_pane(client_id) {

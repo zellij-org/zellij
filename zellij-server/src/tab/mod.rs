@@ -69,7 +69,6 @@ const MAX_PENDING_VTE_EVENTS: usize = 7000;
 struct ReplacedPaneInfo {
     pub pid: PaneId,
     pub client_id: ClientId,
-    pub geom: PaneGeom
 }
 
 pub(crate) struct Tab {
@@ -712,7 +711,7 @@ impl Tab {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
                     term_pid,
-                    geom, // the initial size will be set later
+                    geom,
                     self.style,
                     next_terminal_position,
                     String::new(),
@@ -1403,10 +1402,20 @@ impl Tab {
             let closed_pane = if self.replaced_panes.contains_key(&id) {
                 if let Some(info) = self.replaced_panes.get(&id) {
                     self.tiled_panes.remove_from_hidden_panels((*info).pid);
+                    let mut geom = PaneGeom::default();
+                    if let Some(closing_pane) = self.tiled_panes.get_pane(id) {
+                        geom = closing_pane.current_geom().clone();
+                    }
+                    if let Some(replaced_pane) = self.tiled_panes.get_pane_mut((*info).pid){
+                        replaced_pane.set_geom(geom);
+                    }
                     self.tiled_panes.focus_pane((*info).pid, (*info).client_id);
                     self.tiled_panes.extract_pane(id)
                 } else {
                     // TODO: what's going on here?
+                    // Normally we should not get here. Since the
+                    // self.replaced_panes.contains_key(id) returns true, then I would assume that
+                    // self.replaced_panes.get(id) returns the value.
                     None
                 }
             } else {
@@ -1880,9 +1889,9 @@ impl Tab {
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
     }
-    pub fn save_replaced_pane_id(&mut self, pid: PaneId, client_id: ClientId, geom: PaneGeom) {
+    pub fn save_replaced_pane_id(&mut self, pid: PaneId, client_id: ClientId) {
         if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
-            self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id, geom: geom});
+            self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id});
         }
         self.tiled_panes.add_to_hidden_panels(pid);
     }
