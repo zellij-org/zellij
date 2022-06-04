@@ -1893,7 +1893,9 @@ impl Tab {
         if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
             self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id});
         }
-        self.tiled_panes.add_to_hidden_panels(pid);
+        if (!self.are_floating_panes_visible()) {
+            self.tiled_panes.add_to_hidden_panels(pid);
+        }
     }
 }
 
