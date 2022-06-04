@@ -1400,17 +1400,18 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
-            let closed_pane = self.tiled_panes.remove_pane(id);
-            if self.replaced_panes.contains_key(&id) {
+            let closed_pane = if self.replaced_panes.contains_key(&id) {
                 if let Some(info) = self.replaced_panes.get(&id) {
                     self.tiled_panes.remove_from_hidden_panels((*info).pid);
                     self.tiled_panes.focus_pane((*info).pid, (*info).client_id);
-                    // if let Some(pane) = self.tiled_panes.get_pane_mut((*info).pid) {
-                    //     resize_pty!(pane, self.os_api);
-                    //     pane.set_geom((*info).geom);
-                    // }
+                    self.tiled_panes.extract_pane(id)
+                } else {
+                    // TODO: what's going on here?
+                    None
                 }
-            }
+            } else {
+                self.tiled_panes.remove_pane(id)
+            };
             self.set_force_render();
             self.tiled_panes.set_force_render();
             closed_pane

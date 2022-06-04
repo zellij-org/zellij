@@ -105,13 +105,17 @@ impl TiledPanes {
             os_api,
         }
     }
-    pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+    pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
+        if self.draw_pane_frames {
+            pane.set_content_offset(Offset::frame(1));
+        }
         self.panes.insert(pane_id, pane);
     }
     pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -133,6 +137,7 @@ impl TiledPanes {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -166,6 +171,7 @@ impl TiledPanes {
     pub fn relayout(&mut self, direction: Direction) {
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -399,12 +405,8 @@ impl TiledPanes {
         {
             let mut display_area = self.display_area.borrow_mut();
             let mut viewport = self.viewport.borrow_mut();
-            let panes = self
-                .panes
-                .iter_mut()
-                .filter(|(pid, _)| !self.panes_to_hide.contains(pid));
             let Size { rows, cols } = new_screen_size;
-            let mut pane_grid = TiledPaneGrid::new(panes, *display_area, *viewport);
+            let mut pane_grid = TiledPaneGrid::new(&mut self.panes, &self.panes_to_hide, *display_area, *viewport);
             if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
                 let column_difference = cols as isize - display_area.cols as isize;
                 // FIXME: Should the viewport be an Offset?
@@ -427,6 +429,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -440,6 +443,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -453,6 +457,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -466,6 +471,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -479,6 +485,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -492,6 +499,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -507,6 +515,7 @@ impl TiledPanes {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -522,6 +531,7 @@ impl TiledPanes {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -547,6 +557,7 @@ impl TiledPanes {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
+                    &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
@@ -587,6 +598,7 @@ impl TiledPanes {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
+                    &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
@@ -627,6 +639,7 @@ impl TiledPanes {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
+                    &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
@@ -667,6 +680,7 @@ impl TiledPanes {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
+                    &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
@@ -706,6 +720,7 @@ impl TiledPanes {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
@@ -736,6 +751,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -770,6 +786,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -804,6 +821,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -838,6 +856,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
+                &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
@@ -877,6 +896,7 @@ impl TiledPanes {
         match self
             .panes
             .iter()
+            .filter(|(p_id, _)| !self.panes_to_hide.contains(p_id))
             .find(|(p_id, p)| **p_id != pane_id && p.selectable())
             .map(|(p_id, _p)| p_id)
         {
@@ -890,9 +910,13 @@ impl TiledPanes {
             None => self.active_panes.clear(),
         }
     }
+    pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        self.panes.remove(&pane_id)
+    }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
+            &self.panes_to_hide,
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
