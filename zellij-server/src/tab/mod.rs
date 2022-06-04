@@ -1385,7 +1385,11 @@ impl Tab {
     pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
         if self.floating_panes.panes_contain(&id) {
             if self.replaced_panes.contains_key(&id) {
-                self.replaced_panes.remove(&id);
+                if let Some(info) = self.replaced_panes.remove(&id) {
+                    if let Some(pane) = self.tiled_panes.extract_pane(info.pid) {
+                        self.floating_panes.add_pane(info.pid, pane);
+                    }
+                }
             }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
@@ -1893,8 +1897,14 @@ impl Tab {
         if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
             self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id});
         }
-        if (!self.are_floating_panes_visible()) {
+        if !self.are_floating_panes_visible() {
             self.tiled_panes.add_to_hidden_panels(pid);
+        }
+        else {
+            if let Some(removed_pane) = self.floating_panes.remove_pane(pid) {
+                self.tiled_panes.add_pane_with_existing_geom(pid, removed_pane);
+                self.tiled_panes.add_to_hidden_panels(pid);
+            }
         }
     }
 }
