@@ -45,6 +45,7 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId) + Send>,
+        _default_editor: Option<PathBuf>,
     ) -> Result<(RawFd, RawFd), &'static str> {
         unimplemented!()
     }

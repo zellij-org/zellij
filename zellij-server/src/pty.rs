@@ -75,6 +75,7 @@ pub(crate) struct Pty {
     pub id_to_child_pid: HashMap<RawFd, RawFd>, // pty_primary => child raw fd
     debug_to_file: bool,
     task_handles: HashMap<RawFd, JoinHandle<()>>,
+    default_editor: Option<PathBuf>,
 }
 
 use std::convert::TryFrom;
@@ -292,13 +293,14 @@ fn stream_terminal_bytes(
 }
 
 impl Pty {
-    pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool) -> Self {
+    pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool, default_editor: Option<PathBuf>) -> Self {
         Pty {
             active_panes: HashMap::new(),
             bus,
             id_to_child_pid: HashMap::new(),
             debug_to_file,
             task_handles: HashMap::new(),
+            default_editor,
         }
     }
     pub fn get_default_terminal(&self) -> TerminalAction {
@@ -354,7 +356,7 @@ impl Pty {
             .os_input
             .as_mut()
             .unwrap()
-            .spawn_terminal(terminal_action, quit_cb)?;
+            .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
         let task_handle = stream_terminal_bytes(
             pid_primary,
             self.bus.senders.clone(),
@@ -390,7 +392,7 @@ impl Pty {
                         .os_input
                         .as_mut()
                         .unwrap()
-                        .spawn_terminal(cmd, quit_cb)
+                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
                         .unwrap(); // TODO: handle error here
                     self.id_to_child_pid.insert(pid_primary, child_fd);
                     new_pane_pids.push(pid_primary);
@@ -401,7 +403,7 @@ impl Pty {
                         .os_input
                         .as_mut()
                         .unwrap()
-                        .spawn_terminal(default_shell.clone(), quit_cb)
+                        .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
                         .unwrap(); // TODO: handle error here
                     self.id_to_child_pid.insert(pid_primary, child_fd);
                     new_pane_pids.push(pid_primary);
