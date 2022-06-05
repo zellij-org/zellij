@@ -277,6 +277,9 @@ pub trait Pane {
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
     fn mouse_mode(&self) -> bool;
+    fn get_line_number(&self) -> Option<usize> {
+        None
+    }
 }
 
 impl Tab {
@@ -1444,11 +1447,14 @@ impl Tab {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
+        // let line_number = self.get_active_pane(client_id).map(|a_t| a_t.get_line_number());
+        let line_number = self.get_active_pane(client_id).and_then(|a_t| a_t.get_line_number());
         self.senders
             .send_to_pty(PtyInstruction::OpenInPlaceEditor(
-                    file,
-                    client_id,
-                    ))
+                file,
+                line_number,
+                client_id,
+            ))
             .unwrap();
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {

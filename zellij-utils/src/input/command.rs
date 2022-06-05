@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum TerminalAction {
-    OpenFile(PathBuf),
+    OpenFile(PathBuf, Option<usize>), // path to file and optional line_number
     RunCommand(RunCommand),
 }
 
