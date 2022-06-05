@@ -97,7 +97,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                     .unwrap();
             }
             PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
-                let name = String::from(temp_file.to_string_lossy());
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(temp_file, line_number)),
                     ClientOrTabIndex::ClientId(client_id),
@@ -107,7 +106,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                             .senders
                             .send_to_screen(ScreenInstruction::OpenInPlaceEditor(
                                 PaneId::Terminal(pid),
-                                name,
                                 client_id,
                             ))
                             .unwrap();

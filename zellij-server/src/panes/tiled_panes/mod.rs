@@ -111,6 +111,40 @@ impl TiledPanes {
         }
         self.panes.insert(pane_id, pane);
     }
+    pub fn replace_active_pane(&mut self, pane: Box<dyn Pane>, client_id: ClientId) -> Option<Box<dyn Pane>> {
+        let pane_id = pane.pid();
+        // remove the currently active pane
+        let previously_active_pane = self.active_panes
+            .get(&client_id)
+            .copied()
+            .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane));
+
+        // move clients from the previously active pane to the new pane we just inserted
+        if let Some(previously_active_pane) = previously_active_pane.as_ref() {
+            let previously_active_pane_id = previously_active_pane.pid();
+            self.move_clients_between_panes(previously_active_pane_id, pane_id);
+        }
+        previously_active_pane
+    }
+    pub fn replace_pane(&mut self, pane_id: PaneId, mut with_pane: Box<dyn Pane>) -> Option<Box<dyn Pane>>{
+        let with_pane_id = with_pane.pid();
+        if self.draw_pane_frames {
+            with_pane.set_content_offset(Offset::frame(1));
+        }
+        let removed_pane = self.panes
+            .remove(&pane_id)
+            .map(|removed_pane| {
+                let with_pane_id = with_pane.pid();
+                let removed_pane_geom = removed_pane.current_geom();
+                with_pane.set_geom(removed_pane_geom);
+                self.panes.insert(with_pane_id, with_pane);
+                removed_pane
+            });
+
+        // move clients from the previously active pane to the new pane we just inserted
+        self.move_clients_between_panes(pane_id, with_pane_id);
+        removed_pane
+    }
     pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
@@ -1049,6 +1083,18 @@ impl TiledPanes {
     }
     pub fn remove_from_hidden_panels(&mut self, pid: PaneId) {
         self.panes_to_hide.remove(&pid);
+    }
+    fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
+        let clients_in_pane: Vec<ClientId> = self
+            .active_panes
+            .iter()
+            .filter(|(_cid, pid)| **pid == from_pane_id)
+            .map(|(cid, _pid)| *cid)
+            .collect();
+        for client_id in clients_in_pane {
+            self.active_panes.remove(&client_id);
+            self.active_panes.insert(client_id, to_pane_id);
+        }
     }
 }
 

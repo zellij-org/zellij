@@ -1,7 +1,6 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
@@ -17,20 +16,6 @@ use zellij_utils::{
 
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
-
-macro_rules! resize_pty {
-    ($pane:expr, $os_input:expr) => {
-        if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
-            // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
-                *pid,
-                $pane.get_content_columns() as u16,
-                $pane.get_content_rows() as u16,
-            );
-        }
-    };
-}
 
 use crate::{
     output::Output,
@@ -55,7 +40,7 @@ pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
-    OpenInPlaceEditor(PaneId, String, ClientId),
+    OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, ClientId),
@@ -817,7 +802,7 @@ pub(crate) fn screen_thread_main(
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
 ) {
-    let mut scrollbacks: HashMap<String, PaneId> = HashMap::new();
+    // let mut scrollbacks: HashMap<String, PaneId> = HashMap::new();
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
@@ -887,37 +872,12 @@ pub(crate) fn screen_thread_main(
 
                 screen.render();
             }
-            ScreenInstruction::OpenInPlaceEditor(pid, file_name, client_id) => {
-                let mut original_pid: PaneId = pid;
+            ScreenInstruction::OpenInPlaceEditor(pid, client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    if let Some(pane1) = active_tab.get_active_pane(client_id) {
-                        original_pid = pane1.pid();
-                        scrollbacks.insert(file_name, pane1.pid());
-                        let geom = pane1.current_geom().clone();
-                        active_tab.create_pane(pid, Some(client_id), geom);
-                        if active_tab.are_floating_panes_visible() {
-                            if let Some(pane2) = active_tab.get_active_pane_mut(client_id) {
-                                pane2.set_geom(geom);
-                            } else {
-                                log::error!("New editor pane not found. Maybe there is an issue with launching it?: {:?}", client_id);
-                                return;
-                            }
-                        }
-                    } else {
-                        log::error!("Could not find the active pane for {:?}", client_id);
-                        return;
-                    }
+                    active_tab.suppress_active_pane(pid, client_id);
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                     return;
-                }
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.save_replaced_pane_id(original_pid, client_id);
-                }
-                if let Some(active_tab) = screen.get_active_tab(client_id) {
-                    if let Some(pane) = active_tab.get_active_pane(client_id) {
-                        resize_pty!(pane, screen.bus.os_input.as_ref().unwrap().clone());
-                    }
                 }
                 screen
                     .bus
@@ -1311,7 +1271,7 @@ pub(crate) fn screen_thread_main(
                     Some(client_id) => {
                         screen
                             .get_active_tab_mut(client_id)
-                            .and_then(|active_tab| active_tab.close_pane(id))
+                            .and_then(|active_tab| active_tab.close_pane(id, false))
                             .or_else(|| {
                                 log::error!("Active tab not found for client id: {:?}", client_id);
                                 None
@@ -1320,7 +1280,7 @@ pub(crate) fn screen_thread_main(
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id);
+                                tab.close_pane(id, false);
                                 break;
                             }
                         }
