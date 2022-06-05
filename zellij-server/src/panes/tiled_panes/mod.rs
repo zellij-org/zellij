@@ -111,10 +111,15 @@ impl TiledPanes {
         }
         self.panes.insert(pane_id, pane);
     }
-    pub fn replace_active_pane(&mut self, pane: Box<dyn Pane>, client_id: ClientId) -> Option<Box<dyn Pane>> {
+    pub fn replace_active_pane(
+        &mut self,
+        pane: Box<dyn Pane>,
+        client_id: ClientId,
+    ) -> Option<Box<dyn Pane>> {
         let pane_id = pane.pid();
         // remove the currently active pane
-        let previously_active_pane = self.active_panes
+        let previously_active_pane = self
+            .active_panes
             .get(&client_id)
             .copied()
             .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane));
@@ -126,20 +131,22 @@ impl TiledPanes {
         }
         previously_active_pane
     }
-    pub fn replace_pane(&mut self, pane_id: PaneId, mut with_pane: Box<dyn Pane>) -> Option<Box<dyn Pane>>{
+    pub fn replace_pane(
+        &mut self,
+        pane_id: PaneId,
+        mut with_pane: Box<dyn Pane>,
+    ) -> Option<Box<dyn Pane>> {
         let with_pane_id = with_pane.pid();
         if self.draw_pane_frames {
             with_pane.set_content_offset(Offset::frame(1));
         }
-        let removed_pane = self.panes
-            .remove(&pane_id)
-            .map(|removed_pane| {
-                let with_pane_id = with_pane.pid();
-                let removed_pane_geom = removed_pane.current_geom();
-                with_pane.set_geom(removed_pane_geom);
-                self.panes.insert(with_pane_id, with_pane);
-                removed_pane
-            });
+        let removed_pane = self.panes.remove(&pane_id).map(|removed_pane| {
+            let with_pane_id = with_pane.pid();
+            let removed_pane_geom = removed_pane.current_geom();
+            with_pane.set_geom(removed_pane_geom);
+            self.panes.insert(with_pane_id, with_pane);
+            removed_pane
+        });
 
         // move clients from the previously active pane to the new pane we just inserted
         self.move_clients_between_panes(pane_id, with_pane_id);
