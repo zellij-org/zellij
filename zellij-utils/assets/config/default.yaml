@@ -271,6 +271,8 @@ keybinds:
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
     scroll:
+        - action: [EditScrollback, SwitchToMode: Normal]
+          key: [Char: 'e']
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 's', Char: ' ', Char: "\n", Esc]
         - action: [SwitchToMode: Tab,]
