@@ -1,7 +1,7 @@
 //! Things related to [`Screen`]s.
 
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::{BTreeMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
@@ -898,20 +898,18 @@ pub(crate) fn screen_thread_main(
                         if active_tab.are_floating_panes_visible() {
                             if let Some(pane2) = active_tab.get_active_pane_mut(client_id) {
                                 pane2.set_geom(geom);
-                            }
-                            else {
+                            } else {
                                 log::error!("New editor pane not found. Maybe there is an issue with launching it?: {:?}", client_id);
-                                return ;
+                                return;
                             }
                         }
-                    }
-                    else {
+                    } else {
                         log::error!("Could not find the active pane for {:?}", client_id);
-                        return
+                        return;
                     }
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
-                    return ;
+                    return;
                 }
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     active_tab.save_replaced_pane_id(original_pid, client_id);

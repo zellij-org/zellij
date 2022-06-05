@@ -153,16 +153,12 @@ fn handle_terminal(
     // parent.
     match openpty(None, Some(&orig_termios)) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb),
-        Err(e) => {
-            match failover_cmd {
-                Some(failover_cmd) => {
-                    handle_terminal(failover_cmd, None, orig_termios, quit_cb)
-                },
-                None => {
-                    panic!("failed to start pty{:?}", e);
-                }
+        Err(e) => match failover_cmd {
+            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb),
+            None => {
+                panic!("failed to start pty{:?}", e);
             }
-        }
+        },
     }
 }
 
@@ -187,15 +183,25 @@ pub fn spawn_terminal(
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {
             if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                return Err("No Editor found, consider setting a path to one in $EDITOR or $VISUAL");
+                return Err(
+                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL",
+                );
             }
             let command =
                 PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()));
 
             let mut args = vec![];
-            let file_to_open = file_to_open.into_os_string().into_string().expect("Not valid Utf8 Encoding");
+            let file_to_open = file_to_open
+                .into_os_string()
+                .into_string()
+                .expect("Not valid Utf8 Encoding");
             if let Some(line_number) = line_number {
-                if command.ends_with("vim") || command.ends_with("nvim") || command.ends_with("emacs") || command.ends_with("nano") || command.ends_with("kak") {
+                if command.ends_with("vim")
+                    || command.ends_with("nvim")
+                    || command.ends_with("emacs")
+                    || command.ends_with("nano")
+                    || command.ends_with("kak")
+                {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
                 }

@@ -85,7 +85,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
             PtyInstruction::SpawnTerminal(terminal_action, client_or_tab_index) => {
-                let pid = pty.spawn_terminal(terminal_action, client_or_tab_index).unwrap(); // TODO: handle error here
+                let pid = pty
+                    .spawn_terminal(terminal_action, client_or_tab_index)
+                    .unwrap(); // TODO: handle error here
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::NewPane(
@@ -96,7 +98,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
             }
             PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
                 let name = String::from(temp_file.to_string_lossy());
-                match pty.spawn_terminal(Some(TerminalAction::OpenFile(temp_file, line_number)), ClientOrTabIndex::ClientId(client_id)) {
+                match pty.spawn_terminal(
+                    Some(TerminalAction::OpenFile(temp_file, line_number)),
+                    ClientOrTabIndex::ClientId(client_id),
+                ) {
                     Ok(pid) => {
                         pty.bus
                             .senders
@@ -106,15 +111,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                                 client_id,
                             ))
                             .unwrap();
-                    },
+                    }
                     Err(e) => {
                         log::error!("Failed to open editor: {}", e);
                     }
                 }
             }
             PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
-                let pid =
-                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)).unwrap(); // TODO: handle error here
+                let pid = pty
+                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .unwrap(); // TODO: handle error here
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::VerticalSplit(
@@ -124,8 +130,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                     .unwrap();
             }
             PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
-                let pid =
-                    pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)).unwrap(); // TODO: handle error here
+                let pid = pty
+                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .unwrap(); // TODO: handle error here
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::HorizontalSplit(

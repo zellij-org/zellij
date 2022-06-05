@@ -406,7 +406,12 @@ impl TiledPanes {
             let mut display_area = self.display_area.borrow_mut();
             let mut viewport = self.viewport.borrow_mut();
             let Size { rows, cols } = new_screen_size;
-            let mut pane_grid = TiledPaneGrid::new(&mut self.panes, &self.panes_to_hide, *display_area, *viewport);
+            let mut pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *display_area,
+                *viewport,
+            );
             if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
                 let column_difference = cols as isize - display_area.cols as isize;
                 // FIXME: Should the viewport be an Offset?

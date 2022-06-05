@@ -4,9 +4,9 @@
 mod clipboard;
 mod copy_command;
 
-use uuid::Uuid;
-use std::env::temp_dir;
 use copy_command::CopyCommand;
+use std::env::temp_dir;
+use uuid::Uuid;
 use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
@@ -721,8 +721,9 @@ impl Tab {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.terminal_emulator_colors.clone(),
-                    );
-                self.tiled_panes.add_pane_with_existing_geom(pid, Box::new(new_terminal));
+                );
+                self.tiled_panes
+                    .add_pane_with_existing_geom(pid, Box::new(new_terminal));
                 // self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                 // self.should_clear_display_before_rendering = true;
                 if let Some(client_id) = client_id {
@@ -1413,7 +1414,7 @@ impl Tab {
                     if let Some(closing_pane) = self.tiled_panes.get_pane(id) {
                         geom = closing_pane.current_geom().clone();
                     }
-                    if let Some(replaced_pane) = self.tiled_panes.get_pane_mut((*info).pid){
+                    if let Some(replaced_pane) = self.tiled_panes.get_pane_mut((*info).pid) {
                         replaced_pane.set_geom(geom);
                     }
                     self.tiled_panes.focus_pane((*info).pid, (*info).client_id);
@@ -1461,7 +1462,9 @@ impl Tab {
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
         // let line_number = self.get_active_pane(client_id).map(|a_t| a_t.get_line_number());
-        let line_number = self.get_active_pane(client_id).and_then(|a_t| a_t.get_line_number());
+        let line_number = self
+            .get_active_pane(client_id)
+            .and_then(|a_t| a_t.get_line_number());
         self.senders
             .send_to_pty(PtyInstruction::OpenInPlaceEditor(
                 file,
@@ -1901,14 +1904,20 @@ impl Tab {
     }
     pub fn save_replaced_pane_id(&mut self, pid: PaneId, client_id: ClientId) {
         if let Some(scrollback_pane_id) = self.get_active_pane_id(client_id) {
-            self.replaced_panes.insert(scrollback_pane_id, ReplacedPaneInfo {pid: pid, client_id: client_id});
+            self.replaced_panes.insert(
+                scrollback_pane_id,
+                ReplacedPaneInfo {
+                    pid: pid,
+                    client_id: client_id,
+                },
+            );
         }
         if !self.are_floating_panes_visible() {
             self.tiled_panes.add_to_hidden_panels(pid);
-        }
-        else {
+        } else {
             if let Some(removed_pane) = self.floating_panes.remove_pane(pid) {
-                self.tiled_panes.add_pane_with_existing_geom(pid, removed_pane);
+                self.tiled_panes
+                    .add_pane_with_existing_geom(pid, removed_pane);
                 self.tiled_panes.add_to_hidden_panels(pid);
             }
         }
