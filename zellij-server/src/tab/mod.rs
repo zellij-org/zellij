@@ -66,11 +66,6 @@ pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
 
-struct ReplacedPaneInfo {
-    pub pid: PaneId,
-    pub client_id: ClientId,
-}
-
 pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
@@ -78,7 +73,6 @@ pub(crate) struct Tab {
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: HashMap<PaneId, Box<dyn Pane>>,
-    replaced_panes: HashMap<PaneId, ReplacedPaneInfo>,
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -352,7 +346,6 @@ impl Tab {
             tiled_panes,
             floating_panes,
             suppressed_panes: HashMap::new(),
-            replaced_panes: HashMap::new(),
             name,
             max_panes,
             viewport,
@@ -1431,13 +1424,6 @@ impl Tab {
             return self.replace_pane_with_suppressed_pane(id);
         }
         if self.floating_panes.panes_contain(&id) {
-            if self.replaced_panes.contains_key(&id) {
-                if let Some(info) = self.replaced_panes.remove(&id) {
-                    if let Some(pane) = self.tiled_panes.extract_pane(info.pid) {
-                        self.floating_panes.add_pane(info.pid, pane);
-                    }
-                }
-            }
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
@@ -1450,28 +1436,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
-            let closed_pane = if self.replaced_panes.contains_key(&id) {
-                if let Some(info) = self.replaced_panes.get(&id) {
-                    self.tiled_panes.remove_from_hidden_panels((*info).pid);
-                    let mut geom = PaneGeom::default();
-                    if let Some(closing_pane) = self.tiled_panes.get_pane(id) {
-                        geom = closing_pane.current_geom().clone();
-                    }
-                    if let Some(replaced_pane) = self.tiled_panes.get_pane_mut((*info).pid) {
-                        replaced_pane.set_geom(geom);
-                    }
-                    self.tiled_panes.focus_pane((*info).pid, (*info).client_id);
-                    self.tiled_panes.extract_pane(id)
-                } else {
-                    // TODO: what's going on here?
-                    // Normally we should not get here. Since the
-                    // self.replaced_panes.contains_key(id) returns true, then I would assume that
-                    // self.replaced_panes.get(id) returns the value.
-                    None
-                }
-            } else {
-                self.tiled_panes.remove_pane(id)
-            };
+            let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
             closed_pane
