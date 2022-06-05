@@ -34,6 +34,7 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
+    "default-plugins/compact-bar",
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",
