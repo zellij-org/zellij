@@ -106,8 +106,7 @@ impl FloatingPanes {
         pane: Box<dyn Pane>,
         client_id: ClientId,
     ) -> Option<Box<dyn Pane>> {
-        self
-            .active_panes
+        self.active_panes
             .get(&client_id)
             .copied()
             .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane))
@@ -137,7 +136,8 @@ impl FloatingPanes {
 
         // update the desired_pane_positions to relate to the new pane
         if let Some(desired_pane_position) = self.desired_pane_positions.remove(&pane_id) {
-            self.desired_pane_positions.insert(with_pane_id, desired_pane_position);
+            self.desired_pane_positions
+                .insert(with_pane_id, desired_pane_position);
         }
 
         // move clients from the previously active pane to the new pane we just inserted

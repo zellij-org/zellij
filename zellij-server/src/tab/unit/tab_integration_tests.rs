@@ -1245,10 +1245,7 @@ fn suppress_tiled_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()));
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1274,10 +1271,7 @@ fn suppress_floating_pane() {
     tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.suppress_active_pane(editor_pane_id, client_id);
-    tab.handle_pty_bytes(
-        3,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()));
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1299,14 +1293,8 @@ fn close_suppressing_tiled_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.handle_pty_bytes(
-        1,
-        Vec::from("\n\n\nI am the original pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()));
     tab.close_pane(new_pane_id, false);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
@@ -1333,14 +1321,8 @@ fn close_suppressing_floating_pane() {
     tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.suppress_active_pane(editor_pane_id, client_id);
-    tab.handle_pty_bytes(
-        3,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am the original pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()));
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
@@ -1363,14 +1345,8 @@ fn suppress_tiled_pane_float_it_and_close() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.handle_pty_bytes(
-        1,
-        Vec::from("\n\n\nI am the original pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.handle_pty_bytes(1, Vec::from("\n\n\nI am the original pane".as_bytes()));
     tab.toggle_pane_embed_or_floating(client_id);
     tab.close_pane(new_pane_id, false);
     tab.render(&mut output, None);
@@ -1398,14 +1374,8 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.suppress_active_pane(editor_pane_id, client_id);
-    tab.handle_pty_bytes(
-        3,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am the original pane".as_bytes()),
-    );
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()));
     tab.toggle_pane_embed_or_floating(client_id);
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None);
@@ -1429,11 +1399,11 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
-    tab.handle_pty_bytes(
-        2,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.resize_whole_tab(Size { cols: 100, rows: 10 });
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.resize_whole_tab(Size {
+        cols: 100,
+        rows: 10,
+    });
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1459,11 +1429,11 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     tab.toggle_floating_panes(client_id, None);
     tab.new_pane(new_pane_id, Some(client_id));
     tab.suppress_active_pane(editor_pane_id, client_id);
-    tab.handle_pty_bytes(
-        3,
-        Vec::from("\n\n\nI am an editor pane".as_bytes()),
-    );
-    tab.resize_whole_tab(Size { cols: 100, rows: 10 });
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()));
+    tab.resize_whole_tab(Size {
+        cols: 100,
+        rows: 10,
+    });
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
