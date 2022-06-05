@@ -1134,6 +1134,7 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);
+        self.floating_panes.resize_pty_all_panes(&mut self.os_api); // we need to do this explicitly because floating_panes.resize does not do this
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
     }
