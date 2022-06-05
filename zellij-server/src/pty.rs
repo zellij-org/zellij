@@ -293,7 +293,11 @@ fn stream_terminal_bytes(
 }
 
 impl Pty {
-    pub fn new(bus: Bus<PtyInstruction>, debug_to_file: bool, default_editor: Option<PathBuf>) -> Self {
+    pub fn new(
+        bus: Bus<PtyInstruction>,
+        debug_to_file: bool,
+        default_editor: Option<PathBuf>,
+    ) -> Self {
         Pty {
             active_panes: HashMap::new(),
             bus,

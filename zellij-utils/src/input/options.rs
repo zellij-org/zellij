@@ -135,7 +135,9 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
-        let scrollback_editor = other.scrollback_editor.or_else(|| self.scrollback_editor.clone());
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
@@ -184,7 +186,9 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
-        let scrollback_editor = other.scrollback_editor.or_else(|| self.scrollback_editor.clone());
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
