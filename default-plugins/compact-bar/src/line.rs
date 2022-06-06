@@ -193,11 +193,17 @@ fn tab_line_prefix(
     let mode_part_padded = format!("{:^8}", mode_part);
     let mode_part_len = mode_part_padded.width();
     let mode_part_styled_text = if mode == InputMode::Locked {
-        style!(locked_mode_color, bg_color).bold().paint(mode_part_padded)
+        style!(locked_mode_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
     } else if mode == InputMode::Normal {
-        style!(normal_mode_color, bg_color).bold().paint(mode_part_padded)
+        style!(normal_mode_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
     } else {
-        style!(other_modes_color, bg_color).bold().paint(mode_part_padded)
+        style!(other_modes_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
     };
     if cols.saturating_sub(prefix_text_len) >= mode_part_len {
         parts.push(LinePart {
