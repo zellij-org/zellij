@@ -207,7 +207,7 @@ fn tab_line_prefix(
     };
     if cols.saturating_sub(prefix_text_len) >= mode_part_len {
         parts.push(LinePart {
-            part: format!("{} ", mode_part_styled_text),
+            part: format!("{}", mode_part_styled_text),
             len: mode_part_len,
         })
     }
