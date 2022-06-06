@@ -28,6 +28,7 @@ enum CtrlKeyAction {
 
 enum CtrlKeyMode {
     Unselected,
+    UnselectedAlternate,
     Selected,
     Disabled,
 }
@@ -71,6 +72,40 @@ fn unselected_mode_shortcut(
     let char_right_separator = palette.unselected_char_right_separator.paint(">");
     let styled_text = palette.unselected_styled_text.paint(format!("{} ", text));
     let suffix_separator = palette.unselected_suffix_separator.paint(separator);
+    LinePart {
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_left_separator,
+            char_shortcut,
+            char_right_separator,
+            styled_text,
+            suffix_separator,
+        ])
+        .to_string(),
+        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
+    }
+}
+
+fn unselected_alternate_mode_shortcut(
+    letter: char,
+    text: &str,
+    palette: ColoredElements,
+    separator: &str,
+) -> LinePart {
+    let prefix_separator = palette
+        .unselected_alternate_prefix_separator
+        .paint(separator);
+    let char_left_separator = palette.unselected_alternate_char_left_separator.paint(" <");
+    let char_shortcut = palette
+        .unselected_alternate_char_shortcut
+        .paint(letter.to_string());
+    let char_right_separator = palette.unselected_alternate_char_right_separator.paint(">");
+    let styled_text = palette
+        .unselected_alternate_styled_text
+        .paint(format!("{} ", text));
+    let suffix_separator = palette
+        .unselected_alternate_suffix_separator
+        .paint(separator);
     LinePart {
         part: ANSIStrings(&[
             prefix_separator,
@@ -165,11 +200,39 @@ fn unselected_mode_shortcut_single_letter(
     }
 }
 
+fn unselected_alternate_mode_shortcut_single_letter(
+    letter: char,
+    palette: ColoredElements,
+    separator: &str,
+) -> LinePart {
+    let char_shortcut_text = format!(" {} ", letter);
+    let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
+    let prefix_separator = palette
+        .unselected_alternate_single_letter_prefix_separator
+        .paint(separator);
+    let char_shortcut = palette
+        .unselected_alternate_single_letter_char_shortcut
+        .paint(char_shortcut_text);
+    let suffix_separator = palette
+        .unselected_alternate_single_letter_suffix_separator
+        .paint(separator);
+    LinePart {
+        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
+        len,
+    }
+}
+
 fn full_ctrl_key(key: &CtrlKeyShortcut, palette: ColoredElements, separator: &str) -> LinePart {
     let full_text = key.full_text();
     let letter_shortcut = key.letter_shortcut();
     match key.mode {
         CtrlKeyMode::Unselected => unselected_mode_shortcut(
+            letter_shortcut,
+            &format!(" {}", full_text),
+            palette,
+            separator,
+        ),
+        CtrlKeyMode::UnselectedAlternate => unselected_alternate_mode_shortcut(
             letter_shortcut,
             &format!(" {}", full_text),
             palette,
@@ -198,6 +261,9 @@ fn single_letter_ctrl_key(
     match key.mode {
         CtrlKeyMode::Unselected => {
             unselected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
+        }
+        CtrlKeyMode::UnselectedAlternate => {
+            unselected_alternate_mode_shortcut_single_letter(letter_shortcut, palette, separator)
         }
         CtrlKeyMode::Selected => {
             selected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
@@ -237,7 +303,11 @@ fn key_indicators(
 }
 
 pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_text = " Ctrl +";
+    let prefix_text = if separator.len() == 0 {
+        " Ctrl + "
+    } else {
+        " Ctrl +"
+    };
     let prefix = palette.superkey_prefix.paint(prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     LinePart {
@@ -247,7 +317,8 @@ pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
 }
 
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
-    let colored_elements = color_elements(help.style.colors);
+    let supports_arrow_fonts = !help.capabilities.arrow_fonts;
+    let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     match &help.mode {
         InputMode::Locked => key_indicators(
             max_len,
@@ -268,13 +339,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -285,11 +356,11 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -298,13 +369,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -313,13 +384,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -328,13 +399,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -343,13 +414,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -358,13 +429,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Selected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
@@ -373,13 +444,13 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
             max_len,
             &[
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Lock),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Pane),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Pane),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Tab),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Resize),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Resize),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Move),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Scroll),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Scroll),
                 CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Session),
-                CtrlKeyShortcut::new(CtrlKeyMode::Unselected, CtrlKeyAction::Quit),
+                CtrlKeyShortcut::new(CtrlKeyMode::UnselectedAlternate, CtrlKeyAction::Quit),
             ],
             colored_elements,
             separator,
