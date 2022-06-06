@@ -92,12 +92,20 @@ fn unselected_alternate_mode_shortcut(
     palette: ColoredElements,
     separator: &str,
 ) -> LinePart {
-    let prefix_separator = palette.unselected_alternate_prefix_separator.paint(separator);
+    let prefix_separator = palette
+        .unselected_alternate_prefix_separator
+        .paint(separator);
     let char_left_separator = palette.unselected_alternate_char_left_separator.paint(" <");
-    let char_shortcut = palette.unselected_alternate_char_shortcut.paint(letter.to_string());
+    let char_shortcut = palette
+        .unselected_alternate_char_shortcut
+        .paint(letter.to_string());
     let char_right_separator = palette.unselected_alternate_char_right_separator.paint(">");
-    let styled_text = palette.unselected_alternate_styled_text.paint(format!("{} ", text));
-    let suffix_separator = palette.unselected_alternate_suffix_separator.paint(separator);
+    let styled_text = palette
+        .unselected_alternate_styled_text
+        .paint(format!("{} ", text));
+    let suffix_separator = palette
+        .unselected_alternate_suffix_separator
+        .paint(separator);
     LinePart {
         part: ANSIStrings(&[
             prefix_separator,
@@ -295,7 +303,11 @@ fn key_indicators(
 }
 
 pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_text = if separator.len() == 0 { " Ctrl + "} else { " Ctrl +" };
+    let prefix_text = if separator.len() == 0 {
+        " Ctrl + "
+    } else {
+        " Ctrl +"
+    };
     let prefix = palette.superkey_prefix.paint(prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     LinePart {
