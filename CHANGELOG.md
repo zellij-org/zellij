@@ -25,6 +25,7 @@ also adds a new default layout called `compact`, which can be loaded with: `zell
 that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 * feat: allow searching through and editing the pane scrollback with your default editor (https://github.com/zellij-org/zellij/pull/1456)
 * fix: exit client loop on empty message from server (https://github.com/zellij-org/zellij/pull/1454)
+* fix: mouse selection sometimes getting stuck (https://github.com/zellij-org/zellij/pull/1418)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
