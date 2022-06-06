@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 also adds a new default layout called `compact`, which can be loaded with: `zellij --layout compact`,
 that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 * feat: allow searching through and editing the pane scrollback with your default editor (https://github.com/zellij-org/zellij/pull/1456)
+* fix: exit client loop on empty message from server (https://github.com/zellij-org/zellij/pull/1454)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
