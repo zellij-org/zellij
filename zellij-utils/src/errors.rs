@@ -215,6 +215,7 @@ pub enum ScreenContext {
     HandlePtyBytes,
     Render,
     NewPane,
+    OpenInPlaceEditor,
     ToggleFloatingPanes,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
@@ -243,6 +244,7 @@ pub enum ScreenContext {
     MovePaneLeft,
     Exit,
     DumpScreen,
+    EditScrollback,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,
@@ -292,6 +294,7 @@ pub enum ScreenContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
     SpawnTerminal,
+    OpenInPlaceEditor,
     SpawnTerminalVertically,
     SpawnTerminalHorizontally,
     UpdateActivePane,

@@ -89,6 +89,10 @@ pub struct Options {
     #[clap(long)]
     #[serde(default)]
     pub copy_on_select: Option<bool>,
+
+    /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
+    #[clap(long, parse(from_os_str))]
+    pub scrollback_editor: Option<PathBuf>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -131,6 +135,9 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
@@ -146,6 +153,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            scrollback_editor,
         }
     }
 
@@ -178,6 +186,9 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
@@ -193,6 +204,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            scrollback_editor,
         }
     }
 
@@ -244,6 +256,7 @@ impl From<CliOptions> for Options {
             copy_command: opts.copy_command,
             copy_clipboard: opts.copy_clipboard,
             copy_on_select: opts.copy_on_select,
+            scrollback_editor: opts.scrollback_editor,
         }
     }
 }

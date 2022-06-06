@@ -403,6 +403,10 @@ impl Setup {
         message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
         message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
 
+        let default_editor = std::env::var("EDITOR")
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| String::from("Not set, checked $EDITOR and $VISUAL"));
+        writeln!(&mut message, "[DEFAULT EDITOR]: {}", default_editor).unwrap();
         writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).unwrap();
         let mut hyperlink = String::new();
         hyperlink.push_str(hyperlink_start);

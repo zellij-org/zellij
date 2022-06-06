@@ -40,6 +40,7 @@ pub enum ScreenInstruction {
     PtyBytes(RawFd, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
+    OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     HorizontalSplit(PaneId, ClientId),
@@ -67,6 +68,7 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId),
     Exit,
     DumpScreen(String, ClientId),
+    EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
     ScrollDown(ClientId),
@@ -115,6 +117,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
+            ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
             ScreenInstruction::TogglePaneEmbedOrFloating(..) => {
                 ScreenContext::TogglePaneEmbedOrFloating
             }
@@ -148,6 +151,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
@@ -798,6 +802,7 @@ pub(crate) fn screen_thread_main(
     client_attributes: ClientAttributes,
     config_options: Box<Options>,
 ) {
+    // let mut scrollbacks: HashMap<String, PaneId> = HashMap::new();
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
@@ -858,6 +863,22 @@ pub(crate) fn screen_thread_main(
                         }
                     }
                 };
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::UnblockInputThread)
+                    .unwrap();
+                screen.update_tabs();
+
+                screen.render();
+            }
+            ScreenInstruction::OpenInPlaceEditor(pid, client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.suppress_active_pane(pid, client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                    return;
+                }
                 screen
                     .bus
                     .senders
@@ -1079,6 +1100,15 @@ pub(crate) fn screen_thread_main(
 
                 screen.render();
             }
+            ScreenInstruction::EditScrollback(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.edit_scrollback(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
             ScreenInstruction::ScrollUp(client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     active_tab.scroll_active_terminal_up(client_id);
@@ -1241,7 +1271,7 @@ pub(crate) fn screen_thread_main(
                     Some(client_id) => {
                         screen
                             .get_active_tab_mut(client_id)
-                            .and_then(|active_tab| active_tab.close_pane(id))
+                            .and_then(|active_tab| active_tab.close_pane(id, false))
                             .or_else(|| {
                                 log::error!("Active tab not found for client id: {:?}", client_id);
                                 None
@@ -1250,7 +1280,7 @@ pub(crate) fn screen_thread_main(
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id);
+                                tab.close_pane(id, false);
                                 break;
                             }
                         }

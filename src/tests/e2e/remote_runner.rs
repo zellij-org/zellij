@@ -17,6 +17,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
+const SET_ENV_VARIABLES: &str = "EDITOR=/usr/bin/vi";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const ZELLIJ_DATA_DIR: &str = "/usr/src/zellij/e2e-data";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
@@ -64,8 +65,8 @@ fn start_zellij(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {} --data-dir {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
+                "{} {} --session {} --data-dir {}\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -78,8 +79,8 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {} --data-dir {} options --mirror-session true\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
+                "{} {} --session {} --data-dir {} options --mirror-session true\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -92,8 +93,12 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
     channel
         .write_all(
             format!(
-                "{} --session {} --data-dir {} options --mirror-session {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, session_name, ZELLIJ_DATA_DIR, mirrored
+                "{} {} --session {} --data-dir {} options --mirror-session {}\n",
+                SET_ENV_VARIABLES,
+                ZELLIJ_EXECUTABLE_LOCATION,
+                session_name,
+                ZELLIJ_DATA_DIR,
+                mirrored
             )
             .as_bytes(),
         )
@@ -103,7 +108,13 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
 
 fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
     channel
-        .write_all(format!("{} attach {}\n", ZELLIJ_EXECUTABLE_LOCATION, session_name).as_bytes())
+        .write_all(
+            format!(
+                "{} {} attach {}\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, session_name
+            )
+            .as_bytes(),
+        )
         .unwrap();
     channel.flush().unwrap();
 }
@@ -113,8 +124,8 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
     channel
         .write_all(
             format!(
-                "{} --session {} --data-dir {} options --no-pane-frames\n",
-                ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
+                "{} {} --session {} --data-dir {} options --no-pane-frames\n",
+                SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -127,8 +138,12 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
     channel
         .write_all(
             format!(
-                "{} --layout {} --session {} --data-dir {}\n",
-                ZELLIJ_EXECUTABLE_LOCATION, layout_path, SESSION_NAME, ZELLIJ_DATA_DIR
+                "{} {} --layout {} --session {} --data-dir {}\n",
+                SET_ENV_VARIABLES,
+                ZELLIJ_EXECUTABLE_LOCATION,
+                layout_path,
+                SESSION_NAME,
+                ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
