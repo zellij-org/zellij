@@ -164,6 +164,11 @@ fn tab_line_prefix(
         ThemeHue::Dark => palette.black,
         ThemeHue::Light => palette.white,
     };
+
+    let locked_mode_color = palette.magenta;
+    let normal_mode_color = palette.green;
+    let other_modes_color = palette.orange;
+
     let prefix_styled_text = style!(text_color, bg_color).bold().paint(prefix_text);
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
@@ -184,12 +189,25 @@ fn tab_line_prefix(
             })
         }
     }
-    let mode_part = format!("({:?})", mode);
-    let mode_part_len = mode_part.width();
-    let mode_part_styled_text = style!(text_color, bg_color).bold().paint(mode_part);
+    let mode_part = format!("{:?}", mode).to_uppercase();
+    let mode_part_padded = format!("{:^8}", mode_part);
+    let mode_part_len = mode_part_padded.width();
+    let mode_part_styled_text = if mode == InputMode::Locked {
+        style!(locked_mode_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
+    } else if mode == InputMode::Normal {
+        style!(normal_mode_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
+    } else {
+        style!(other_modes_color, bg_color)
+            .bold()
+            .paint(mode_part_padded)
+    };
     if cols.saturating_sub(prefix_text_len) >= mode_part_len {
         parts.push(LinePart {
-            part: format!(" {:^6} ", mode_part_styled_text),
+            part: format!("{} ", mode_part_styled_text),
             len: mode_part_len,
         })
     }
