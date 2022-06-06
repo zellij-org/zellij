@@ -14,12 +14,21 @@ pub(crate) fn stdin_loop(
         let buf = os_input.read_from_stdin();
         current_buffer.append(&mut buf.to_vec());
         let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely
-        let parse_input_event = |input_event: InputEvent| {
-            if holding_mouse && is_mouse_press_or_hold(&input_event) {
+        let mut events = vec![];
+        input_parser.parse(
+            &buf,
+            |input_event: InputEvent| {
+                events.push(input_event);
+            },
+            maybe_more,
+        );
+
+        let event_count = events.len();
+        for (i, input_event) in events.into_iter().enumerate() {
+            if holding_mouse && is_mouse_press_or_hold(&input_event) && i == event_count - 1 {
                 let mut poller = os_input.stdin_poller();
                 loop {
-                    let ready = poller.ready();
-                    if ready {
+                    if poller.ready() {
                         break;
                     }
                     send_input_instructions
@@ -39,8 +48,7 @@ pub(crate) fn stdin_loop(
                     current_buffer.drain(..).collect(),
                 ))
                 .unwrap();
-        };
-        input_parser.parse(&buf, parse_input_event, maybe_more);
+        }
     }
 }
 
