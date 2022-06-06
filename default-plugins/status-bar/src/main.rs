@@ -59,6 +59,13 @@ pub struct ColoredElements {
     pub unselected_char_right_separator: Style,
     pub unselected_styled_text: Style,
     pub unselected_suffix_separator: Style,
+    // unselected mode alternate color
+    pub unselected_alternate_prefix_separator: Style,
+    pub unselected_alternate_char_left_separator: Style,
+    pub unselected_alternate_char_shortcut: Style,
+    pub unselected_alternate_char_right_separator: Style,
+    pub unselected_alternate_styled_text: Style,
+    pub unselected_alternate_suffix_separator: Style,
     // disabled mode
     pub disabled_prefix_separator: Style,
     pub disabled_styled_text: Style,
@@ -71,6 +78,10 @@ pub struct ColoredElements {
     pub unselected_single_letter_prefix_separator: Style,
     pub unselected_single_letter_char_shortcut: Style,
     pub unselected_single_letter_suffix_separator: Style,
+    // unselected alternate single letter
+    pub unselected_alternate_single_letter_prefix_separator: Style,
+    pub unselected_alternate_single_letter_char_shortcut: Style,
+    pub unselected_alternate_single_letter_suffix_separator: Style,
     // superkey
     pub superkey_prefix: Style,
     pub superkey_suffix_separator: Style,
@@ -80,7 +91,7 @@ pub struct ColoredElements {
 // we need different colors from palette for the default theme
 // plus here we can add new sources in the future, like Theme
 // that can be defined in the config perhaps
-fn color_elements(palette: Palette) -> ColoredElements {
+fn color_elements(palette: Palette, different_color_alternates: bool) -> ColoredElements {
     let background = match palette.theme_hue {
         ThemeHue::Dark => palette.black,
         ThemeHue::Light => palette.white,
@@ -88,6 +99,14 @@ fn color_elements(palette: Palette) -> ColoredElements {
     let foreground = match palette.theme_hue {
         ThemeHue::Dark => palette.white,
         ThemeHue::Light => palette.black,
+    };
+    let alternate_background_color = if different_color_alternates {
+        match palette.theme_hue {
+            ThemeHue::Dark => palette.white,
+            ThemeHue::Light => palette.black,
+        }
+    } else {
+        palette.fg
     };
     match palette.source {
         PaletteSource::Default => ColoredElements {
@@ -97,21 +116,36 @@ fn color_elements(palette: Palette) -> ColoredElements {
             selected_char_right_separator: style!(background, palette.green).bold(),
             selected_styled_text: style!(background, palette.green).bold(),
             selected_suffix_separator: style!(palette.green, background).bold(),
+
             unselected_prefix_separator: style!(background, palette.fg),
             unselected_char_left_separator: style!(background, palette.fg).bold(),
             unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
             unselected_char_right_separator: style!(background, palette.fg).bold(),
             unselected_styled_text: style!(background, palette.fg).bold(),
             unselected_suffix_separator: style!(palette.fg, background),
+
+            unselected_alternate_prefix_separator: style!(background, alternate_background_color),
+            unselected_alternate_char_left_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color).bold(),
+            unselected_alternate_char_right_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
+            unselected_alternate_suffix_separator: style!(alternate_background_color, background),
+
             disabled_prefix_separator: style!(background, palette.fg),
             disabled_styled_text: style!(background, palette.fg).dimmed().italic(),
             disabled_suffix_separator: style!(palette.fg, background),
             selected_single_letter_prefix_separator: style!(background, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_single_letter_suffix_separator: style!(palette.green, background),
+
             unselected_single_letter_prefix_separator: style!(background, palette.fg),
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold().dimmed(),
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
+
+            unselected_alternate_single_letter_prefix_separator: style!(palette.fg, alternate_background_color),
+            unselected_alternate_single_letter_char_shortcut: style!(palette.red, alternate_background_color).bold(),
+            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, alternate_background_color),
+
             superkey_prefix: style!(foreground, background).bold(),
             superkey_suffix_separator: style!(background, background),
         },
@@ -128,15 +162,29 @@ fn color_elements(palette: Palette) -> ColoredElements {
             unselected_char_right_separator: style!(background, palette.fg).bold(),
             unselected_styled_text: style!(background, palette.fg).bold(),
             unselected_suffix_separator: style!(palette.fg, background),
+
+            unselected_alternate_prefix_separator: style!(background, alternate_background_color),
+            unselected_alternate_char_left_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color).bold(),
+            unselected_alternate_char_right_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
+            unselected_alternate_suffix_separator: style!(alternate_background_color, background),
+
             disabled_prefix_separator: style!(background, palette.fg),
             disabled_styled_text: style!(background, palette.fg).dimmed(),
             disabled_suffix_separator: style!(palette.fg, background),
             selected_single_letter_prefix_separator: style!(palette.fg, palette.green),
             selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
             selected_single_letter_suffix_separator: style!(palette.green, palette.fg),
+
             unselected_single_letter_prefix_separator: style!(palette.fg, background),
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
+
+            unselected_alternate_single_letter_prefix_separator: style!(palette.fg, alternate_background_color),
+            unselected_alternate_single_letter_char_shortcut: style!(palette.red, alternate_background_color).bold(),
+            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, alternate_background_color),
+
             superkey_prefix: style!(background, palette.fg).bold(),
             superkey_suffix_separator: style!(palette.fg, background),
         },
@@ -180,13 +228,14 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
-        let separator = if !self.mode_info.capabilities.arrow_fonts {
+        let supports_arrow_fonts = !self.mode_info.capabilities.arrow_fonts;
+        let separator = if supports_arrow_fonts {
             ARROW_SEPARATOR
         } else {
             ""
         };
 
-        let colored_elements = color_elements(self.mode_info.style.colors);
+        let colored_elements = color_elements(self.mode_info.style.colors, !supports_arrow_fonts);
         let superkey = superkey(colored_elements, separator);
         let ctrl_keys = ctrl_keys(
             &self.mode_info,
