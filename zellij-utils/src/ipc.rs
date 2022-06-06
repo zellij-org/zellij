@@ -7,6 +7,7 @@ use crate::{
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
+use log::warn;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -189,7 +190,10 @@ where
     pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
         match bincode::deserialize_from(&mut self.receiver) {
             Ok(msg) => Some(msg),
-            Err(_) => None,
+            Err(e) => {
+                warn!("Error in IpcReceiver.recv(): {:?}", e);
+                None
+            }
         }
     }
 
