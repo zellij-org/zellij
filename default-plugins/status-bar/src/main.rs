@@ -151,19 +151,14 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold().dimmed(),
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
 
-            unselected_alternate_single_letter_prefix_separator: style!(
-                palette.fg,
-                alternate_background_color
-            ),
+            unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
             unselected_alternate_single_letter_char_shortcut: style!(
                 palette.red,
                 alternate_background_color
             )
-            .bold(),
-            unselected_alternate_single_letter_suffix_separator: style!(
-                palette.fg,
-                alternate_background_color
-            ),
+            .bold()
+            .dimmed(),
+            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
 
             superkey_prefix: style!(foreground, background).bold(),
             superkey_suffix_separator: style!(background, background),
@@ -209,19 +204,14 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
 
-            unselected_alternate_single_letter_prefix_separator: style!(
-                palette.fg,
-                alternate_background_color
-            ),
+            unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
             unselected_alternate_single_letter_char_shortcut: style!(
                 palette.red,
                 alternate_background_color
             )
-            .bold(),
-            unselected_alternate_single_letter_suffix_separator: style!(
-                palette.fg,
-                alternate_background_color
-            ),
+            .bold()
+            .dimmed(),
+            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
 
             superkey_prefix: style!(background, palette.fg).bold(),
             superkey_suffix_separator: style!(palette.fg, background),
