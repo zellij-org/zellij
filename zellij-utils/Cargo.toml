@@ -16,7 +16,7 @@ clap = { version = "3.0", features = ["derive", "env"] }
 clap_complete = "3.0"
 colored = "2.0.0"
 colorsys = "0.6.5"
-crossbeam = "0.8.0"
+crossbeam = "0.8.1"
 directories-next = "2.0"
 interprocess = "1.1.1"
 lazy_static = "1.4.0"
