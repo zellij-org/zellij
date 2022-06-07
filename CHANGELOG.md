@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * feat: Log errors causing "empty message received from client" (https://github.com/zellij-org/zellij/pull/1459)
+* chore(dependencies): update `crossbeam` `0.8.0` -> `0.8.1` (https://github.com/zellij-org/zellij/pull/1463)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
