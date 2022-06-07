@@ -57,6 +57,8 @@ fn setup_remote_environment(channel: &mut ssh2::Channel, win_size: Size) {
 }
 
 fn stop_zellij(channel: &mut ssh2::Channel) {
+    // here we remove the status-bar-tips cache to make sure only the quicknav tip is loaded
+    channel.write_all(b"find /tmp | grep status-bar-tips | xargs rm\n").unwrap();
     channel.write_all(b"killall -KILL zellij\n").unwrap();
 }
 
