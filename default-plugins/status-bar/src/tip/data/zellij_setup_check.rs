@@ -28,7 +28,10 @@ pub fn zellij_setup_check_full(palette: Palette) -> LinePart {
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().paint("Having issues with Zellij? Try running "),
-        Style::new().fg(orange_color).bold().paint("zellij setup --check"),
+        Style::new()
+            .fg(orange_color)
+            .bold()
+            .paint("zellij setup --check"),
     ])
 }
 
@@ -39,7 +42,10 @@ pub fn zellij_setup_check_medium(palette: Palette) -> LinePart {
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().paint("Run "),
-        Style::new().fg(orange_color).bold().paint("zellij setup --check"),
+        Style::new()
+            .fg(orange_color)
+            .bold()
+            .paint("zellij setup --check"),
         Style::new().paint(" to find issues"),
     ])
 }
@@ -50,7 +56,10 @@ pub fn zellij_setup_check_short(palette: Palette) -> LinePart {
 
     strings!(&[
         Style::new().paint(" Run "),
-        Style::new().fg(orange_color).bold().paint("zellij setup --check"),
+        Style::new()
+            .fg(orange_color)
+            .bold()
+            .paint("zellij setup --check"),
         Style::new().paint(" to find issues"),
     ])
 }

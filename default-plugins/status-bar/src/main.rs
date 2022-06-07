@@ -125,9 +125,18 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_suffix_separator: style!(palette.fg, background),
 
             unselected_alternate_prefix_separator: style!(background, alternate_background_color),
-            unselected_alternate_char_left_separator: style!(background, alternate_background_color).bold(),
-            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color).bold(),
-            unselected_alternate_char_right_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_char_left_separator: style!(
+                background,
+                alternate_background_color
+            )
+            .bold(),
+            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color)
+                .bold(),
+            unselected_alternate_char_right_separator: style!(
+                background,
+                alternate_background_color
+            )
+            .bold(),
             unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
             unselected_alternate_suffix_separator: style!(alternate_background_color, background),
 
@@ -143,7 +152,12 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
 
             unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
-            unselected_alternate_single_letter_char_shortcut: style!(palette.red, alternate_background_color).bold().dimmed(),
+            unselected_alternate_single_letter_char_shortcut: style!(
+                palette.red,
+                alternate_background_color
+            )
+            .bold()
+            .dimmed(),
             unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
 
             superkey_prefix: style!(foreground, background).bold(),
@@ -164,9 +178,18 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_suffix_separator: style!(palette.fg, background),
 
             unselected_alternate_prefix_separator: style!(background, alternate_background_color),
-            unselected_alternate_char_left_separator: style!(background, alternate_background_color).bold(),
-            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color).bold(),
-            unselected_alternate_char_right_separator: style!(background, alternate_background_color).bold(),
+            unselected_alternate_char_left_separator: style!(
+                background,
+                alternate_background_color
+            )
+            .bold(),
+            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color)
+                .bold(),
+            unselected_alternate_char_right_separator: style!(
+                background,
+                alternate_background_color
+            )
+            .bold(),
             unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
             unselected_alternate_suffix_separator: style!(alternate_background_color, background),
 
@@ -182,7 +205,12 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             unselected_single_letter_suffix_separator: style!(palette.fg, background),
 
             unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
-            unselected_alternate_single_letter_char_shortcut: style!(palette.red, alternate_background_color).bold().dimmed(),
+            unselected_alternate_single_letter_char_shortcut: style!(
+                palette.red,
+                alternate_background_color
+            )
+            .bold()
+            .dimmed(),
             unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
 
             superkey_prefix: style!(background, palette.fg).bold(),

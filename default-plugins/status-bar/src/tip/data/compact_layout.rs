@@ -30,7 +30,10 @@ pub fn compact_layout_full(palette: Palette) -> LinePart {
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().paint("UI taking up too much space? Start Zellij with "),
-        Style::new().fg(green_color).bold().paint("zellij -l compact"),
+        Style::new()
+            .fg(green_color)
+            .bold()
+            .paint("zellij -l compact"),
         Style::new().paint(" or remove pane frames with "),
         Style::new().fg(orange_color).bold().paint("Ctrl"),
         Style::new().paint(" + "),
@@ -49,7 +52,10 @@ pub fn compact_layout_medium(palette: Palette) -> LinePart {
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().paint("To save screen space, start Zellij with "),
-        Style::new().fg(green_color).bold().paint("zellij -l compact"),
+        Style::new()
+            .fg(green_color)
+            .bold()
+            .paint("zellij -l compact"),
         Style::new().paint(" or remove frames with "),
         Style::new().fg(orange_color).bold().paint("Ctrl"),
         Style::new().paint(" + "),
@@ -67,7 +73,10 @@ pub fn compact_layout_short(palette: Palette) -> LinePart {
 
     strings!(&[
         Style::new().paint(" Save screen space, start with: "),
-        Style::new().fg(green_color).bold().paint("zellij -l compact"),
+        Style::new()
+            .fg(green_color)
+            .bold()
+            .paint("zellij -l compact"),
         Style::new().paint(" or remove frames with "),
         Style::new().fg(orange_color).bold().paint("Ctrl"),
         Style::new().paint(" + "),

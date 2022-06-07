@@ -2,17 +2,17 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 
-use crate::{tip::TipBody};
+use crate::tip::TipBody;
 
-mod quicknav;
-mod floating_panes_mouse;
-mod send_mouse_click_to_terminal;
-mod move_focus_hjkl_tab_switch;
-mod zellij_setup_check;
-mod use_mouse;
-mod sync_tab;
-mod edit_scrollbuffer;
 mod compact_layout;
+mod edit_scrollbuffer;
+mod floating_panes_mouse;
+mod move_focus_hjkl_tab_switch;
+mod quicknav;
+mod send_mouse_click_to_terminal;
+mod sync_tab;
+mod use_mouse;
+mod zellij_setup_check;
 
 lazy_static! {
     pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([
@@ -90,4 +90,3 @@ lazy_static! {
         ),
     ]);
 }
-
