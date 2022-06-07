@@ -39,6 +39,8 @@ LAYOUTS
 
 Layouts are yaml files which Zellij can load on startup when _--layout_ flag is
 provided.
+By default Zellij will load a layout called `default.yaml`,
+but this can be changed by using the `default_layout: [LAYOUT_NAME]` configuration option.
 
 
 For example a file like this:

@@ -52,6 +52,9 @@ pub struct Options {
     /// Set the default shell
     #[clap(long, parse(from_os_str))]
     pub default_shell: Option<PathBuf>,
+    /// Set the default layout
+    #[clap(long, parse(from_os_str))]
+    pub default_layout: Option<PathBuf>,
     /// Set the layout_dir, defaults to
     /// subdirectory of config dir
     #[clap(long, parse(from_os_str))]
@@ -128,6 +131,7 @@ impl Options {
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
@@ -144,6 +148,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_layout,
             layout_dir,
             mouse_mode,
             pane_frames,
@@ -179,6 +184,7 @@ impl Options {
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
@@ -195,6 +201,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_layout,
             layout_dir,
             mouse_mode,
             pane_frames,
@@ -247,6 +254,7 @@ impl From<CliOptions> for Options {
             theme: opts.theme,
             default_mode: opts.default_mode,
             default_shell: opts.default_shell,
+            default_layout: opts.default_layout,
             layout_dir: opts.layout_dir,
             mouse_mode: opts.mouse_mode,
             pane_frames: opts.pane_frames,
