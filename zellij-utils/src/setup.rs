@@ -192,7 +192,7 @@ impl Setup {
     /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
-    ///    (`layout.yaml` / `zellij --layout` / `zellij --layout-path`)
+    ///    (`layout.yaml` / `zellij --layout`)
     /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
