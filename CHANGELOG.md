@@ -27,6 +27,7 @@ that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 * fix: exit client loop on empty message from server (https://github.com/zellij-org/zellij/pull/1454)
 * fix: mouse selection sometimes getting stuck (https://github.com/zellij-org/zellij/pull/1418)
 * feat: tweak simplified UI (https://github.com/zellij-org/zellij/pull/1458)
+* feat: add status more tips (https://github.com/zellij-org/zellij/pull/1462)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
