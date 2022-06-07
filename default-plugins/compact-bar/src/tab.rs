@@ -23,14 +23,28 @@ pub fn render_tab(
     separator: &str,
     focused_clients: &[ClientId],
     active: bool,
+    is_alternate_tab: bool,
 ) -> LinePart {
-    let background_color = if active { palette.green } else { palette.fg };
+    let separator_width = separator.width();
+    let alternate_tab_color = match palette.theme_hue {
+        // TODO: only do this if we don't have the arrow capabilities
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    };
+    let background_color = if active {
+        palette.green
+    } else if is_alternate_tab {
+        alternate_tab_color
+    } else {
+        palette.fg
+    };
     let foreground_color = match palette.theme_hue {
         ThemeHue::Dark => palette.black,
         ThemeHue::Light => palette.white,
     };
     let left_separator = style!(foreground_color, background_color).paint(separator);
-    let mut tab_text_len = text.width() + 2 + separator.width() * 2; // 2 for left and right separators, 2 for the text padding
+    let mut tab_text_len =
+        text.width() + (separator_width * 2) + separator.width() * (separator_width * 2); // 2 for left and right separators, 2 for the text padding
 
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
@@ -70,6 +84,7 @@ pub fn render_tab(
 pub fn tab_style(
     text: String,
     is_active_tab: bool,
+    is_alternate_tab: bool,
     is_sync_panes_active: bool,
     palette: Palette,
     capabilities: PluginCapabilities,
@@ -80,5 +95,18 @@ pub fn tab_style(
     if is_sync_panes_active {
         tab_text.push_str(" (Sync)");
     }
-    render_tab(tab_text, palette, separator, focused_clients, is_active_tab)
+    // we only color alternate tabs differently if we can't use the arrow fonts to separate them
+    let is_alternate_tab = if !capabilities.arrow_fonts {
+        false
+    } else {
+        is_alternate_tab
+    };
+    render_tab(
+        tab_text,
+        palette,
+        separator,
+        focused_clients,
+        is_active_tab,
+        is_alternate_tab,
+    )
 }
