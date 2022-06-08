@@ -298,7 +298,7 @@ macro_rules! dump_screen {
 #[derive(Debug, Clone, Default)]
 pub struct SearchResult {
     pub selections: Vec<Selection>,
-    pub active: usize,
+    pub active: Option<usize>,
     pub initialized: bool,
     pub needle: String,
 }
@@ -1551,43 +1551,34 @@ impl Grid {
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
 
-    pub fn search_forward(&mut self, needle: &str) {
-        if !self.search_results.initialized {
-            self.search_viewport(needle, true);
-        } else if !self.search_results.selections.is_empty() {
-            self.output_buffer.update_line(
-                self.search_results.selections[self.search_results.active]
-                    .start
-                    .line() as usize,
-            );
-            if self.search_results.active + 1 < self.search_results.selections.len() {
-                self.search_results.active += 1;
-                self.output_buffer.update_line(
-                    self.search_results.selections[self.search_results.active]
-                        .start
-                        .line() as usize,
-                );
+    pub fn search_forward(&mut self) {
+        if !self.search_results.selections.is_empty() {
+            let mut active_idx = *self.search_results.active.get_or_insert(0);
+            self.output_buffer
+                .update_line(self.search_results.selections[active_idx].start.line() as usize);
+            if active_idx + 1 < self.search_results.selections.len() {
+                active_idx += 1;
+                self.output_buffer
+                    .update_line(self.search_results.selections[active_idx].start.line() as usize);
             }
+            self.search_results.active = Some(active_idx);
         }
     }
 
-    pub fn search_backward(&mut self, needle: &str) {
-        if !self.search_results.initialized {
-            self.search_viewport(needle, false);
-        } else if !self.search_results.selections.is_empty() {
-            self.output_buffer.update_line(
-                self.search_results.selections[self.search_results.active]
-                    .start
-                    .line() as usize,
-            );
-            if self.search_results.active > 0 {
-                self.search_results.active -= 1;
-                self.output_buffer.update_line(
-                    self.search_results.selections[self.search_results.active]
-                        .start
-                        .line() as usize,
-                );
+    pub fn search_backward(&mut self) {
+        if !self.search_results.selections.is_empty() {
+            let mut active_idx = *self
+                .search_results
+                .active
+                .get_or_insert(self.search_results.selections.len() - 1);
+            self.output_buffer
+                .update_line(self.search_results.selections[active_idx].start.line() as usize);
+            if active_idx > 0 {
+                active_idx -= 1;
+                self.output_buffer
+                    .update_line(self.search_results.selections[active_idx].start.line() as usize);
             }
+            self.search_results.active = Some(active_idx);
         }
     }
 
@@ -1624,7 +1615,7 @@ impl Grid {
         res
     }
 
-    fn search_viewport(&mut self, needle: &str, forward: bool) {
+    pub fn search_viewport(&mut self, needle: &str) {
         self.search_results.needle = needle.to_string();
 
         for (ridx, row) in self.viewport.iter().enumerate() {
@@ -1636,10 +1627,6 @@ impl Grid {
             for selection in selections {
                 self.search_results.selections.push(selection);
             }
-        }
-
-        if !forward && !self.search_results.selections.is_empty() {
-            self.search_results.active = self.search_results.selections.len() - 1;
         }
         self.search_results.initialized = true;
     }

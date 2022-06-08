@@ -232,7 +232,7 @@ impl Pane for TerminalPane {
                 } else if !self.grid.search_results.selections.is_empty() {
                     for (idx, res) in self.grid.search_results.selections.iter().enumerate() {
                         if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                            let background_color = if idx == self.grid.search_results.active {
+                            let background_color = if Some(idx) == self.grid.search_results.active {
                                 AnsiCode::NamedColor(NamedColor::Yellow)
                             } else {
                                 AnsiCode::NamedColor(NamedColor::Red)
@@ -533,7 +533,7 @@ impl Pane for TerminalPane {
         }
         self.grid.clear_search();
         if !self.search_term.is_empty() {
-            self.grid.search_forward(&self.search_term);
+            self.grid.search_viewport(&self.search_term);
         }
         self.set_should_render(true);
     }
@@ -541,14 +541,14 @@ impl Pane for TerminalPane {
         if self.search_term.is_empty() {
             return; // No-op
         }
-        self.grid.search_forward(&self.search_term);
+        self.grid.search_forward();
         self.set_should_render(true);
     }
     fn search_backward(&mut self) {
         if self.search_term.is_empty() {
             return; // No-op
         }
-        self.grid.search_backward(&self.search_term);
+        self.grid.search_backward();
         self.set_should_render(true);
     }
 }
