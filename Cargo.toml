@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.30.0"
+version = "0.31.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -16,9 +16,9 @@ rust-version = "1.59"
 anyhow = "1.0"
 names = { version = "0.13.0", default-features = false }
 miette = { version = "3.3.0", features = ["fancy"] }
-zellij-client = { path = "zellij-client/", version = "0.30.0" }
-zellij-server = { path = "zellij-server/", version = "0.30.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.30.0" }
+zellij-client = { path = "zellij-client/", version = "0.31.0" }
+zellij-server = { path = "zellij-server/", version = "0.31.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.31.0" }
 log = "0.4.17"
 dialoguer = "0.10.1"
 suggest = "0.4"
@@ -35,6 +35,7 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
+    "default-plugins/compact-bar",
     "default-plugins/status-bar",
     "default-plugins/strider",
     "default-plugins/tab-bar",

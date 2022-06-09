@@ -109,6 +109,12 @@ pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/disable-status-bar.yaml"
 ));
 
+pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.yaml"
+));
+
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -141,6 +147,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -185,7 +192,7 @@ impl Setup {
     /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
-    ///    (`layout.yaml` / `zellij --layout` / `zellij --layout-path`)
+    ///    (`layout.yaml` / `zellij --layout`)
     /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
@@ -223,8 +230,12 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
+        let chosen_layout = opts
+            .layout
+            .clone()
+            .or_else(|| config_options.default_layout.clone());
         let layout_result =
-            LayoutFromYamlIntermediate::from_path_or_default(opts.layout.as_ref(), layout_dir);
+            LayoutFromYamlIntermediate::from_path_or_default(chosen_layout.as_ref(), layout_dir);
         let layout = match layout_result {
             None => None,
             Some(Ok(layout)) => Some(layout),
@@ -396,6 +407,10 @@ impl Setup {
         message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
         message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
 
+        let default_editor = std::env::var("EDITOR")
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| String::from("Not set, checked $EDITOR and $VISUAL"));
+        writeln!(&mut message, "[DEFAULT EDITOR]: {}", default_editor).unwrap();
         writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).unwrap();
         let mut hyperlink = String::new();
         hyperlink.push_str(hyperlink_start);

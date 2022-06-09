@@ -39,6 +39,8 @@ LAYOUTS
 
 Layouts are yaml files which Zellij can load on startup when _--layout_ flag is
 provided.
+By default Zellij will load a layout called `default.yaml`,
+but this can be changed by using the `default_layout: [LAYOUT_NAME]` configuration option.
 
 
 For example a file like this:
@@ -152,6 +154,7 @@ ACTIONS
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
   Right, Up, Down).
 * __DumpScreen: <File\>__ - dumps the screen in the specified file.
+* __EditScrollback__ - replaces the current pane with the scrollback buffer.
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
 * __ScrollDown__ - scrolls down 1 line in the focused pane.
 * __PageScrollUp__ - scrolls up 1 page in the focused pane.

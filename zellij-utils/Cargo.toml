@@ -1,6 +1,6 @@
 [package]
 name = "zellij-utils"
-version = "0.30.0"
+version = "0.31.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
@@ -16,7 +16,7 @@ clap = { version = "3.0", features = ["derive", "env"] }
 clap_complete = "3.0"
 colored = "2.0.0"
 colorsys = "0.6.5"
-crossbeam = "0.8.0"
+crossbeam = "0.8.1"
 directories-next = "2.0"
 interprocess = "1.1.1"
 lazy_static = "1.4.0"
@@ -32,7 +32,7 @@ strum = "0.20.0"
 thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
 vte = "0.10.1"
-zellij-tile = { path = "../zellij-tile/", version = "0.30.0" }
+zellij-tile = { path = "../zellij-tile/", version = "0.31.0" }
 log = "0.4.17"
 log4rs = "1.0.0"
 unicode-width = "0.1.8"

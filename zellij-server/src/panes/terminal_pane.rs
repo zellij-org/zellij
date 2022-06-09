@@ -481,6 +481,10 @@ impl Pane for TerminalPane {
     fn mouse_mode(&self) -> bool {
         self.grid.mouse_mode
     }
+    fn get_line_number(&self) -> Option<usize> {
+        // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
+        Some(self.grid.absolute_position_in_scrollback() + 1)
+    }
 }
 
 impl TerminalPane {

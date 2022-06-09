@@ -101,6 +101,49 @@ impl FloatingPanes {
         self.panes.insert(pane_id, pane);
         self.z_indices.push(pane_id);
     }
+    pub fn replace_active_pane(
+        &mut self,
+        pane: Box<dyn Pane>,
+        client_id: ClientId,
+    ) -> Option<Box<dyn Pane>> {
+        self.active_panes
+            .get(&client_id)
+            .copied()
+            .and_then(|active_pane_id| self.replace_pane(active_pane_id, pane))
+    }
+    pub fn replace_pane(
+        &mut self,
+        pane_id: PaneId,
+        mut with_pane: Box<dyn Pane>,
+    ) -> Option<Box<dyn Pane>> {
+        let with_pane_id = with_pane.pid();
+        with_pane.set_content_offset(Offset::frame(1));
+        let removed_pane = self.panes.remove(&pane_id).map(|removed_pane| {
+            let removed_pane_id = removed_pane.pid();
+            let with_pane_id = with_pane.pid();
+            let removed_pane_geom = removed_pane.current_geom();
+            with_pane.set_geom(removed_pane_geom);
+            self.panes.insert(with_pane_id, with_pane);
+            let z_index = self
+                .z_indices
+                .iter()
+                .position(|pane_id| pane_id == &removed_pane_id)
+                .unwrap();
+            self.z_indices.remove(z_index);
+            self.z_indices.insert(z_index, with_pane_id);
+            removed_pane
+        });
+
+        // update the desired_pane_positions to relate to the new pane
+        if let Some(desired_pane_position) = self.desired_pane_positions.remove(&pane_id) {
+            self.desired_pane_positions
+                .insert(with_pane_id, desired_pane_position);
+        }
+
+        // move clients from the previously active pane to the new pane we just inserted
+        self.move_clients_between_panes(pane_id, with_pane_id);
+        removed_pane
+    }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.desired_pane_positions.remove(&pane_id);
@@ -240,6 +283,11 @@ impl FloatingPanes {
         );
         floating_pane_grid.resize(new_screen_size);
         self.set_force_render();
+    }
+    pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) {
+        for pane in self.panes.values_mut() {
+            resize_pty!(pane, os_api);
+        }
     }
     pub fn resize_active_pane_left(
         &mut self,
@@ -874,5 +922,17 @@ impl FloatingPanes {
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
+    }
+    fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
+        let clients_in_pane: Vec<ClientId> = self
+            .active_panes
+            .iter()
+            .filter(|(_cid, pid)| **pid == from_pane_id)
+            .map(|(cid, _pid)| *cid)
+            .collect();
+        for client_id in clients_in_pane {
+            self.active_panes.remove(&client_id);
+            self.active_panes.insert(client_id, to_pane_id);
+        }
     }
 }

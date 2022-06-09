@@ -16,7 +16,7 @@ use zellij_utils::{
         command::TerminalAction,
         get_mode_info,
     },
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, ServerToClientMsg},
+    ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
 
 use crate::ClientId;
@@ -150,6 +150,12 @@ fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id))
+                .unwrap();
+        }
+        Action::EditScrollback => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::EditScrollback(client_id))
                 .unwrap();
         }
         Action::ScrollUp => {
@@ -522,6 +528,13 @@ pub(crate) fn route_thread_main(
             }
             None => {
                 log::error!("Received empty message from client");
+                os_input.send_to_client(
+                    client_id,
+                    ServerToClientMsg::Exit(ExitReason::Error(
+                        "Received empty message".to_string(),
+                    )),
+                );
+                break;
             }
         }
     }

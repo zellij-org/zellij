@@ -145,6 +145,7 @@ fn handle_openpty(
 ///
 fn handle_terminal(
     cmd: RunCommand,
+    failover_cmd: Option<RunCommand>,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
 ) -> (RawFd, RawFd) {
@@ -152,9 +153,12 @@ fn handle_terminal(
     // parent.
     match openpty(None, Some(&orig_termios)) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb),
-        Err(e) => {
-            panic!("failed to start pty{:?}", e);
-        }
+        Err(e) => match failover_cmd {
+            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb),
+            None => {
+                panic!("failed to start pty{:?}", e);
+            }
+        },
     }
 }
 
@@ -174,19 +178,40 @@ pub fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
-) -> (RawFd, RawFd) {
+    default_editor: Option<PathBuf>,
+) -> Result<(RawFd, RawFd), &'static str> {
+    let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open) => {
-            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
+        TerminalAction::OpenFile(file_to_open, line_number) => {
+            if default_editor.is_none()
+                && env::var("EDITOR").is_err()
+                && env::var("VISUAL").is_err()
+            {
+                return Err(
+                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL",
+                );
             }
-            let command =
-                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()));
+            let command = default_editor.unwrap_or_else(|| {
+                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()))
+            });
 
-            let args = vec![file_to_open
+            let mut args = vec![];
+            let file_to_open = file_to_open
                 .into_os_string()
                 .into_string()
-                .expect("Not valid Utf8 Encoding")];
+                .expect("Not valid Utf8 Encoding");
+            if let Some(line_number) = line_number {
+                if command.ends_with("vim")
+                    || command.ends_with("nvim")
+                    || command.ends_with("emacs")
+                    || command.ends_with("nano")
+                    || command.ends_with("kak")
+                {
+                    failover_cmd_args = Some(vec![file_to_open.clone()]);
+                    args.push(format!("+{}", line_number));
+                }
+            }
+            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
@@ -195,8 +220,15 @@ pub fn spawn_terminal(
         }
         TerminalAction::RunCommand(command) => command,
     };
+    let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
+        let mut cmd = cmd.clone();
+        cmd.args = failover_cmd_args;
+        Some(cmd)
+    } else {
+        None
+    };
 
-    handle_terminal(cmd, orig_termios, quit_cb)
+    Ok(handle_terminal(cmd, failover_cmd, orig_termios, quit_cb))
 }
 
 #[derive(Clone)]
@@ -245,7 +277,8 @@ pub trait ServerOsApi: Send + Sync {
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd);
+        default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str>;
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -284,9 +317,15 @@ impl ServerOsApi for ServerOsInputOutput {
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd) {
+        default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str> {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(terminal_action, orig_termios.clone(), quit_cb)
+        spawn_terminal(
+            terminal_action,
+            orig_termios.clone(),
+            quit_cb,
+            default_editor,
+        )
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)

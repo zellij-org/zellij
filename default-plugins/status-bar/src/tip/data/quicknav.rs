@@ -1,13 +1,10 @@
-use std::collections::HashMap;
-
 use ansi_term::{
     unstyled_len, ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };
-use lazy_static::lazy_static;
 
-use crate::{tip::TipBody, LinePart};
+use crate::LinePart;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
@@ -24,18 +21,7 @@ macro_rules! strings {
     }};
 }
 
-lazy_static! {
-    pub static ref TIPS: HashMap<&'static str, TipBody> = HashMap::from([(
-        "quicknav",
-        TipBody {
-            short: quicknav_short,
-            medium: quicknav_medium,
-            full: quicknav_full,
-        }
-    )]);
-}
-
-fn quicknav_full(palette: Palette) -> LinePart {
+pub fn quicknav_full(palette: Palette) -> LinePart {
     let green_color = palette_match!(palette.green);
     let orange_color = palette_match!(palette.orange);
 
@@ -58,7 +44,7 @@ fn quicknav_full(palette: Palette) -> LinePart {
     ])
 }
 
-fn quicknav_medium(palette: Palette) -> LinePart {
+pub fn quicknav_medium(palette: Palette) -> LinePart {
     let green_color = palette_match!(palette.green);
     let orange_color = palette_match!(palette.orange);
 
@@ -81,7 +67,7 @@ fn quicknav_medium(palette: Palette) -> LinePart {
     ])
 }
 
-fn quicknav_short(palette: Palette) -> LinePart {
+pub fn quicknav_short(palette: Palette) -> LinePart {
     let green_color = palette_match!(palette.green);
     let orange_color = palette_match!(palette.orange);
 

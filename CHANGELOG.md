@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* feat: Log errors causing "empty message received from client" (https://github.com/zellij-org/zellij/pull/1459)
+* chore(dependencies): update `crossbeam` `0.8.0` -> `0.8.1` (https://github.com/zellij-org/zellij/pull/1463)
+* add(option): `default-layout` setting for changing the default layout upon start, example: `default_layout: compact` (https://github.com/zellij-org/zellij/pull/1467)
+
+## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
 * feat: Attach to sessions more conveniently by only typing their name's first character(s) (https://github.com/zellij-org/zellij/pull/1360)
 * fix: a small typo (https://github.com/zellij-org/zellij/pull/1390)
@@ -20,6 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: add checking for missing extensions (https://github.com/zellij-org/zellij/pull/1432)
 * fix: client process hanging / not exiting when terminal emulator was closed (https://github.com/zellij-org/zellij/pull/1433)
 * BREAKING CHANGE: merge `--layout` and `--layout-path` (https://github.com/zellij-org/zellij/pull/1426)
+* add: a version of the `tab-bar` plugin, that carries mode information, called `compact-bar`
+also adds a new default layout called `compact`, which can be loaded with: `zellij --layout compact`,
+that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
+* feat: allow searching through and editing the pane scrollback with your default editor (https://github.com/zellij-org/zellij/pull/1456)
+* fix: exit client loop on empty message from server (https://github.com/zellij-org/zellij/pull/1454)
+* fix: mouse selection sometimes getting stuck (https://github.com/zellij-org/zellij/pull/1418)
+* feat: tweak simplified UI (https://github.com/zellij-org/zellij/pull/1458)
+* feat: add status more tips (https://github.com/zellij-org/zellij/pull/1462)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)

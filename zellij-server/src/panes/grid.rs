@@ -1460,6 +1460,9 @@ impl Grid {
             Some(selection.join("\n"))
         }
     }
+    pub fn absolute_position_in_scrollback(&self) -> usize {
+        self.lines_above.len() + self.cursor.y
+    }
 
     fn update_selected_lines(&mut self, old_selection: &Selection, new_selection: &Selection) {
         for l in old_selection.diff(new_selection, self.height) {

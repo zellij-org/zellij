@@ -631,6 +631,7 @@ fn init_session(
                     Some(os_input.clone()),
                 ),
                 opts.debug,
+                config_options.scrollback_editor.clone(),
             );
 
             move || pty_thread_main(pty, layout)

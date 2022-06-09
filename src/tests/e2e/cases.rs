@@ -38,6 +38,7 @@ pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
 pub const SCROLL_DOWN_IN_SCROLL_MODE: [u8; 1] = [106]; // j
 pub const SCROLL_PAGE_UP_IN_SCROLL_MODE: [u8; 1] = [2]; // ctrl-b
 pub const SCROLL_PAGE_DOWN_IN_SCROLL_MODE: [u8; 1] = [6]; // ctrl-f
+pub const EDIT_SCROLLBACK: [u8; 1] = [101]; // e
 
 pub const RESIZE_MODE: [u8; 1] = [14]; // ctrl-n
 pub const RESIZE_DOWN_IN_RESIZE_MODE: [u8; 1] = [106]; // j
@@ -1803,4 +1804,52 @@ pub fn tmux_mode() {
         }
     };
     assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn edit_scrollback() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Split pane to the right",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&SCROLL_MODE);
+                    remote_terminal.send_key(&EDIT_SCROLLBACK);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for editor to appear",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains(".dump") {
+                    // the .dump is an indication we get on the bottom line of vi when editing a
+                    // file
+                    // the temp file name is randomly generated, so we don't assert the whole snapshot
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert!(last_snapshot.contains(".dump"));
 }

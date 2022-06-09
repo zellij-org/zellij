@@ -21,6 +21,7 @@ macro_rules! asset_map {
 pub(crate) fn populate_data_dir(data_dir: &Path) {
     // First run installation of default plugins & layouts
     let mut assets = asset_map! {
+        "assets/plugins/compact-bar.wasm" => "plugins/compact-bar.wasm",
         "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",
         "assets/plugins/tab-bar.wasm" => "plugins/tab-bar.wasm",
         "assets/plugins/strider.wasm" => "plugins/strider.wasm",

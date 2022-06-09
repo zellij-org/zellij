@@ -5,6 +5,8 @@ mod clipboard;
 mod copy_command;
 
 use copy_command::CopyCommand;
+use std::env::temp_dir;
+use uuid::Uuid;
 use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
@@ -70,6 +72,7 @@ pub(crate) struct Tab {
     pub name: String,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
+    suppressed_panes: HashMap<PaneId, Box<dyn Pane>>,
     max_panes: Option<usize>,
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -268,6 +271,9 @@ pub trait Pane {
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
     fn mouse_mode(&self) -> bool;
+    fn get_line_number(&self) -> Option<usize> {
+        None
+    }
 }
 
 impl Tab {
@@ -339,6 +345,7 @@ impl Tab {
             position,
             tiled_panes,
             floating_panes,
+            suppressed_panes: HashMap::new(),
             name,
             max_panes,
             viewport,
@@ -577,7 +584,8 @@ impl Tab {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
                     // this unwrap is safe because floating panes should not be visible if there are no floating panes
-                    let floating_pane_to_embed = self.close_pane(focused_floating_pane_id).unwrap();
+                    let floating_pane_to_embed =
+                        self.close_pane(focused_floating_pane_id, true).unwrap();
                     self.tiled_panes
                         .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
                     self.should_clear_display_before_rendering = true;
@@ -592,7 +600,7 @@ impl Tab {
                     // don't close the only pane on screen...
                     return;
                 }
-                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id) {
+                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
                     embedded_pane_to_float.set_geom(new_pane_geom);
                     resize_pty!(embedded_pane_to_float, self.os_api);
                     embedded_pane_to_float.set_active_at(Instant::now());
@@ -688,6 +696,47 @@ impl Tab {
                         self.tiled_panes.focus_pane(pid, client_id);
                     }
                 }
+            }
+        }
+    }
+    pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) {
+        // this method creates a new pane from pid and replaces it with the active pane
+        // the active pane is then suppressed (hidden and not rendered) until the current
+        // created pane is closed, in which case it will be replaced back by it
+        match pid {
+            PaneId::Terminal(pid) => {
+                let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
+                let new_pane = TerminalPane::new(
+                    pid,
+                    PaneGeom::default(), // the initial size will be set later
+                    self.style,
+                    next_terminal_position,
+                    String::new(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.terminal_emulator_colors.clone(),
+                );
+                let replaced_pane = if self.floating_panes.panes_are_visible() {
+                    self.floating_panes
+                        .replace_active_pane(Box::new(new_pane), client_id)
+                } else {
+                    self.tiled_panes
+                        .replace_active_pane(Box::new(new_pane), client_id)
+                };
+                match replaced_pane {
+                    Some(replaced_pane) => {
+                        self.suppressed_panes
+                            .insert(PaneId::Terminal(pid), replaced_pane);
+                        let current_active_pane = self.get_active_pane(client_id).unwrap(); // this will be the newly replaced pane we just created
+                        resize_pty!(current_active_pane, self.os_api);
+                    }
+                    None => {
+                        log::error!("Could not find editor pane to replace - is no pane focused?")
+                    }
+                }
+            }
+            PaneId::Plugin(_pid) => {
+                // TBD, currently unsupported
             }
         }
     }
@@ -792,12 +841,22 @@ impl Tab {
     pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
+            || self
+                .suppressed_panes
+                .values()
+                .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
+                .is_some()
     }
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
             .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
+            })
         {
             // If the pane is scrolled buffer the vte events
             if terminal_output.is_scrolled() {
@@ -827,6 +886,11 @@ impl Tab {
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
             .or_else(|| self.floating_panes.get_pane_mut(PaneId::Terminal(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
+            })
         {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -1070,6 +1134,7 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);
+        self.floating_panes.resize_pty_all_panes(&mut self.os_api); // we need to do this explicitly because floating_panes.resize does not do this
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
     }
@@ -1308,7 +1373,7 @@ impl Tab {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
                     .unwrap();
-                self.close_pane(pid);
+                self.close_pane(pid, false);
             }
         }
     }
@@ -1345,7 +1410,20 @@ impl Tab {
             }
         }
     }
-    pub fn close_pane(&mut self, id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn close_pane(
+        &mut self,
+        id: PaneId,
+        ignore_suppressed_panes: bool,
+    ) -> Option<Box<dyn Pane>> {
+        // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
+        // this is because in that case, while we do use this logic, we're not actually closing the
+        // pane, we're moving it
+        //
+        // TODO: separate the "close_pane" logic and the "move_pane_somewhere_else" logic, they're
+        // overloaded here and that's not great
+        if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
+            return self.replace_pane_with_suppressed_pane(id);
+        }
         if self.floating_panes.panes_contain(&id) {
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
@@ -1365,10 +1443,38 @@ impl Tab {
             closed_pane
         }
     }
+    pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        self.suppressed_panes
+            .remove(&pane_id)
+            .and_then(|suppressed_pane| {
+                let suppressed_pane_id = suppressed_pane.pid();
+                let replaced_pane = if self.are_floating_panes_visible() {
+                    self.floating_panes.replace_pane(pane_id, suppressed_pane)
+                } else {
+                    self.tiled_panes.replace_pane(pane_id, suppressed_pane)
+                };
+                if let Some(suppressed_pane) = self
+                    .floating_panes
+                    .get_pane(suppressed_pane_id)
+                    .or_else(|| self.tiled_panes.get_pane(suppressed_pane_id))
+                {
+                    // You may be thinking: why aren't we using the original "suppressed_pane" here,
+                    // isn't it the same one?
+                    //
+                    // Yes, you are right! However, we moved it into its correct environment above
+                    // (either floating_panes or tiled_panes) where it received a new geometry based on
+                    // the pane there we replaced. Now, we need to update its pty about its new size.
+                    // We couldn't do that before, and we can't use the original moved item now - so we
+                    // need to refetch it
+                    resize_pty!(suppressed_pane, self.os_api);
+                }
+                replaced_pane
+            })
+    }
     pub fn close_focused_pane(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-                self.close_pane(active_floating_pane_id);
+                self.close_pane(active_floating_pane_id, false);
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
                     .unwrap();
@@ -1376,7 +1482,7 @@ impl Tab {
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-            self.close_pane(active_pane_id);
+            self.close_pane(active_pane_id, false);
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .unwrap();
@@ -1387,6 +1493,22 @@ impl Tab {
             let dump = active_pane.dump_screen(client_id);
             self.os_api.write_to_file(dump, file);
         }
+    }
+    pub fn edit_scrollback(&mut self, client_id: ClientId) {
+        let mut file = temp_dir();
+        file.push(format!("{}.dump", Uuid::new_v4()));
+        self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
+        // let line_number = self.get_active_pane(client_id).map(|a_t| a_t.get_line_number());
+        let line_number = self
+            .get_active_pane(client_id)
+            .and_then(|a_t| a_t.get_line_number());
+        self.senders
+            .send_to_pty(PtyInstruction::OpenInPlaceEditor(
+                file,
+                line_number,
+                client_id,
+            ))
+            .unwrap();
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {

@@ -57,6 +57,7 @@ pub enum Action {
     /// Dumps the screen to a file
     DumpScreen(String),
     /// Scroll up in focus pane.
+    EditScrollback,
     ScrollUp,
     /// Scroll up at point
     ScrollUpAt(Position),

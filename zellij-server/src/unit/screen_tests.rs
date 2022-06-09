@@ -34,7 +34,8 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _file_to_open: TerminalAction,
         _quit_db: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd) {
+        _default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str> {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {

@@ -429,6 +429,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dfdf9179d546b55ff3f88c9d93ecfaa3e9760163da5a1080af5243230dbbb70"
 
 [[package]]
+name = "compact-bar"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "colored",
+ "unicode-width",
+ "zellij-tile",
+ "zellij-tile-utils",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2716,6 +2727,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "936e4b492acfd135421d8dca4b1aa80a7bfc26e702ef3af710e0752684df5372"
 
 [[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom 0.2.6",
+ "serde",
+]
+
+[[package]]
 name = "value-bag"
 version = "1.0.0-alpha.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3215,7 +3236,7 @@ dependencies = [
 
 [[package]]
 name = "zellij"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "dialoguer",
@@ -3233,7 +3254,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-client"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "insta",
  "log",
@@ -3244,7 +3265,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-server"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "ansi_term",
  "async-trait",
@@ -3262,6 +3283,7 @@ dependencies = [
  "typetag",
  "unicode-width",
  "url",
+ "uuid",
  "wasmer",
  "wasmer-wasi",
  "zellij-tile",
@@ -3270,7 +3292,7 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "clap",
  "serde",
@@ -3281,14 +3303,14 @@ dependencies = [
 
 [[package]]
 name = "zellij-tile-utils"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "ansi_term",
 ]
 
 [[package]]
 name = "zellij-utils"
-version = "0.30.0"
+version = "0.31.0"
 dependencies = [
  "anyhow",
  "async-std",

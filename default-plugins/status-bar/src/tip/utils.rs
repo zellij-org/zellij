@@ -21,6 +21,14 @@ macro_rules! get_name_and_caching {
     }};
 }
 
+macro_rules! populate_cache {
+    ($cache:expr) => {{
+        for tip_name in TIPS.keys() {
+            $cache.caching(tip_name.clone()).unwrap();
+        }
+    }};
+}
+
 pub fn get_random_tip_name() -> String {
     TIPS.keys()
         .choose(&mut rand::thread_rng())
@@ -38,13 +46,19 @@ pub fn get_cached_tip_name() -> String {
     }
 
     if local_cache.is_empty() {
-        get_name_and_caching!(local_cache);
+        populate_cache!(local_cache);
+    }
+
+    let quicknav_show_count = local_cache.get_cached_data().get("quicknav").unwrap_or(&0);
+    eprintln!("quicknav_show_count: {:?}", quicknav_show_count);
+    if quicknav_show_count <= &MAX_CACHE_HITS {
+        let _ = local_cache.caching("quicknav");
+        return String::from("quicknav");
     }
 
     let usable_tips = local_cache
         .get_cached_data()
         .iter()
-        .filter(|(_, &v)| v < MAX_CACHE_HITS)
         .map(|(k, _)| k.to_string())
         .collect::<Vec<String>>();
 
