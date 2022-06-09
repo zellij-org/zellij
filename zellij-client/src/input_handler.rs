@@ -226,7 +226,7 @@ impl InputHandler {
                 Action::Detach => {
                     // self.should_exit = true;
                     // clients.split_last().into_iter().for_each(|(client_id, _)| {
-                    let client_id = clients.last().unwrap();
+                    let client_id = clients.first().unwrap();
                     self.os_input
                         .send_to_server(ClientToServerMsg::DetachSession(*client_id));
                     // });
