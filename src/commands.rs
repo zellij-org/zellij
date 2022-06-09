@@ -6,6 +6,7 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
+use miette::{IntoDiagnostic, Result};
 use std::path::PathBuf;
 use std::process;
 use zellij_client::start_client as start_client_impl;
@@ -144,7 +145,7 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
     {
         if let Some(action) = action.clone() {
             let action = format!("[{}]", action);
-            match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action) {
+            match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
                 Ok(parsed) => {
                     let os_input =
                         get_os_input(zellij_client::os_input_output::get_client_os_input);
