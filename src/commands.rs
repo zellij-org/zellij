@@ -143,6 +143,7 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
     })) = opts.command.clone()
     {
         if let Some(action) = action.clone() {
+            let action = format!("[{}]", action);
             match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action) {
                 Ok(parsed) => {
                     let os_input =
