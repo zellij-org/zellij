@@ -18,6 +18,13 @@
   <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
 
+<h4 align="center">
+  [<a href="https://zellij.dev/documentation/installation">Installation</a>]
+  [<a href="https://zellij.dev/documentation/overview">Overview</a>]
+  [<a href="https://zellij.dev/documentation/configuration">Configuration</a>]
+  [<a href="https://zellij.dev/documentation/layouts-templates">Templates</a>]
+  [<a href="https://zellij.dev/documentation/faq">FAQ</a>]
+</h4>
 
 # What is this?
 
