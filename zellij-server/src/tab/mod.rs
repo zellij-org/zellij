@@ -1144,7 +1144,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_left(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_left(client_id);
@@ -1156,7 +1156,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_right(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_right(client_id);
@@ -1168,7 +1168,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_down(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_down(client_id);
@@ -1180,7 +1180,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_up(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_up(client_id);
@@ -1192,7 +1192,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_increase(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_increase(client_id);
@@ -1204,7 +1204,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_decrease(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_decrease(client_id);

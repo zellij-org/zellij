@@ -495,7 +495,7 @@ impl Grid {
         }
         cursor_canonical_line_index
     }
-    // TODO: merge these two funtions
+    // TODO: merge these two functions
     fn cursor_index_in_canonical_line(&self) -> usize {
         let mut cursor_canonical_line_index = 0;
         let mut cursor_index_in_canonical_line = 0;

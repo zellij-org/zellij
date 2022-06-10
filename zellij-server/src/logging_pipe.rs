@@ -54,7 +54,7 @@ impl Write for LoggingPipe {
         if self.buffer.len() + buf.len() > ZELLIJ_MAX_PIPE_BUFFER_SIZE {
             let error_msg =
                 "Exceeded log buffer size. Make sure that your plugin calls flush on stderr on \
-                valid UTF-8 symbol boundary. Aditionally, make sure that your log message contains \
+                valid UTF-8 symbol boundary. Additionally, make sure that your log message contains \
                 endline \\n symbol.";
             error!("{}: {}", self.plugin_name, error_msg);
             self.buffer.clear();
