@@ -453,7 +453,7 @@ pub struct LayoutTemplate {
 }
 
 impl LayoutTemplate {
-    // Insert an optional `[TabLayout]` at the correct postion
+    // Insert an optional `[TabLayout]` at the correct position
     pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
         if self.body {
             return tab_layout.unwrap_or_default().into();

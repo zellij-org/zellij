@@ -271,7 +271,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
-    /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
+    /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
     fn spawn_terminal(
         &self,

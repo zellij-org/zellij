@@ -36,7 +36,7 @@ pub struct EnvironmentVariablesFromYaml {
 }
 
 impl EnvironmentVariablesFromYaml {
-    /// Merges two structs, keys from `other` supercede keys from `self`
+    /// Merges two structs, keys from `other` supersede keys from `self`
     pub fn merge(&self, other: Self) -> Self {
         let mut env = self.clone();
         env.env.extend(other.env);
