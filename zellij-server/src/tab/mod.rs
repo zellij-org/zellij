@@ -159,7 +159,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn dump_screen(&mut self, _client_id: ClientId) -> String {
-        return "".to_owned();
+        "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
