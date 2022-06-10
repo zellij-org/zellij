@@ -485,6 +485,16 @@ impl Pane for TerminalPane {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)
     }
+    fn get_pane_name(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.grid
+                .title
+                .clone()
+                .unwrap_or_else(|| self.pane_title.clone())
+        } else {
+            self.pane_name.clone()
+        }
+    }
 }
 
 impl TerminalPane {

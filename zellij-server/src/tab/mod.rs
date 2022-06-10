@@ -149,6 +149,7 @@ pub trait Pane {
     ) -> Option<String>;
     fn render_terminal_title(&mut self, _input_mode: InputMode) -> String;
     fn update_name(&mut self, name: &str);
+    fn get_pane_name(&self) -> String;
     fn pid(&self) -> PaneId;
     fn reduce_height(&mut self, percent: f64);
     fn increase_height(&mut self, percent: f64);
@@ -706,12 +707,14 @@ impl Tab {
         match pid {
             PaneId::Terminal(pid) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
+                let active_terminal = self.get_active_pane(client_id).unwrap();
+                let title = format!("Editing {:?} Scrollback", active_terminal.get_pane_name());
                 let new_pane = TerminalPane::new(
                     pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
                     next_terminal_position,
-                    String::new(),
+                    title,
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.terminal_emulator_colors.clone(),

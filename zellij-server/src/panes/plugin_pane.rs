@@ -404,4 +404,11 @@ impl Pane for PluginPane {
     fn mouse_mode(&self) -> bool {
         false
     }
+    fn get_pane_name(&self) -> String {
+        if self.pane_name.is_empty() {
+            self.pane_title.clone()
+        } else {
+            self.pane_name.clone()
+        }
+    }
 }
