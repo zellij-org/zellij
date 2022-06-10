@@ -9,3 +9,6 @@
 9544a09786ef39ed741db166c5052cade45fde91
 # fix: typos - https://github.com/zellij-org/zellij/commit/16b53aa52f73e5ee7383889dc7a422d27be22ef0
 16b53aa52f73e5ee7383889dc7a422d27be22ef0
+# add(style): add trailing commas in match blocks - https://github.com/zellij-org/zellij/commit/67d2673cae60954e8287c2a1f58a21a56e066afb
+67d2673cae60954e8287c2a1f58a21a56e066afb
+
