@@ -18,12 +18,12 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
                 styles
                     .foreground(Some(AnsiCode::from(palette_color)))
                     .bold(Some(AnsiCode::On))
-            }
+            },
             None => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles.bold(Some(AnsiCode::On))
-            }
+            },
         };
         let terminal_character = TerminalCharacter {
             character,
@@ -45,12 +45,12 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
                 styles
                     .background(Some(AnsiCode::from(palette_color)))
                     .bold(Some(AnsiCode::On))
-            }
+            },
             None => {
                 let mut styles = CharacterStyles::new();
                 styles.reset_all();
                 styles
-            }
+            },
         };
         let terminal_character = TerminalCharacter {
             character,
@@ -566,7 +566,7 @@ impl PaneFrame {
                 ),
             (Some((left_side, left_side_len)), None) => {
                 self.left_and_middle_title_line(left_side, &left_side_len, middle, middle_len)
-            }
+            },
             _ => self.middle_only_title_line(middle, middle_len),
         }
     }
@@ -580,10 +580,10 @@ impl PaneFrame {
         match (left_side, right_side) {
             (Some((left_side, left_side_len)), Some((right_side, right_side_len))) => {
                 self.two_part_title_line(left_side, &left_side_len, right_side, &right_side_len)
-            }
+            },
             (Some((left_side, left_side_len)), None) => {
                 self.left_only_title_line(left_side, &left_side_len)
-            }
+            },
             _ => self.empty_title_line(),
         }
     }

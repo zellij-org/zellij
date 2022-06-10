@@ -43,13 +43,13 @@ impl StdinAnsiParser {
                     self.decrement_expected_ansi_instructions(1);
                     self.current_buffer.clear();
                     Some(pixel_instruction)
-                }
+                },
                 Err(_) => {
                     self.expected_ansi_instructions = 0;
                     Some(AnsiStdinInstructionOrKeys::Keys(
                         self.current_buffer.drain(..).collect(),
                     ))
-                }
+                },
             }
         } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key {
             match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
@@ -57,13 +57,13 @@ impl StdinAnsiParser {
                     self.decrement_expected_ansi_instructions(1);
                     self.current_buffer.clear();
                     Some(color_instruction)
-                }
+                },
                 Err(_) => {
                     self.expected_ansi_instructions = 0;
                     Some(AnsiStdinInstructionOrKeys::Keys(
                         self.current_buffer.drain(..).collect(),
                     ))
-                }
+                },
             }
         } else if self.key_is_valid(key) {
             self.current_buffer.push((key, raw_bytes));
@@ -84,7 +84,7 @@ impl StdinAnsiParser {
                 // if they spam ESC they need to be able to get back to normal mode and not "us
                 // waiting for ansi instructions" mode
                 !self.current_buffer.iter().any(|(key, _)| *key == Key::Esc)
-            }
+            },
             Key::Char(';')
             | Key::Char('[')
             | Key::Char(']')
@@ -102,7 +102,7 @@ impl StdinAnsiParser {
                 } else {
                     false
                 }
-            }
+            },
             _ => false,
         }
     }
@@ -153,7 +153,7 @@ impl AnsiStdinInstructionOrKeys {
                             }),
                         },
                     ))
-                }
+                },
                 Ok(6) => {
                     // character cell size
                     Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
@@ -165,7 +165,7 @@ impl AnsiStdinInstructionOrKeys {
                             text_area_size: None,
                         },
                     ))
-                }
+                },
                 _ => Err("invalid sequence"),
             }
         } else {
@@ -182,7 +182,7 @@ impl AnsiStdinInstructionOrKeys {
         let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
             match key {
                 Key::Char(c) => acc.push(*c),
-                _ => {}
+                _ => {},
             };
             acc
         });

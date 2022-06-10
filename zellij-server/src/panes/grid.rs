@@ -45,7 +45,7 @@ fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     match index_of_last_non_canonical_row {
         Some(index_of_last_non_canonical_row) => {
             rows.drain(..=index_of_last_non_canonical_row).collect()
-        }
+        },
         None => vec![],
     }
 }
@@ -61,7 +61,7 @@ fn get_lines_above_bottom_canonical_row_and_wraps(rows: &mut VecDeque<Row>) -> V
     match index_of_last_non_canonical_row {
         Some(index_of_last_non_canonical_row) => {
             rows.drain(index_of_last_non_canonical_row..).collect()
-        }
+        },
         None => vec![],
     }
 }
@@ -77,7 +77,7 @@ fn get_viewport_bottom_canonical_row_and_wraps(viewport: &mut Vec<Row>) -> Vec<R
     match index_of_last_non_canonical_row {
         Some(index_of_last_non_canonical_row) => {
             viewport.drain(index_of_last_non_canonical_row..).collect()
-        }
+        },
         None => vec![],
     }
 }
@@ -134,7 +134,7 @@ fn transfer_rows_from_lines_above_to_viewport(
                         // no more lines at lines_above, the line we popped was probably empty
                         break;
                     }
-                }
+                },
                 None => break, // no more rows
             }
         }
@@ -407,10 +407,10 @@ impl Grid {
         match next_tabstop {
             Some(tabstop) => {
                 self.cursor.x = tabstop;
-            }
+            },
             None => {
                 self.cursor.x = self.width.saturating_sub(1);
-            }
+            },
         }
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = styles;
@@ -427,10 +427,10 @@ impl Grid {
         match previous_tabstop {
             Some(tabstop) => {
                 self.cursor.x = tabstop;
-            }
+            },
             None => {
                 self.cursor.x = 0;
-            }
+            },
         }
     }
     pub fn cursor_shape(&self) -> CursorShape {
@@ -627,14 +627,14 @@ impl Grid {
                     match viewport_canonical_lines.last_mut() {
                         Some(last_line) => {
                             last_line.append(&mut row.columns);
-                        }
+                        },
                         None => {
                             // the state is corrupted somehow
                             // this is a bug and I'm not yet sure why it happens
                             // usually it fixes itself and is a result of some race
                             // TODO: investigate why this happens and solve it
                             return;
-                        }
+                        },
                     }
                 }
             }
@@ -701,7 +701,7 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
-                }
+                },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - self.height;
                     if row_count_to_transfer > new_cursor_y {
@@ -715,8 +715,8 @@ impl Grid {
                         row_count_to_transfer,
                         new_columns,
                     );
-                }
-                Ordering::Equal => {}
+                },
+                Ordering::Equal => {},
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
@@ -753,7 +753,7 @@ impl Grid {
                     self.saved_cursor_position
                         .as_mut()
                         .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
-                }
+                },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
@@ -780,8 +780,8 @@ impl Grid {
                         // in alternate screen, no scroll buffer, so just remove lines
                         self.viewport.drain(0..row_count_to_transfer);
                     }
-                }
-                Ordering::Equal => {}
+                },
+                Ordering::Equal => {},
             }
         }
         self.height = new_rows;
@@ -1001,7 +1001,7 @@ impl Grid {
                     row.add_character_at(terminal_character, self.cursor.x);
                 }
                 self.output_buffer.update_line(self.cursor.y);
-            }
+            },
             None => {
                 // pad lines until cursor if they do not exist
                 for _ in self.viewport.len()..self.cursor.y {
@@ -1013,7 +1013,7 @@ impl Grid {
                         .canonical(),
                 );
                 self.output_buffer.update_line(self.cursor.y);
-            }
+            },
         }
     }
     pub fn add_character(&mut self, terminal_character: TerminalCharacter) {
@@ -1147,13 +1147,13 @@ impl Grid {
                 }
                 self.pad_lines_until(self.cursor.y, pad_character);
                 self.pad_current_line_until(self.cursor.x, pad_character);
-            }
+            },
             None => {
                 self.cursor.x = std::cmp::min(self.width - 1, x);
                 self.cursor.y = std::cmp::min(self.height - 1, y);
                 self.pad_lines_until(self.cursor.y, pad_character);
                 self.pad_current_line_until(self.cursor.x, pad_character);
-            }
+            },
         }
     }
     pub fn move_cursor_up(&mut self, count: usize) {
@@ -1517,32 +1517,32 @@ impl Perform for Grid {
         match byte {
             7 => {
                 self.ring_bell = true;
-            }
+            },
             8 => {
                 // backspace
                 self.move_cursor_back(1);
-            }
+            },
             9 => {
                 // tab
                 self.advance_to_next_tabstop(self.cursor.pending_styles);
-            }
+            },
             10 | 11 | 12 => {
                 // 0a, newline
                 // 0b, vertical tabulation
                 // 0c, form feed
                 self.add_newline();
-            }
+            },
             13 => {
                 // 0d, carriage return
                 self.move_cursor_to_beginning_of_line();
-            }
+            },
             14 => {
                 self.set_active_charset(CharsetIndex::G1);
-            }
+            },
             15 => {
                 self.set_active_charset(CharsetIndex::G0);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -1578,7 +1578,7 @@ impl Perform for Grid {
                         .to_owned();
                     self.set_title(title);
                 }
-            }
+            },
 
             // Set color index.
             b"4" => {
@@ -1593,7 +1593,7 @@ impl Perform for Grid {
                         return;
                     }
                 }
-            }
+            },
 
             // define hyperlink
             b"8" => {
@@ -1602,7 +1602,7 @@ impl Perform for Grid {
                 }
                 self.cursor.pending_styles.link_anchor =
                     self.link_handler.borrow_mut().dispatch_osc8(params);
-            }
+            },
 
             // Get/set Foreground (b"10") or background (b"11") colors
             b"10" | b"11" => {
@@ -1626,14 +1626,14 @@ impl Perform for Grid {
                                             // dynamic_code, color.r, color.g, color.b, terminator
                                             dynamic_code, r, g, b, terminator
                                         )
-                                    }
+                                    },
                                     _ => {
                                         format!(
                                             "\u{1b}]{};rgb:{1:02x}{1:02x}/{2:02x}{2:02x}/{3:02x}{3:02x}{4}",
                                             // dynamic_code, color.r, color.g, color.b, terminator
                                             dynamic_code, 0, 0, 0, terminator
                                         )
-                                    }
+                                    },
                                 };
                                 self.pending_messages_to_pty
                                     .push(color_response_message.as_bytes().to_vec());
@@ -1642,11 +1642,11 @@ impl Perform for Grid {
                         }
                     }
                 }
-            }
+            },
 
             b"12" => {
                 // get/set cursor color currently unimplemented
-            }
+            },
 
             // Set cursor style.
             b"50" => {
@@ -1664,7 +1664,7 @@ impl Perform for Grid {
                         self.cursor.change_shape(cursor_shape);
                     }
                 }
-            }
+            },
 
             // Set clipboard.
             b"52" => {
@@ -1676,12 +1676,12 @@ impl Perform for Grid {
                 match params[2] {
                     b"?" => {
                         // TBD: paste from own clipboard - currently unsupported
-                    }
+                    },
                     _base64 => {
                         // TBD: copy to own clipboard - currently unsupported
-                    }
+                    },
                 }
-            }
+            },
 
             // Reset color index.
             b"104" => {
@@ -1712,24 +1712,24 @@ impl Perform for Grid {
                         // TBD - reset color index - currently unimplemented
                     }
                 }
-            }
+            },
 
             // Reset foreground color.
             b"110" => {
                 // TBD - reset foreground color - currently unimplemented
-            }
+            },
 
             // Reset background color.
             b"111" => {
                 // TBD - reset background color - currently unimplemented
-            }
+            },
 
             // Reset text cursor color.
             b"112" => {
                 // TBD - reset text cursor color - currently unimplemented
-            }
+            },
 
-            _ => {}
+            _ => {},
         }
     }
 
@@ -1809,7 +1809,7 @@ impl Perform for Grid {
                 match params_iter.next().map(|param| param[0]) {
                     Some(2004) => {
                         self.bracketed_paste_mode = false;
-                    }
+                    },
                     Some(1049) => {
                         // leave alternate buffer
                         if let Some((
@@ -1826,31 +1826,31 @@ impl Perform for Grid {
                         self.clear_viewport_before_rendering = true;
                         self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
-                    }
+                    },
                     Some(25) => {
                         self.hide_cursor();
                         self.mark_for_rerender();
-                    }
+                    },
                     Some(1) => {
                         self.cursor_key_mode = false;
-                    }
+                    },
                     Some(3) => {
                         // DECCOLM - only side effects
                         self.scroll_region = None;
                         self.clear_all(EMPTY_TERMINAL_CHARACTER);
                         self.cursor.x = 0;
                         self.cursor.y = 0;
-                    }
+                    },
                     Some(6) => {
                         self.erasure_mode = false;
-                    }
+                    },
                     Some(7) => {
                         self.disable_linewrap = true;
-                    }
+                    },
                     Some(1006) => {
                         self.mouse_mode = false;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 };
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = false;
@@ -1866,10 +1866,10 @@ impl Perform for Grid {
                     Some(25) => {
                         self.show_cursor();
                         self.mark_for_rerender();
-                    }
+                    },
                     Some(2004) => {
                         self.bracketed_paste_mode = true;
-                    }
+                    },
                     Some(1049) => {
                         // enter alternate buffer
                         let current_lines_above = std::mem::replace(
@@ -1886,27 +1886,27 @@ impl Perform for Grid {
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
                         self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
-                    }
+                    },
                     Some(1) => {
                         self.cursor_key_mode = true;
-                    }
+                    },
                     Some(3) => {
                         // DECCOLM - only side effects
                         self.scroll_region = None;
                         self.clear_all(EMPTY_TERMINAL_CHARACTER);
                         self.cursor.x = 0;
                         self.cursor.y = 0;
-                    }
+                    },
                     Some(6) => {
                         self.erasure_mode = true;
-                    }
+                    },
                     Some(7) => {
                         self.disable_linewrap = false;
-                    }
+                    },
                     Some(1006) => {
                         self.mouse_mode = true;
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 };
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = true;
@@ -2039,14 +2039,14 @@ impl Perform for Grid {
                     let terminal_capabilities = "\u{1b}[?6c";
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
-                }
+                },
                 Some(b'>') => {
                     // secondary device attributes
                     let version = version_number(VERSION);
                     let text = format!("\u{1b}[>0;{};1c", version);
                     self.pending_messages_to_pty.push(text.as_bytes().to_vec());
-                }
-                _ => {}
+                },
+                _ => {},
             }
         } else if c == 'n' {
             // DSR - device status report
@@ -2057,15 +2057,15 @@ impl Perform for Grid {
                     let all_good = "\u{1b}[0n";
                     self.pending_messages_to_pty
                         .push(all_good.as_bytes().to_vec());
-                }
+                },
                 6 => {
                     // CPR - cursor position report
                     let position_report =
                         format!("\x1b[{};{}R", self.cursor.y + 1, self.cursor.x + 1);
                     self.pending_messages_to_pty
                         .push(position_report.as_bytes().to_vec());
-                }
-                _ => {}
+                },
+                _ => {},
             }
         } else if c == 't' {
             match next_param_or(1) as usize {
@@ -2079,7 +2079,7 @@ impl Perform for Grid {
                         self.pending_messages_to_pty
                             .push(text_area_pixel_size_report.as_bytes().to_vec());
                     }
-                }
+                },
                 16 => {
                     if let Some(character_cell_size) = *self.character_cell_size.borrow() {
                         let character_cell_size_report = format!(
@@ -2089,20 +2089,20 @@ impl Perform for Grid {
                         self.pending_messages_to_pty
                             .push(character_cell_size_report.as_bytes().to_vec());
                     }
-                }
+                },
                 18 => {
                     // report text area
                     let text_area_report = format!("\x1b[8;{};{}t", self.height, self.width);
                     self.pending_messages_to_pty
                         .push(text_area_report.as_bytes().to_vec());
-                }
+                },
                 22 => {
                     self.push_current_title_to_stack();
-                }
+                },
                 23 => {
                     self.pop_title_from_stack();
-                }
-                _ => {}
+                },
+                _ => {},
             }
         } else {
             log::warn!("Unhandled csi: {}->{:?}", c, params);
@@ -2120,10 +2120,10 @@ impl Perform for Grid {
                     _ => {
                         // invalid, silently do nothing
                         return;
-                    }
+                    },
                 };
                 self.configure_charset(StandardCharset::Ascii, charset_index);
-            }
+            },
             (b'0', charset_index_symbol) => {
                 let charset_index: CharsetIndex = match charset_index_symbol {
                     Some(b'(') => CharsetIndex::G0,
@@ -2133,47 +2133,47 @@ impl Perform for Grid {
                     _ => {
                         // invalid, silently do nothing
                         return;
-                    }
+                    },
                 };
                 self.configure_charset(
                     StandardCharset::SpecialCharacterAndLineDrawing,
                     charset_index,
                 );
-            }
+            },
             (b'D', None) => {
                 self.add_newline();
-            }
+            },
             (b'E', None) => {
                 self.add_newline();
                 self.move_cursor_to_beginning_of_line();
-            }
+            },
             (b'M', None) => {
                 // TODO: if cursor is at the top, it should go down one
                 self.move_cursor_up_with_scrolling(1);
-            }
+            },
             (b'c', None) => {
                 self.reset_terminal_state();
-            }
+            },
             (b'H', None) => {
                 self.set_horizontal_tabstop();
-            }
+            },
             (b'7', None) => {
                 self.save_cursor_position();
-            }
+            },
             (b'Z', None) => {
                 let terminal_capabilities = "\u{1b}[?6c";
                 self.pending_messages_to_pty
                     .push(terminal_capabilities.as_bytes().to_vec());
-            }
+            },
             (b'8', None) => {
                 self.restore_cursor_position();
-            }
+            },
             (b'8', Some(b'#')) => {
                 let mut fill_character = EMPTY_TERMINAL_CHARACTER;
                 fill_character.character = 'E';
                 self.fill_viewport(fill_character);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }
@@ -2303,7 +2303,7 @@ impl Row {
                 self.columns.push_back(terminal_character);
                 // this is unwrapped because this always happens after self.width_cached()
                 *self.width.as_mut().unwrap() += terminal_character.width;
-            }
+            },
             Ordering::Less => {
                 // adding the character after the end of the current line
                 // we pad the line up to the character and then add it
@@ -2312,7 +2312,7 @@ impl Row {
                     .resize(x.saturating_sub(width_offset), EMPTY_TERMINAL_CHARACTER);
                 self.columns.push_back(terminal_character);
                 self.width = None;
-            }
+            },
             Ordering::Greater => {
                 // adding the character in the middle of the line
                 // we replace the character at its position
@@ -2335,7 +2335,7 @@ impl Row {
                                     .insert(position_to_remove, EMPTY_TERMINAL_CHARACTER);
                             }
                         }
-                    }
+                    },
                     Ordering::Less => {
                         // the replaced character is wider than the current character
                         // (eg. we added an English character in place of a wide emoji)
@@ -2349,11 +2349,11 @@ impl Row {
                             self.columns
                                 .insert(absolute_x_index + 1, EMPTY_TERMINAL_CHARACTER);
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
                 self.width = None;
-            }
+            },
         }
     }
     pub fn insert_character_at(&mut self, terminal_character: TerminalCharacter, x: usize) {
@@ -2364,10 +2364,10 @@ impl Row {
                 self.columns
                     .resize(insert_position, EMPTY_TERMINAL_CHARACTER);
                 self.columns.push_back(terminal_character);
-            }
+            },
             Ordering::Greater => {
                 self.columns.insert(insert_position, terminal_character);
-            }
+            },
         }
         self.width = None;
     }

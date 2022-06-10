@@ -96,7 +96,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                         client_or_tab_index,
                     ))
                     .unwrap();
-            }
+            },
             PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(temp_file, line_number)),
@@ -110,12 +110,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                                 client_id,
                             ))
                             .unwrap();
-                    }
+                    },
                     Err(e) => {
                         log::error!("Failed to open editor: {}", e);
-                    }
+                    },
                 }
-            }
+            },
             PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
                 let pid = pty
                     .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
@@ -127,7 +127,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                         client_id,
                     ))
                     .unwrap();
-            }
+            },
             PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
                 let pid = pty
                     .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
@@ -139,16 +139,16 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                         client_id,
                     ))
                     .unwrap();
-            }
+            },
             PtyInstruction::UpdateActivePane(pane_id, client_id) => {
                 pty.set_active_pane(pane_id, client_id);
-            }
+            },
             PtyInstruction::GoToTab(tab_index, client_id) => {
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
                     .unwrap();
-            }
+            },
             PtyInstruction::NewTab(terminal_action, tab_layout, client_id) => {
                 let tab_name = tab_layout.as_ref().and_then(|layout| {
                     if layout.name.is_empty() {
@@ -178,21 +178,21 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                         ))
                         .unwrap();
                 }
-            }
+            },
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id);
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
-            }
+            },
             PtyInstruction::CloseTab(ids) => {
                 pty.close_tab(ids);
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
-            }
+            },
             PtyInstruction::Exit => break,
         }
     }
@@ -270,7 +270,7 @@ fn stream_terminal_bytes(
                         // next read does not need a deadline as we just rendered everything
                         render_deadline = None;
                         last_render = Instant::now();
-                    }
+                    },
                     ReadResult::Ok(n_bytes) => {
                         let bytes = &buf[..n_bytes];
                         if debug {
@@ -284,7 +284,7 @@ fn stream_terminal_bytes(
                         // if we already have a render_deadline we keep it, otherwise we set it
                         // to RENDER_PAUSE since the last time we rendered.
                         render_deadline.get_or_insert(last_render + RENDER_PAUSE);
-                    }
+                    },
                 }
             }
             async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
@@ -344,10 +344,10 @@ impl Pty {
                     terminal_action.unwrap_or_else(|| self.get_default_terminal());
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
-            }
+            },
             ClientOrTabIndex::TabIndex(_) => {
                 terminal_action.unwrap_or_else(|| self.get_default_terminal())
-            }
+            },
         };
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
@@ -400,7 +400,7 @@ impl Pty {
                         .unwrap(); // TODO: handle error here
                     self.id_to_child_pid.insert(pid_primary, child_fd);
                     new_pane_pids.push(pid_primary);
-                }
+                },
                 None => {
                     let (pid_primary, child_fd): (RawFd, RawFd) = self
                         .bus
@@ -411,9 +411,9 @@ impl Pty {
                         .unwrap(); // TODO: handle error here
                     self.id_to_child_pid.insert(pid_primary, child_fd);
                     new_pane_pids.push(pid_primary);
-                }
+                },
                 // Investigate moving plugin loading to here.
-                Some(Run::Plugin(_)) => {}
+                Some(Run::Plugin(_)) => {},
             }
         }
         self.bus
@@ -447,7 +447,7 @@ impl Pty {
                         .kill(Pid::from_raw(child_fd))
                         .unwrap();
                 });
-            }
+            },
             PaneId::Plugin(pid) => drop(
                 self.bus
                     .senders

@@ -1574,12 +1574,12 @@ impl<'a> TiledPaneGrid<'a> {
                 for pane_id in panes {
                     self.increase_pane_width(pane_id, width);
                 }
-            }
+            },
             Direction::Vertical => {
                 for pane_id in panes {
                     self.increase_pane_height(pane_id, height);
                 }
-            }
+            },
         };
     }
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
