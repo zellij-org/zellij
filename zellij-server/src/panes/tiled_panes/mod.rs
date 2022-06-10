@@ -219,7 +219,7 @@ impl TiledPanes {
         let result = match direction {
             Direction::Horizontal => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).cols)
-            }
+            },
             Direction::Vertical => pane_grid.layout(direction, (*self.display_area.borrow()).rows),
         };
         if let Err(e) = &result {
@@ -632,10 +632,10 @@ impl TiledPanes {
                         self.set_pane_active_at(p);
 
                         true
-                    }
+                    },
                     None => false,
                 }
-            }
+            },
             None => false,
         }
     }
@@ -673,10 +673,10 @@ impl TiledPanes {
                         self.set_pane_active_at(p);
 
                         true
-                    }
+                    },
                     None => false,
                 }
-            }
+            },
             None => false,
         }
     }
@@ -714,10 +714,10 @@ impl TiledPanes {
                         self.set_pane_active_at(p);
 
                         true
-                    }
+                    },
                     None => false,
                 }
-            }
+            },
             None => false,
         }
     }
@@ -755,10 +755,10 @@ impl TiledPanes {
                         self.set_pane_active_at(p);
 
                         true
-                    }
+                    },
                     None => false,
                 }
-            }
+            },
             None => false,
         }
     }
@@ -952,7 +952,7 @@ impl TiledPanes {
                         self.active_panes.insert(client_id, *next_active_pane);
                     }
                 }
-            }
+            },
             None => self.active_panes.clear(),
         }
     }

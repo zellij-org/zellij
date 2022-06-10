@@ -20,7 +20,7 @@ impl ClipboardProvider {
         match &self {
             ClipboardProvider::Command(command) => {
                 command.set(content.to_string())?;
-            }
+            },
             ClipboardProvider::Osc52(clipboard) => {
                 let dest = match clipboard {
                     #[cfg(not(target_os = "macos"))]
@@ -33,7 +33,7 @@ impl ClipboardProvider {
                     client_ids,
                     &format!("\u{1b}]52;{};{}\u{1b}\\", dest, base64::encode(content)),
                 );
-            }
+            },
         };
         Ok(())
     }

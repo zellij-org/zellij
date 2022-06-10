@@ -39,7 +39,7 @@ impl State {
                 FsEntry::Dir(p, _) => {
                     self.path = p;
                     refresh_directory(self);
-                }
+                },
                 FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
             }
         }

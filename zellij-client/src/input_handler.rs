@@ -100,12 +100,12 @@ impl InputHandler {
                             } else {
                                 self.handle_key(&key, raw_bytes);
                             }
-                        }
+                        },
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event =
                                 zellij_utils::input::mouse::MouseEvent::from(mouse_event);
                             self.handle_mouse_event(&mouse_event);
-                        }
+                        },
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
                                 self.dispatch_action(Action::Write(bracketed_paste_start.clone()));
@@ -114,13 +114,13 @@ impl InputHandler {
                                 ));
                                 self.dispatch_action(Action::Write(bracketed_paste_end.clone()));
                             }
-                        }
-                        _ => {}
+                        },
+                        _ => {},
                     }
-                }
+                },
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
-                }
+                },
                 Ok((InputInstruction::PossiblePixelRatioChange, _error_context)) => {
                     let _ = self
                         .os_input
@@ -128,7 +128,7 @@ impl InputHandler {
                         .write(get_cell_pixel_info.as_bytes())
                         .unwrap();
                     ansi_stdin_parser.increment_expected_ansi_instructions(4);
-                }
+                },
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }
@@ -150,25 +150,25 @@ impl InputHandler {
             Some(AnsiStdinInstructionOrKeys::PixelDimensions(pixel_dimensions)) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
-            }
+            },
             Some(AnsiStdinInstructionOrKeys::BackgroundColor(background_color_instruction)) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::BackgroundColor(
                         background_color_instruction,
                     ));
-            }
+            },
             Some(AnsiStdinInstructionOrKeys::ForegroundColor(foreground_color_instruction)) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ForegroundColor(
                         foreground_color_instruction,
                     ));
-            }
+            },
             Some(AnsiStdinInstructionOrKeys::Keys(keys)) => {
                 for (key, raw_bytes) in keys {
                     self.handle_key(&key, raw_bytes);
                 }
-            }
-            None => {}
+            },
+            None => {},
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {
@@ -176,10 +176,10 @@ impl InputHandler {
             MouseEvent::Press(button, point) => match button {
                 MouseButton::WheelUp => {
                     self.dispatch_action(Action::ScrollUpAt(point));
-                }
+                },
                 MouseButton::WheelDown => {
                     self.dispatch_action(Action::ScrollDownAt(point));
-                }
+                },
                 MouseButton::Left => {
                     if self.holding_mouse {
                         self.dispatch_action(Action::MouseHold(point));
@@ -187,7 +187,7 @@ impl InputHandler {
                         self.dispatch_action(Action::LeftClick(point));
                     }
                     self.holding_mouse = true;
-                }
+                },
                 MouseButton::Right => {
                     if self.holding_mouse {
                         self.dispatch_action(Action::MouseHold(point));
@@ -195,17 +195,17 @@ impl InputHandler {
                         self.dispatch_action(Action::RightClick(point));
                     }
                     self.holding_mouse = true;
-                }
-                _ => {}
+                },
+                _ => {},
             },
             MouseEvent::Release(point) => {
                 self.dispatch_action(Action::MouseRelease(point));
                 self.holding_mouse = false;
-            }
+            },
             MouseEvent::Hold(point) => {
                 self.dispatch_action(Action::MouseHold(point));
                 self.holding_mouse = true;
-            }
+            },
         }
     }
 
@@ -224,20 +224,20 @@ impl InputHandler {
         let mut should_break = false;
 
         match action {
-            Action::NoOp => {}
+            Action::NoOp => {},
             Action::Quit | Action::Detach => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));
                 self.exit();
                 should_break = true;
-            }
+            },
             Action::SwitchToMode(mode) => {
                 // this is an optimistic update, we should get a SwitchMode instruction from the
                 // server later that atomically changes the mode as well
                 self.mode = mode;
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action));
-            }
+            },
             Action::CloseFocus
             | Action::NewPane(_)
             | Action::ToggleFloatingPanes
@@ -254,7 +254,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
-            }
+            },
             _ => self
                 .os_input
                 .send_to_server(ClientToServerMsg::Action(action)),

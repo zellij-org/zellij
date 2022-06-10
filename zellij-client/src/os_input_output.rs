@@ -27,7 +27,7 @@ fn into_raw_mode(pid: RawFd) {
     let mut tio = termios::tcgetattr(pid).expect("could not get terminal attribute");
     termios::cfmakeraw(&mut tio);
     match termios::tcsetattr(pid, termios::SetArg::TCSANOW, &tio) {
-        Ok(_) => {}
+        Ok(_) => {},
         Err(e) => panic!("error {:?}", e),
     };
 }
@@ -161,11 +161,11 @@ impl ClientOsApi for ClientOsInputOutput {
                     }
                     sigwinch_cb_timestamp = time::Instant::now();
                     sigwinch_cb();
-                }
+                },
                 SIGTERM | SIGINT | SIGQUIT | SIGHUP => {
                     quit_cb();
                     break;
-                }
+                },
                 _ => unreachable!(),
             }
         }
@@ -177,10 +177,10 @@ impl ClientOsApi for ClientOsInputOutput {
                 Ok(sock) => {
                     socket = sock;
                     break;
-                }
+                },
                 Err(_) => {
                     std::thread::sleep(std::time::Duration::from_millis(50));
-                }
+                },
             }
         }
         let sender = IpcSenderWithContext::new(socket);

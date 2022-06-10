@@ -71,7 +71,7 @@ impl LinkHandler {
                     }
 
                     output
-                }
+                },
                 LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
             })
             .flatten()
@@ -102,7 +102,7 @@ mod tests {
                 let link = link_handler.links.get(&link_id).expect("link was not some");
                 assert_eq!(link.id, Some("test".to_string()));
                 assert_eq!(link.uri, uri);
-            }
+            },
             _ => panic!("pending link handler was not start"),
         }
 

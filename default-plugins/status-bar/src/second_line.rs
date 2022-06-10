@@ -224,7 +224,7 @@ fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
         InputMode::Tmux => short_tmux_mode_indication(help),
         InputMode::RenamePane => {
             shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
-        }
+        },
         _ => shortened_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
     }
 }
@@ -279,7 +279,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             } else {
                 LinePart::default()
             }
-        }
+        },
         InputMode::Locked => {
             let line_part = locked_interface_indication(help.style.colors);
             if line_part.len <= max_len {
@@ -287,11 +287,11 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
             } else {
                 LinePart::default()
             }
-        }
+        },
         InputMode::Tmux => best_effort_tmux_shortcut_list(help, max_len),
         InputMode::RenamePane => {
             best_effort_shortcut_list_nonstandard_mode(select_pane_shortcut)(help, max_len)
-        }
+        },
         _ => best_effort_shortcut_list_nonstandard_mode(confirm_pane_selection)(help, max_len),
     }
 }

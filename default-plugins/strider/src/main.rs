@@ -24,15 +24,15 @@ impl ZellijPlugin for State {
             Event::Key(key) => match key {
                 Key::Up | Key::Char('k') => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
-                }
+                },
                 Key::Down | Key::Char('j') => {
                     let next = self.selected().saturating_add(1);
                     *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
-                }
+                },
                 Key::Right | Key::Char('\n') | Key::Char('l') if !self.files.is_empty() => {
                     self.traverse_dir_or_open_file();
                     self.ev_history.clear();
-                }
+                },
                 Key::Left | Key::Char('h') => {
                     if self.path.components().count() > 2 {
                         // don't descend into /host
@@ -42,11 +42,11 @@ impl ZellijPlugin for State {
                         self.path.pop();
                         refresh_directory(self);
                     }
-                }
+                },
                 Key::Char('.') => {
                     self.toggle_hidden_files();
                     refresh_directory(self);
-                }
+                },
 
                 _ => (),
             },
@@ -54,10 +54,10 @@ impl ZellijPlugin for State {
                 Mouse::ScrollDown(_) => {
                     let next = self.selected().saturating_add(1);
                     *self.selected_mut() = min(self.files.len().saturating_sub(1), next);
-                }
+                },
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
-                }
+                },
                 Mouse::Release(line, _) => {
                     if line < 0 {
                         return;
@@ -75,12 +75,12 @@ impl ZellijPlugin for State {
                     if should_select && self.scroll() + (line as usize) < self.files.len() {
                         *self.selected_mut() = self.scroll() + (line as usize);
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             },
             _ => {
                 dbg!("Unknown event {:?}", event);
-            }
+            },
         }
     }
 

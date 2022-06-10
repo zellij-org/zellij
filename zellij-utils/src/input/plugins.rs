@@ -146,8 +146,8 @@ impl PluginConfig {
         match self.run {
             PluginType::Pane(..) => {
                 self.run = PluginType::Pane(Some(tab_index));
-            }
-            PluginType::Headless => {}
+            },
+            PluginType::Headless => {},
         }
     }
 }

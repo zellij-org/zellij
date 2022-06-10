@@ -30,10 +30,10 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) {
                 if let Err(e) = os_input.tcdrain(terminal_id) {
                     log::error!("failed to drain terminal: {}", e);
                 };
-            }
+            },
             PtyWriteInstruction::Exit => {
                 break;
-            }
+            },
         }
     }
 }
