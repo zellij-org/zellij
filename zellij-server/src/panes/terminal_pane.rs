@@ -387,7 +387,7 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn dump_screen(&mut self, _client_id: ClientId) -> String {
-        return self.grid.dump_screen();
+        self.grid.dump_screen()
     }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
