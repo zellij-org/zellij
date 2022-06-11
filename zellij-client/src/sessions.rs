@@ -9,10 +9,10 @@ pub(crate) fn kill_session(name: &str) {
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     };
 }

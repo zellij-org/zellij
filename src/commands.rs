@@ -120,10 +120,10 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
-        }
+        },
         ActiveSession::One(session_name) => {
             attach_with_fake_client(opts, &session_name);
-        }
+        },
         ActiveSession::Many => {
             if let Some(session_name) = opts.session.clone() {
                 attach_with_fake_client(opts, &session_name);
@@ -134,7 +134,7 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
                 print_sessions(get_sessions().unwrap());
                 std::process::exit(1);
             }
-        }
+        },
     };
 }
 
@@ -152,7 +152,7 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
                         Err(e) => {
                             eprintln!("{}", e);
                             process::exit(1);
-                        }
+                        },
                     };
                     let os_input =
                         get_os_input(zellij_client::os_input_output::get_client_os_input);
@@ -170,11 +170,11 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
                     );
                     log::debug!("Quitting fake client now.");
                     std::process::exit(0);
-                }
+                },
                 Err(e) => {
                     eprintln!("{:?}", e);
                     std::process::exit(1);
-                }
+                },
             };
         }
     };

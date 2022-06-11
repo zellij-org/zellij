@@ -535,7 +535,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::ConnStatus(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
-            }
+            },
             ServerInstruction::ActiveClients(client_id) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 log::error!(
@@ -544,7 +544,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_id
                 );
                 os_input.send_to_client(client_id, ServerToClientMsg::ActiveClients(client_ids));
-            }
+            },
         }
     }
 

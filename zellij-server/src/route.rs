@@ -516,14 +516,14 @@ pub(crate) fn route_thread_main(
                     ClientToServerMsg::ConnStatus => {
                         let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
                         break;
-                    }
+                    },
                     ClientToServerMsg::DetachSession(client_id) => {
                         let _ = to_server.send(ServerInstruction::DetachSession(client_id));
                         break;
-                    }
+                    },
                     ClientToServerMsg::ListClients => {
                         let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
-                    }
+                    },
                 }
             },
             None => {

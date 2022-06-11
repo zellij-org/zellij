@@ -217,23 +217,23 @@ pub fn start_fake_client(
                 }
                 //exit_msg = reason.to_string();
                 break;
-            }
+            },
             ClientInstruction::Error(backtrace) => {
                 let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
-            }
+            },
             ClientInstruction::Render(_) => {
                 // we are a fake client
-            }
+            },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
-            }
+            },
             ClientInstruction::SwitchToMode(input_mode) => {
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

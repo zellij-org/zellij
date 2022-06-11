@@ -183,10 +183,10 @@ impl InputHandler {
             MouseEvent::Press(button, point) => match button {
                 MouseButton::WheelUp => {
                     self.dispatch_action(Action::ScrollUpAt(point), None);
-                }
+                },
                 MouseButton::WheelDown => {
                     self.dispatch_action(Action::ScrollDownAt(point), None);
-                }
+                },
                 MouseButton::Left => {
                     if self.holding_mouse {
                         self.dispatch_action(Action::MouseHold(point), None);
@@ -222,7 +222,7 @@ impl InputHandler {
                 Action::Quit => {
                     crate::sessions::kill_session(session_name);
                     break;
-                }
+                },
                 Action::Detach => {
                     // self.should_exit = true;
                     // clients.split_last().into_iter().for_each(|(client_id, _)| {
@@ -231,20 +231,20 @@ impl InputHandler {
                         .send_to_server(ClientToServerMsg::DetachSession(*client_id));
                     // });
                     break;
-                }
+                },
                 // Actions, that are indepenedent from the specific client
                 // should be specified here.
                 Action::NewTab(_) | Action::Run(_) | Action::NewPane(_) => {
                     let client_id = clients.first().unwrap();
                     log::error!("Sending action to client: {}", client_id);
                     self.dispatch_action(action, Some(*client_id));
-                }
+                },
                 _ => {
                     // TODO only dispatch for each client, for actions that need it
                     for client_id in &clients {
                         self.dispatch_action(action.clone(), Some(*client_id));
                     }
-                }
+                },
             }
         }
         self.dispatch_action(Action::Quit, None);
@@ -284,7 +284,7 @@ impl InputHandler {
                 self.mode = mode;
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action, None));
-            }
+            },
             Action::CloseFocus
             | Action::NewPane(_)
             | Action::Run(_)
@@ -303,7 +303,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
-            }
+            },
             _ => self
                 .os_input
                 .send_to_server(ClientToServerMsg::Action(action, client_id)),
