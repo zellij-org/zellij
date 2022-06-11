@@ -115,11 +115,11 @@ impl ZellijPlugin for State {
             if self.should_render
                 && self.mouse_click_pos > len_cnt
                 && self.mouse_click_pos <= len_cnt + bar_part.len
-                && idx > 2
+                && idx > 3
             {
-                // First three elements of tab_line are "Zellij", session name and empty thing, hence the idx > 2 condition.
-                // Tabs are indexed starting from 1, therefore we need subtract 2 below.
-                switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 2);
+                // First three elements of tab_line are "Zellij", session name and mode, hence the idx > 3 condition.
+                // Tabs are indexed starting from 1, therefore we need subtract 3 below.
+                switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 3);
             }
             len_cnt += bar_part.len;
         }
