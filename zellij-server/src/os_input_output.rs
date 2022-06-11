@@ -73,10 +73,10 @@ fn handle_command_exit(mut child: Child) {
                 // and exit this function
                 // TODO: handle errors?
                 break 'handle_exit;
-            }
+            },
             Ok(None) => {
                 ::std::thread::sleep(::std::time::Duration::from_millis(10));
-            }
+            },
             Err(e) => panic!("error attempting to wait: {}", e),
         }
 
@@ -157,7 +157,7 @@ fn handle_terminal(
             Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb),
             None => {
                 panic!("failed to start pty{:?}", e);
-            }
+            },
         },
     }
 }
@@ -217,7 +217,7 @@ pub fn spawn_terminal(
                 args,
                 cwd: None,
             }
-        }
+        },
         TerminalAction::RunCommand(command) => command,
     };
     let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
@@ -271,7 +271,7 @@ pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
-    /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
+    /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
     fn spawn_terminal(
         &self,

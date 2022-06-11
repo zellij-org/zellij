@@ -123,7 +123,7 @@ impl Pane for TerminalPane {
                     // some editors will not show this
                     return "OD".as_bytes().to_vec();
                 }
-            }
+            },
             [27, 91, 67] => {
                 // right arrow
                 if self.grid.cursor_key_mode {
@@ -131,7 +131,7 @@ impl Pane for TerminalPane {
                     // some editors will not show this
                     return "OC".as_bytes().to_vec();
                 }
-            }
+            },
             [27, 91, 65] => {
                 // up arrow
                 if self.grid.cursor_key_mode {
@@ -139,20 +139,20 @@ impl Pane for TerminalPane {
                     // some editors will not show this
                     return "OA".as_bytes().to_vec();
                 }
-            }
+            },
 
             [27, 91, 72] => {
                 // home key
                 if self.grid.cursor_key_mode {
                     return vec![27, 79, 72]; // ESC O H
                 }
-            }
+            },
             [27, 91, 70] => {
                 // end key
                 if self.grid.cursor_key_mode {
                     return vec![27, 79, 70]; // ESC O F
                 }
-            }
+            },
             [27, 91, 66] => {
                 // down arrow
                 if self.grid.cursor_key_mode {
@@ -160,7 +160,7 @@ impl Pane for TerminalPane {
                     // some editors will not show this
                     return "OB".as_bytes().to_vec();
                 }
-            }
+            },
             [27, 91, 50, 48, 48, 126] | [27, 91, 50, 48, 49, 126] => {
                 if !self.grid.bracketed_paste_mode {
                     // Zellij itself operates in bracketed paste mode, so the terminal sends these
@@ -169,8 +169,8 @@ impl Pane for TerminalPane {
                     // panes who do not work in this mode
                     return vec![];
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         };
         input_bytes
     }
@@ -281,7 +281,7 @@ impl Pane for TerminalPane {
                 } else {
                     None
                 }
-            }
+            },
             None => {
                 if !self.borderless {
                     let frame_output = frame.render();
@@ -290,7 +290,7 @@ impl Pane for TerminalPane {
                 } else {
                     None
                 }
-            }
+            },
         }
     }
     fn render_fake_cursor(
@@ -333,14 +333,14 @@ impl Pane for TerminalPane {
         match name {
             "\0" => {
                 self.pane_name = String::new();
-            }
+            },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
                 self.pane_name.pop();
-            }
+            },
             c => {
                 self.pane_name.push_str(c);
-            }
+            },
         }
     }
     fn pid(&self) -> PaneId {
@@ -387,7 +387,7 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn dump_screen(&mut self, _client_id: ClientId) -> String {
-        return self.grid.dump_screen();
+        self.grid.dump_screen()
     }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);

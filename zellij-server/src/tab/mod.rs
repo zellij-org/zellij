@@ -159,7 +159,7 @@ pub trait Pane {
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
     fn dump_screen(&mut self, _client_id: ClientId) -> String {
-        return "".to_owned();
+        "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
     fn scroll_down(&mut self, count: usize, client_id: ClientId);
@@ -474,11 +474,11 @@ impl Tab {
             match next_selectable_pane_id {
                 Some(active_pane_id) => {
                     self.tiled_panes.focus_pane(active_pane_id, client_id);
-                }
+                },
                 None => {
                     // this is very likely a configuration error (layout with no selectable panes)
                     self.tiled_panes.clear_active_panes();
-                }
+                },
             }
         }
     }
@@ -628,7 +628,7 @@ impl Tab {
                         self.floating_panes
                             .focus_pane(first_floating_pane_id, client_id);
                     }
-                }
+                },
                 None => {
                     // there aren't any floating panes, we need to open a new one
                     //
@@ -645,7 +645,7 @@ impl Tab {
                         ClientOrTabIndex::ClientId(client_id),
                     );
                     self.senders.send_to_pty(instruction).unwrap();
-                }
+                },
             }
             self.floating_panes.set_force_render();
         }
@@ -729,15 +729,15 @@ impl Tab {
                             .insert(PaneId::Terminal(pid), replaced_pane);
                         let current_active_pane = self.get_active_pane(client_id).unwrap(); // this will be the newly replaced pane we just created
                         resize_pty!(current_active_pane, self.os_api);
-                    }
+                    },
                     None => {
                         log::error!("Could not find editor pane to replace - is no pane focused?")
-                    }
+                    },
                 }
-            }
+            },
             PaneId::Plugin(_pid) => {
                 // TBD, currently unsupported
-            }
+            },
         }
     }
     pub fn horizontal_split(&mut self, pid: PaneId, client_id: ClientId) {
@@ -944,14 +944,14 @@ impl Tab {
                         active_terminal_id,
                     ))
                     .unwrap();
-            }
+            },
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
                         .unwrap()
                 }
-            }
+            },
         }
     }
     pub fn get_active_terminal_cursor_position(
@@ -1087,11 +1087,11 @@ impl Tab {
                     ); // goto row/col
                     output.add_post_vte_instruction_to_client(client_id, show_cursor);
                     output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
-                }
+                },
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
                     output.add_post_vte_instruction_to_client(client_id, hide_cursor);
-                }
+                },
             }
         }
     }
@@ -1144,7 +1144,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_left(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_left(client_id);
@@ -1156,7 +1156,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_right(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_right(client_id);
@@ -1168,7 +1168,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_down(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_down(client_id);
@@ -1180,7 +1180,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_up(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_up(client_id);
@@ -1192,7 +1192,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_increase(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_increase(client_id);
@@ -1204,7 +1204,7 @@ impl Tab {
                 .floating_panes
                 .resize_active_pane_decrease(client_id, &mut self.os_api);
             if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" incase of a decrease
+                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
             self.tiled_panes.resize_active_pane_decrease(client_id);
@@ -1847,11 +1847,11 @@ impl Tab {
                         .send_to_server(ServerInstruction::Render(Some(serialized_output)))
                         .unwrap();
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
-                }
+                },
                 Err(err) => {
                     log::error!("could not write selection to clipboard: {}", err);
                     Event::SystemClipboardFailure
-                }
+                },
             };
         self.senders
             .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))

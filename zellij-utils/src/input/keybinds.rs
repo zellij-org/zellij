@@ -113,12 +113,12 @@ impl Keybinds {
                     match keybind {
                         KeyActionUnbind::Unbind(unbind) => {
                             unbind_config.insert(mode, unbind.unbind.clone());
-                        }
+                        },
                         KeyActionUnbind::KeyAction(key_action_from_yaml) => {
                             keybind_config
                                 .0
                                 .insert(mode, ModeKeybinds::from(key_action_from_yaml.clone()));
-                        }
+                        },
                     }
                 }
             }
@@ -145,19 +145,19 @@ impl Keybinds {
         for mode in InputMode::iter() {
             if let Some(unbind) = unbind.get(&mode) {
                 match unbind {
-                    Unbind::All(true) => {}
+                    Unbind::All(true) => {},
                     Unbind::Keys(keys) => {
                         if let Some(defaults) = self.0.get(&mode) {
                             keybinds
                                 .0
                                 .insert(mode, defaults.clone().unbind_keys(keys.to_vec()));
                         }
-                    }
+                    },
                     Unbind::All(false) => {
                         if let Some(defaults) = self.0.get(&mode) {
                             keybinds.0.insert(mode, defaults.clone());
                         }
-                    }
+                    },
                 }
             } else if let Some(defaults) = self.0.get(&mode) {
                 keybinds.0.insert(mode, defaults.clone());
@@ -210,7 +210,7 @@ impl Keybinds {
         match *mode {
             InputMode::Normal | InputMode::Locked => {
                 mode_keybind_or_action(Action::Write(raw_bytes))
-            }
+            },
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
             InputMode::RenamePane => mode_keybind_or_action(Action::PaneNameInput(raw_bytes)),
             _ => mode_keybind_or_action(Action::NoOp),

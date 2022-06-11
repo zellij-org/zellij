@@ -112,7 +112,7 @@ pub fn detect_theme_hue(bg: PaletteColor) -> ThemeHue {
                 true => ThemeHue::Light,
                 false => ThemeHue::Dark,
             }
-        }
+        },
         _ => ThemeHue::Dark,
     }
 }

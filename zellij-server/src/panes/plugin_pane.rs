@@ -268,14 +268,14 @@ impl Pane for PluginPane {
         match name {
             "\0" => {
                 self.pane_name = String::new();
-            }
+            },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
                 self.pane_name.pop();
-            }
+            },
             c => {
                 self.pane_name.push_str(c);
-            }
+            },
         }
     }
     fn pid(&self) -> PaneId {

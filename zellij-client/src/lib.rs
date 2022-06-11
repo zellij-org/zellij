@@ -52,7 +52,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
-            }
+            },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
         }
@@ -165,7 +165,7 @@ pub fn start_client(
             envs::set_session_name(name);
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
-        }
+        },
         ClientInfo::New(name) => {
             envs::set_session_name(name);
 
@@ -178,7 +178,7 @@ pub fn start_client(
                 Box::new(layout.unwrap()),
                 Some(config.plugins.clone()),
             )
-        }
+        },
     };
 
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
@@ -207,7 +207,7 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            error!("Panic occured in client:\n{:?}", info);
+            error!("Panic occurred in client:\n{:?}", info);
             if let Ok(()) = os_input.unset_raw_mode(0) {
                 handle_panic(info, &send_client_instructions);
             }
@@ -291,13 +291,13 @@ pub fn start_client(
                         if should_break {
                             break;
                         }
-                    }
+                    },
                     None => {
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
                         log::error!("Received empty message from server");
-                    }
+                    },
                 }
             }
         })
@@ -337,27 +337,27 @@ pub fn start_client(
                 }
                 exit_msg = reason.to_string();
                 break;
-            }
+            },
             ClientInstruction::Error(backtrace) => {
                 let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
-            }
+            },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
                     .write_all(output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
-            }
+            },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
-            }
+            },
             ClientInstruction::SwitchToMode(input_mode) => {
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 

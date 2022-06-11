@@ -199,7 +199,7 @@ where
             Err(e) => {
                 warn!("Error in IpcReceiver.recv(): {:?}", e);
                 None
-            }
+            },
         }
     }
 

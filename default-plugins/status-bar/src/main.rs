@@ -237,21 +237,21 @@ impl ZellijPlugin for State {
         match event {
             Event::ModeUpdate(mode_info) => {
                 self.mode_info = mode_info;
-            }
+            },
             Event::TabUpdate(tabs) => {
                 self.tabs = tabs;
-            }
+            },
             Event::CopyToClipboard(copy_destination) => {
                 self.text_copy_destination = Some(copy_destination);
-            }
+            },
             Event::SystemClipboardFailure => {
                 self.display_system_clipboard_failure = true;
-            }
+            },
             Event::InputReceived => {
                 self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -284,10 +284,10 @@ impl ZellijPlugin for State {
         match background {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
-            }
+            },
             PaletteColor::EightBit(color) => {
                 println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
-            }
+            },
         }
         println!("\u{1b}[m{}\u{1b}[0K", second_line);
     }
@@ -319,7 +319,7 @@ impl State {
                     InputMode::Normal => floating_panes_are_visible(&self.mode_info.style.colors),
                     InputMode::Locked => {
                         locked_floating_panes_are_visible(&self.mode_info.style.colors)
-                    }
+                    },
                     _ => keybinds(&self.mode_info, &self.tip_name, cols),
                 }
             } else {

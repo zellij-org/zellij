@@ -14,7 +14,7 @@ pub struct CliArgs {
     #[clap(long)]
     pub max_panes: Option<usize>,
 
-    /// Change where zellij looks for layouts and plugins
+    /// Change where zellij looks for plugins
     #[clap(long, parse(from_os_str), overrides_with = "data_dir")]
     pub data_dir: Option<PathBuf>,
 
@@ -41,6 +41,7 @@ pub struct CliArgs {
     #[clap(subcommand)]
     pub command: Option<Command>,
 
+    /// Specify emitting additional debug information
     #[clap(short, long)]
     pub debug: bool,
 }

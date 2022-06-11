@@ -68,7 +68,7 @@ fn populate_tabs_in_tab_line(
         let left_fits = size_by_adding_left <= cols;
         let right_fits = size_by_adding_right <= cols;
         // active tab is kept in the middle by adding to the side that
-        // has less width, or if the tab on the other side doesn' fit
+        // has less width, or if the tab on the other side doesn't fit
         if (total_left <= total_right || !right_fits) && left_fits {
             // add left tab
             let tab = tabs_before_active.pop().unwrap();

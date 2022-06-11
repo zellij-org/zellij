@@ -29,7 +29,7 @@ pub(crate) fn kill_all_sessions(yes: bool) {
         Ok(sessions) if sessions.is_empty() => {
             eprintln!("No active zellij sessions found.");
             process::exit(1);
-        }
+        },
         Ok(sessions) => {
             if !yes {
                 println!("WARNING: this action will kill all sessions.");
@@ -46,11 +46,11 @@ pub(crate) fn kill_all_sessions(yes: bool) {
                 kill_session_impl(session);
             }
             process::exit(0);
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -60,11 +60,11 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
             assert_session(target_session);
             kill_session_impl(target_session);
             process::exit(0);
-        }
+        },
         None => {
             println!("Please specify the session name to kill.");
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -76,7 +76,7 @@ fn get_os_input<OsInputOutput>(
         Err(e) => {
             eprintln!("failed to open terminal:\n{}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -110,7 +110,7 @@ fn find_indexed_session(
             );
             print_sessions_with_index(sessions);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -190,12 +190,12 @@ fn attach_with_session_index(config_options: Options, index: usize, create: bool
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
-        }
+        },
         Ok(sessions) => find_indexed_session(sessions, config_options, index, create),
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -211,11 +211,11 @@ fn attach_with_session_name(
             } else {
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
-        }
+        },
         Some(prefix) => match match_session_name(prefix).unwrap() {
             SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
                 ClientInfo::Attach(s, config_options)
-            }
+            },
             SessionNameMatch::AmbiguousPrefix(sessions) => {
                 println!(
                     "Ambiguous selection: multiple sessions names start with '{}':",
@@ -223,24 +223,24 @@ fn attach_with_session_name(
                 );
                 print_sessions(sessions);
                 process::exit(1);
-            }
+            },
             SessionNameMatch::None => {
                 eprintln!("No session with the name '{}' found!", prefix);
                 process::exit(1);
-            }
+            },
         },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
-            }
+            },
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
                 process::exit(1);
-            }
+            },
         },
     }
 }
@@ -251,7 +251,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         Err(e) => {
             eprintln!("{}", e);
             process::exit(1);
-        }
+        },
     };
     let os_input = get_os_input(get_client_os_input);
 

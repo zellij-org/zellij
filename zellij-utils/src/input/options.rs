@@ -122,7 +122,7 @@ impl Options {
     }
 
     /// Merges two [`Options`] structs, a `Some` in `other`
-    /// will supercede a `Some` in `self`
+    /// will supersede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
@@ -163,7 +163,7 @@ impl Options {
     }
 
     /// Merges two [`Options`] structs,
-    /// - `Some` in `other` will supercede a `Some` in `self`
+    /// - `Some` in `other` will supersede a `Some` in `self`
     /// - `Some(bool)` in `other` will toggle a `Some(bool)` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge_from_cli(&self, other: Options) -> Options {

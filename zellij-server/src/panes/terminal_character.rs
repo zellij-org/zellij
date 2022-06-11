@@ -297,13 +297,13 @@ impl CharacterStyles {
                 [22] => {
                     *self = self.bold(Some(AnsiCode::Reset));
                     *self = self.dim(Some(AnsiCode::Reset));
-                }
+                },
                 [23] => *self = self.italic(Some(AnsiCode::Reset)),
                 [24] => *self = self.underline(Some(AnsiCode::Reset)),
                 [25] => {
                     *self = self.blink_slow(Some(AnsiCode::Reset));
                     *self = self.blink_fast(Some(AnsiCode::Reset));
-                }
+                },
                 [27] => *self = self.reverse(Some(AnsiCode::Reset)),
                 [28] => *self = self.hidden(Some(AnsiCode::Reset)),
                 [29] => *self = self.strike(Some(AnsiCode::Reset)),
@@ -320,7 +320,7 @@ impl CharacterStyles {
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
                         *self = self.foreground(Some(ansi_code));
                     }
-                }
+                },
                 [38, params @ ..] => {
                     let rgb_start = if params.len() > 4 { 2 } else { 1 };
                     let rgb_iter = params[rgb_start..].iter().copied();
@@ -328,7 +328,7 @@ impl CharacterStyles {
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
                         *self = self.foreground(Some(ansi_code));
                     }
-                }
+                },
                 [39] => *self = self.foreground(Some(AnsiCode::Reset)),
                 [40] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Black))),
                 [41] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::Red))),
@@ -343,7 +343,7 @@ impl CharacterStyles {
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
                         *self = self.background(Some(ansi_code));
                     }
-                }
+                },
                 [48, params @ ..] => {
                     let rgb_start = if params.len() > 4 { 2 } else { 1 };
                     let rgb_iter = params[rgb_start..].iter().copied();
@@ -351,52 +351,52 @@ impl CharacterStyles {
                     if let Some(ansi_code) = parse_sgr_color(&mut iter) {
                         *self = self.background(Some(ansi_code));
                     }
-                }
+                },
                 [49] => *self = self.background(Some(AnsiCode::Reset)),
                 [90] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
-                }
+                },
                 [91] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
                 [92] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
-                }
+                },
                 [93] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
-                }
+                },
                 [94] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightBlue))),
                 [95] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
-                }
+                },
                 [96] => *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightCyan))),
                 [97] => {
                     *self = self.foreground(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
-                }
+                },
                 [100] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlack)))
-                }
+                },
                 [101] => *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightRed))),
                 [102] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightGreen)))
-                }
+                },
                 [103] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightYellow)))
-                }
+                },
                 [104] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightBlue)))
-                }
+                },
                 [105] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightMagenta)))
-                }
+                },
                 [106] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightCyan)))
-                }
+                },
                 [107] => {
                     *self = self.background(Some(AnsiCode::NamedColor(NamedColor::BrightWhite)))
-                }
+                },
                 _ => {
                     log::warn!("unhandled csi m code {:?}", param);
                     return;
-                }
+                },
             }
         }
     }
@@ -423,102 +423,102 @@ impl Display for CharacterStyles {
             match ansi_code {
                 AnsiCode::RgbCode((r, g, b)) => {
                     write!(f, "\u{1b}[38;2;{};{};{}m", r, g, b)?;
-                }
+                },
                 AnsiCode::ColorIndex(color_index) => {
                     write!(f, "\u{1b}[38;5;{}m", color_index)?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[39m")?;
-                }
+                },
                 AnsiCode::NamedColor(named_color) => {
                     write!(f, "\u{1b}[{}m", named_color.to_foreground_ansi_code())?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         };
         if let Some(ansi_code) = self.background {
             match ansi_code {
                 AnsiCode::RgbCode((r, g, b)) => {
                     write!(f, "\u{1b}[48;2;{};{};{}m", r, g, b)?;
-                }
+                },
                 AnsiCode::ColorIndex(color_index) => {
                     write!(f, "\u{1b}[48;5;{}m", color_index)?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[49m")?;
-                }
+                },
                 AnsiCode::NamedColor(named_color) => {
                     write!(f, "\u{1b}[{}m", named_color.to_background_ansi_code())?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.strike {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[9m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[29m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.hidden {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[8m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[28m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.reverse {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[7m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[27m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.fast_blink {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[6m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[25m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.slow_blink {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[5m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[25m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.bold {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[1m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[22m\u{1b}[24m")?;
                     // TODO: this cancels bold + underline, if this behaviour is indeed correct, we
                     // need to properly handle it in the struct methods etc like dim
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         // notice the order is important here, bold must be before underline
@@ -528,36 +528,36 @@ impl Display for CharacterStyles {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[4m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[24m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.dim {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[2m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     if let Some(AnsiCode::Reset) = self.bold {
                         // we only reset dim if both dim and bold should be reset
                         write!(f, "\u{1b}[22m")?;
                     }
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         if let Some(ansi_code) = self.italic {
             match ansi_code {
                 AnsiCode::On => {
                     write!(f, "\u{1b}[3m")?;
-                }
+                },
                 AnsiCode::Reset => {
                     write!(f, "\u{1b}[23m")?;
-                }
-                _ => {}
+                },
+                _ => {},
             }
         };
         Ok(())

@@ -128,7 +128,7 @@ pub(crate) fn wasm_thread_main(
                 }
                 pid_tx.send(plugin_id).unwrap();
                 plugin_id += 1;
-            }
+            },
             PluginInstruction::Update(pid, cid, event) => {
                 for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
                     let subs = plugin_env.subscriptions.lock().unwrap();
@@ -146,7 +146,7 @@ pub(crate) fn wasm_thread_main(
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
-            }
+            },
             PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
                 if rows == 0 || cols == 0 {
                     buf_tx.send(String::new()).unwrap();
@@ -160,7 +160,7 @@ pub(crate) fn wasm_thread_main(
 
                     buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
                 }
-            }
+            },
             PluginInstruction::Unload(pid) => {
                 info!("Bye from plugin {}", &pid);
                 // TODO: remove plugin's own data directory
@@ -170,7 +170,7 @@ pub(crate) fn wasm_thread_main(
                         drop(plugin_map.remove(&(plugin_id, client_id)));
                     }
                 }
-            }
+            },
             PluginInstruction::AddClient(client_id) => {
                 connected_clients.push(client_id);
 
@@ -203,10 +203,10 @@ pub(crate) fn wasm_thread_main(
                         plugin_id += 1;
                     }
                 }
-            }
+            },
             PluginInstruction::RemoveClient(client_id) => {
                 connected_clients.retain(|c| c != &client_id);
-            }
+            },
             PluginInstruction::Exit => break,
         }
     }
@@ -366,13 +366,13 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
                     tab_index,
                 ))
                 .unwrap()
-        }
+        },
         _ => {
             debug!(
                 "{} - Calling method 'host_set_selectable' does nothing for headless plugins",
                 plugin_env.plugin.location
             )
-        }
+        },
     }
 }
 

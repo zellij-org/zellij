@@ -261,16 +261,16 @@ fn single_letter_ctrl_key(
     match key.mode {
         CtrlKeyMode::Unselected => {
             unselected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
-        }
+        },
         CtrlKeyMode::UnselectedAlternate => {
             unselected_alternate_mode_shortcut_single_letter(letter_shortcut, palette, separator)
-        }
+        },
         CtrlKeyMode::Selected => {
             selected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
-        }
+        },
         CtrlKeyMode::Disabled => {
             disabled_mode_shortcut(&format!(" {}", letter_shortcut), palette, separator)
-        }
+        },
     }
 }
 

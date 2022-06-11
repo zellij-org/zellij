@@ -71,10 +71,10 @@ impl Display for BoundarySymbol {
                 Some(color) => match color {
                     PaletteColor::Rgb((r, g, b)) => {
                         write!(f, "{}", RGB(r, g, b).paint(self.boundary_type))
-                    }
+                    },
                     PaletteColor::EightBit(color) => {
                         write!(f, "{}", Fixed(color).paint(self.boundary_type))
-                    }
+                    },
                 },
                 None => write!(f, "{}", self.boundary_type),
             },
@@ -98,7 +98,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_RIGHT, TOP_RIGHT) => {
             // (┐, ┐) => Some(┐)
             let boundary_type = TOP_RIGHT;
@@ -107,7 +107,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_RIGHT, VERTICAL) | (TOP_RIGHT, BOTTOM_RIGHT) | (TOP_RIGHT, VERTICAL_LEFT) => {
             // (┐, │) => Some(┤)
             // (┐, ┘) => Some(┤)
@@ -118,7 +118,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_RIGHT, HORIZONTAL) | (TOP_RIGHT, TOP_LEFT) | (TOP_RIGHT, HORIZONTAL_DOWN) => {
             // (┐, ─) => Some(┬)
             // (┐, ┌) => Some(┬)
@@ -129,7 +129,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_RIGHT, BOTTOM_LEFT) | (TOP_RIGHT, VERTICAL_RIGHT) | (TOP_RIGHT, HORIZONTAL_UP) => {
             // (┐, └) => Some(┼)
             // (┐, ├) => Some(┼)
@@ -140,7 +140,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL, HORIZONTAL) => {
             // (─, ─) => Some(─)
             let boundary_type = HORIZONTAL;
@@ -149,7 +149,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL, VERTICAL) | (HORIZONTAL, VERTICAL_LEFT) | (HORIZONTAL, VERTICAL_RIGHT) => {
             // (─, │) => Some(┼)
             // (─, ┤) => Some(┼)
@@ -160,7 +160,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL, TOP_LEFT) | (HORIZONTAL, HORIZONTAL_DOWN) => {
             // (─, ┌) => Some(┬)
             // (─, ┬) => Some(┬)
@@ -170,7 +170,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL, BOTTOM_RIGHT) | (HORIZONTAL, BOTTOM_LEFT) | (HORIZONTAL, HORIZONTAL_UP) => {
             // (─, ┘) => Some(┴)
             // (─, └) => Some(┴)
@@ -181,7 +181,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL, VERTICAL) => {
             // (│, │) => Some(│)
             let boundary_type = VERTICAL;
@@ -190,7 +190,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL, TOP_LEFT) | (VERTICAL, BOTTOM_LEFT) | (VERTICAL, VERTICAL_RIGHT) => {
             // (│, ┌) => Some(├)
             // (│, └) => Some(├)
@@ -201,7 +201,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL, BOTTOM_RIGHT) | (VERTICAL, VERTICAL_LEFT) => {
             // (│, ┘) => Some(┤)
             // (│, ┤) => Some(┤)
@@ -211,7 +211,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL, HORIZONTAL_DOWN) | (VERTICAL, HORIZONTAL_UP) => {
             // (│, ┬) => Some(┼)
             // (│, ┴) => Some(┼)
@@ -221,7 +221,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_LEFT, TOP_LEFT) => {
             // (┌, ┌) => Some(┌)
             let boundary_type = TOP_LEFT;
@@ -230,7 +230,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_LEFT, BOTTOM_RIGHT) | (TOP_LEFT, VERTICAL_LEFT) | (TOP_LEFT, HORIZONTAL_UP) => {
             // (┌, ┘) => Some(┼)
             // (┌, ┤) => Some(┼)
@@ -241,7 +241,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_LEFT, BOTTOM_LEFT) | (TOP_LEFT, VERTICAL_RIGHT) => {
             // (┌, └) => Some(├)
             // (┌, ├) => Some(├)
@@ -251,7 +251,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (TOP_LEFT, HORIZONTAL_DOWN) => {
             // (┌, ┬) => Some(┬)
             let boundary_type = HORIZONTAL_DOWN;
@@ -260,7 +260,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_RIGHT, BOTTOM_RIGHT) => {
             // (┘, ┘) => Some(┘)
             let boundary_type = BOTTOM_RIGHT;
@@ -269,7 +269,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_RIGHT, BOTTOM_LEFT) | (BOTTOM_RIGHT, HORIZONTAL_UP) => {
             // (┘, └) => Some(┴)
             // (┘, ┴) => Some(┴)
@@ -279,7 +279,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_RIGHT, VERTICAL_LEFT) => {
             // (┘, ┤) => Some(┤)
             let boundary_type = VERTICAL_LEFT;
@@ -288,7 +288,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_RIGHT, VERTICAL_RIGHT) | (BOTTOM_RIGHT, HORIZONTAL_DOWN) => {
             // (┘, ├) => Some(┼)
             // (┘, ┬) => Some(┼)
@@ -298,7 +298,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_LEFT, BOTTOM_LEFT) => {
             // (└, └) => Some(└)
             let boundary_type = BOTTOM_LEFT;
@@ -307,7 +307,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_LEFT, VERTICAL_LEFT) | (BOTTOM_LEFT, HORIZONTAL_DOWN) => {
             // (└, ┤) => Some(┼)
             // (└, ┬) => Some(┼)
@@ -317,7 +317,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_LEFT, VERTICAL_RIGHT) => {
             // (└, ├) => Some(├)
             let boundary_type = VERTICAL_RIGHT;
@@ -326,7 +326,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (BOTTOM_LEFT, HORIZONTAL_UP) => {
             // (└, ┴) => Some(┴)
             let boundary_type = HORIZONTAL_UP;
@@ -335,7 +335,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL_LEFT, VERTICAL_LEFT) => {
             // (┤, ┤) => Some(┤)
             let boundary_type = VERTICAL_LEFT;
@@ -344,7 +344,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL_LEFT, VERTICAL_RIGHT)
         | (VERTICAL_LEFT, HORIZONTAL_DOWN)
         | (VERTICAL_LEFT, HORIZONTAL_UP) => {
@@ -357,7 +357,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL_RIGHT, VERTICAL_RIGHT) => {
             // (├, ├) => Some(├)
             let boundary_type = VERTICAL_RIGHT;
@@ -366,7 +366,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (VERTICAL_RIGHT, HORIZONTAL_DOWN) | (VERTICAL_RIGHT, HORIZONTAL_UP) => {
             // (├, ┬) => Some(┼)
             // (├, ┴) => Some(┼)
@@ -376,7 +376,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL_DOWN, HORIZONTAL_DOWN) => {
             // (┬, ┬) => Some(┬)
             let boundary_type = HORIZONTAL_DOWN;
@@ -385,7 +385,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL_DOWN, HORIZONTAL_UP) => {
             // (┬, ┴) => Some(┼)
             let boundary_type = CROSS;
@@ -394,7 +394,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (HORIZONTAL_UP, HORIZONTAL_UP) => {
             // (┴, ┴) => Some(┴)
             let boundary_type = HORIZONTAL_UP;
@@ -403,7 +403,7 @@ fn combine_symbols(
                 invisible,
                 color,
             })
-        }
+        },
         (_, _) => combine_symbols(next_symbol, current_symbol),
     }
 }
