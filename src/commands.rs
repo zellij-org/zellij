@@ -147,6 +147,13 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
             let action = format!("[{}]", action);
             match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
                 Ok(parsed) => {
+                    let (config, _, config_options) = match Setup::from_options(&opts) {
+                        Ok(results) => results,
+                        Err(e) => {
+                            eprintln!("{}", e);
+                            process::exit(1);
+                        }
+                    };
                     let os_input =
                         get_os_input(zellij_client::os_input_output::get_client_os_input);
 
@@ -155,10 +162,8 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
                     zellij_client::fake_client::start_fake_client(
                         Box::new(os_input),
                         opts,
-                        *Box::new(
-                            zellij_utils::input::config::Config::from_default_assets().unwrap(),
-                        ),
-                        Options::default(),
+                        *Box::new(config),
+                        config_options,
                         ClientInfo::New(name.to_string()),
                         None,
                         actions,
