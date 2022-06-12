@@ -226,9 +226,10 @@ impl InputHandler {
                 Action::Detach => {
                     // self.should_exit = true;
                     // clients.split_last().into_iter().for_each(|(client_id, _)| {
-                    let client_id = clients.first().unwrap();
+                    let first = clients.first().unwrap();
+                    let last = clients.last().unwrap();
                     self.os_input
-                        .send_to_server(ClientToServerMsg::DetachSession(*client_id));
+                        .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
                     // });
                     break;
                 },
@@ -247,7 +248,7 @@ impl InputHandler {
                 },
             }
         }
-        self.dispatch_action(Action::Quit, None);
+        // self.dispatch_action(Action::Quit, None);
         // is this correct? should be just for this current client
         self.should_exit = true;
         log::error!("Quitting Now. Dispatched the actions");

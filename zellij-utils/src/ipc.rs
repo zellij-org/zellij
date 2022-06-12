@@ -78,7 +78,7 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
-    DetachSession(ClientId),
+    DetachSession(Vec<ClientId>),
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),

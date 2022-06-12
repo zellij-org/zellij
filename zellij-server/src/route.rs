@@ -338,7 +338,7 @@ fn route_action(
         },
         Action::Detach => {
             to_server
-                .send(ServerInstruction::DetachSession(client_id))
+                .send(ServerInstruction::DetachSession(vec![client_id]))
                 .unwrap();
             should_break = true;
         },

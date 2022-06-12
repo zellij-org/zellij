@@ -7,13 +7,12 @@ use zellij_utils::errors::ContextType;
 
 use crate::input_handler::input_actions;
 use crate::{
-    command_is_executing::CommandIsExecuting, input_handler::input_loop,
-    os_input_output::ClientOsApi, stdin_handler::stdin_loop,
+    command_is_executing::CommandIsExecuting, os_input_output::ClientOsApi,
+    stdin_handler::stdin_loop,
 };
 use crate::{ClientInfo, ClientInstruction, InputInstruction};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    consts::ZELLIJ_IPC_PIPE,
     input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
 };
