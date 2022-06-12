@@ -1,4 +1,7 @@
-use log::info;
+//! The `[fake_client]` is used to attach to a running server session
+//! and dispatch actions, that are specificed through the command line.
+//! Multiple actions at the same time can be dispatched.
+use log::debug;
 use std::io::Write;
 use std::path::PathBuf;
 use std::{fs, thread};
@@ -18,9 +21,6 @@ use zellij_utils::{
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
-// keep the args for a little while,
-// it could turn out that we actually
-// want them also for the fake client
 pub fn start_fake_client(
     os_input: Box<dyn ClientOsApi>,
     _opts: CliArgs,
@@ -30,10 +30,12 @@ pub fn start_fake_client(
     _layout: Option<LayoutFromYaml>,
     actions: Vec<Action>,
 ) {
-    info!("Starting fake Zellij client!");
-
+    debug!("Starting fake Zellij client!");
     let session_name = info.get_session_name();
 
+    // TODO: Ideally the `fake_client` would not need to specify these options,
+    // but the `[NewTab:]` action depends on this state being
+    // even in this client.
     let palette = config.themes.clone().map_or_else(
         || os_input.load_palette(),
         |t| {
@@ -83,8 +85,6 @@ pub fn start_fake_client(
         })
     });
 
-    let on_force_close = config_options.on_force_close.unwrap_or_default();
-
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
@@ -93,22 +93,18 @@ pub fn start_fake_client(
             move || stdin_loop(os_input, send_input_instructions)
         });
 
-    // get client ids
-    // os_input.connect_to_server(&*zellij_ipc_pipe);
     let clients: Vec<ClientId>;
     os_input.send_to_server(ClientToServerMsg::ListClients);
     loop {
         if let Some((msg, _)) = os_input.recv_from_server() {
-            log::error!("{:?}", msg);
             if let ServerToClientMsg::ActiveClients(active_clients) = msg {
                 clients = active_clients;
                 break;
             }
         }
     }
-    log::error!("The clients are: {:?}", clients);
+    debug!("The connected client id's are: {:?}.", clients);
 
-    let session_name = session_name.to_string().clone();
     let _input_thread = thread::Builder::new()
         .name("input_handler".to_string())
         .spawn({
@@ -116,6 +112,7 @@ pub fn start_fake_client(
             let command_is_executing = command_is_executing.clone();
             let os_input = os_input.clone();
             let default_mode = config_options.default_mode.unwrap_or_default();
+            let session_name = session_name.to_string();
             move || {
                 input_actions(
                     os_input,
@@ -131,34 +128,6 @@ pub fn start_fake_client(
                 )
             }
         });
-
-    let _signal_thread = thread::Builder::new()
-        .name("signal_listener".to_string())
-        .spawn({
-            let os_input = os_input.clone();
-            move || {
-                os_input.handle_signals(
-                    Box::new({
-                        let os_api = os_input.clone();
-                        move || {
-                            os_api.send_to_server(ClientToServerMsg::TerminalResize(
-                                os_api.get_terminal_size_using_fd(0),
-                            ));
-                        }
-                    }),
-                    Box::new({
-                        let os_api = os_input.clone();
-                        move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(
-                                on_force_close.into(),
-                                None,
-                            ));
-                        }
-                    }),
-                );
-            }
-        })
-        .unwrap();
 
     let router_thread = thread::Builder::new()
         .name("router".to_string())
@@ -180,24 +149,24 @@ pub fn start_fake_client(
         })
         .unwrap();
 
-    let handle_error = |backtrace: String| {
-        //os_input.unset_raw_mode(0);
-        //let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-        //let restore_snapshot = "\u{1b}[?1049l";
-        //os_input.disable_mouse();
-        let error = format!(
-            "{}",
-            //"{}\n{}{}",
-            //restore_snapshot, goto_start_of_last_line,
-            backtrace
-        );
-        let _ = os_input
-            .get_stdout_writer()
-            .write(error.as_bytes())
-            .unwrap();
-        let _ = os_input.get_stdout_writer().flush().unwrap();
-        std::process::exit(1);
-    };
+    // let handle_error = |backtrace: String| {
+    //     //os_input.unset_raw_mode(0);
+    //     //let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+    //     //let restore_snapshot = "\u{1b}[?1049l";
+    //     //os_input.disable_mouse();
+    //     let error = format!(
+    //         "{}",
+    //         //"{}\n{}{}",
+    //         //restore_snapshot, goto_start_of_last_line,
+    //         backtrace
+    //     );
+    //     let _ = os_input
+    //         .get_stdout_writer()
+    //         .write(error.as_bytes())
+    //         .unwrap();
+    //     let _ = os_input.get_stdout_writer().flush().unwrap();
+    //     std::process::exit(1);
+    // };
 
     //let exit_msg: String;
 
@@ -212,17 +181,18 @@ pub fn start_fake_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
 
                 if let ExitReason::Error(_) = reason {
-                    handle_error(reason.to_string());
+                    // handle_error(reason.to_string());
                 }
                 //exit_msg = reason.to_string();
                 break;
             },
-            ClientInstruction::Error(backtrace) => {
+            ClientInstruction::Error(_) => {
                 let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
-                handle_error(backtrace);
+                // handle_error(backtrace);
             },
             ClientInstruction::Render(_) => {
-                // we are a fake client
+                // This is a fake client, that doesn't render, but
+                // dispatches actions.
             },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
@@ -237,11 +207,4 @@ pub fn start_fake_client(
     }
 
     router_thread.join().unwrap();
-
-    //os_input.disable_mouse();
-    //info!("{}", exit_msg);
-    //os_input.unset_raw_mode(0);
-    //let mut stdout = os_input.get_stdout_writer();
-    //let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
-    //stdout.flush().unwrap();
 }
