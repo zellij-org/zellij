@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: many typos (https://github.com/zellij-org/zellij/pull/1481)
 * add: checksum for release binary (https://github.com/zellij-org/zellij/pull/1482)
 * fix: update cli tooltips (https://github.com/zellij-org/zellij/pull/1488)
+* refactor: deduplicate code in `screen.rs` (https://github.com/zellij-org/zellij/pull/1453)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
