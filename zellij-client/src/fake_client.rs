@@ -2,24 +2,21 @@
 //! and dispatch actions, that are specificed through the command line.
 //! Multiple actions at the same time can be dispatched.
 use log::debug;
-use std::io::Write;
-use std::path::PathBuf;
-use std::{fs, thread};
+use std::{fs, path::PathBuf, thread};
 use zellij_tile::prelude::{ClientId, Style};
 use zellij_utils::errors::ContextType;
 
-use crate::input_handler::input_actions;
 use crate::{
-    command_is_executing::CommandIsExecuting, os_input_output::ClientOsApi,
-    stdin_handler::stdin_loop,
+    command_is_executing::CommandIsExecuting, input_handler::input_actions,
+    os_input_output::ClientOsApi, stdin_handler::stdin_loop, ClientInfo, ClientInstruction,
+    InputInstruction,
 };
-use crate::{ClientInfo, ClientInstruction, InputInstruction};
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
-    input::{actions::Action, config::Config, options::Options},
-    ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
+    cli::CliArgs,
+    input::{actions::Action, config::Config, layout::LayoutFromYaml, options::Options},
+    ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
-use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
 
 pub fn start_fake_client(
     os_input: Box<dyn ClientOsApi>,
@@ -95,6 +92,7 @@ pub fn start_fake_client(
 
     let clients: Vec<ClientId>;
     os_input.send_to_server(ClientToServerMsg::ListClients);
+    #[allow(clippy::collapsible_match)]
     loop {
         if let Some((msg, _)) = os_input.recv_from_server() {
             if let ServerToClientMsg::ActiveClients(active_clients) = msg {
@@ -149,27 +147,6 @@ pub fn start_fake_client(
         })
         .unwrap();
 
-    // let handle_error = |backtrace: String| {
-    //     //os_input.unset_raw_mode(0);
-    //     //let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-    //     //let restore_snapshot = "\u{1b}[?1049l";
-    //     //os_input.disable_mouse();
-    //     let error = format!(
-    //         "{}",
-    //         //"{}\n{}{}",
-    //         //restore_snapshot, goto_start_of_last_line,
-    //         backtrace
-    //     );
-    //     let _ = os_input
-    //         .get_stdout_writer()
-    //         .write(error.as_bytes())
-    //         .unwrap();
-    //     let _ = os_input.get_stdout_writer().flush().unwrap();
-    //     std::process::exit(1);
-    // };
-
-    //let exit_msg: String;
-
     loop {
         let (client_instruction, mut err_ctx) = receive_client_instructions
             .recv()
@@ -177,13 +154,8 @@ pub fn start_fake_client(
 
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
         match client_instruction {
-            ClientInstruction::Exit(reason) => {
+            ClientInstruction::Exit(_) => {
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
-
-                if let ExitReason::Error(_) = reason {
-                    // handle_error(reason.to_string());
-                }
-                //exit_msg = reason.to_string();
                 break;
             },
             ClientInstruction::Error(_) => {
@@ -205,6 +177,5 @@ pub fn start_fake_client(
             _ => {},
         }
     }
-
     router_thread.join().unwrap();
 }
