@@ -303,7 +303,7 @@ fn key_indicators(
 }
 
 pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_text = if separator.len() == 0 {
+    let prefix_text = if separator.is_empty() {
         " Ctrl + "
     } else {
         " Ctrl +"

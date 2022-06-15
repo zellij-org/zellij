@@ -97,11 +97,7 @@ impl StdinAnsiParser {
             Key::Alt(CharOrArrow::Char(']')) => true,
             Key::Alt(CharOrArrow::Char('\\')) => true,
             Key::Char(c) => {
-                if let '0'..='9' | 'a'..='f' = c {
-                    true
-                } else {
-                    false
-                }
+                matches!(c, '0'..='9' | 'a'..='f')
             },
             _ => false,
         }
@@ -117,7 +113,7 @@ pub enum AnsiStdinInstructionOrKeys {
 }
 
 impl AnsiStdinInstructionOrKeys {
-    pub fn pixel_dimensions_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+    pub fn pixel_dimensions_from_keys(keys: &[(Key, Vec<u8>)]) -> Result<Self, &'static str> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
         }
@@ -172,7 +168,7 @@ impl AnsiStdinInstructionOrKeys {
             Err("invalid sequence")
         }
     }
-    pub fn color_sequence_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+    pub fn color_sequence_from_keys(keys: &[(Key, Vec<u8>)]) -> Result<Self, &'static str> {
         lazy_static! {
             static ref BACKGROUND_RE: Regex = Regex::new(r"11;(.*)$").unwrap();
         }
@@ -180,9 +176,8 @@ impl AnsiStdinInstructionOrKeys {
             static ref FOREGROUND_RE: Regex = Regex::new(r"10;(.*)$").unwrap();
         }
         let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
-            match key {
-                Key::Char(c) => acc.push(*c),
-                _ => {},
+            if let Key::Char(c) = key {
+                acc.push(*c)
             };
             acc
         });

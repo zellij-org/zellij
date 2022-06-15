@@ -720,12 +720,10 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
-            self.saved_cursor_position
-                .as_mut()
-                .map(|saved_cursor_position| {
-                    saved_cursor_position.y = new_cursor_y;
-                    saved_cursor_position.x = new_cursor_x;
-                });
+            if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                saved_cursor_position.y = new_cursor_y;
+                saved_cursor_position.x = new_cursor_x;
+            };
         } else if new_columns != self.width
             && self.alternate_lines_above_viewport_and_cursor.is_some()
         {
@@ -750,24 +748,22 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
-                    self.saved_cursor_position
-                        .as_mut()
-                        .map(|saved_cursor_position| saved_cursor_position.y += rows_pulled);
+                    if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                        saved_cursor_position.y += rows_pulled
+                    };
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
                     if row_count_to_transfer > self.cursor.y {
                         self.cursor.y = 0;
-                        self.saved_cursor_position
-                            .as_mut()
-                            .map(|saved_cursor_position| saved_cursor_position.y = 0);
+                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                            saved_cursor_position.y = 0
+                        };
                     } else {
                         self.cursor.y -= row_count_to_transfer;
-                        self.saved_cursor_position
-                            .as_mut()
-                            .map(|saved_cursor_position| {
-                                saved_cursor_position.y -= row_count_to_transfer
-                            });
+                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                            saved_cursor_position.y -= row_count_to_transfer
+                        };
                     }
                     if self.alternate_lines_above_viewport_and_cursor.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
@@ -868,7 +864,7 @@ impl Grid {
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self
             .scroll_region
-            .or(Some((0, self.height.saturating_sub(1))))
+            .or_else(|| Some((0, self.height.saturating_sub(1))))
         {
             self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
             for _ in 0..count {
@@ -889,7 +885,7 @@ impl Grid {
     pub fn rotate_scroll_region_down(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self
             .scroll_region
-            .or(Some((0, self.height.saturating_sub(1))))
+            .or_else(|| Some((0, self.height.saturating_sub(1))))
         {
             self.pad_lines_until(scroll_region_bottom, EMPTY_TERMINAL_CHARACTER);
             let mut pad_character = EMPTY_TERMINAL_CHARACTER;
