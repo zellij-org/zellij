@@ -249,11 +249,8 @@ impl InputHandler {
             }
         }
         self.dispatch_action(Action::Detach, None);
-        // is this correct? should be just for this current client
         self.should_exit = true;
         log::error!("Quitting Now. Dispatched the actions");
-        // std::process::exit(0);
-        //self.dispatch_action(Action::NoOp);
         self.exit();
     }
 
@@ -299,7 +296,6 @@ impl InputHandler {
             | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
-                log::error!("Blocking input thread.");
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.command_is_executing
