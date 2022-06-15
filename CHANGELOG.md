@@ -13,6 +13,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: update cli tooltips (https://github.com/zellij-org/zellij/pull/1488)
 * refactor: deduplicate code in `screen.rs` (https://github.com/zellij-org/zellij/pull/1453)
 * chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
+* add: capability to dispatch actions from the cli (https://github.com/zellij-org/zellij/pull/1265)
+  Can be invoked through `zellij action [ACTIONS]`.
+
+  Automatically sends the action to the current session, or if there is just one
+  to the single session, if there are multiple sessions, then the session name
+  must be specified.
+
+  Example:
+
+  ```
+  zellij
+  zellij action NewTab:
+  ```
+
+  Send actions to a specific session:
+  ```
+  zellij -s fluffy-cat
+  zellij -s fluffy-cat action 'NewPane: , WriteChars: "echo Purrr\n"'
+  ```
+
+  Open `htop` in a new tab:
+  ```
+  zj action "NewTab: {run: {command: {cmd: htop}}}"
+  ```
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
