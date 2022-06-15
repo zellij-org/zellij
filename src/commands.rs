@@ -143,38 +143,37 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
         action: Some(action),
     })) = opts.command.clone()
     {
-            let action = format!("[{}]", action);
-            match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
-                Ok(parsed) => {
-                    let (config, _, config_options) = match Setup::from_options(&opts) {
-                        Ok(results) => results,
-                        Err(e) => {
-                            eprintln!("{}", e);
-                            process::exit(1);
-                        },
-                    };
-                    let os_input =
-                        get_os_input(zellij_client::os_input_output::get_client_os_input);
+        let action = format!("[{}]", action);
+        match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
+            Ok(parsed) => {
+                let (config, _, config_options) = match Setup::from_options(&opts) {
+                    Ok(results) => results,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    },
+                };
+                let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
 
-                    let actions = parsed.actions().to_vec();
-                    log::debug!("Starting fake Zellij client!");
-                    zellij_client::fake_client::start_fake_client(
-                        Box::new(os_input),
-                        opts,
-                        *Box::new(config),
-                        config_options,
-                        ClientInfo::New(name.to_string()),
-                        None,
-                        actions,
-                    );
-                    log::debug!("Quitting fake client now.");
-                    std::process::exit(0);
-                },
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    std::process::exit(1);
-                },
-            };
+                let actions = parsed.actions().to_vec();
+                log::debug!("Starting fake Zellij client!");
+                zellij_client::fake_client::start_fake_client(
+                    Box::new(os_input),
+                    opts,
+                    *Box::new(config),
+                    config_options,
+                    ClientInfo::New(name.to_string()),
+                    None,
+                    actions,
+                );
+                log::debug!("Quitting fake client now.");
+                std::process::exit(0);
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                std::process::exit(1);
+            },
+        };
     };
 }
 
