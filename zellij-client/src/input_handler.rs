@@ -248,7 +248,7 @@ impl InputHandler {
                 },
             }
         }
-        self.dispatch_action(Action::Quit, None);
+        self.dispatch_action(Action::Detach, None);
         // is this correct? should be just for this current client
         self.should_exit = true;
         log::error!("Quitting Now. Dispatched the actions");
