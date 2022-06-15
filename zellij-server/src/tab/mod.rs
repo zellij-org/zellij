@@ -844,8 +844,7 @@ impl Tab {
             || self
                 .suppressed_panes
                 .values()
-                .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
-                .is_some()
+                .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
     }
     pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
         if let Some(terminal_output) = self

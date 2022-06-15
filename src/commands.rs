@@ -140,10 +140,9 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
 
 fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
     if let Some(zellij_utils::cli::Command::Sessions(zellij_utils::cli::Sessions::Action {
-        action,
+        action: Some(action),
     })) = opts.command.clone()
     {
-        if let Some(action) = action.clone() {
             let action = format!("[{}]", action);
             match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
                 Ok(parsed) => {
@@ -176,7 +175,6 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
                     std::process::exit(1);
                 },
             };
-        }
     };
 }
 

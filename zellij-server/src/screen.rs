@@ -792,7 +792,7 @@ impl Screen {
         self.render();
     }
 
-    fn unblock_input(&self) -> () {
+    fn unblock_input(&self) {
         self.bus
             .senders
             .send_to_server(ServerInstruction::UnblockInputThread)

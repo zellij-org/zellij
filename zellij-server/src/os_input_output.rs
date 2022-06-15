@@ -389,11 +389,10 @@ impl ServerOsApi for ServerOsInputOutput {
         None
     }
     fn write_to_file(&mut self, buf: String, name: Option<String>) {
-        let mut f: File;
-        match name {
-            Some(x) => f = File::create(x).unwrap(),
-            None => f = tempfile().unwrap(),
-        }
+        let mut f: File = match name {
+            Some(x) => File::create(x).unwrap(),
+            None => tempfile().unwrap(),
+        };
         if let Err(e) = write!(f, "{}", buf) {
             log::error!("could not write to file: {}", e);
         }

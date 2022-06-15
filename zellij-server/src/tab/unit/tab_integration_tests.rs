@@ -90,11 +90,10 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn write_to_file(&mut self, buf: String, name: Option<String>) {
-        let f: String;
-        match name {
-            Some(x) => f = x,
-            None => f = "tmp-name".to_owned(),
-        }
+        let f: String = match name {
+            Some(x) => x,
+            None => "tmp-name".to_owned(),
+        };
         self.file_dumps.lock().unwrap().insert(f, buf);
     }
 }

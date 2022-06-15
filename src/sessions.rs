@@ -57,10 +57,8 @@ fn assert_socket(name: &str) -> bool {
             sender.send(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv() {
-                Some((instruction, _)) => {
-                    matches!(instruction, ServerToClientMsg::Connected)
-                },
-                None => false,
+                Some((ServerToClientMsg::Connected, _)) => true,
+                None | Some((_, _)) => false,
             }
         },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
