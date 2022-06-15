@@ -49,6 +49,7 @@ pub struct TerminalPane {
     content_offset: Offset,
     pane_title: String,
     pane_name: String,
+    prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
@@ -471,6 +472,17 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
 
+    fn store_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.prev_pane_name = self.pane_name.clone()
+        }
+    }
+    fn load_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.pane_name = self.prev_pane_name.clone()
+        }
+    }
+
     fn set_borderless(&mut self, borderless: bool) {
         self.borderless = borderless;
     }
@@ -519,7 +531,8 @@ impl TerminalPane {
             style,
             selection_scrolled_at: time::Instant::now(),
             pane_title: initial_pane_title,
-            pane_name,
+            pane_name: pane_name.clone(),
+            prev_pane_name: pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
         }

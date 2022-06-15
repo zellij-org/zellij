@@ -70,6 +70,7 @@ pub(crate) struct Tab {
     pub index: usize,
     pub position: usize,
     pub name: String,
+    pub prev_name: String,
     tiled_panes: TiledPanes,
     floating_panes: FloatingPanes,
     suppressed_panes: HashMap<PaneId, Box<dyn Pane>>,
@@ -267,6 +268,8 @@ pub trait Pane {
             || position_on_screen.column() == self.x()
             || position_on_screen.column() == (self.x() + self.cols()).saturating_sub(1)
     }
+    fn store_pane_name(&mut self);
+    fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
@@ -346,7 +349,8 @@ impl Tab {
             tiled_panes,
             floating_panes,
             suppressed_panes: HashMap::new(),
-            name,
+            name: name.clone(),
+            prev_name: name,
             max_panes,
             viewport,
             display_area,
@@ -1914,6 +1918,21 @@ impl Tab {
                 let s = str::from_utf8(&buf).unwrap();
                 active_terminal.update_name(s);
             }
+        }
+    }
+
+    pub fn undo_active_rename_pane(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = if self.are_floating_panes_visible() {
+                self.floating_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            } else {
+                self.tiled_panes
+                    .get_pane_mut(PaneId::Terminal(active_terminal_id))
+            }
+            .unwrap();
+
+            active_terminal.load_pane_name();
         }
     }
 

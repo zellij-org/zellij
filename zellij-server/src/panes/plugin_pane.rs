@@ -30,6 +30,7 @@ pub(crate) struct PluginPane {
     pub active_at: Instant,
     pub pane_title: String,
     pub pane_name: String,
+    prev_pane_name: String,
     frame: bool,
     borderless: bool,
 }
@@ -54,7 +55,8 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
-            pane_name,
+            pane_name: pane_name.clone(),
+            prev_pane_name: pane_name,
         }
     }
 }
@@ -386,6 +388,18 @@ impl Pane for PluginPane {
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
     }
+
+    fn store_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.prev_pane_name = self.pane_name.clone()
+        }
+    }
+    fn load_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.pane_name = self.prev_pane_name.clone()
+        }
+    }
+
     fn set_borderless(&mut self, borderless: bool) {
         self.borderless = borderless;
     }
