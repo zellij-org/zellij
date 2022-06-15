@@ -990,6 +990,18 @@ impl Tab {
     pub fn are_floating_panes_visible(&self) -> bool {
         self.floating_panes.panes_are_visible()
     }
+    pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
+        if !self.is_fullscreen_active() {
+            return;
+        }
+        self.tiled_panes.switch_next_pane_fullscreen(client_id);
+    }
+    pub fn switch_prev_pane_fullscreen(&mut self, client_id: ClientId) {
+        if !self.is_fullscreen_active() {
+            return;
+        }
+        self.tiled_panes.switch_next_pane_fullscreen(client_id);
+    }
     pub fn set_force_render(&mut self) {
         self.tiled_panes.set_force_render();
         self.floating_panes.set_force_render();
@@ -1222,6 +1234,7 @@ impl Tab {
             return;
         }
         if self.tiled_panes.fullscreen_is_active() {
+            self.switch_next_pane_fullscreen(client_id);
             return;
         }
         self.tiled_panes.focus_next_pane(client_id);
@@ -1231,6 +1244,7 @@ impl Tab {
             return;
         }
         if self.tiled_panes.fullscreen_is_active() {
+            self.switch_prev_pane_fullscreen(client_id);
             return;
         }
         self.tiled_panes.focus_previous_pane(client_id);
@@ -1247,7 +1261,8 @@ impl Tab {
                 return false;
             }
             if self.tiled_panes.fullscreen_is_active() {
-                return false;
+                self.switch_next_pane_fullscreen(client_id);
+                return true;
             }
             self.tiled_panes.move_focus_left(client_id)
         }
@@ -1296,7 +1311,8 @@ impl Tab {
                 return false;
             }
             if self.tiled_panes.fullscreen_is_active() {
-                return false;
+                self.switch_next_pane_fullscreen(client_id);
+                return true;
             }
             self.tiled_panes.move_focus_right(client_id)
         }

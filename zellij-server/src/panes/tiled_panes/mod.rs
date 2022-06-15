@@ -1082,6 +1082,19 @@ impl TiledPanes {
             }
         }
     }
+
+    pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.focus_next_pane(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
+    pub fn switch_prev_pane_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.focus_previous_pane(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
     pub fn panes_to_hide_count(&self) -> usize {
         self.panes_to_hide.len()
     }
