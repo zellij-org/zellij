@@ -748,9 +748,9 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     self.cursor.y += rows_pulled;
-                    if let Some(saved_cursor_position) = self.saved_cursor_position
-                        .as_mut() {
-                        saved_cursor_position.y += rows_pulled};
+                    if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                        saved_cursor_position.y += rows_pulled
+                    };
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - new_rows;
