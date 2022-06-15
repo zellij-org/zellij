@@ -17,7 +17,10 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-use zellij_tile::{data::InputMode, prelude::Style};
+use zellij_tile::{
+    data::InputMode,
+    prelude::{ClientId, Style},
+};
 
 type SessionId = u64;
 
@@ -75,6 +78,7 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
+    DetachSession(Vec<ClientId>),
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
@@ -87,10 +91,11 @@ pub enum ClientToServerMsg {
         Option<PluginsConfig>,
     ),
     AttachClient(ClientAttributes, Options),
-    Action(Action),
+    Action(Action, Option<ClientId>),
     ClientExited,
     KillSession,
     ConnStatus,
+    ListClients,
 }
 
 // Types of messages sent from the server to the client
@@ -105,6 +110,7 @@ pub enum ServerToClientMsg {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

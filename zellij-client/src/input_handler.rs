@@ -11,7 +11,7 @@ use zellij_utils::{
 use crate::{
     os_input_output::ClientOsApi,
     stdin_ansi_parser::{AnsiStdinInstructionOrKeys, StdinAnsiParser},
-    ClientInstruction, CommandIsExecuting, InputInstruction,
+    ClientId, ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
@@ -108,11 +108,18 @@ impl InputHandler {
                         },
                         InputEvent::Paste(pasted_text) => {
                             if self.mode == InputMode::Normal || self.mode == InputMode::Locked {
-                                self.dispatch_action(Action::Write(bracketed_paste_start.clone()));
-                                self.dispatch_action(Action::Write(
-                                    pasted_text.as_bytes().to_vec(),
-                                ));
-                                self.dispatch_action(Action::Write(bracketed_paste_end.clone()));
+                                self.dispatch_action(
+                                    Action::Write(bracketed_paste_start.clone()),
+                                    None,
+                                );
+                                self.dispatch_action(
+                                    Action::Write(pasted_text.as_bytes().to_vec()),
+                                    None,
+                                );
+                                self.dispatch_action(
+                                    Action::Write(bracketed_paste_end.clone()),
+                                    None,
+                                );
                             }
                         },
                         _ => {},
@@ -136,7 +143,7 @@ impl InputHandler {
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
         let keybinds = &self.config.keybinds;
         for action in Keybinds::key_to_actions(key, raw_bytes, &self.mode, keybinds) {
-            let should_exit = self.dispatch_action(action);
+            let should_exit = self.dispatch_action(action, None);
             if should_exit {
                 self.should_exit = true;
             }
@@ -175,38 +182,79 @@ impl InputHandler {
         match *mouse_event {
             MouseEvent::Press(button, point) => match button {
                 MouseButton::WheelUp => {
-                    self.dispatch_action(Action::ScrollUpAt(point));
+                    self.dispatch_action(Action::ScrollUpAt(point), None);
                 },
                 MouseButton::WheelDown => {
-                    self.dispatch_action(Action::ScrollDownAt(point));
+                    self.dispatch_action(Action::ScrollDownAt(point), None);
                 },
                 MouseButton::Left => {
                     if self.holding_mouse {
-                        self.dispatch_action(Action::MouseHold(point));
+                        self.dispatch_action(Action::MouseHold(point), None);
                     } else {
-                        self.dispatch_action(Action::LeftClick(point));
+                        self.dispatch_action(Action::LeftClick(point), None);
                     }
                     self.holding_mouse = true;
                 },
                 MouseButton::Right => {
                     if self.holding_mouse {
-                        self.dispatch_action(Action::MouseHold(point));
+                        self.dispatch_action(Action::MouseHold(point), None);
                     } else {
-                        self.dispatch_action(Action::RightClick(point));
+                        self.dispatch_action(Action::RightClick(point), None);
                     }
                     self.holding_mouse = true;
                 },
                 _ => {},
             },
             MouseEvent::Release(point) => {
-                self.dispatch_action(Action::MouseRelease(point));
+                self.dispatch_action(Action::MouseRelease(point), None);
                 self.holding_mouse = false;
             },
             MouseEvent::Hold(point) => {
-                self.dispatch_action(Action::MouseHold(point));
+                self.dispatch_action(Action::MouseHold(point), None);
                 self.holding_mouse = true;
             },
         }
+    }
+    fn handle_actions(&mut self, actions: Vec<Action>, session_name: &str, clients: Vec<ClientId>) {
+        // TODO: handle Detach correctly
+        for action in actions {
+            match action {
+                Action::Quit => {
+                    crate::sessions::kill_session(session_name);
+                    break;
+                },
+                Action::Detach => {
+                    // self.should_exit = true;
+                    // clients.split_last().into_iter().for_each(|(client_id, _)| {
+                    let first = clients.first().unwrap();
+                    let last = clients.last().unwrap();
+                    self.os_input
+                        .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
+                    // });
+                    break;
+                },
+                // Actions, that are indepenedent from the specific client
+                // should be specified here.
+                Action::NewTab(_) | Action::Run(_) | Action::NewPane(_) => {
+                    let client_id = clients.first().unwrap();
+                    log::error!("Sending action to client: {}", client_id);
+                    self.dispatch_action(action, Some(*client_id));
+                },
+                _ => {
+                    // TODO only dispatch for each client, for actions that need it
+                    for client_id in &clients {
+                        self.dispatch_action(action.clone(), Some(*client_id));
+                    }
+                },
+            }
+        }
+        self.dispatch_action(Action::Detach, None);
+        // is this correct? should be just for this current client
+        self.should_exit = true;
+        log::error!("Quitting Now. Dispatched the actions");
+        // std::process::exit(0);
+        //self.dispatch_action(Action::NoOp);
+        self.exit();
     }
 
     /// Dispatches an [`Action`].
@@ -220,14 +268,14 @@ impl InputHandler {
     /// This is a temporary measure that is only necessary due to the way that the
     /// framework works, and shouldn't be necessary anymore once the test framework
     /// is revised. See [issue#183](https://github.com/zellij-org/zellij/issues/183).
-    fn dispatch_action(&mut self, action: Action) -> bool {
+    fn dispatch_action(&mut self, action: Action, client_id: Option<ClientId>) -> bool {
         let mut should_break = false;
 
         match action {
             Action::NoOp => {},
             Action::Quit | Action::Detach => {
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action));
+                    .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.exit();
                 should_break = true;
             },
@@ -236,10 +284,11 @@ impl InputHandler {
                 // server later that atomically changes the mode as well
                 self.mode = mode;
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action));
+                    .send_to_server(ClientToServerMsg::Action(action, None));
             },
             Action::CloseFocus
             | Action::NewPane(_)
+            | Action::Run(_)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
             | Action::NewTab(_)
@@ -250,14 +299,15 @@ impl InputHandler {
             | Action::ToggleTab
             | Action::MoveFocusOrTab(_) => {
                 self.command_is_executing.blocking_input_thread();
+                log::error!("Blocking input thread.");
                 self.os_input
-                    .send_to_server(ClientToServerMsg::Action(action));
+                    .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
             },
             _ => self
                 .os_input
-                .send_to_server(ClientToServerMsg::Action(action)),
+                .send_to_server(ClientToServerMsg::Action(action, client_id)),
         }
 
         should_break
@@ -293,6 +343,33 @@ pub(crate) fn input_loop(
         receive_input_instructions,
     )
     .handle_input();
+}
+
+/// Entry point to the module. Instantiates an [`InputHandler`] and starts
+/// its [`InputHandler::handle_input()`] loop.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn input_actions(
+    os_input: Box<dyn ClientOsApi>,
+    config: Config,
+    options: Options,
+    command_is_executing: CommandIsExecuting,
+    clients: Vec<ClientId>,
+    send_client_instructions: SenderWithContext<ClientInstruction>,
+    default_mode: InputMode,
+    receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
+    actions: Vec<Action>,
+    session_name: String,
+) {
+    let _handler = InputHandler::new(
+        os_input,
+        command_is_executing,
+        config,
+        options,
+        send_client_instructions,
+        default_mode,
+        receive_input_instructions,
+    )
+    .handle_actions(actions, &session_name, clients);
 }
 
 #[cfg(test)]

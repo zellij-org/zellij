@@ -109,4 +109,6 @@ pub enum Sessions {
         #[clap(short, long, value_parser)]
         yes: bool,
     },
+    /// Send actions to a specific session
+    Action { action: Option<String> },
 }

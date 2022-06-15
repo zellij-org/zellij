@@ -1,7 +1,9 @@
 pub mod os_input_output;
 
 mod command_is_executing;
+pub mod fake_client;
 mod input_handler;
+mod sessions;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
@@ -12,7 +14,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
-use zellij_tile::prelude::Style;
+use zellij_tile::prelude::{ClientId, Style};
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
@@ -39,6 +41,7 @@ pub(crate) enum ClientInstruction {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -51,6 +54,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
                 ClientInstruction::SwitchToMode(input_mode)
             },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
+            ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
         }
     }
 }
@@ -64,6 +68,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
+            ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
         }
     }
 }
@@ -259,7 +264,10 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
+                            os_api.send_to_server(ClientToServerMsg::Action(
+                                on_force_close.into(),
+                                None,
+                            ));
                         }
                     }),
                 );
@@ -331,7 +339,7 @@ pub fn start_client(
                 break;
             },
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
+                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
             },
             ClientInstruction::Render(output) => {

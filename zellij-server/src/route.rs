@@ -338,7 +338,7 @@ fn route_action(
         },
         Action::Detach => {
             to_server
-                .send(ServerInstruction::DetachSession(client_id))
+                .send(ServerInstruction::DetachSession(vec![client_id]))
                 .unwrap();
             should_break = true;
         },
@@ -415,7 +415,8 @@ pub(crate) fn route_thread_main(
                 let rlocked_sessions = session_data.read().unwrap();
 
                 match instruction {
-                    ClientToServerMsg::Action(action) => {
+                    ClientToServerMsg::Action(action, maybe_client_id) => {
+                        let client_id = maybe_client_id.unwrap_or(client_id);
                         if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                             if let Action::SwitchToMode(input_mode) = action {
                                 os_input.send_to_client(
@@ -515,6 +516,13 @@ pub(crate) fn route_thread_main(
                     ClientToServerMsg::ConnStatus => {
                         let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
                         break;
+                    },
+                    ClientToServerMsg::DetachSession(client_id) => {
+                        let _ = to_server.send(ServerInstruction::DetachSession(client_id));
+                        break;
+                    },
+                    ClientToServerMsg::ListClients => {
+                        let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
                     },
                 }
             },
