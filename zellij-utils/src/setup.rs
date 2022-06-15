@@ -159,29 +159,29 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
 #[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_config: bool,
 
     /// Disables loading of configuration file at default location,
     /// loads the defaults that zellij ships with
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub clean: bool,
 
     /// Checks the configuration of zellij and displays
     /// currently used directories
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub check: bool,
 
     /// Dump the specified layout file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
     /// Generates completion for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_completion: Option<String>,
 
     /// Generates auto-start script for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
 }
 
