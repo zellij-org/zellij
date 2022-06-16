@@ -216,7 +216,6 @@ impl InputHandler {
         }
     }
     fn handle_actions(&mut self, actions: Vec<Action>, session_name: &str, clients: Vec<ClientId>) {
-        // TODO: handle Detach correctly
         for action in actions {
             match action {
                 Action::Quit => {
@@ -224,13 +223,10 @@ impl InputHandler {
                     break;
                 },
                 Action::Detach => {
-                    // self.should_exit = true;
-                    // clients.split_last().into_iter().for_each(|(client_id, _)| {
                     let first = clients.first().unwrap();
                     let last = clients.last().unwrap();
                     self.os_input
                         .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
-                    // });
                     break;
                 },
                 // Actions, that are indepenedent from the specific client
@@ -245,7 +241,8 @@ impl InputHandler {
                     self.dispatch_action(action, Some(*client_id));
                 },
                 _ => {
-                    // TODO only dispatch for each client, for actions that need it
+                    // FIXME: If a specific `session_id` is specified,
+                    // then only send the actions to that specific `client_id`
                     for client_id in &clients {
                         self.dispatch_action(action.clone(), Some(*client_id));
                     }
