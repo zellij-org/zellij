@@ -234,8 +234,12 @@ impl InputHandler {
                     break;
                 },
                 // Actions, that are indepenedent from the specific client
-                // should be specified here.
-                Action::NewTab(_) | Action::Run(_) | Action::NewPane(_) | Action::WriteChars(_) => {
+                // and not session idempotent should be specified here
+                Action::NewTab(_)
+                | Action::Run(_)
+                | Action::NewPane(_)
+                | Action::WriteChars(_)
+                | Action::Write(_) => {
                     let client_id = clients.first().unwrap();
                     log::error!("Sending action to client: {}", client_id);
                     self.dispatch_action(action, Some(*client_id));
