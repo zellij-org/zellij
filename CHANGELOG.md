@@ -39,6 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
 
 * fix: send `WriteChars:` once per action (https://github.com/zellij-org/zellij/pull/1516)
+* feat: allow swapping tabs, in a fullscreen pane (https://github.com/zellij-org/zellij/pull/1515)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
