@@ -235,6 +235,7 @@ impl InputHandler {
                 | Action::Run(_)
                 | Action::NewPane(_)
                 | Action::WriteChars(_)
+                | Action::EditScrollback
                 | Action::Write(_) => {
                     let client_id = clients.first().unwrap();
                     log::error!("Sending action to client: {}", client_id);
