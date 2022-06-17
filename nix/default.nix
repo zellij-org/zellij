@@ -32,6 +32,16 @@ flake-utils.lib.eachSystem [
     ];
   };
 
+  crate2nixMsrvPkgs = import nixpkgs {
+    inherit system;
+    overlays = [
+      (self: _: {
+        rustc = msrvToolchain;
+        cargo = msrvToolchain;
+      })
+    ];
+  };
+
   name = "zellij";
   pname = name;
   root = self;
@@ -40,8 +50,15 @@ flake-utils.lib.eachSystem [
 
   src = pkgs.nix-gitignore.gitignoreSource ignoreSource root;
 
-  cargoToml = builtins.fromTOML (builtins.readFile (src + ./Cargo.toml));
+  cargoToml = builtins.fromTOML (builtins.readFile (src + "/Cargo.toml"));
+  toolchainToml = builtins.fromTOML (builtins.readFile (src + "/rust-toolchain.toml"));
   rustToolchainToml = pkgs.rust-bin.fromRustupToolchainFile (src + "/rust-toolchain.toml");
+
+  msrvToolchain = pkgs.rust-bin.fromRustupToolchain {
+    channel = cargoToml.package.rust-version;
+    components = toolchainToml.toolchain.components;
+    targets = toolchainToml.toolchain.targets;
+  };
 
   cargoLock = {
     lockFile = builtins.path {
@@ -148,6 +165,19 @@ flake-utils.lib.eachSystem [
 in rec {
   # crate2nix - better incremental builds, but uses ifd
   packages.zellij = crate2nixPkgs.callPackage ./crate2nix.nix {
+    inherit
+      name
+      src
+      crate2nix
+      desktopItems
+      postInstall
+      patchPhase
+      meta
+      ;
+    nativeBuildInputs = nativeBuildInputs ++ defaultPlugins;
+  };
+
+  packages.zellij-msrv = crate2nixMsrvPkgs.callPackage ./crate2nix.nix {
     inherit
       name
       src
