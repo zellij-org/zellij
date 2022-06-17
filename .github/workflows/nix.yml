@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     name: "nix build"
     environment: cachix
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v3
         with:
@@ -27,3 +27,24 @@ jobs:
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - run: |
           nix build || nix build --substituters 'https://cache.nixos.org' --extra-substituters ''
+  build-msrv:
+    runs-on: ubuntu-latest
+    name: "build msrv"
+    environment: cachix
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Nix Flakes doesn't work on shallow clones
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v17
+      - uses: cachix/cachix-action@v10
+        with:
+          name: zellij
+          # If you chose API tokens for write access OR if you have a private cache
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - run: |
+          nix build .#zellij-msrv || nix build .#zellij-msrv --substituters 'https://cache.nixos.org' --extra-substituters ''
+      - if: ${{ failure() }}
+        run: |
+          echo "::error :: If this is the only ci step failing, it is likely that the MSRV needs to be bumped.
