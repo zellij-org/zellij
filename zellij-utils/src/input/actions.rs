@@ -91,6 +91,7 @@ pub enum Action {
     /// Close the focus pane.
     CloseFocus,
     PaneNameInput(Vec<u8>),
+    UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
     NewTab(Option<TabLayout>),
     /// Do nothing.
@@ -104,6 +105,7 @@ pub enum Action {
     GoToTab(u32),
     ToggleTab,
     TabNameInput(Vec<u8>),
+    UndoRenameTab,
     /// Run specified command in new pane.
     Run(RunCommandAction),
     /// Detach session and exit

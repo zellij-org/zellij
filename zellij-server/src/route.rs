@@ -259,6 +259,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::UpdatePaneName(c, client_id))
                 .unwrap();
         },
+        Action::UndoRenamePane => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UndoRenamePane(client_id))
+                .unwrap();
+        },
         Action::Run(command) => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
@@ -328,6 +334,12 @@ fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::UpdateTabName(c, client_id))
+                .unwrap();
+        },
+        Action::UndoRenameTab => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UndoRenameTab(client_id))
                 .unwrap();
         },
         Action::Quit => {

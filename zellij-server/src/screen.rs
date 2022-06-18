@@ -85,6 +85,7 @@ pub enum ScreenInstruction {
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
     UpdatePaneName(Vec<u8>, ClientId),
+    UndoRenamePane(ClientId),
     NewTab(Layout, Vec<RawFd>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
@@ -93,6 +94,7 @@ pub enum ScreenInstruction {
     GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy thie behaviour
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
+    UndoRenameTab(ClientId),
     TerminalResize(Size),
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
@@ -168,12 +170,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
+            ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
             ScreenInstruction::SwitchTabNext(..) => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
+            ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
             ScreenInstruction::TerminalPixelDimensions(..) => {
                 ScreenContext::TerminalPixelDimensions
@@ -742,12 +746,23 @@ impl Screen {
             log::error!("Active tab not found for client id: {:?}", client_id);
         }
     }
+    pub fn undo_active_rename_tab(&mut self, client_id: ClientId) {
+        if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            if active_tab.name != active_tab.prev_name {
+                active_tab.name = active_tab.prev_name.clone();
+                self.update_tabs();
+            }
+        } else {
+            log::error!("Active tab not found for client id: {:?}", client_id);
+        }
+    }
     pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         let previous_mode = self
             .mode_info
             .get(&client_id)
             .unwrap_or(&self.default_mode_info)
             .mode;
+
         if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
@@ -755,6 +770,23 @@ impl Screen {
                 active_tab.clear_active_terminal_scroll(client_id);
             }
         }
+
+        if mode_info.mode == InputMode::RenameTab {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                active_tab.prev_name = active_tab.name.clone();
+            }
+        }
+
+        if mode_info.mode == InputMode::RenamePane {
+            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+                if let Some(active_pane) =
+                    active_tab.get_active_pane_or_floating_pane_mut(client_id)
+                {
+                    active_pane.store_pane_name();
+                }
+            }
+        }
+
         self.style = mode_info.style;
         self.mode_info.insert(client_id, mode_info.clone());
         for tab in self.tabs.values_mut() {
@@ -1140,6 +1172,11 @@ pub(crate) fn screen_thread_main(
                     .update_active_pane_name(c, client_id));
                 screen.render();
             },
+            ScreenInstruction::UndoRenamePane(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .undo_active_rename_pane(client_id));
+                screen.render();
+            },
             ScreenInstruction::ToggleActiveTerminalFullscreen(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .toggle_active_pane_fullscreen(client_id));
@@ -1184,6 +1221,10 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::UpdateTabName(c, client_id) => {
                 screen.update_active_tab_name(c, client_id);
+                screen.render();
+            },
+            ScreenInstruction::UndoRenameTab(client_id) => {
+                screen.undo_active_rename_tab(client_id);
                 screen.render();
             },
             ScreenInstruction::TerminalResize(new_size) => {
