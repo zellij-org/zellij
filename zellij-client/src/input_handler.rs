@@ -229,13 +229,21 @@ impl InputHandler {
                         .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
                     break;
                 },
-                // Actions, that are indepenedent from the specific client
+                // Actions, that are independent from the specific client
                 // and not session idempotent should be specified here
                 Action::NewTab(_)
+                | Action::CloseFocus
+                | Action::CloseTab
                 | Action::Run(_)
                 | Action::NewPane(_)
                 | Action::WriteChars(_)
                 | Action::EditScrollback
+                | Action::DumpScreen(_)
+                | Action::ToggleActiveSyncTab
+                | Action::ToggleFloatingPanes
+                | Action::TogglePaneEmbedOrFloating
+                | Action::TogglePaneFrames
+                | Action::ToggleFocusFullscreen
                 | Action::Write(_) => {
                     let client_id = clients.first().unwrap();
                     log::error!("Sending action to client: {}", client_id);
