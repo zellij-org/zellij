@@ -1,7 +1,7 @@
 use crate::output::CharacterChunk;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{CursorShape, NamedColor, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
@@ -232,10 +232,15 @@ impl Pane for TerminalPane {
                 } else if !self.grid.search_results.selections.is_empty() {
                     for (idx, res) in self.grid.search_results.selections.iter().enumerate() {
                         if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                            let background_color = if Some(idx) == self.grid.search_results.active {
-                                AnsiCode::NamedColor(NamedColor::Yellow)
-                            } else {
-                                AnsiCode::NamedColor(NamedColor::Red)
+                            let select_color_palette =
+                                if Some(idx) == self.grid.search_results.active {
+                                    self.style.colors.yellow
+                                } else {
+                                    self.style.colors.red
+                                };
+                            let background_color = match select_color_palette {
+                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                             };
                             character_chunk.add_selection_and_background(
                                 *res,
