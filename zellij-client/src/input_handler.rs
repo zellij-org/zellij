@@ -232,8 +232,6 @@ impl InputHandler {
                 // Actions, that are independent from the specific client
                 // and not session idempotent should be specified here
                 Action::NewTab(_)
-                | Action::CloseFocus
-                | Action::CloseTab
                 | Action::Run(_)
                 | Action::NewPane(_)
                 | Action::WriteChars(_)
@@ -246,7 +244,13 @@ impl InputHandler {
                 | Action::ToggleFocusFullscreen
                 | Action::Write(_) => {
                     let client_id = clients.first().unwrap();
-                    log::error!("Sending action to client: {}", client_id);
+                    log::debug!("Sending action to client: {}", client_id);
+                    self.dispatch_action(action, Some(*client_id));
+                },
+                Action::CloseFocus | Action::CloseTab => {
+                    let client_id = clients.first().unwrap();
+                    log::debug!("Sending action to client: {}", client_id);
+                    log::warn!("Running this action from the focused pane, can lead to unexpected behaviour.");
                     self.dispatch_action(action, Some(*client_id));
                 },
                 _ => {
