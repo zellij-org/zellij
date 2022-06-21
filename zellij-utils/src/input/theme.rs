@@ -1,5 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::{
+    de::{Error, Visitor},
+    Deserialize, Deserializer, Serialize, Serializer,
+};
+use std::{collections::HashMap, fmt};
 
 use super::options::Options;
 use crate::shared::detect_theme_hue;
@@ -48,6 +51,65 @@ pub struct PaletteFromYaml {
 pub enum PaletteColorFromYaml {
     Rgb((u8, u8, u8)),
     EightBit(u8),
+    Hex(HexColor),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HexColor(u8, u8, u8);
+
+impl From<HexColor> for (u8, u8, u8) {
+    fn from(e: HexColor) -> (u8, u8, u8) {
+        let HexColor(r, g, b) = e;
+        (r, g, b)
+    }
+}
+
+pub struct HexColorVisitor();
+
+impl<'de> Visitor<'de> for HexColorVisitor {
+    type Value = HexColor;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "a hex color in the format #RGB or #RRGGBB")
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+    where
+        E: Error,
+    {
+        if s.len() == 3 {
+            Ok(HexColor(
+                u8::from_str_radix(&s[0..1], 16).map_err(E::custom)? * 0x11,
+                u8::from_str_radix(&s[1..2], 16).map_err(E::custom)? * 0x11,
+                u8::from_str_radix(&s[2..3], 16).map_err(E::custom)? * 0x11,
+            ))
+        } else if s.len() == 6 {
+            Ok(HexColor(
+                u8::from_str_radix(&s[0..2], 16).map_err(E::custom)?,
+                u8::from_str_radix(&s[2..4], 16).map_err(E::custom)?,
+                u8::from_str_radix(&s[4..6], 16).map_err(E::custom)?,
+            ))
+        } else {
+            Err(Error::custom("Hex color must be of form #RGB or #RRGGBB"))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HexColor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(HexColorVisitor())
+    }
+}
+impl Serialize for HexColor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(format!("{:02X}{:02X}{:02X}", self.0, self.1, self.2).as_str())
+    }
 }
 
 impl Default for PaletteColorFromYaml {
@@ -109,6 +171,7 @@ impl From<PaletteColorFromYaml> for PaletteColor {
         match yaml {
             PaletteColorFromYaml::Rgb(color) => PaletteColor::Rgb(color),
             PaletteColorFromYaml::EightBit(color) => PaletteColor::EightBit(color),
+            PaletteColorFromYaml::Hex(color) => PaletteColor::Rgb(color.into()),
         }
     }
 }
