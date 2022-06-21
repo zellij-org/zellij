@@ -297,6 +297,12 @@ pub fn start_client(
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
                         log::error!("Received empty message from server");
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Received empty message from server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
                     },
                 }
             }
