@@ -315,7 +315,7 @@ pub fn start_client(
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse();
         let error = format!(
-            "{}\n{}{}",
+            "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
         );
         let _ = os_input
