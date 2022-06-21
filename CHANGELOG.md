@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
 * add: capability to dispatch actions from the cli (https://github.com/zellij-org/zellij/pull/1265)
   Can be invoked through `zellij action [ACTIONS]`.
+* fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)
 
   Automatically sends the action to the current session, or if there is just one
   to the single session, if there are multiple sessions, then the session name

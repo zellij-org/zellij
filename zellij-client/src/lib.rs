@@ -297,6 +297,12 @@ pub fn start_client(
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
                         log::error!("Received empty message from server");
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Received empty message from server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
                     },
                 }
             }
@@ -309,7 +315,7 @@ pub fn start_client(
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse();
         let error = format!(
-            "{}\n{}{}",
+            "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
         );
         let _ = os_input
