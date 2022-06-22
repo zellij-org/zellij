@@ -77,6 +77,11 @@ impl<'de> Visitor<'de> for HexColorVisitor {
     where
         E: Error,
     {
+	println!("{}", s);
+        if s.starts_with("#") {
+            return self.visit_str(&s[1..]);
+        }
+
         if s.len() == 3 {
             Ok(HexColor(
                 u8::from_str_radix(&s[0..1], 16).map_err(E::custom)? * 0x11,
@@ -90,7 +95,9 @@ impl<'de> Visitor<'de> for HexColorVisitor {
                 u8::from_str_radix(&s[4..6], 16).map_err(E::custom)?,
             ))
         } else {
-            Err(Error::custom("Hex color must be of form #RGB or #RRGGBB"))
+            Err(Error::custom(
+                "Hex color must be of form \"#RGB\" or \"#RRGGBB\"",
+            ))
         }
     }
 }
