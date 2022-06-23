@@ -323,141 +323,35 @@ pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    // Unselect all by default
+    let mut default_keys = [
+        KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
+        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
+        KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
+        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
+        KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
+        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
+        KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
+        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
+    ];
+
     match &help.mode {
-        InputMode::Locked => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Move),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Session),
-                KeyShortcut::new(KeyMode::Disabled, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Resize => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Pane | InputMode::RenamePane => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Tab | InputMode::RenameTab => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::EnterSearch | InputMode::Scroll | InputMode::Search => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Move => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Normal | InputMode::Prompt => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Session => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Selected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
-        InputMode::Tmux => key_indicators(
-            max_len,
-            &[
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-                KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-                KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
-            ],
-            colored_elements,
-            separator,
-        ),
+        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => (),
+        InputMode::Locked => {
+            default_keys[0].mode = KeyMode::Selected;
+            for key in default_keys.iter_mut().skip(1) {
+                key.mode = KeyMode::Disabled;
+            }
+        },
+        InputMode::Pane | InputMode::RenamePane => default_keys[1].mode = KeyMode::Selected,
+        InputMode::Tab | InputMode::RenameTab => default_keys[2].mode = KeyMode::Selected,
+        InputMode::Resize => default_keys[3].mode = KeyMode::Selected,
+        InputMode::Move => default_keys[4].mode = KeyMode::Selected,
+        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => {
+            default_keys[5].mode = KeyMode::Selected
+        },
+        InputMode::Session => default_keys[6].mode = KeyMode::Selected,
     }
+
+    key_indicators(max_len, &default_keys, colored_elements, separator)
 }
