@@ -53,8 +53,8 @@ pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabili
         ],
         InputMode::Scroll => vec![
             ("↓↑".to_string(), "Scroll".to_string()),
-            ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
-            ("u/d".to_string(), "Scroll Half Page".to_string()),
+            ("PgDn/PgUp".to_string(), "Scroll Page".to_string()),
+            ("d/u".to_string(), "Scroll Half Page".to_string()),
             (
                 "e".to_string(),
                 "Edit Scrollback in Default Editor".to_string(),
