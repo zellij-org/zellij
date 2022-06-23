@@ -77,7 +77,7 @@ impl<'de> Visitor<'de> for HexColorVisitor {
     where
         E: Error,
     {
-	println!("{}", s);
+        println!("{}", s);
         if s.starts_with("#") {
             return self.visit_str(&s[1..]);
         }
