@@ -77,8 +77,8 @@ impl<'de> Visitor<'de> for HexColorVisitor {
     where
         E: Error,
     {
-        if s.starts_with("#") {
-            return self.visit_str(&s[1..]);
+        if let Some(stripped) = s.strip_prefix('#') {
+            return self.visit_str(stripped);
         }
 
         if s.len() == 3 {
