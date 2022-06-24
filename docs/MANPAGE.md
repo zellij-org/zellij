@@ -145,6 +145,8 @@ ACTIONS
   MODES section for possible values.
 * __Resize: <Direction\>__ - resizes focused pane in the specified direction
   (one of: Left, Right, Up, Down).
+* __ResizeExact: <Direction\> <Amount\> <Amount\>__ - resizes focused pane in
+  the specified direction the given amount (Fixed: <value\>, Percent: <value\>).
 * __FocusNextPane__ - switches focus to the next pane to the right or below if
   on  screen edge.
 * __FocusPreviousPane__ - switches focus to the next pane to the left or above
