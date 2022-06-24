@@ -10,8 +10,7 @@ license = "MIT"
 
 [dependencies]
 mio = { version = "0.7.11", features = ['os-ext'] }
-zellij-utils = { path = "../zellij-utils/", version = "0.31.0" }
-zellij-tile = { path = "../zellij-tile/", version = "0.31.0" }
+zellij-utils = { path = "../zellij-utils/", version = "0.31.0", features = ["full"] }
 log = "0.4.17"
 
 [dev-dependencies]

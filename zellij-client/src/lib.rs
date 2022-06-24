@@ -14,16 +14,15 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
 use std::thread;
-use zellij_tile::prelude::{ClientId, Style};
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
-use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     consts::ZELLIJ_IPC_PIPE,
+    data::{ClientId, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
     input::{actions::Action, config::Config, options::Options},
