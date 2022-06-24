@@ -5,9 +5,8 @@ use crate::ui::boundaries::Boundaries;
 use crate::ui::pane_boundaries_frame::FrameParams;
 use crate::ClientId;
 use std::collections::HashMap;
-use zellij_tile::{
-    data::{client_id_to_colors, single_client_color, InputMode, PaletteColor},
-    prelude::Style,
+use zellij_utils::data::{
+    client_id_to_colors, single_client_color, InputMode, PaletteColor, Style,
 };
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,

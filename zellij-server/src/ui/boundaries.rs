@@ -1,12 +1,11 @@
-use zellij_utils::{pane_size::Viewport, zellij_tile};
+use zellij_utils::pane_size::Viewport;
 
 use crate::output::CharacterChunk;
 use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER, RESET_STYLES};
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
-use zellij_tile::data::PaletteColor;
-use zellij_utils::shared::colors;
+use zellij_utils::{data::PaletteColor, shared::colors};
 
 use std::fmt::{Display, Error, Formatter};
 pub mod boundary_type {

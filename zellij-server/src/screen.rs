@@ -6,13 +6,9 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
-use zellij_tile::data::{Palette, PaletteColor};
-use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
-use zellij_utils::{
-    input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
-};
+use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position};
 
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
@@ -27,8 +23,8 @@ use crate::{
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, PluginCapabilities, TabInfo};
 use zellij_utils::{
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
     errors::{ContextType, ScreenContext},
     input::{get_mode_info, options::Options},
     ipc::{ClientAttributes, PixelDimensions},
