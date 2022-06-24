@@ -8,6 +8,7 @@ use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_tile::prelude::Style;
+use zellij_utils::pane_size::Constraint;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde, zellij_tile};
 
@@ -1153,76 +1154,104 @@ impl Tab {
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
     }
-    pub fn resize_left(&mut self, client_id: ClientId) {
+    pub fn resize_left(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_left(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane_left(
+                client_id,
+                constraint,
+                &mut self.os_api,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_left(client_id);
+            self.tiled_panes
+                .resize_active_pane_left(client_id, constraint);
         }
     }
-    pub fn resize_right(&mut self, client_id: ClientId) {
+    pub fn resize_right(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_right(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane_right(
+                client_id,
+                constraint,
+                &mut self.os_api,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_right(client_id);
+            self.tiled_panes
+                .resize_active_pane_right(client_id, constraint);
         }
     }
-    pub fn resize_down(&mut self, client_id: ClientId) {
+    pub fn resize_down(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_down(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane_down(
+                client_id,
+                constraint,
+                &mut self.os_api,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_down(client_id);
+            self.tiled_panes
+                .resize_active_pane_down(client_id, constraint);
         }
     }
-    pub fn resize_up(&mut self, client_id: ClientId) {
+    pub fn resize_up(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_up(client_id, &mut self.os_api);
+            let successfully_resized =
+                self.floating_panes
+                    .resize_active_pane_up(client_id, constraint, &mut self.os_api);
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_up(client_id);
+            self.tiled_panes
+                .resize_active_pane_up(client_id, constraint);
         }
     }
-    pub fn resize_increase(&mut self, client_id: ClientId) {
+    pub fn resize_increase(
+        &mut self,
+        client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_increase(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane_increase(
+                client_id,
+                cx,
+                cy,
+                &mut self.os_api,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_increase(client_id);
+            self.tiled_panes
+                .resize_active_pane_increase(client_id, cx, cy);
         }
     }
-    pub fn resize_decrease(&mut self, client_id: ClientId) {
+    pub fn resize_decrease(
+        &mut self,
+        client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_decrease(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane_decrease(
+                client_id,
+                cx,
+                cy,
+                &mut self.os_api,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_decrease(client_id);
+            self.tiled_panes
+                .resize_active_pane_decrease(client_id, cx, cy);
         }
     }
     fn set_pane_active_at(&mut self, pane_id: PaneId) {

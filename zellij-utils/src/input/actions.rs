@@ -3,6 +3,7 @@
 use super::command::RunCommandAction;
 use super::layout::TabLayout;
 use crate::input::options::OnForceClose;
+use crate::pane_size::Constraint;
 use serde::{Deserialize, Serialize};
 use zellij_tile::data::InputMode;
 
@@ -44,6 +45,11 @@ pub enum Action {
     SwitchToMode(InputMode),
     /// Resize focus pane in specified direction.
     Resize(ResizeDirection),
+    ResizeExact(
+        ResizeDirection,
+        #[serde(default)] Option<Constraint>,
+        #[serde(default)] Option<Constraint>,
+    ),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,

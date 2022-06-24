@@ -387,7 +387,7 @@ fn increase_floating_pane_size() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_increase(client_id);
+    tab.resize_increase(client_id, None, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -414,7 +414,7 @@ fn decrease_floating_pane_size() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_decrease(client_id);
+    tab.resize_decrease(client_id, None, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -441,7 +441,7 @@ fn resize_floating_pane_left() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_left(client_id);
+    tab.resize_left(client_id, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -468,7 +468,7 @@ fn resize_floating_pane_right() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_right(client_id);
+    tab.resize_right(client_id, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -495,7 +495,7 @@ fn resize_floating_pane_up() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_up(client_id);
+    tab.resize_up(client_id, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -522,7 +522,7 @@ fn resize_floating_pane_down() {
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     );
-    tab.resize_down(client_id);
+    tab.resize_down(client_id, None);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),

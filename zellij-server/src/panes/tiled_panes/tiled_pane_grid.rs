@@ -6,13 +6,13 @@ use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::{
     input::layout::Direction,
-    pane_size::{Dimension, PaneGeom, Size, Viewport},
+    pane_size::{Constraint, Dimension, PaneGeom, Size, Viewport},
 };
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const RESIZE_PERCENT: f64 = 5.0;
+const DEFAULT_RESIZE_PERCENT: f64 = 5.0;
 const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
@@ -46,82 +46,130 @@ impl<'a> TiledPaneGrid<'a> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    pub fn resize_pane_left(&mut self, pane_id: &PaneId) {
+    pub fn resize_pane_left(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.cols as f64),
+            Constraint::Percent(percent) => percent,
+        };
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_left(pane_id, increment) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_left(pane_id, increment);
     }
-    pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
+    pub fn resize_pane_right(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.cols as f64),
+            Constraint::Percent(percent) => percent,
+        };
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_right(pane_id, increment) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_right(pane_id, increment);
     }
-    pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
+    pub fn resize_pane_down(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.rows as f64),
+            Constraint::Percent(percent) => percent,
+        };
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_down(pane_id, increment) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_down(pane_id, increment);
     }
-    pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
+    pub fn resize_pane_up(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.rows as f64),
+            Constraint::Percent(percent) => percent,
+        };
         // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_up(pane_id, increment) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_up(pane_id, increment);
     }
-    pub fn resize_increase(&mut self, pane_id: &PaneId) {
-        if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
+    pub fn resize_increase(
+        &mut self,
+        pane_id: &PaneId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let inc_x = match cx.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.cols as f64),
+            Constraint::Percent(percent) => percent,
+        };
+        let inc_y = match cy.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.rows as f64),
+            Constraint::Percent(percent) => percent,
+        };
+        if self.try_increase_pane_and_surroundings_right_and_down(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left_and_down(pane_id) {
+        if self.try_increase_pane_and_surroundings_left_and_down(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_right_and_up(pane_id) {
+        if self.try_increase_pane_and_surroundings_right_and_up(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left_and_up(pane_id) {
+        if self.try_increase_pane_and_surroundings_left_and_up(pane_id, inc_x, inc_y) {
             return;
         }
 
-        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_right(pane_id, inc_x) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_down(pane_id, inc_y) {
             return;
         }
-        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+        if self.try_increase_pane_and_surroundings_left(pane_id, inc_x) {
             return;
         }
-        self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+        self.try_increase_pane_and_surroundings_up(pane_id, inc_y);
     }
-    pub fn resize_decrease(&mut self, pane_id: &PaneId) {
-        if self.try_reduce_pane_and_surroundings_left_and_up(pane_id) {
+    pub fn resize_decrease(
+        &mut self,
+        pane_id: &PaneId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
+        let default_constraint = Constraint::Percent(DEFAULT_RESIZE_PERCENT);
+        let inc_x = match cx.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.cols as f64),
+            Constraint::Percent(percent) => percent,
+        };
+        let inc_y = match cy.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => 100.0 * value as f64 / (self.display_area.rows as f64),
+            Constraint::Percent(percent) => percent,
+        };
+        if self.try_reduce_pane_and_surroundings_left_and_up(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right_and_up(pane_id) {
+        if self.try_reduce_pane_and_surroundings_right_and_up(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right_and_down(pane_id) {
+        if self.try_reduce_pane_and_surroundings_right_and_down(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_left_and_down(pane_id) {
+        if self.try_reduce_pane_and_surroundings_left_and_down(pane_id, inc_x, inc_y) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_left(pane_id, inc_x) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_right(pane_id, inc_x) {
             return;
         }
-        if self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
+        if self.try_reduce_pane_and_surroundings_up(pane_id, inc_y) {
             return;
         }
-        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+        self.try_reduce_pane_and_surroundings_down(pane_id, inc_y);
     }
     fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: f64) -> bool {
         if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
@@ -167,7 +215,7 @@ impl<'a> TiledPaneGrid<'a> {
         if current_fixed_cols.saturating_sub(will_reduce_by) < pane.min_width() {
             false
         } else if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            cols - reduce_by >= RESIZE_PERCENT
+            cols - reduce_by >= 100.0 * pane.min_width() as f64 / (self.display_area.cols as f64)
         } else {
             false
         }
@@ -180,7 +228,7 @@ impl<'a> TiledPaneGrid<'a> {
         if current_fixed_rows.saturating_sub(will_reduce_by) < pane.min_height() {
             false
         } else if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            rows - reduce_by >= RESIZE_PERCENT
+            rows - reduce_by >= 100.0 * pane.min_height() as f64 / (self.display_area.rows as f64)
         } else {
             false
         }
@@ -356,7 +404,8 @@ impl<'a> TiledPaneGrid<'a> {
         for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             let panes = self.panes.borrow();
             let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
+            let min_height = 100.0 * pane.min_height() as f64 / (self.display_area.rows as f64);
+            if pane.current_geom().rows.as_percent().unwrap() - percent < min_height {
                 return;
             }
         }
@@ -390,7 +439,8 @@ impl<'a> TiledPaneGrid<'a> {
         for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
             let panes = self.panes.borrow();
             let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
+            let min_height = 100.0 * pane.min_height() as f64 / (self.display_area.rows as f64);
+            if pane.current_geom().rows.as_percent().unwrap() - percent < min_height {
                 return;
             }
         }
@@ -424,7 +474,8 @@ impl<'a> TiledPaneGrid<'a> {
         for terminal_id in terminals_above.iter().chain(&terminals_below) {
             let panes = self.panes.borrow();
             let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
+            let min_width = 100.0 * pane.min_width() as f64 / (self.display_area.cols as f64);
+            if pane.current_geom().cols.as_percent().unwrap() - percent < min_width {
                 return;
             }
         }
@@ -458,7 +509,8 @@ impl<'a> TiledPaneGrid<'a> {
         for terminal_id in terminals_above.iter().chain(&terminals_below) {
             let panes = self.panes.borrow();
             let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
+            let min_width = 100.0 * pane.min_width() as f64 / (self.display_area.cols as f64);
+            if pane.current_geom().cols.as_percent().unwrap() - percent < min_width {
                 return;
             }
         }
@@ -1007,11 +1059,15 @@ impl<'a> TiledPaneGrid<'a> {
         }
         false
     }
-    fn try_increase_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
+    fn try_increase_pane_and_surroundings_right_and_up(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_right(pane_id, increase_x);
+        let can_increase_pane_up = self.can_increase_pane_and_surroundings_up(pane_id, increase_y);
         if can_increase_pane_right && can_increase_pane_up {
             let pane_above_with_right_aligned_border = self
                 .viewport_pane_ids_directly_above(pane_id)
@@ -1023,13 +1079,13 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_right(pane_id, increase_x);
+            self.try_increase_pane_and_surroundings_up(pane_id, increase_y);
             if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
             {
                 self.try_reduce_pane_and_surroundings_right(
                     &pane_above_with_right_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1037,11 +1093,15 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_increase_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
+    fn try_increase_pane_and_surroundings_left_and_up(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_left(pane_id, increase_x);
+        let can_increase_pane_up = self.can_increase_pane_and_surroundings_up(pane_id, increase_y);
         if can_increase_pane_left && can_increase_pane_up {
             let pane_above_with_left_aligned_border = self
                 .viewport_pane_ids_directly_above(pane_id)
@@ -1053,12 +1113,12 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_left(pane_id, increase_x);
+            self.try_increase_pane_and_surroundings_up(pane_id, increase_y);
             if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
                 self.try_reduce_pane_and_surroundings_left(
                     &pane_above_with_left_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1066,11 +1126,16 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_increase_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
+    fn try_increase_pane_and_surroundings_right_and_down(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_right(pane_id, increase_x);
         let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_down(pane_id, increase_y);
         if can_increase_pane_right && can_increase_pane_down {
             let pane_below_with_right_aligned_border = self
                 .viewport_pane_ids_directly_below(pane_id)
@@ -1082,13 +1147,13 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_right(pane_id, increase_x);
+            self.try_increase_pane_and_surroundings_down(pane_id, increase_y);
             if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
             {
                 self.try_reduce_pane_and_surroundings_right(
                     &pane_below_with_right_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1096,11 +1161,16 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_increase_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
+    fn try_increase_pane_and_surroundings_left_and_down(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_left(pane_id, increase_x);
         let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.can_increase_pane_and_surroundings_down(pane_id, increase_y);
         if can_increase_pane_left && can_increase_pane_down {
             let pane_below_with_left_aligned_border = self
                 .viewport_pane_ids_directly_below(pane_id)
@@ -1112,12 +1182,12 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.try_increase_pane_and_surroundings_left(pane_id, increase_x);
+            self.try_increase_pane_and_surroundings_down(pane_id, increase_y);
             if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
                 self.try_reduce_pane_and_surroundings_left(
                     &pane_below_with_left_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1125,10 +1195,15 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_reduce_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
+    fn try_reduce_pane_and_surroundings_right_and_up(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_right(pane_id, increase_x);
+        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, increase_y);
         if can_reduce_pane_right && can_reduce_pane_up {
             let pane_below_with_left_aligned_border = self
                 .viewport_pane_ids_directly_below(pane_id)
@@ -1140,12 +1215,12 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_right(pane_id, increase_x);
+            self.try_reduce_pane_and_surroundings_up(pane_id, increase_y);
             if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
                 self.try_increase_pane_and_surroundings_right(
                     &pane_below_with_left_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1153,10 +1228,14 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_reduce_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+    fn try_reduce_pane_and_surroundings_left_and_up(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
+        let can_reduce_pane_left = self.can_reduce_pane_and_surroundings_left(pane_id, increase_x);
+        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, increase_y);
         if can_reduce_pane_left && can_reduce_pane_up {
             let pane_below_with_right_aligned_border = self
                 .viewport_pane_ids_directly_below(pane_id)
@@ -1168,13 +1247,13 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_left(pane_id, increase_x);
+            self.try_reduce_pane_and_surroundings_up(pane_id, increase_y);
             if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
             {
                 self.try_increase_pane_and_surroundings_left(
                     &pane_below_with_right_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1182,11 +1261,15 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_reduce_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
+    fn try_reduce_pane_and_surroundings_right_and_down(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
         let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.can_reduce_pane_and_surroundings_right(pane_id, increase_x);
+        let can_reduce_pane_down = self.can_reduce_pane_and_surroundings_down(pane_id, increase_y);
         if can_reduce_pane_right && can_reduce_pane_down {
             let pane_above_with_left_aligned_border = self
                 .viewport_pane_ids_directly_above(pane_id)
@@ -1198,12 +1281,12 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() == pane.x() + pane.cols()
                 });
-            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_right(pane_id, increase_x);
+            self.try_reduce_pane_and_surroundings_down(pane_id, increase_y);
             if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
                 self.try_increase_pane_and_surroundings_right(
                     &pane_above_with_left_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true
@@ -1211,11 +1294,14 @@ impl<'a> TiledPaneGrid<'a> {
             false
         }
     }
-    fn try_reduce_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+    fn try_reduce_pane_and_surroundings_left_and_down(
+        &mut self,
+        pane_id: &PaneId,
+        increase_x: f64,
+        increase_y: f64,
+    ) -> bool {
+        let can_reduce_pane_left = self.can_reduce_pane_and_surroundings_left(pane_id, increase_x);
+        let can_reduce_pane_down = self.can_reduce_pane_and_surroundings_down(pane_id, increase_y);
         if can_reduce_pane_left && can_reduce_pane_down {
             let pane_above_with_right_aligned_border = self
                 .viewport_pane_ids_directly_above(pane_id)
@@ -1227,13 +1313,13 @@ impl<'a> TiledPaneGrid<'a> {
                     let active_pane = panes.get(pane_id).unwrap();
                     active_pane.x() + active_pane.cols() == pane.x()
                 });
-            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
+            self.try_reduce_pane_and_surroundings_left(pane_id, increase_x);
+            self.try_reduce_pane_and_surroundings_down(pane_id, increase_y);
             if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
             {
                 self.try_increase_pane_and_surroundings_left(
                     &pane_above_with_right_aligned_border,
-                    RESIZE_PERCENT,
+                    increase_x,
                 );
             }
             true

@@ -92,12 +92,27 @@ fn route_action(
         },
         Action::Resize(direction) => {
             let screen_instr = match direction {
-                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
-                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id),
-                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id),
-                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id),
-                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
-                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
+                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id, None),
+                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id, None),
+                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id, None),
+                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id, None),
+                ResizeDirection::Increase => {
+                    ScreenInstruction::ResizeIncrease(client_id, None, None)
+                },
+                ResizeDirection::Decrease => {
+                    ScreenInstruction::ResizeDecrease(client_id, None, None)
+                },
+            };
+            session.senders.send_to_screen(screen_instr).unwrap();
+        },
+        Action::ResizeExact(direction, cx, cy) => {
+            let screen_instr = match direction {
+                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id, cx),
+                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id, cx),
+                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id, cx),
+                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id, cx),
+                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id, cx, cy),
+                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id, cx, cy),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         },

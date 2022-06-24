@@ -2,13 +2,13 @@ use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use zellij_utils::pane_size::{Dimension, PaneGeom, Size, Viewport};
+use zellij_utils::pane_size::{Constraint, Dimension, PaneGeom, Size, Viewport};
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const RESIZE_INCREMENT_WIDTH: usize = 5;
-const RESIZE_INCREMENT_HEIGHT: usize = 2;
+const DEFAULT_RESIZE_INCREMENT_WIDTH: usize = 5;
+const DEFAULT_RESIZE_INCREMENT_HEIGHT: usize = 2;
 const MOVE_INCREMENT_HORIZONTAL: usize = 10;
 const MOVE_INCREMENT_VERTICAL: usize = 5;
 
@@ -341,89 +341,131 @@ impl<'a> FloatingPaneGrid<'a> {
         };
         self.set_pane_geom(*pane_id, new_pane_geom);
     }
-    pub fn resize_pane_left(&'a mut self, pane_id: &PaneId) {
-        if let Some(increase_by) = self.can_increase_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH)
-        {
+    pub fn resize_pane_left(&'a mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_WIDTH);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => value,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.cols as f64 / 100.0) as usize
+            },
+        };
+
+        if let Some(increase_by) = self.can_increase_pane_size_left(pane_id, increment) {
             self.increase_pane_size_left(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH)
-        {
+        } else if let Some(decrease_by) = self.can_decrease_pane_size_left(pane_id, increment) {
             self.decrease_pane_size_left(pane_id, decrease_by);
         }
     }
-    pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) =
-            self.can_increase_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH)
-        {
+    pub fn resize_pane_right(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_WIDTH);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => value,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.cols as f64 / 100.0) as usize
+            },
+        };
+
+        if let Some(increase_by) = self.can_increase_pane_size_right(pane_id, increment) {
             self.increase_pane_size_right(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH)
-        {
+        } else if let Some(decrease_by) = self.can_decrease_pane_size_right(pane_id, increment) {
             self.decrease_pane_size_right(pane_id, decrease_by);
         }
     }
-    pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) =
-            self.can_increase_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
+    pub fn resize_pane_down(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_HEIGHT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => value,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.rows as f64 / 100.0) as usize
+            },
+        };
+
+        if let Some(increase_by) = self.can_increase_pane_size_down(pane_id, increment) {
             self.increase_pane_size_down(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
+        } else if let Some(decrease_by) = self.can_decrease_pane_size_down(pane_id, increment) {
             self.decrease_pane_size_down(pane_id, decrease_by);
         }
     }
-    pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) = self.can_increase_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
+    pub fn resize_pane_up(&mut self, pane_id: &PaneId, constraint: Option<Constraint>) {
+        let default_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_HEIGHT);
+        let increment = match constraint.unwrap_or(default_constraint) {
+            Constraint::Fixed(value) => value,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.rows as f64 / 100.0) as usize
+            },
+        };
+
+        if let Some(increase_by) = self.can_increase_pane_size_up(pane_id, increment) {
             self.increase_pane_size_up(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
+        } else if let Some(decrease_by) = self.can_decrease_pane_size_up(pane_id, increment) {
             self.decrease_pane_size_up(pane_id, decrease_by);
         }
     }
-    pub fn resize_increase(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) =
-            self.can_increase_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
+    pub fn resize_increase(
+        &mut self,
+        pane_id: &PaneId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
+        let default_width_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_WIDTH);
+        let default_height_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_HEIGHT);
+        let increment_x = match cx.unwrap_or(default_width_constraint) {
+            Constraint::Fixed(value) => value / 2,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.cols as f64 / 200.0) as usize
+            },
+        };
+        let increment_y = match cy.unwrap_or(default_height_constraint) {
+            Constraint::Fixed(value) => value / 2,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.rows as f64 / 200.0) as usize
+            },
+        };
+
+        if let Some(increase_by) = self.can_increase_pane_size_left(pane_id, increment_x) {
             self.increase_pane_size_left(pane_id, increase_by);
         }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
+        if let Some(increase_by) = self.can_increase_pane_size_right(pane_id, increment_x) {
             self.increase_pane_size_right(pane_id, increase_by);
         }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
+        if let Some(increase_by) = self.can_increase_pane_size_down(pane_id, increment_y) {
             self.increase_pane_size_down(pane_id, increase_by);
         }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
+        if let Some(increase_by) = self.can_increase_pane_size_up(pane_id, increment_y) {
             self.increase_pane_size_up(pane_id, increase_by);
         }
     }
-    pub fn resize_decrease(&mut self, pane_id: &PaneId) {
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
+    pub fn resize_decrease(
+        &mut self,
+        pane_id: &PaneId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
+        let default_width_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_WIDTH);
+        let default_height_constraint = Constraint::Fixed(DEFAULT_RESIZE_INCREMENT_HEIGHT);
+        let increment_x = match cx.unwrap_or(default_width_constraint) {
+            Constraint::Fixed(value) => value / 2,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.cols as f64 / 200.0) as usize
+            },
+        };
+        let increment_y = match cy.unwrap_or(default_height_constraint) {
+            Constraint::Fixed(value) => value / 2,
+            Constraint::Percent(percent) => {
+                (percent * self.display_area.rows as f64 / 200.0) as usize
+            },
+        };
+
+        if let Some(decrease_by) = self.can_decrease_pane_size_left(pane_id, increment_x) {
             self.decrease_pane_size_left(pane_id, decrease_by);
         }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
+        if let Some(decrease_by) = self.can_decrease_pane_size_right(pane_id, increment_x) {
             self.decrease_pane_size_right(pane_id, decrease_by);
         }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
+        if let Some(decrease_by) = self.can_decrease_pane_size_down(pane_id, increment_y) {
             self.decrease_pane_size_down(pane_id, decrease_by);
         }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
+        if let Some(decrease_by) = self.can_decrease_pane_size_up(pane_id, increment_y) {
             self.decrease_pane_size_up(pane_id, decrease_by);
         }
     }
