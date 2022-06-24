@@ -10,12 +10,12 @@ pub mod options;
 pub mod plugins;
 pub mod theme;
 
+use super::{
+    data::{CharOrArrow, Direction, Style},
+    data::{InputMode, Key, ModeInfo, PluginCapabilities},
+};
 use crate::envs;
 use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
-use zellij_tile::{
-    data::{InputMode, Key, ModeInfo, PluginCapabilities},
-    prelude::{CharOrArrow, Direction, Style},
-};
 
 /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
 /// (as pairs of [`String`]s).

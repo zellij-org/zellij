@@ -2,9 +2,9 @@
 
 use super::command::RunCommandAction;
 use super::layout::TabLayout;
+use crate::data::InputMode;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
-use zellij_tile::data::InputMode;
 
 use crate::position::Position;
 
