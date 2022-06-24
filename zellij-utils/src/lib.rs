@@ -1,28 +1,32 @@
+pub mod data;
+
+#[cfg(feature = "full")]
 pub mod channels;
+#[cfg(feature = "full")]
 pub mod cli;
+#[cfg(feature = "full")]
 pub mod consts;
+#[cfg(feature = "full")]
 pub mod envs;
+#[cfg(feature = "full")]
 pub mod errors;
+#[cfg(feature = "full")]
 pub mod input;
+#[cfg(feature = "full")]
 pub mod ipc;
+#[cfg(feature = "full")]
 pub mod logging;
+#[cfg(feature = "full")]
 pub mod pane_size;
+#[cfg(feature = "full")]
 pub mod position;
+#[cfg(feature = "full")]
 pub mod setup;
+#[cfg(feature = "full")]
 pub mod shared;
 
-pub use anyhow;
-pub use async_std;
-pub use clap;
-pub use interprocess;
-pub use lazy_static;
-pub use libc;
-pub use nix;
-pub use regex;
-pub use serde;
-pub use serde_yaml;
-pub use signal_hook;
-pub use tempfile;
-pub use termwiz;
-pub use vte;
-pub use zellij_tile;
+#[cfg(feature = "full")]
+pub use ::{
+    anyhow, async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, serde_yaml,
+    signal_hook, tempfile, termwiz, vte,
+};
