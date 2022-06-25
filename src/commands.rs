@@ -6,14 +6,13 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
-use miette::{IntoDiagnostic, Result};
+use miette::Result;
 use std::path::PathBuf;
 use std::process;
 use zellij_client::start_client as start_client_impl;
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
-use zellij_utils::input::actions::ActionsFromYaml;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::{
@@ -21,6 +20,11 @@ use zellij_utils::{
     envs,
     setup::{get_default_data_dir, Setup},
 };
+
+#[cfg(feature = "unstable")]
+use miette::IntoDiagnostic;
+#[cfg(feature = "unstable")]
+use zellij_utils::input::actions::ActionsFromYaml;
 
 pub(crate) use crate::sessions::list_sessions;
 
@@ -115,6 +119,7 @@ fn find_indexed_session(
 }
 
 /// Send a vec of `[Action]` to a currently running session.
+#[cfg(feature = "unstable")]
 pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
     match get_active_session() {
         ActiveSession::None => {
@@ -138,6 +143,7 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
     };
 }
 
+#[cfg(feature = "unstable")]
 fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
     if let Some(zellij_utils::cli::Command::Sessions(zellij_utils::cli::Sessions::Action {
         action: Some(action),

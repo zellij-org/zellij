@@ -110,5 +110,6 @@ pub enum Sessions {
         yes: bool,
     },
     /// Send actions to a specific session
+    #[cfg(feature = "unstable")]
     Action { action: Option<String> },
 }

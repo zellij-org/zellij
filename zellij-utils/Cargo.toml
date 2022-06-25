@@ -50,3 +50,4 @@ features = ["unstable"]
 
 [features]
 disable_automatic_asset_installation = []
+unstable = []

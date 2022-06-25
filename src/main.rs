@@ -14,11 +14,16 @@ fn main() {
     configure_logger();
     let opts = CliArgs::parse();
 
+    #[cfg(feature = "unstable")]
+    {
+        if let Some(Command::Sessions(Sessions::Action { .. })) = opts.command {
+            commands::send_action_to_session(opts);
+            std::process::exit(0);
+        }
+    }
+
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {
         commands::list_sessions();
-    }
-    if let Some(Command::Sessions(Sessions::Action { .. })) = opts.command {
-        commands::send_action_to_session(opts);
     } else if let Some(Command::Sessions(Sessions::KillAllSessions { yes })) = opts.command {
         commands::kill_all_sessions(yes);
     } else if let Some(Command::Sessions(Sessions::KillSession { ref target_session })) =
