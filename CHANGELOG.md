@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor: deduplicate code in `screen.rs` (https://github.com/zellij-org/zellij/pull/1453)
 * chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
 * add: capability to dispatch actions from the cli (https://github.com/zellij-org/zellij/pull/1265)
+
+  This feature is gated behind the `unstable` feature flag.
+  Because the serialization format will be changed at some point.
+  We would still already be glad about early feedback on this feature.
+
   Can be invoked through `zellij action [ACTIONS]`.
 
   Automatically sends the action to the current session, or if there is just one
