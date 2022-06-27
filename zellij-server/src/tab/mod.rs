@@ -121,7 +121,7 @@ pub trait Pane {
     fn get_content_rows(&self) -> usize;
     fn reset_size_and_position_override(&mut self);
     fn set_geom(&mut self, position_and_size: PaneGeom);
-    fn get_geom_override(&mut self, pane_geom: PaneGeom);
+    fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
@@ -1517,7 +1517,6 @@ impl Tab {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
-        // let line_number = self.get_active_pane(client_id).map(|a_t| a_t.get_line_number());
         let line_number = self
             .get_active_pane(client_id)
             .and_then(|a_t| a_t.get_line_number());

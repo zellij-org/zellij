@@ -139,7 +139,7 @@ impl<'a> PaneResizer<'a> {
                 },
             };
             if pane.geom_override().is_some() {
-                pane.get_geom_override(new_geom);
+                pane.set_geom_override(new_geom);
             } else {
                 pane.set_geom(new_geom);
             }

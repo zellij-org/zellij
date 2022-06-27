@@ -95,7 +95,7 @@ impl Pane for TerminalPane {
         self.geom = position_and_size;
         self.reflow_lines();
     }
-    fn get_geom_override(&mut self, pane_geom: PaneGeom) {
+    fn set_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.reflow_lines();
     }
