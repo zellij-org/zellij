@@ -1,7 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::Key;
-use crate::input::CharOrArrow;
+use crate::data::{CharOrArrow, Key};
 
 #[test]
 fn merge_keybinds_merges_different_keys() {
