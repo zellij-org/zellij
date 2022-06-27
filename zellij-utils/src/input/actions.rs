@@ -129,6 +129,8 @@ pub enum Action {
     SearchInput(Vec<u8>),
     /// Search for something
     Search(SearchDirection),
+    /// Toggle case sensitivity of search
+    SearchToggleCaseSensitivity,
 }
 
 impl From<OnForceClose> for Action {

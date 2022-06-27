@@ -402,6 +402,8 @@ keybinds:
           key: [Char: 'n']
         - action: [Search: Backward]
           key: [Char: 'p']
+        - action: [SearchToggleCaseSensitivity,]
+          key: [Char: 'c']
     renametab:
         - action: [SwitchToMode: Normal,]
           key: [Char: "\n", Ctrl: 'c', Esc]

@@ -297,9 +297,58 @@ macro_rules! dump_screen {
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchResult {
+    // What we have already found in the viewport
     pub selections: Vec<Selection>,
+    // Which of the selections we found is currently 'active' (highlighted differently)
     pub active: Option<usize>,
+    // What we are looking for
     pub needle: String,
+    // Does case matter?
+    pub case_insensitive: bool,
+    // Only search whole words, not parts inside a word
+    pub whole_word_only: bool, // TODO
+    // Jump from the bottom to the top (or vice versa), if we run out of lines to search
+    pub wrap_search: bool, // TODO
+}
+
+impl SearchResult {
+    fn search_row(&self, ridx: usize, row: &Row) -> Vec<Selection> {
+        let mut res = Vec::new();
+        if self.needle.is_empty() {
+            return res;
+        }
+
+        let mut nidx = 0; // Needle index
+        let mut hidx = 0; // Haystack index
+        while hidx < row.columns.len() {
+            let haystack_char = row.columns[hidx].character;
+            let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
+            let chars_match = if self.case_insensitive {
+                // Currently only ascii, as this whole search-function is very sub-optimal anyways
+                haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
+            } else {
+                haystack_char == needle_char
+            };
+            if chars_match {
+                if nidx == self.needle.len() - 1 {
+                    let mut selection = Selection::default();
+                    selection.start(Position::new(
+                        ridx as i32,
+                        (hidx + 1 - self.needle.len()) as u16,
+                    ));
+                    selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
+                    res.push(selection);
+                    nidx = 0;
+                } else {
+                    nidx += 1;
+                }
+            } else {
+                nidx = 0;
+            }
+            hidx += 1;
+        }
+        res
+    }
 }
 
 #[derive(Clone)]
@@ -571,7 +620,7 @@ impl Grid {
                     .take(transferred_rows_height)
                     .enumerate()
                 {
-                    let mut selections = Self::search_row(&self.search_results.needle, ridx, row);
+                    let mut selections = self.search_results.search_row(ridx, row);
                     selections.reverse();
                     for selection in selections {
                         self.search_results.selections.insert(0, selection);
@@ -633,11 +682,9 @@ impl Grid {
                     .take(transferred_rows_height)
                     .enumerate()
                 {
-                    let selections = Self::search_row(
-                        &self.search_results.needle,
-                        self.viewport.len() - ridx - 1,
-                        row,
-                    );
+                    let selections = self
+                        .search_results
+                        .search_row(self.viewport.len() - ridx - 1, row);
                     for selection in selections {
                         self.search_results.selections.push(selection);
                     }
@@ -1589,7 +1636,7 @@ impl Grid {
             let mut rows = 0;
             for row in self.lines_below.iter() {
                 rows += calculate_row_display_height(row.width(), self.width);
-                let results = Self::search_row(&self.search_results.needle, rows, &row);
+                let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_down(rows);
                     self.search_results.active = Some(self.search_results.selections.len() - 1);
@@ -1624,7 +1671,7 @@ impl Grid {
             let mut rows = 0;
             for row in self.lines_above.iter().rev() {
                 rows += calculate_row_display_height(row.width(), self.width);
-                let results = Self::search_row(&self.search_results.needle, rows, &row);
+                let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_up(rows);
                     self.search_results.active = Some(results.len() - 1);
@@ -1642,35 +1689,14 @@ impl Grid {
         self.search_results = Default::default();
     }
 
-    fn search_row(needle: &str, ridx: usize, row: &Row) -> Vec<Selection> {
-        let mut res = Vec::new();
-        let mut nidx = 0; // Needle index
-        let mut hidx = 0; // Haystack index
-        while hidx < row.columns.len() {
-            if row.columns[hidx].character == needle.chars().nth(nidx).unwrap() {
-                if nidx == needle.len() - 1 {
-                    let mut selection = Selection::default();
-                    selection.start(Position::new(ridx as i32, (hidx + 1 - needle.len()) as u16));
-                    selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
-                    res.push(selection);
-                    // self.search_results.selections.push(selection);
-                    // self.output_buffer.update_line(ridx);
-                    nidx = 0;
-                } else {
-                    nidx += 1;
-                }
-            } else {
-                nidx = 0;
-            }
-            hidx += 1;
-        }
-        res
+    pub fn set_search_string(&mut self, needle: &str) {
+        self.search_results.needle = needle.to_string();
+        self.search_viewport();
     }
 
-    pub fn search_viewport(&mut self, needle: &str) {
-        self.search_results.needle = needle.to_string();
+    pub fn search_viewport(&mut self) {
         for (ridx, row) in self.viewport.iter().enumerate() {
-            let selections = Self::search_row(needle, ridx, row);
+            let selections = self.search_results.search_row(ridx, row);
             if !selections.is_empty() {
                 self.output_buffer.update_line(ridx);
             }
@@ -1679,6 +1705,15 @@ impl Grid {
                 self.search_results.selections.push(selection);
             }
         }
+    }
+
+    pub fn toggle_search_case_sensitivity(&mut self) {
+        self.search_results.case_insensitive = !self.search_results.case_insensitive;
+        for line in self.search_results.selections.drain(..) {
+            self.output_buffer.update_line(line.start.line() as usize);
+        }
+        self.search_results.active = None;
+        self.search_viewport();
     }
 }
 

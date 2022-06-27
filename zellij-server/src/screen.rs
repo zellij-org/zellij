@@ -112,6 +112,7 @@ pub enum ScreenInstruction {
     UpdateSearch(Vec<u8>, ClientId),
     SearchForward(ClientId),
     SearchBackward(ClientId),
+    SearchToggleCaseSensitivity(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -206,6 +207,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
             ScreenInstruction::SearchForward(..) => ScreenContext::SearchForward,
             ScreenInstruction::SearchBackward(..) => ScreenContext::SearchBackward,
+            ScreenInstruction::SearchToggleCaseSensitivity(..) => {
+                ScreenContext::SearchToggleCaseSensitivity
+            }
         }
     }
 }
@@ -1539,6 +1543,15 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SearchBackward(client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     active_tab.search_backward(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.toggle_search_case_sensitivity(client_id);
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }

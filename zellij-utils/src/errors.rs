@@ -291,6 +291,7 @@ pub enum ScreenContext {
     UpdateSearch,
     SearchForward,
     SearchBackward,
+    SearchToggleCaseSensitivity,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

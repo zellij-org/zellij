@@ -409,6 +409,12 @@ fn route_action(
             };
             session.senders.send_to_screen(instruction).unwrap();
         }
+        Action::SearchToggleCaseSensitivity => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::SearchToggleCaseSensitivity(client_id))
+                .unwrap();
+        }
     }
     should_break
 }

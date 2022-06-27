@@ -538,7 +538,7 @@ impl Pane for TerminalPane {
         }
         self.grid.clear_search();
         if !self.search_term.is_empty() {
-            self.grid.search_viewport(&self.search_term);
+            self.grid.set_search_string(&self.search_term);
         }
         self.set_should_render(true);
     }
@@ -554,6 +554,10 @@ impl Pane for TerminalPane {
             return; // No-op
         }
         self.grid.search_backward();
+        self.set_should_render(true);
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        self.grid.toggle_search_case_sensitivity();
         self.set_should_render(true);
     }
 }

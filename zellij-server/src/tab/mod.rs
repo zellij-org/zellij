@@ -277,6 +277,7 @@ pub trait Pane {
     fn update_search_term(&mut self, needle: &str);
     fn search_forward(&mut self);
     fn search_backward(&mut self);
+    fn toggle_search_case_sensitivity(&mut self);
 }
 
 impl Tab {
@@ -1978,6 +1979,17 @@ impl Tab {
                 .unwrap();
 
             active_terminal.search_backward();
+        }
+    }
+
+    pub fn toggle_search_case_sensitivity(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            active_terminal.toggle_search_case_sensitivity();
         }
     }
 }

@@ -425,11 +425,17 @@ impl Pane for PluginPane {
             return; // No-op
         }
         // TODO
+        todo!()
     }
     fn search_backward(&mut self) {
         if self.search_term.is_empty() {
             return; // No-op
         }
         // TODO
+        todo!()
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        // TODO
+        todo!()
     }
 }
