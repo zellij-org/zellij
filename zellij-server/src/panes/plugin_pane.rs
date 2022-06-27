@@ -103,7 +103,7 @@ impl Pane for PluginPane {
         self.geom = position_and_size;
         self.should_render = true;
     }
-    fn get_geom_override(&mut self, pane_geom: PaneGeom) {
+    fn set_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.should_render = true;
     }
