@@ -49,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(docs): fix macport installation instructions (https://github.com/zellij-org/zellij/pull/1529)
 * feat: allow hex colors for themes (https://github.com/zellij-org/zellij/pull/1536)
 * fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)
+* fix: properly handle in-place editor in full-screen (https://github.com/zellij-org/zellij/pull/1544)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
