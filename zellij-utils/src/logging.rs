@@ -63,10 +63,7 @@ pub fn configure_logger() {
         )))
         .build(
             &*ZELLIJ_TMP_LOG_FILE,
-            Box::new(CompoundPolicy::new(
-                Box::new(trigger),
-                Box::new(roller.clone()),
-            )),
+            Box::new(CompoundPolicy::new(Box::new(trigger), Box::new(roller))),
         )
         .unwrap();
 
