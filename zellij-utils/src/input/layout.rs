@@ -16,7 +16,6 @@ use crate::{
     pane_size::{Dimension, PaneGeom},
     setup,
 };
-use crate::{serde, serde_yaml};
 
 use super::{
     config::ConfigFromYaml,
@@ -35,7 +34,6 @@ use std::{fs::File, io::prelude::*};
 use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
-#[serde(crate = "self::serde")]
 pub enum Direction {
     #[serde(alias = "horizontal")]
     Horizontal,
@@ -55,7 +53,6 @@ impl Not for Direction {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
-#[serde(crate = "self::serde")]
 pub enum SplitSize {
     #[serde(alias = "percent")]
     Percent(f64), // 1 to 100
@@ -64,7 +61,6 @@ pub enum SplitSize {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub enum Run {
     #[serde(rename = "plugin")]
     Plugin(RunPlugin),
@@ -73,7 +69,6 @@ pub enum Run {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub enum RunFromYaml {
     #[serde(rename = "plugin")]
     Plugin(RunPluginFromYaml),
@@ -82,7 +77,6 @@ pub enum RunFromYaml {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub struct RunPluginFromYaml {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -90,7 +84,6 @@ pub struct RunPluginFromYaml {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -98,7 +91,6 @@ pub struct RunPlugin {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "self::serde")]
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
@@ -133,7 +125,6 @@ impl fmt::Display for RunPluginLocation {
 
 // The layout struct ultimately used to build the layouts.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
 pub struct Layout {
     pub direction: Direction,
     #[serde(default)]
@@ -152,7 +143,6 @@ pub struct Layout {
 // https://github.com/bincode-org/bincode/issues/245
 // flattened fields don't retain size information.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
 #[serde(default)]
 pub struct LayoutFromYamlIntermediate {
     #[serde(default)]
@@ -170,7 +160,6 @@ pub struct LayoutFromYamlIntermediate {
 // The struct that is used to deserialize the layout from
 // a yaml configuration file
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
-#[serde(crate = "self::serde")]
 #[serde(default)]
 pub struct LayoutFromYaml {
     #[serde(default)]
@@ -422,7 +411,6 @@ impl LayoutFromYaml {
 // The struct that is used to deserialize the session from
 // a yaml configuration file
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
 pub struct SessionFromYaml {
     pub name: Option<String>,
     #[serde(default = "default_as_some_true")]
@@ -436,7 +424,6 @@ fn default_as_some_true() -> Option<bool> {
 // The struct that carries the information template that is used to
 // construct the layout
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
 pub struct LayoutTemplate {
     pub direction: Direction,
     #[serde(default)]
@@ -482,7 +469,6 @@ impl LayoutTemplate {
 
 // The tab-layout struct used to specify each individual tab.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(crate = "self::serde")]
 pub struct TabLayout {
     #[serde(default)]
     pub direction: Direction,
