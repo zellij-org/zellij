@@ -299,7 +299,6 @@ macro_rules! dump_screen {
 pub struct SearchResult {
     pub selections: Vec<Selection>,
     pub active: Option<usize>,
-    pub initialized: bool,
     pub needle: String,
 }
 
@@ -555,10 +554,16 @@ impl Grid {
                 .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
+            // Move all search-selections down one line as well
             self.search_results
                 .selections
                 .iter_mut()
                 .for_each(|x| x.move_down(1));
+            // Throw out all search-results outside of the new viewport
+            self.search_results
+                .selections
+                .retain(|s| s.start.line() as usize <= self.height);
+            // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
                 for (ridx, row) in self
                     .viewport
@@ -566,9 +571,12 @@ impl Grid {
                     .take(transferred_rows_height)
                     .enumerate()
                 {
-                    let selections = Self::search_row(&self.search_results.needle, ridx, row);
+                    let mut selections = Self::search_row(&self.search_results.needle, ridx, row);
+                    selections.reverse();
                     for selection in selections {
-                        self.search_results.selections.push(selection);
+                        self.search_results.selections.insert(0, selection);
+                        self.search_results.active =
+                            self.search_results.active.and_then(|x| Some(x + 1));
                     }
                 }
             }
@@ -607,11 +615,16 @@ impl Grid {
             );
 
             self.selection.move_up(1);
+            // Move all search-selections up one line as well
             self.search_results
                 .selections
                 .iter_mut()
                 .for_each(|x| x.move_up(1));
-
+            // Throw out all search-results outside of the new viewport
+            self.search_results
+                .selections
+                .retain(|s| s.start.line() >= 0);
+            // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
                 for (ridx, row) in self
                     .viewport
@@ -1552,33 +1565,72 @@ impl Grid {
     }
 
     pub fn search_forward(&mut self) {
-        if !self.search_results.selections.is_empty() {
+        let search_viewport_for_the_first_time =
+            self.search_results.active.is_none() && !self.search_results.selections.is_empty();
+        let search_viewport_again = !self.search_results.selections.is_empty()
+            && self.search_results.active.is_some()
+            && self.search_results.active.unwrap() < self.search_results.selections.len() - 1;
+
+        if search_viewport_for_the_first_time || search_viewport_again {
+            // We can stay in the viewport and just move the active selection
             let mut active_idx = *self.search_results.active.get_or_insert(0);
             self.output_buffer
                 .update_line(self.search_results.selections[active_idx].start.line() as usize);
-            if active_idx + 1 < self.search_results.selections.len() {
+            if active_idx + 1 < self.search_results.selections.len()
+                && !search_viewport_for_the_first_time
+            {
                 active_idx += 1;
                 self.output_buffer
                     .update_line(self.search_results.selections[active_idx].start.line() as usize);
             }
             self.search_results.active = Some(active_idx);
+        } else {
+            // We need to move the viewport
+            let mut rows = 0;
+            for row in self.lines_below.iter() {
+                rows += calculate_row_display_height(row.width(), self.width);
+                let results = Self::search_row(&self.search_results.needle, rows, &row);
+                if !results.is_empty() {
+                    self.move_viewport_down(rows);
+                    self.search_results.active = Some(self.search_results.selections.len() - 1);
+                    break;
+                }
+            }
         }
     }
 
     pub fn search_backward(&mut self) {
-        if !self.search_results.selections.is_empty() {
+        let search_viewport_for_the_first_time =
+            self.search_results.active.is_none() && !self.search_results.selections.is_empty();
+        let search_viewport_again = !self.search_results.selections.is_empty()
+            && self.search_results.active.unwrap_or(0) > 0;
+
+        if search_viewport_for_the_first_time || search_viewport_again {
+            // We can stay in the viewport and just move the active selection
             let mut active_idx = *self
                 .search_results
                 .active
                 .get_or_insert(self.search_results.selections.len() - 1);
             self.output_buffer
                 .update_line(self.search_results.selections[active_idx].start.line() as usize);
-            if active_idx > 0 {
+            if active_idx > 0 && !search_viewport_for_the_first_time {
                 active_idx -= 1;
                 self.output_buffer
                     .update_line(self.search_results.selections[active_idx].start.line() as usize);
             }
             self.search_results.active = Some(active_idx);
+        } else {
+            // We need to move the viewport
+            let mut rows = 0;
+            for row in self.lines_above.iter().rev() {
+                rows += calculate_row_display_height(row.width(), self.width);
+                let results = Self::search_row(&self.search_results.needle, rows, &row);
+                if !results.is_empty() {
+                    self.move_viewport_up(rows);
+                    self.search_results.active = Some(results.len() - 1);
+                    break;
+                }
+            }
         }
     }
 
@@ -1617,7 +1669,6 @@ impl Grid {
 
     pub fn search_viewport(&mut self, needle: &str) {
         self.search_results.needle = needle.to_string();
-
         for (ridx, row) in self.viewport.iter().enumerate() {
             let selections = Self::search_row(needle, ridx, row);
             if !selections.is_empty() {
@@ -1628,7 +1679,6 @@ impl Grid {
                 self.search_results.selections.push(selection);
             }
         }
-        self.search_results.initialized = true;
     }
 }
 
