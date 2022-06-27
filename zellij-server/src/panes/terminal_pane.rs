@@ -560,6 +560,13 @@ impl Pane for TerminalPane {
         self.grid.toggle_search_case_sensitivity();
         self.set_should_render(true);
     }
+    fn toggle_search_whole_words(&mut self) {
+        self.grid.toggle_search_whole_words();
+        self.set_should_render(true);
+    }
+    fn toggle_search_wrap(&mut self) {
+        self.grid.toggle_search_wrap();
+    }
 }
 
 impl TerminalPane {

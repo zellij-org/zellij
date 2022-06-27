@@ -33,6 +33,13 @@ pub enum SearchDirection {
     Backward,
 }
 
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum SearchOption {
+    CaseSensitivity,
+    WholeWord,
+    Wrap,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -130,7 +137,7 @@ pub enum Action {
     /// Search for something
     Search(SearchDirection),
     /// Toggle case sensitivity of search
-    SearchToggleCaseSensitivity,
+    SearchToggleOption(SearchOption),
 }
 
 impl From<OnForceClose> for Action {

@@ -438,4 +438,12 @@ impl Pane for PluginPane {
         // TODO
         todo!()
     }
+    fn toggle_search_whole_words(&mut self) {
+        // TODO
+        todo!()
+    }
+    fn toggle_search_wrap(&mut self) {
+        // TODO
+        todo!()
+    }
 }

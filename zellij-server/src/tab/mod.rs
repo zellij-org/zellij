@@ -278,6 +278,8 @@ pub trait Pane {
     fn search_forward(&mut self);
     fn search_backward(&mut self);
     fn toggle_search_case_sensitivity(&mut self);
+    fn toggle_search_whole_words(&mut self);
+    fn toggle_search_wrap(&mut self);
 }
 
 impl Tab {
@@ -1990,6 +1992,28 @@ impl Tab {
                 .unwrap();
 
             active_terminal.toggle_search_case_sensitivity();
+        }
+    }
+
+    pub fn toggle_search_wrap(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            active_terminal.toggle_search_wrap();
+        }
+    }
+
+    pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
+        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
+            let active_terminal = self
+                .tiled_panes
+                .get_pane_mut(PaneId::Terminal(active_terminal_id))
+                .unwrap();
+
+            active_terminal.toggle_search_whole_words();
         }
     }
 }

@@ -12,7 +12,7 @@ use crate::{
 use zellij_utils::{
     channels::SenderWithContext,
     input::{
-        actions::{Action, Direction, ResizeDirection, SearchDirection},
+        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },
@@ -409,11 +409,15 @@ fn route_action(
             };
             session.senders.send_to_screen(instruction).unwrap();
         }
-        Action::SearchToggleCaseSensitivity => {
-            session
-                .senders
-                .send_to_screen(ScreenInstruction::SearchToggleCaseSensitivity(client_id))
-                .unwrap();
+        Action::SearchToggleOption(o) => {
+            let instruction = match o {
+                SearchOption::CaseSensitivity => {
+                    ScreenInstruction::SearchToggleCaseSensitivity(client_id)
+                }
+                SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
+                SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
         }
     }
     should_break

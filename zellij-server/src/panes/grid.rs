@@ -308,7 +308,7 @@ pub struct SearchResult {
     // Only search whole words, not parts inside a word
     pub whole_word_only: bool, // TODO
     // Jump from the bottom to the top (or vice versa), if we run out of lines to search
-    pub wrap_search: bool, // TODO
+    pub wrap_search: bool,
 }
 
 impl SearchResult {
@@ -1634,13 +1634,31 @@ impl Grid {
         } else {
             // We need to move the viewport
             let mut rows = 0;
+            let mut found_something = false;
             for row in self.lines_below.iter() {
                 rows += calculate_row_display_height(row.width(), self.width);
                 let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_down(rows);
                     self.search_results.active = Some(self.search_results.selections.len() - 1);
+                    found_something = true;
                     break;
+                }
+            }
+
+            rows = 0;
+            if !found_something && self.search_results.wrap_search {
+                let complete_height = self.lines_above.iter().fold(0, |acc, x| {
+                    acc + calculate_row_display_height(x.width(), self.width)
+                });
+                for row in self.lines_above.iter() {
+                    rows += calculate_row_display_height(row.width(), self.width);
+                    let results = self.search_results.search_row(rows, &row);
+                    if !results.is_empty() {
+                        self.move_viewport_up(complete_height - rows + 1);
+                        self.search_results.active = Some(0);
+                        break;
+                    }
                 }
             }
         }
@@ -1669,13 +1687,31 @@ impl Grid {
         } else {
             // We need to move the viewport
             let mut rows = 0;
+            let mut found_something = false;
             for row in self.lines_above.iter().rev() {
                 rows += calculate_row_display_height(row.width(), self.width);
                 let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_up(rows);
                     self.search_results.active = Some(results.len() - 1);
+                    found_something = true;
                     break;
+                }
+            }
+
+            rows = 0;
+            if !found_something && self.search_results.wrap_search {
+                let complete_height = self.lines_below.iter().fold(0, |acc, x| {
+                    acc + calculate_row_display_height(x.width(), self.width)
+                });
+                for row in self.lines_below.iter().rev() {
+                    rows += calculate_row_display_height(row.width(), self.width);
+                    let results = self.search_results.search_row(rows, &row);
+                    if !results.is_empty() {
+                        self.move_viewport_down(complete_height - rows + 1);
+                        self.search_results.active = Some(self.search_results.selections.len() - 1);
+                        break;
+                    }
                 }
             }
         }
@@ -1709,6 +1745,19 @@ impl Grid {
 
     pub fn toggle_search_case_sensitivity(&mut self) {
         self.search_results.case_insensitive = !self.search_results.case_insensitive;
+        for line in self.search_results.selections.drain(..) {
+            self.output_buffer.update_line(line.start.line() as usize);
+        }
+        self.search_results.active = None;
+        self.search_viewport();
+    }
+
+    pub fn toggle_search_wrap(&mut self) {
+        self.search_results.wrap_search = !self.search_results.wrap_search;
+    }
+
+    pub fn toggle_search_whole_words(&mut self) {
+        self.search_results.whole_word_only = !self.search_results.whole_word_only;
         for line in self.search_results.selections.drain(..) {
             self.output_buffer.update_line(line.start.line() as usize);
         }

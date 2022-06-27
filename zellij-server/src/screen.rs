@@ -113,6 +113,8 @@ pub enum ScreenInstruction {
     SearchForward(ClientId),
     SearchBackward(ClientId),
     SearchToggleCaseSensitivity(ClientId),
+    SearchToggleWholeWord(ClientId),
+    SearchToggleWrap(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -210,6 +212,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SearchToggleCaseSensitivity(..) => {
                 ScreenContext::SearchToggleCaseSensitivity
             }
+            ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
+            ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
         }
     }
 }
@@ -1552,6 +1556,24 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
                 if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
                     active_tab.toggle_search_case_sensitivity(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::SearchToggleWrap(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.toggle_search_wrap(client_id);
+                } else {
+                    log::error!("Active tab not found for client id: {:?}", client_id);
+                }
+
+                screen.render();
+            }
+            ScreenInstruction::SearchToggleWholeWord(client_id) => {
+                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
+                    active_tab.toggle_search_whole_words(client_id);
                 } else {
                     log::error!("Active tab not found for client id: {:?}", client_id);
                 }
