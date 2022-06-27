@@ -52,11 +52,45 @@ pub enum Key {
     Esc,
 }
 
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Key::Backspace => write!(f, "Backspace"),
+            Key::Left => write!(f, "{}", Direction::Left),
+            Key::Right => write!(f, "{}", Direction::Right),
+            Key::Up => write!(f, "{}", Direction::Up),
+            Key::Down => write!(f, "{}", Direction::Down),
+            Key::Home => write!(f, "Home"),
+            Key::End => write!(f, "End"),
+            Key::PageUp => write!(f, "PgUp"),
+            Key::PageDown => write!(f, "PgDown"),
+            Key::BackTab => write!(f, "BackTab"),
+            Key::Delete => write!(f, "Del"),
+            Key::Insert => write!(f, "Ins"),
+            Key::F(n) => write!(f, "F{}", n),
+            Key::Char(c) => write!(f, "{}", c),
+            Key::Alt(c) => write!(f, "{}", c),
+            Key::Ctrl(c) => write!(f, "Ctrl+{}", c),
+            Key::Null => write!(f, "NULL"),
+            Key::Esc => write!(f, "Esc"),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CharOrArrow {
     Char(char),
     Direction(Direction),
+}
+
+impl fmt::Display for CharOrArrow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CharOrArrow::Char(c) => write!(f, "{}", c),
+            CharOrArrow::Direction(d) => write!(f, "{}", d),
+        }
+    }
 }
 
 /// The four directions (left, right, up, down).
@@ -66,6 +100,17 @@ pub enum Direction {
     Right,
     Up,
     Down,
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Left => write!(f, "←"),
+            Direction::Right => write!(f, "→"),
+            Direction::Up => write!(f, "↑"),
+            Direction::Down => write!(f, "↓"),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
