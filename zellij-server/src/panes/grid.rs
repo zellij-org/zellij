@@ -651,7 +651,8 @@ impl Grid {
                     }
                 }
                 if let Some(trim_at) = trim_at {
-                    line.truncate(trim_at);
+                    let excess_width_until_trim_at = line.excess_width_until(trim_at);
+                    line.truncate(trim_at + excess_width_until_trim_at);
                 }
             }
 
