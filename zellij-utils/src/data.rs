@@ -69,7 +69,11 @@ impl fmt::Display for Key {
             Key::Delete => write!(f, "Del"),
             Key::Insert => write!(f, "Ins"),
             Key::F(n) => write!(f, "F{}", n),
-            Key::Char(c) => write!(f, "{}", c),
+            Key::Char(c) => match c {
+                '\n' => write!(f, "↩"),
+                '\t' => write!(f, "↹"),
+                _ => write!(f, "{}", c),
+            },
             Key::Alt(c) => write!(f, "{}", c),
             Key::Ctrl(c) => write!(f, "Ctrl+{}", c),
             Key::Null => write!(f, "NULL"),
