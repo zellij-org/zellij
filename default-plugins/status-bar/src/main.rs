@@ -330,3 +330,39 @@ impl State {
         }
     }
 }
+
+/// Get key from action pattern(s).
+///
+/// This macro takes as arguments a `keymap` that is a `Vec<(Key, Vec<Action>)>` and contains all
+/// keybindings for the current mode and one or more `p` patterns which match a sequence of actions
+/// to search for. If within the keymap a sequence of actions matching `p` is found, all keys that
+/// trigger the action pattern are returned as vector of `Vec<Key>`.
+// TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
+// into one group under 'text'.
+#[macro_export]
+macro_rules! action_key {
+    ($keymap:ident, $( $p:pat ),+) => {
+        //let mut ret: Vec<Key>;
+        $keymap.iter().
+            filter_map(|(key, acvec)| {
+                match matches!(acvec.as_slice(), &[$($p),+]) {
+                    true => Some(*key),
+                    false => None
+                }
+            })
+            .collect::<Vec<Key>>()
+    };
+}
+
+/// Helper macro to represent common pattern.
+///
+/// Expands verbosely to `Action::SwitchToMode(InputMode::Normal)`, which is an action that often
+/// repeats in the keybindings configuration. We need it to expand to verbose rust code (i.e. a
+/// "Textual replacement", similar to C `#define`) so it gets picked up as proper pattern in the
+/// `key_hint!` macro.
+#[macro_export]
+macro_rules! to_normal {
+    () => {
+        Action::SwitchToMode(InputMode::Normal)
+    };
+}
