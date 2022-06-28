@@ -7,6 +7,7 @@ use crate::{ColoredElements, LinePart};
 struct KeyShortcut {
     mode: KeyMode,
     action: KeyAction,
+    key: Key,
 }
 
 enum KeyAction {
@@ -29,8 +30,8 @@ enum KeyMode {
 
 impl KeyShortcut {
     //pub fn new(mode: KeyMode, action: KeyAction, bind: KeyBind) -> Self {
-    pub fn new(mode: KeyMode, action: KeyAction) -> Self {
-        KeyShortcut { mode, action } //, bind }
+    pub fn new(mode: KeyMode, action: KeyAction, key: Key) -> Self {
+        KeyShortcut { mode, action, key } //, bind }
     }
 
     pub fn full_text(&self) -> String {
@@ -45,16 +46,17 @@ impl KeyShortcut {
             KeyAction::Move => String::from("MOVE"),
         }
     }
-    pub fn letter_shortcut(&self) -> char {
-        match self.action {
-            KeyAction::Lock => 'g',
-            KeyAction::Pane => 'p',
-            KeyAction::Tab => 't',
-            KeyAction::Resize => 'n',
-            KeyAction::Search => 's',
-            KeyAction::Quit => 'q',
-            KeyAction::Session => 'o',
-            KeyAction::Move => 'h',
+    pub fn letter_shortcut(&self, with_prefix: bool) -> String {
+        if with_prefix {
+            format!("{}", self.key)
+        } else {
+            match self.key {
+                Key::F(c) => format!("{}", c),
+                Key::Ctrl(c) => format!("{}", c),
+                Key::Char(_) => format!("{}", self.key),
+                Key::Alt(c) => format!("{}", c),
+                _ => String::from("??"),
+            }
         }
     }
 }
