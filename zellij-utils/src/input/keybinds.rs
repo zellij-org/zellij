@@ -1,5 +1,5 @@
 //! Mapping of inputs to sequences of actions.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
 use super::config;
@@ -12,7 +12,7 @@ use strum::IntoEnumIterator;
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
+pub struct ModeKeybinds(BTreeMap<Key, Vec<Action>>);
 
 /// Intermediate struct used for deserialisation
 /// Used in the config file.
@@ -227,7 +227,7 @@ impl Keybinds {
 
 impl ModeKeybinds {
     fn new() -> ModeKeybinds {
-        ModeKeybinds(HashMap::<Key, Vec<Action>>::new())
+        ModeKeybinds(BTreeMap::<Key, Vec<Action>>::new())
     }
 
     /// Merges `self` with `other`, if keys are the same, `other` overwrites.
@@ -282,7 +282,7 @@ impl From<KeyActionFromYaml> for ModeKeybinds {
                 .key
                 .into_iter()
                 .map(|k| (k, actions.clone()))
-                .collect::<HashMap<Key, Vec<Action>>>(),
+                .collect::<BTreeMap<Key, Vec<Action>>>(),
         )
     }
 }
