@@ -31,7 +31,7 @@ pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
     (colors.green, colors.black)
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Key {
     Backspace,
     Left,
@@ -78,7 +78,7 @@ impl fmt::Display for Key {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum CharOrArrow {
     Char(char),
@@ -95,7 +95,7 @@ impl fmt::Display for CharOrArrow {
 }
 
 /// The four directions (left, right, up, down).
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub enum Direction {
     Left,
     Right,
