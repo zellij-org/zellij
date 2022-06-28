@@ -55,7 +55,7 @@ impl Not for Direction {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum SplitSize {
     #[serde(alias = "percent")]
-    Percent(Percent), // 1 to 100
+    Percent(u64), // 1 to 100
     #[serde(alias = "fixed")]
     Fixed(usize), // An absolute number of columns or rows
 }
@@ -66,21 +66,21 @@ pub enum SplitSize {
 // that breaks the interface and all of the tests. This type is, through a long chain of structs,
 // part of the `zellij_utils::data::ModeInfo` struct that derives the `Eq` trait on itself, hence
 // this is needed here.
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-pub struct Percent(pub u64);
-
-impl From<f64> for Percent {
-    fn from(val: f64) -> Percent {
-        Percent((val * 10000.0) as u64)
-    }
-}
-
-impl From<Percent> for f64 {
-    fn from(val: Percent) -> f64 {
-        let Percent(val) = val;
-        (val as f64) / 10000.0
-    }
-}
+//#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+//pub struct Percent(pub u64);
+//
+//impl From<f64> for Percent {
+//    fn from(val: f64) -> Percent {
+//        Percent((val * 10000.0) as u64)
+//    }
+//}
+//
+//impl From<Percent> for f64 {
+//    fn from(val: Percent) -> f64 {
+//        let Percent(val) = val;
+//        (val as f64) / 10000.0
+//    }
+//}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
@@ -614,7 +614,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
 
     for (&size, part) in sizes.iter().zip(&layout.parts) {
         let split_dimension = match size {
-            Some(SplitSize::Percent(percent)) => Dimension::percent(percent.into()),
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
             None => {
                 let free_percent = if let Some(p) = split_dimension_space.as_percent() {
@@ -622,7 +622,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         .iter()
                         .map(|&s| {
                             if let Some(SplitSize::Percent(ip)) = s {
-                                ip.into()
+                                ip as f64
                             } else {
                                 0.0
                             }
