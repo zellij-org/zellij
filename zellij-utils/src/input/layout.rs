@@ -52,12 +52,34 @@ impl Not for Direction {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum SplitSize {
     #[serde(alias = "percent")]
-    Percent(f64), // 1 to 100
+    Percent(Percent), // 1 to 100
     #[serde(alias = "fixed")]
     Fixed(usize), // An absolute number of columns or rows
+}
+
+// FIXME: This is an ugly hack around the fact that f64 as type (which was previously what
+// `SplitSize::Percent(T)` used as inner type `T`) doesn't implement `Eq` and `Hash` traits. So we
+// make a custom type that encloses a u64 instead and add conversion methods to/from f64. Of course
+// that breaks the interface and all of the tests. This type is, through a long chain of structs,
+// part of the `zellij_utils::data::ModeInfo` struct that derives the `Eq` trait on itself, hence
+// this is needed here.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub struct Percent(pub u64);
+
+impl From<f64> for Percent {
+    fn from(val: f64) -> Percent {
+        Percent((val * 10000.0) as u64)
+    }
+}
+
+impl From<Percent> for f64 {
+    fn from(val: Percent) -> f64 {
+        let Percent(val) = val;
+        (val as f64) / 10000.0
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -468,7 +490,7 @@ impl LayoutTemplate {
 }
 
 // The tab-layout struct used to specify each individual tab.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct TabLayout {
     #[serde(default)]
     pub direction: Direction,
@@ -592,7 +614,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
 
     for (&size, part) in sizes.iter().zip(&layout.parts) {
         let split_dimension = match size {
-            Some(SplitSize::Percent(percent)) => Dimension::percent(percent),
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent.into()),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
             None => {
                 let free_percent = if let Some(p) = split_dimension_space.as_percent() {
@@ -600,7 +622,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                         .iter()
                         .map(|&s| {
                             if let Some(SplitSize::Percent(ip)) = s {
-                                ip
+                                ip.into()
                             } else {
                                 0.0
                             }
