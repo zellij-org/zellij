@@ -52,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly handle in-place editor in full-screen (https://github.com/zellij-org/zellij/pull/1544)
 * Terminal compatibility: properly trim whitespace in lines with wide-characters when resizing panes (https://github.com/zellij-org/zellij/pull/1545)
 * fix: reset scroll properly when typing in certain edge cases (https://github.com/zellij-org/zellij/pull/1547)
+* fix: logging may fill up /tmp, now logs are capped at 100 kB (https://github.com/zellij-org/zellij/pull/1548)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
