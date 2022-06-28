@@ -269,6 +269,7 @@ impl ZellijPlugin for State {
             &self.mode_info,
             cols.saturating_sub(superkey.len),
             separator,
+            superkey.len > 0,
         );
 
         let first_line = format!("{}{}", superkey, ctrl_keys);

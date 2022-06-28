@@ -1,7 +1,9 @@
 use ansi_term::ANSIStrings;
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::color_elements;
+use crate::{action_key, to_normal};
 use crate::{ColoredElements, LinePart};
 
 struct KeyShortcut {
@@ -62,7 +64,7 @@ impl KeyShortcut {
 }
 
 fn unselected_mode_shortcut(
-    letter: char,
+    letter: &str,
     text: &str,
     palette: ColoredElements,
     separator: &str,
@@ -83,12 +85,12 @@ fn unselected_mode_shortcut(
             suffix_separator,
         ])
         .to_string(),
-        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
+        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
     }
 }
 
 fn unselected_alternate_mode_shortcut(
-    letter: char,
+    letter: &str,
     text: &str,
     palette: ColoredElements,
     separator: &str,
@@ -117,12 +119,12 @@ fn unselected_alternate_mode_shortcut(
             suffix_separator,
         ])
         .to_string(),
-        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
+        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
     }
 }
 
 fn selected_mode_shortcut(
-    letter: char,
+    letter: &str,
     text: &str,
     palette: ColoredElements,
     separator: &str,
@@ -143,7 +145,7 @@ fn selected_mode_shortcut(
             suffix_separator,
         ])
         .to_string(),
-        len: text.chars().count() + 7, // 2 for the arrows, 3 for the char separators, 1 for the character, 1 for the text padding
+        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
     }
 }
 
@@ -223,24 +225,29 @@ fn unselected_alternate_mode_shortcut_single_letter(
     }
 }
 
-fn full_ctrl_key(key: &KeyShortcut, palette: ColoredElements, separator: &str) -> LinePart {
+fn full_ctrl_key(
+    key: &KeyShortcut,
+    palette: ColoredElements,
+    separator: &str,
+    shared_super: bool,
+) -> LinePart {
     let full_text = key.full_text();
-    let letter_shortcut = key.letter_shortcut();
+    let letter_shortcut = key.letter_shortcut(!shared_super);
     match key.mode {
         KeyMode::Unselected => unselected_mode_shortcut(
-            letter_shortcut,
+            &letter_shortcut,
             &format!(" {}", full_text),
             palette,
             separator,
         ),
         KeyMode::UnselectedAlternate => unselected_alternate_mode_shortcut(
-            letter_shortcut,
+            &letter_shortcut,
             &format!(" {}", full_text),
             palette,
             separator,
         ),
         KeyMode::Selected => selected_mode_shortcut(
-            letter_shortcut,
+            &letter_shortcut,
             &format!(" {}", full_text),
             palette,
             separator,
@@ -258,7 +265,7 @@ fn single_letter_ctrl_key(
     palette: ColoredElements,
     separator: &str,
 ) -> LinePart {
-    let letter_shortcut = key.letter_shortcut();
+    let letter_shortcut = key.letter_shortcut(false).chars().next().unwrap();
     match key.mode {
         KeyMode::Unselected => {
             unselected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
@@ -280,11 +287,12 @@ fn key_indicators(
     keys: &[KeyShortcut],
     palette: ColoredElements,
     separator: &str,
+    shared_super: bool,
 ) -> LinePart {
     // Print full-width hints
     let mut line_part = LinePart::default();
     for ctrl_key in keys {
-        let key = full_ctrl_key(ctrl_key, palette, separator);
+        let key = full_ctrl_key(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -354,38 +362,92 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     }
 }
 
-pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
+pub fn to_char(kv: Vec<Key>) -> Key {
+    kv.into_iter()
+        .filter(|key| {
+            // These are general "keybindings" to get back to normal, they aren't interesting here.
+            // The user will figure these out for himself if he configured no other.
+            matches!(key, Key::Char('\n') | Key::Char(' ') | Key::Esc)
+        })
+        .collect::<Vec<Key>>()
+        .into_iter()
+        .next()
+        .unwrap_or(Key::Char('?'))
+}
+
+pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str, shared_super: bool) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
+    let binds = &help.keybinds;
     // Unselect all by default
     let mut default_keys = [
-        KeyShortcut::new(KeyMode::Unselected, KeyAction::Lock),
-        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Pane),
-        KeyShortcut::new(KeyMode::Unselected, KeyAction::Tab),
-        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Resize),
-        KeyShortcut::new(KeyMode::Unselected, KeyAction::Move),
-        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Search),
-        KeyShortcut::new(KeyMode::Unselected, KeyAction::Session),
-        KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Quit),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Lock,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Locked))),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Pane,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Pane))),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Tab,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Tab))),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Resize,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Resize))),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Move,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Move))),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Search,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Scroll))),
+        ),
+        KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Session,
+            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Session))),
+        ),
+        KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Quit,
+            to_char(action_key!(binds, Action::Quit)),
+        ),
     ];
 
-    match &help.mode {
-        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => (),
+    let mode_index = match &help.mode {
+        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => None,
         InputMode::Locked => {
-            default_keys[0].mode = KeyMode::Selected;
             for key in default_keys.iter_mut().skip(1) {
                 key.mode = KeyMode::Disabled;
             }
+            Some(0)
         },
-        InputMode::Pane | InputMode::RenamePane => default_keys[1].mode = KeyMode::Selected,
-        InputMode::Tab | InputMode::RenameTab => default_keys[2].mode = KeyMode::Selected,
-        InputMode::Resize => default_keys[3].mode = KeyMode::Selected,
-        InputMode::Move => default_keys[4].mode = KeyMode::Selected,
-        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => {
-            default_keys[5].mode = KeyMode::Selected
-        },
-        InputMode::Session => default_keys[6].mode = KeyMode::Selected,
+        InputMode::Pane | InputMode::RenamePane => Some(1),
+        InputMode::Tab | InputMode::RenameTab => Some(2),
+        InputMode::Resize => Some(3),
+        InputMode::Move => Some(4),
+        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => Some(5),
+        InputMode::Session => Some(6),
+    };
+    if let Some(index) = mode_index {
+        default_keys[index].mode = KeyMode::Selected;
+        default_keys[index].key = to_char(action_key!(binds, to_normal!()));
     }
 
-    key_indicators(max_len, &default_keys, colored_elements, separator)
+    key_indicators(
+        max_len,
+        &default_keys,
+        colored_elements,
+        separator,
+        shared_super,
+    )
 }
