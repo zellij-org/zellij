@@ -27,13 +27,13 @@ pub enum ResizeDirection {
     Decrease,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SearchDirection {
     Down,
     Up,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SearchOption {
     CaseSensitivity,
     WholeWord,

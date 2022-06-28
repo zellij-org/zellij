@@ -84,6 +84,12 @@ impl Keybinds {
             .keybinds
     }
 
+    pub fn get_mode_keybinds(&self, mode: &InputMode) -> &ModeKeybinds {
+        self.0
+            .get(mode)
+            .expect("Failed to get Keybinds for current mode")
+    }
+
     /// Entrypoint from the config module
     pub fn get_default_keybinds_with_config(from_yaml: Option<KeybindsFromYaml>) -> Keybinds {
         let default_keybinds = match from_yaml.clone() {
@@ -238,6 +244,13 @@ impl ModeKeybinds {
             keymap.0.remove(&key);
         }
         keymap
+    }
+
+    pub fn to_cloned_vec(&self) -> Vec<(Key, Vec<Action>)> {
+        self.0
+            .iter()
+            .map(|(key, vac)| (*key, vac.clone()))
+            .collect()
     }
 }
 
