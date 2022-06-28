@@ -172,6 +172,8 @@ ACTIONS
 * __Detach__ - detach session and exit.
 * __ToggleActiveSyncTab__ - toggle between sending text commands to all panes
   on the current tab and normal mode.
+* __UndoRenameTab__ - undoes the changed tab name and reverts to the previous name.
+* __UndoRenamePane__ - undoes the changed pane name and reverts to the previous name.
 
 
 KEYS
@@ -209,12 +211,14 @@ MODES
 * __scroll__ - allows scrolling within the focused pane.
 * __renametab__ - is a "hidden" mode that can be passed to _SwitchToMode_
   action. It will trigger renaming of a tab.
+* __renamepane__ - is a "hidden" mode that can be passed to _SwitchToMode_
+  action. It will trigger renaming of a pane.
 * __session__ - allows detaching from a session.
 
 
 Theme
 =====
-A color theme can be defined either in truecolor, or 256 format.
+A color theme can be defined either in truecolor, 256 or hex color format.
 Truecolor:
 ```
 fg: [0, 0, 0]
@@ -222,6 +226,11 @@ fg: [0, 0, 0]
 256:
 ```
 fg: 0
+```
+Hex color:
+```
+fg: "#000000"
+bg: "#000"
 ```
 The color theme can be specified in the following way:
 ```
