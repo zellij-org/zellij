@@ -306,12 +306,44 @@ fn key_indicators(
     line_part
 }
 
-pub fn superkey(palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_text = if separator.is_empty() {
-        " Ctrl + "
-    } else {
-        " Ctrl +"
-    };
+/// Return a Vector of tuples (Key, InputMode) where each "Key" is a shortcut to switch to
+/// "InputMode".
+pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<(&Key, &InputMode)> {
+    mode_info
+        .keybinds
+        .iter()
+        .filter_map(|(key, vac)| match vac.first() {
+            None => None,
+            Some(vac) => {
+                if let actions::Action::SwitchToMode(mode) = vac {
+                    return Some((key, mode));
+                }
+                None
+            },
+        })
+        .collect()
+}
+
+pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo) -> LinePart {
+    // Find a common modifier if any
+    let mut prefix_text: &str = "";
+    let mut new_prefix;
+    for (key, _mode) in mode_switch_keys(mode_info).iter() {
+        match key {
+            Key::F(_) => new_prefix = " F",
+            Key::Ctrl(_) => new_prefix = " Ctrl +",
+            Key::Alt(_) => new_prefix = " Alt +",
+            _ => break,
+        }
+        if prefix_text.is_empty() {
+            prefix_text = new_prefix;
+        } else if prefix_text != new_prefix {
+            // Prefix changed!
+            prefix_text = "";
+            break;
+        }
+    }
+
     let prefix = palette.superkey_prefix.paint(prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     LinePart {

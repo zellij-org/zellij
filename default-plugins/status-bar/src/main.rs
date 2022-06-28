@@ -264,7 +264,7 @@ impl ZellijPlugin for State {
         };
 
         let colored_elements = color_elements(self.mode_info.style.colors, !supports_arrow_fonts);
-        let superkey = superkey(colored_elements, separator);
+        let superkey = superkey(colored_elements, separator, &self.mode_info);
         let ctrl_keys = ctrl_keys(
             &self.mode_info,
             cols.saturating_sub(superkey.len),
