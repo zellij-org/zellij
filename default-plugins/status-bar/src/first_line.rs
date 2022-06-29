@@ -367,7 +367,7 @@ pub fn to_char(kv: Vec<Key>) -> Key {
         .filter(|key| {
             // These are general "keybindings" to get back to normal, they aren't interesting here.
             // The user will figure these out for himself if he configured no other.
-            matches!(key, Key::Char('\n') | Key::Char(' ') | Key::Esc)
+            !matches!(key, Key::Char('\n') | Key::Char(' ') | Key::Esc)
         })
         .collect::<Vec<Key>>()
         .into_iter()
