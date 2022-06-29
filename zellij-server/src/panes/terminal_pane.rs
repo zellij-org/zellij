@@ -230,13 +230,13 @@ impl Pane for TerminalPane {
                         content_y,
                     );
                 } else if !self.grid.search_results.selections.is_empty() {
-                    for (idx, res) in self.grid.search_results.selections.iter().enumerate() {
+                    for res in self.grid.search_results.selections.iter() {
                         if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
                             let select_color_palette =
-                                if Some(idx) == self.grid.search_results.active {
-                                    self.style.colors.yellow
+                                if Some(res) == self.grid.search_results.active.as_ref() {
+                                    self.style.colors.orange
                                 } else {
-                                    self.style.colors.red
+                                    self.style.colors.green
                                 };
                             let background_color = match select_color_palette {
                                 PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
@@ -649,3 +649,7 @@ impl TerminalPane {
 #[cfg(test)]
 #[path = "./unit/terminal_pane_tests.rs"]
 mod grid_tests;
+
+#[cfg(test)]
+#[path = "./unit/search_in_pane_tests.rs"]
+mod search_tests;

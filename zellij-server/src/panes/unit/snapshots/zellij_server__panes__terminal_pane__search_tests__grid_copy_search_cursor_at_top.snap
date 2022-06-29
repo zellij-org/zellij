@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): Velit ut ______ pretium viverra suspendisse potenti nullam ac ######. Adipiscing elit ut aliquam purus sit amet luctus ve
+01 (W): nenatis.
+02 (C): Duis ut diam quam nulla porttitor massa id neque aliquam. Suspendisse potenti nullam ac ###### vitae purus faucibus ornar
+03 (W): e suspendisse.
+04 (C): Vitae nunc sed velit dignissim sodales ut eu sem integer.
+05 (C): Tortor id aliquet lectus proin nibh nisl.
+06 (C): Commodo odio aenean sed adipiscing diam donec adipiscing tristique risus.
+07 (C): Velit dignissim sodales ut eu sem. Lacus suspendisse faucibus interdum posuere lorem. Ac placerat vestibulum lectus mauri
+08 (W): s ultrices eros. Elementum integer enim neque volutpat ac. Augue interdum velit euismod in.
+09 (C): 
+10 (C): Egestas sed sed risus pretium quam vulputate dignissim.
+11 (C): Gravida rutrum quisque non tellus orci ac auctor augue.
+12 (C): Risus nec feugiat in fermentum posuere urna nec tincidunt praesent.
+13 (C): Elementum eu facilisis sed odio morbi quis.
+14 (C): Mattis ullamcorper velit sed ullamcorper morbi.
+15 (C): Dui vivamus arcu felis bibendum. Sit amet aliquam id diam.
+16 (C): Suscipit tellus mauris a diam maecenas sed enim.
+17 (C): Odio ut sem nulla pharetra.
+18 (C): Cras ornare arcu dui vivamus arcu felis bibendum.
+19 (C): Egestas fringilla phasellus faucibus scelerisque eleifend.
+

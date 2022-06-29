@@ -4,7 +4,7 @@ use zellij_utils::position::Position;
 
 // The selection is empty when start == end
 // it includes the character at start, and everything before end.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Selection {
     pub start: Position,
     pub end: Position,

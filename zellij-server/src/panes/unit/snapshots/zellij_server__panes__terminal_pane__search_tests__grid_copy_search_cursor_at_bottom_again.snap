@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): Ultrices eros in cursus turpis massa tincidunt dui ut ornare.
+01 (C): Arcu cursus vitae congue mauris rhoncus aenean vel elit scelerisque.
+02 (C): Viverra mauris in aliquam sem fringilla ut.
+03 (C): Vulputate eu scelerisque felis imperdiet proin fermentum leo.
+04 (C): Cursus risus at ultrices mi tempus.
+05 (C): Laoreet id donec ultrices tincidunt arcu non sodales.
+06 (C): Amet dictum sit amet justo donec enim.
+07 (C): Hac habitasse platea dictumst vestibulum rhoncus est pellentesque.
+08 (C): Facilisi cras fermentum odio eu feugiat.
+09 (C): Elit ut aliquam purus sit amet luctus venenatis lectus.
+10 (C): Dignissim enim sit amet venenatis urna cursus.
+11 (C): Amet consectetur adipiscing elit ut aliquam purus.
+12 (C): Elementum pulvinar etiam non quam lacus suspendisse.
+13 (C): 
+14 (C): Quisque id diam vel quam. Id porta nibh venenatis cras sed felis eget velit aliquet. Sagittis aliquam malesuada bibendum 
+15 (W): arcu. Libero id faucibus nisl tincidunt eget nullam non. Sed elementum tempus egestas sed sed risus pretium quam vulputat
+16 (W): e. Turpis egestas maecenas pharetra convallis. Arcu cursus vitae congue mauris rhoncus aenean vel. Augue ut lectus arcu b
+17 (W): ibendum. Scelerisque varius morbi enim nunc faucibus a pellentesque. Mattis pellentesque id nibh ###### id aliquet lectus
+18 (W):  proin nibh. In aliquam sem fringilla ut. Urna et pharetra pharetra massa massa ultricies mi. Enim nulla aliquet porttito
+19 (W): r lacus luctus accumsan ______ posuere. Malesuada fames ac turpis egestas integer. Venenatis tellus in metus vulputate eu
+

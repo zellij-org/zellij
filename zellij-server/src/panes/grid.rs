@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
@@ -300,7 +301,7 @@ pub struct SearchResult {
     // What we have already found in the viewport
     pub selections: Vec<Selection>,
     // Which of the selections we found is currently 'active' (highlighted differently)
-    pub active: Option<usize>,
+    pub active: Option<Selection>,
     // What we are looking for
     pub needle: String,
     // Does case matter?
@@ -312,6 +313,24 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
+    fn mark_search_results_in_row(&self, row: &mut Cow<Row>, ridx: usize) {
+        for s in &self.selections {
+            if s.contains_row(ridx) {
+                let replacement_char = if Some(s) == self.active.as_ref() {
+                    '_'
+                } else {
+                    '#'
+                };
+                row.to_mut()
+                    .columns
+                    .iter_mut()
+                    .skip(s.start.column())
+                    .take(s.end.column() - s.start.column())
+                    .for_each(|x| *x = TerminalCharacter::new(replacement_char));
+            }
+        }
+    }
+
     fn search_row(&self, ridx: usize, row: &Row) -> Vec<Selection> {
         let mut res = Vec::new();
         if self.needle.is_empty() {
@@ -348,6 +367,35 @@ impl SearchResult {
             hidx += 1;
         }
         res
+    }
+
+    fn move_active_selection_to_next(&mut self) {
+        if let Some(active_idx) = self.active {
+            self.active = self
+                .selections
+                .iter()
+                .skip_while(|s| *s != &active_idx)
+                .skip(1)
+                .next()
+                .cloned();
+        } else {
+            self.active = self.selections.first().cloned();
+        }
+    }
+
+    fn move_active_selection_to_prev(&mut self) {
+        if let Some(active_idx) = self.active {
+            self.active = self
+                .selections
+                .iter()
+                .rev()
+                .skip_while(|s| *s != &active_idx)
+                .skip(1)
+                .next()
+                .cloned();
+        } else {
+            self.active = self.selections.last().cloned();
+        }
     }
 }
 
@@ -395,10 +443,13 @@ pub struct Grid {
 impl Debug for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (i, row) in self.viewport.iter().enumerate() {
+            let mut cow_row = Cow::Borrowed(row);
+            self.search_results
+                .mark_search_results_in_row(&mut cow_row, i);
             if row.is_canonical {
-                writeln!(f, "{:02?} (C): {:?}", i, row)?;
+                writeln!(f, "{:02?} (C): {:?}", i, cow_row)?;
             } else {
-                writeln!(f, "{:02?} (W): {:?}", i, row)?;
+                writeln!(f, "{:02?} (W): {:?}", i, cow_row)?;
             }
         }
         Ok(())
@@ -607,25 +658,26 @@ impl Grid {
             self.search_results
                 .selections
                 .iter_mut()
+                .chain(self.search_results.active.iter_mut())
                 .for_each(|x| x.move_down(1));
+
             // Throw out all search-results outside of the new viewport
             self.search_results
                 .selections
-                .retain(|s| s.start.line() as usize <= self.height);
+                .retain(|s| (0..self.height).contains(&(s.start.line() as usize)));
+            // If we have thrown out the active element, set it to None
+            if let Some(active_idx) = self.search_results.active {
+                if !self.search_results.selections.contains(&active_idx) {
+                    self.search_results.active = None;
+                }
+            }
+
             // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
-                for (ridx, row) in self
-                    .viewport
-                    .iter()
-                    .take(transferred_rows_height)
-                    .enumerate()
-                {
-                    let mut selections = self.search_results.search_row(ridx, row);
-                    selections.reverse();
-                    for selection in selections {
-                        self.search_results.selections.insert(0, selection);
-                        self.search_results.active =
-                            self.search_results.active.and_then(|x| Some(x + 1));
+                if let Some(row) = self.viewport.first() {
+                    let selections = self.search_results.search_row(0, row);
+                    for selection in selections.iter().rev() {
+                        self.search_results.selections.insert(0, *selection);
                     }
                 }
             }
@@ -656,7 +708,7 @@ impl Grid {
                     .saturating_sub(dropped_line_height);
             }
 
-            let transferred_rows_height = transfer_rows_from_lines_below_to_viewport(
+            let _transferred_rows_height = transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
                 1,
@@ -668,23 +720,23 @@ impl Grid {
             self.search_results
                 .selections
                 .iter_mut()
+                .chain(self.search_results.active.iter_mut())
                 .for_each(|x| x.move_up(1));
             // Throw out all search-results outside of the new viewport
             self.search_results
                 .selections
-                .retain(|s| s.start.line() >= 0);
+                .retain(|s| (0..self.height).contains(&(s.start.line() as usize)));
+            // If we have thrown out the active element, set it to None
+            if let Some(active_idx) = self.search_results.active {
+                if !self.search_results.selections.contains(&active_idx) {
+                    self.search_results.active = None;
+                }
+            }
+
             // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
-                for (ridx, row) in self
-                    .viewport
-                    .iter()
-                    .rev()
-                    .take(transferred_rows_height)
-                    .enumerate()
-                {
-                    let selections = self
-                        .search_results
-                        .search_row(self.viewport.len() - ridx - 1, row);
+                if let Some(row) = self.viewport.last() {
+                    let selections = self.search_results.search_row(self.viewport.len() - 1, row);
                     for selection in selections {
                         self.search_results.selections.push(selection);
                     }
@@ -1616,21 +1668,23 @@ impl Grid {
             self.search_results.active.is_none() && !self.search_results.selections.is_empty();
         let search_viewport_again = !self.search_results.selections.is_empty()
             && self.search_results.active.is_some()
-            && self.search_results.active.unwrap() < self.search_results.selections.len() - 1;
+            && self.search_results.active.as_ref() != self.search_results.selections.last();
 
         if search_viewport_for_the_first_time || search_viewport_again {
             // We can stay in the viewport and just move the active selection
-            let mut active_idx = *self.search_results.active.get_or_insert(0);
+            let active_idx = self
+                .search_results
+                .active
+                .get_or_insert(*self.search_results.selections.first().unwrap());
             self.output_buffer
-                .update_line(self.search_results.selections[active_idx].start.line() as usize);
-            if active_idx + 1 < self.search_results.selections.len()
-                && !search_viewport_for_the_first_time
-            {
-                active_idx += 1;
-                self.output_buffer
-                    .update_line(self.search_results.selections[active_idx].start.line() as usize);
+                .update_line(active_idx.start.line() as usize);
+            if !search_viewport_for_the_first_time {
+                self.search_results.move_active_selection_to_next();
+                if let Some(new_active) = self.search_results.active {
+                    self.output_buffer
+                        .update_line(new_active.start.line() as usize);
+                }
             }
-            self.search_results.active = Some(active_idx);
         } else {
             // We need to move the viewport
             let mut rows = 0;
@@ -1640,7 +1694,7 @@ impl Grid {
                 let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_down(rows);
-                    self.search_results.active = Some(self.search_results.selections.len() - 1);
+                    self.search_results.move_active_selection_to_next();
                     found_something = true;
                     break;
                 }
@@ -1655,8 +1709,15 @@ impl Grid {
                     rows += calculate_row_display_height(row.width(), self.width);
                     let results = self.search_results.search_row(rows, &row);
                     if !results.is_empty() {
+                        // We only have the total number of viewport-lines (rows) of this line
+                        // But since this row could be wrapped into multiple lines, we have to check
+                        // in which line it actually is. For this we do as if the line ends at the
+                        // end of the selection and then see how many lines it will end up as.
+                        rows -= calculate_row_display_height(row.width(), self.width)
+                            - calculate_row_display_height(results[0].end.column(), self.width);
                         self.move_viewport_up(complete_height - rows + 1);
-                        self.search_results.active = Some(0);
+                        self.search_results.active =
+                            self.search_results.selections.first().cloned();
                         break;
                     }
                 }
@@ -1668,22 +1729,23 @@ impl Grid {
         let search_viewport_for_the_first_time =
             self.search_results.active.is_none() && !self.search_results.selections.is_empty();
         let search_viewport_again = !self.search_results.selections.is_empty()
-            && self.search_results.active.unwrap_or(0) > 0;
+            && self.search_results.active.as_ref() != self.search_results.selections.first();
 
         if search_viewport_for_the_first_time || search_viewport_again {
             // We can stay in the viewport and just move the active selection
-            let mut active_idx = *self
+            let active_idx = *self
                 .search_results
                 .active
-                .get_or_insert(self.search_results.selections.len() - 1);
+                .get_or_insert(self.search_results.selections.last().cloned().unwrap());
             self.output_buffer
-                .update_line(self.search_results.selections[active_idx].start.line() as usize);
-            if active_idx > 0 && !search_viewport_for_the_first_time {
-                active_idx -= 1;
-                self.output_buffer
-                    .update_line(self.search_results.selections[active_idx].start.line() as usize);
+                .update_line(active_idx.start.line() as usize);
+            if !search_viewport_for_the_first_time {
+                self.search_results.move_active_selection_to_prev();
+                if let Some(new_active) = self.search_results.active {
+                    self.output_buffer
+                        .update_line(new_active.start.line() as usize);
+                }
             }
-            self.search_results.active = Some(active_idx);
         } else {
             // We need to move the viewport
             let mut rows = 0;
@@ -1693,7 +1755,7 @@ impl Grid {
                 let results = self.search_results.search_row(rows, &row);
                 if !results.is_empty() {
                     self.move_viewport_up(rows);
-                    self.search_results.active = Some(results.len() - 1);
+                    self.search_results.move_active_selection_to_prev();
                     found_something = true;
                     break;
                 }
@@ -1708,8 +1770,17 @@ impl Grid {
                     rows += calculate_row_display_height(row.width(), self.width);
                     let results = self.search_results.search_row(rows, &row);
                     if !results.is_empty() {
+                        // We only have the total number of viewport-lines (rows) of this line
+                        // But since this row could be wrapped into multiple lines, we have to check
+                        // in which line it actually is. For this we do as if the line ends at the
+                        // end of the selection and then see how many lines it will end up as.
+                        rows -= calculate_row_display_height(row.width(), self.width)
+                            - calculate_row_display_height(
+                                results[results.len() - 1].end.column(),
+                                self.width,
+                            );
                         self.move_viewport_down(complete_height - rows + 1);
-                        self.search_results.active = Some(self.search_results.selections.len() - 1);
+                        self.search_results.active = self.search_results.selections.last().cloned();
                         break;
                     }
                 }
