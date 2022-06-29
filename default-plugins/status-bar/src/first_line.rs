@@ -160,7 +160,7 @@ fn disabled_mode_shortcut(text: &str, palette: ColoredElements, separator: &str)
 }
 
 fn selected_mode_shortcut_single_letter(
-    letter: char,
+    letter: &str,
     palette: ColoredElements,
     separator: &str,
 ) -> LinePart {
@@ -182,7 +182,7 @@ fn selected_mode_shortcut_single_letter(
 }
 
 fn unselected_mode_shortcut_single_letter(
-    letter: char,
+    letter: &str,
     palette: ColoredElements,
     separator: &str,
 ) -> LinePart {
@@ -204,7 +204,7 @@ fn unselected_mode_shortcut_single_letter(
 }
 
 fn unselected_alternate_mode_shortcut_single_letter(
-    letter: char,
+    letter: &str,
     palette: ColoredElements,
     separator: &str,
 ) -> LinePart {
@@ -264,17 +264,18 @@ fn single_letter_ctrl_key(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
+    shared_super: bool,
 ) -> LinePart {
-    let letter_shortcut = key.letter_shortcut(false).chars().next().unwrap();
+    let letter_shortcut = key.letter_shortcut(!shared_super);
     match key.mode {
         KeyMode::Unselected => {
-            unselected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
+            unselected_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
         },
         KeyMode::UnselectedAlternate => {
-            unselected_alternate_mode_shortcut_single_letter(letter_shortcut, palette, separator)
+            unselected_alternate_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
         },
         KeyMode::Selected => {
-            selected_mode_shortcut_single_letter(letter_shortcut, palette, separator)
+            selected_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
         },
         KeyMode::Disabled => {
             disabled_mode_shortcut(&format!(" {}", letter_shortcut), palette, separator)
@@ -303,7 +304,7 @@ fn key_indicators(
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
     line_part = LinePart::default();
     for ctrl_key in keys {
-        let key = single_letter_ctrl_key(ctrl_key, palette, separator);
+        let key = single_letter_ctrl_key(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
