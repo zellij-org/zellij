@@ -160,7 +160,7 @@ fn read_fixture(fixture_name: &str) -> Vec<u8> {
 
 use crate::panes::grid::Grid;
 use crate::panes::link_handler::LinkHandler;
-use ::insta::assert_snapshot;
+use insta::assert_snapshot;
 use zellij_utils::vte;
 
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
@@ -1443,4 +1443,83 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+#[test]
+fn enter_search_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let mut output = Output::default();
+    let pane_content = read_fixture("grid_copy");
+    tab.handle_pty_bytes(1, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_tab_nothing_highlighted", snapshot);
+
+    // Only the lines which contain 't' should be in the new snapshot
+    tab.update_search_term(vec![b't'], client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_tab_highlight_t", snapshot);
+
+    // Only the lines which contain 'tortor' should be in the new snapshot
+    tab.update_search_term("ortor".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_tab_highlight_tortor", snapshot);
+}
+
+#[test]
+fn enter_search_floating_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size);
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.toggle_floating_panes(client_id, None);
+    tab.new_pane(new_pane_id, Some(client_id));
+
+    let pane_content = read_fixture("grid_copy");
+    tab.handle_pty_bytes(2, pane_content);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_floating_tab_nothing_highlighted", snapshot);
+
+    // Only the line inside the floating tab which contain 'fring' should be in the new snapshot
+    tab.update_search_term("fring".as_bytes().to_vec(), client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_floating_tab_highlight_fring", snapshot);
 }

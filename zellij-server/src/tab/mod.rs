@@ -1947,73 +1947,43 @@ impl Tab {
     }
 
     pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
             if is_updatable {
                 let s = str::from_utf8(&buf).unwrap();
-                active_terminal.update_search_term(s);
+                active_pane.update_search_term(s);
             }
         }
     }
 
     pub fn search_forward(&mut self, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
-            active_terminal.search_forward();
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_forward();
         }
     }
 
     pub fn search_backward(&mut self, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
-            active_terminal.search_backward();
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_backward();
         }
     }
 
     pub fn toggle_search_case_sensitivity(&mut self, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
-            active_terminal.toggle_search_case_sensitivity();
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_case_sensitivity();
         }
     }
 
     pub fn toggle_search_wrap(&mut self, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
-            active_terminal.toggle_search_wrap();
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_wrap();
         }
     }
 
     pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
-        if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
-            let active_terminal = self
-                .tiled_panes
-                .get_pane_mut(PaneId::Terminal(active_terminal_id))
-                .unwrap();
-
-            active_terminal.toggle_search_whole_words();
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_whole_words();
         }
     }
 }
