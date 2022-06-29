@@ -316,18 +316,50 @@ fn key_indicators(
     line_part
 }
 
-/// Return a Vector of tuples (Key, InputMode) where each "Key" is a shortcut to switch to
-/// "InputMode".
-pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<(&Key, &InputMode)> {
+/// Get the keybindings for switching `InputMode`s and `Quit` visible in status bar.
+///
+/// Return a Vector of `Key`s where each `Key` is a shortcut to switch to some `InputMode` or Quit
+/// zellij. Given the vast amount of things a user can configure in their zellij config, this
+/// function has some limitations to keep in mind:
+///
+/// - The vector is not deduplicated: If switching to a certain `InputMode` is bound to multiple
+///   `Key`s, all of these bindings will be part of the returned vector. There is also no
+///   guaranteed sort order. Which key ends up in the status bar in such a situation isn't defined.
+/// - The vector will **not** contain the ' ', '\n' and 'Esc' keys: These are the default bindings
+///   to get back to normal mode from any input mode, but they aren't of interest when searching
+///   for the super key. If for any input mode the user has bound only these keys to switching back
+///   to `InputMode::Normal`, a '?' will be displayed as keybinding instead.
+pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<&Key> {
     mode_info
         .keybinds
         .iter()
         .filter_map(|(key, vac)| match vac.first() {
+            // No actions defined, ignore
             None => None,
             Some(vac) => {
-                if let actions::Action::SwitchToMode(mode) = vac {
-                    return Some((key, mode));
+                // We ignore certain "default" keybindings that switch back to normal InputMode.
+                // These include: ' ', '\n', 'Esc'
+                if matches!(key, Key::Char(' ') | Key::Char('\n') | Key::Esc) {
+                    return None;
                 }
+                if let actions::Action::SwitchToMode(mode) = vac {
+                    return match mode {
+                        // Store the keys that switch to displayed modes
+                        InputMode::Normal
+                        | InputMode::Locked
+                        | InputMode::Pane
+                        | InputMode::Tab
+                        | InputMode::Resize
+                        | InputMode::Move
+                        | InputMode::Scroll
+                        | InputMode::Session => Some(key),
+                        _ => None,
+                    };
+                }
+                if let actions::Action::Quit = vac {
+                    return Some(key);
+                }
+                // Not a `SwitchToMode` or `Quit` action, ignore
                 None
             },
         })
@@ -338,9 +370,8 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     // Find a common modifier if any
     let mut prefix_text: &str = "";
     let mut new_prefix;
-    for (key, _mode) in mode_switch_keys(mode_info).iter() {
+    for key in mode_switch_keys(mode_info).iter() {
         match key {
-            Key::F(_) => new_prefix = " F",
             Key::Ctrl(_) => new_prefix = " Ctrl +",
             Key::Alt(_) => new_prefix = " Alt +",
             _ => break,
