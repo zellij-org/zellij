@@ -58,14 +58,16 @@ pub struct SixelGrid {
     currently_parsing: Option<SixelDeserializer>,
     image_ids_to_reap: Vec<usize>,
     sixel_parser: Option<sixel_tokenizer::Parser>,
+    pub sixel_image_store: Rc<RefCell<SixelImageStore>>,
 }
 
 impl SixelGrid {
-    pub fn new(character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
+    pub fn new(character_cell_size: Rc<RefCell<Option<SizeInPixels>>>, sixel_image_store: Rc<RefCell<SixelImageStore>>) -> Self {
         let previous_cell_size = *character_cell_size.borrow();
         SixelGrid {
             previous_cell_size,
             character_cell_size,
+            sixel_image_store,
             ..Default::default()
         }
     }
@@ -95,9 +97,6 @@ impl SixelGrid {
             }
         }
 
-        // TODO: CONTINUE HERE - make these work
-        // send these bytes to the parser so it has its DCS event and doesn't interpret
-        // this image as corrupted
         self.handle_byte(27);
         self.handle_byte(b'P');
 
@@ -212,6 +211,23 @@ impl SixelGrid {
             None
         }
     }
+    pub fn next_image_id(&self) -> usize {
+        self.sixel_image_store.borrow().sixel_images.keys().len()
+    }
+    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
+        self.sixel_image_store.borrow_mut().sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
+    }
+    pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
+        if let Some((sixel_image, sixel_image_cache)) = self.sixel_image_store.borrow_mut().sixel_images.get_mut(&image_id) {
+            sixel_image.cut_out(pixel_rect.x, pixel_rect.y as usize, pixel_rect.width, pixel_rect.height);
+            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
+        }
+    }
+    pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
+        for id in ids_to_reap {
+            drop(self.sixel_image_store.borrow_mut().sixel_images.remove(&id));
+        }
+    }
 }
 
 type SixelImageCache = HashMap<PixelRect, String>;
@@ -231,22 +247,5 @@ impl SixelImageStore {
                 serialized_image
             }
         })
-    }
-    pub fn next_image_id(&self) -> usize {
-        self.sixel_images.keys().len()
-    }
-    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
-        self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
-    }
-    pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        if let Some((sixel_image, sixel_image_cache)) = self.sixel_images.get_mut(&image_id) {
-            sixel_image.cut_out(pixel_rect.x, pixel_rect.y as usize, pixel_rect.width, pixel_rect.height);
-            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
-        }
-    }
-    pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
-        for id in ids_to_reap {
-            drop(self.sixel_images.remove(&id));
-        }
     }
 }

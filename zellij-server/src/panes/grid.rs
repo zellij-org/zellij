@@ -299,7 +299,6 @@ pub struct Grid {
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     sixel_grid: SixelGrid,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
     pub should_render: bool,
@@ -380,7 +379,7 @@ impl Grid {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
     ) -> Self {
-        let sixel_grid = SixelGrid::new(character_cell_size.clone());
+        let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store.clone());
         Grid {
             lines_above: VecDeque::with_capacity(
                 // .get_or_init() is used instead of .get().unwrap() to prevent
@@ -420,8 +419,6 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: false,
             character_cell_size,
-            // sixel_parser: None,
-            sixel_image_store,
             sixel_grid,
         }
     }
@@ -997,7 +994,7 @@ impl Grid {
             }
         }
         if let Some(image_ids_to_reap) = self.sixel_grid.drain_image_ids_to_reap() {
-            self.sixel_image_store.borrow_mut().reap_images(image_ids_to_reap);
+            self.sixel_grid.reap_images(image_ids_to_reap);
         }
         self.output_buffer.clear();
 
@@ -1179,7 +1176,7 @@ impl Grid {
                     };
                     if let Some(images_to_cut_out) = self.sixel_grid.cut_off_rect_from_images(rect_to_cut_out) {
                         for (image_id, rect_in_image_to_cut_out) in images_to_cut_out {
-                            self.sixel_image_store.borrow_mut().remove_pixels_from_image(image_id, rect_in_image_to_cut_out);
+                            self.sixel_grid.remove_pixels_from_image(image_id, rect_in_image_to_cut_out);
                         }
                     }
                 }
@@ -1534,7 +1531,7 @@ impl Grid {
         self.scrollback_buffer_lines = 0;
         self.sixel_scrolling = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
-            self.sixel_image_store.borrow_mut().reap_images(images_to_reap);
+            self.sixel_grid.reap_images(images_to_reap);
         }
     }
     fn set_preceding_character(&mut self, terminal_character: TerminalCharacter) {
@@ -1714,11 +1711,11 @@ impl Grid {
             } else {
                 (x_pixel_coordinates, y_pixel_coordinates)
             };
-            let new_image_id = self.sixel_image_store.borrow().next_image_id();
+            let new_image_id = self.sixel_grid.next_image_id();
             let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
             if let Some(new_sixel_image) = new_sixel_image {
                 let (image_pixel_height, _image_pixel_width) = new_sixel_image.pixel_size();
-                self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
+                self.sixel_grid.new_sixel_image(new_image_id, new_sixel_image);
                 if !self.sixel_scrolling {
                     self.move_cursor_down_by_pixels(image_pixel_height);
                 }
@@ -2076,7 +2073,7 @@ impl Perform for Grid {
                                 // reap images before dropping the alternate_screen_state contents
                                 // - we can't implement a drop method for this because the store is
                                 // outside of the alternate_screen_state struct
-                                self.sixel_image_store.borrow_mut().reap_images(image_ids_to_reap);
+                                self.sixel_grid.reap_images(image_ids_to_reap);
                             }
                             alternate_screen_state.apply_contents_to(&mut self.lines_above, &mut self.viewport, &mut self.cursor, &mut self.sixel_grid);
                         }
@@ -2142,7 +2139,8 @@ impl Perform for Grid {
                             vec![Row::new(self.width).canonical()],
                         );
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        let alternate_sixelgrid = std::mem::replace(&mut self.sixel_grid, SixelGrid::new(self.character_cell_size.clone()));
+                        let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
+                        let alternate_sixelgrid = std::mem::replace(&mut self.sixel_grid, SixelGrid::new(self.character_cell_size.clone(), sixel_image_store));
                         self.alternate_screen_state = Some(AlternateScreenState::new(current_lines_above, current_viewport, current_cursor, alternate_sixelgrid));
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
