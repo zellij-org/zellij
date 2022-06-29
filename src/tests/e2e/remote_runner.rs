@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use zellij_server::panes::{LinkHandler, TerminalPane};
-use zellij_server::panes::grid::SixelImageStore;
+use zellij_server::panes::sixel::SixelImageStore;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 use zellij_utils::vte;
 use zellij_utils::zellij_tile::data::Palette;
