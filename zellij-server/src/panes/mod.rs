@@ -1,6 +1,7 @@
 pub mod alacritty_functions;
 mod floating_panes;
 pub mod grid;
+pub mod sixel;
 pub mod link_handler;
 mod plugin_pane;
 pub mod selection;
@@ -11,6 +12,7 @@ mod tiled_panes;
 pub use alacritty_functions::*;
 pub use floating_panes::*;
 pub use grid::*;
+pub use sixel::*;
 pub use link_handler::*;
 pub(crate) use plugin_pane::*;
 pub(crate) use terminal_character::*;

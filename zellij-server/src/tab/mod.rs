@@ -17,7 +17,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output},
     panes::{FloatingPanes, TiledPanes},
-    panes::grid::SixelImageStore,
+    panes::sixel::SixelImageStore,
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,

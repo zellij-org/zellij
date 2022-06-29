@@ -58,7 +58,6 @@ impl BoundarySymbol {
                 width: 1,
                 styles: RESET_STYLES
                     .foreground(self.color.map(|palette_color| palette_color.into())),
-                sixel_cell: None,
             }
         }
     }

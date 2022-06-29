@@ -4,7 +4,7 @@ use crate::panes::{
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
-use crate::panes::grid::SixelImageStore;
+use crate::panes::sixel::SixelImageStore;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;

@@ -29,7 +29,6 @@ fn foreground_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             character,
             styles,
             width: character.width().unwrap_or(0),
-            sixel_cell: None,
         };
         colored_string.push(terminal_character);
     }
@@ -57,7 +56,6 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
             character,
             styles,
             width: character.width().unwrap_or(0),
-            sixel_cell: None,
         };
         colored_string.push(terminal_character);
     }

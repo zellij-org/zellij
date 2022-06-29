@@ -1,6 +1,6 @@
 use super::super::TerminalPane;
 use crate::panes::LinkHandler;
-use crate::panes::grid::SixelImageStore;
+use crate::panes::sixel::SixelImageStore;
 use crate::tab::Pane;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;

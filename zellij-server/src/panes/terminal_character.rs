@@ -12,7 +12,6 @@ pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
     styles: RESET_STYLES,
-    sixel_cell: None,
 };
 
 pub const RESET_STYLES: CharacterStyles = CharacterStyles {
@@ -704,7 +703,6 @@ pub struct TerminalCharacter {
     pub character: char,
     pub styles: CharacterStyles,
     pub width: usize,
-    pub sixel_cell: Option<usize>, // usize is the sixel cell id
 }
 
 impl TerminalCharacter {
@@ -713,7 +711,6 @@ impl TerminalCharacter {
             character,
             styles: CharacterStyles::default(),
             width: character.width().unwrap_or(0),
-            sixel_cell: None,
         }
     }
 }

@@ -1,17 +1,13 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashMap;
-use std::iter;
 use unicode_width::UnicodeWidthChar;
+use super::sixel::{SixelGrid, SixelImageStore, PixelRect};
 
-use arrayvec::ArrayVec;
-
-use sixel_tokenizer::{Parser, SixelEvent, ColorCoordinateSystem};
-use sixel_image::{SixelImage, SixelDeserializer};
+use sixel_tokenizer::SixelEvent;
 
 use std::{
     cmp::Ordering,
-            // * the character should link to a SixelImage that contains a link to this image
     collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Formatter},
     str,
@@ -39,263 +35,6 @@ use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
     TerminalCharacter, EMPTY_TERMINAL_CHARACTER,
 };
-
-#[derive(Debug, Clone, Copy)]
-enum SixelColor {
-    Rgb(u8, u8, u8), // 0-100
-    Hsl(u16, u8, u8), // 0-360, 0-100, 0-100
-}
-
-impl From<ColorCoordinateSystem> for SixelColor {
-    fn from(item: ColorCoordinateSystem) -> Self {
-        match item {
-            ColorCoordinateSystem::HLS(x, y, z) => SixelColor::Hsl(x as u16, y as u8, z as u8),
-            ColorCoordinateSystem::RGB(x, y, z) => SixelColor::Rgb(x as u8, y as u8, z as u8),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Pixel {
-    on: bool,
-    color: SixelColor
-}
-
-#[derive(Debug, Clone, Copy)]
-struct SixelPixelIterator {
-    sixel_byte: u8,
-    current_mask: u8,
-}
-impl SixelPixelIterator {
-    pub fn new(sixel_byte: u8) -> Self {
-        SixelPixelIterator { sixel_byte, current_mask: 32 }
-    }
-}
-impl Iterator for SixelPixelIterator {
-    type Item = bool;
-    fn next(&mut self) -> Option<Self::Item> {
-        // iterate through the bits in a byte from left (most significant) to right (least
-        // significant), eg. 89 => 1011001 => true, false, true, true, false, false, true
-        let bit = self.sixel_byte & self.current_mask == self.current_mask;
-        self.current_mask >>= 1;
-        if self.current_mask == 0 {
-            None
-        } else {
-            Some(bit)
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-pub struct PixelRect {
-    x: usize,
-    y: isize, // this can potentially be negative (eg. when the image top has scrolled past the edge of the scrollbuffer)
-    width: usize,
-    height: usize,
-}
-
-impl PixelRect {
-    pub fn new(x: usize, y: usize, height: usize, width: usize) -> Self {
-        PixelRect { x, y: y as isize, width, height }
-    }
-    pub fn intersecting_rect(&self, other: &PixelRect) -> Option<PixelRect> {
-        // if the two rects intersect, this returns a PixelRect *relative to self*
-        let self_top_edge = self.y;
-        let self_bottom_edge = self.y + self.height as isize;
-        let self_left_edge = self.x;
-        let self_right_edge = self.x + self.width;
-        let other_top_edge = other.y;
-        let other_bottom_edge = other.y + other.height as isize;
-        let other_left_edge = other.x;
-        let other_right_edge = other.x + other.width;
-
-        let absolute_x = std::cmp::max(self_left_edge, other_left_edge);
-        let absolute_y = std::cmp::max(self_top_edge, other_top_edge);
-        let absolute_right_edge = std::cmp::min(self_right_edge, other_right_edge);
-        let absolute_bottom_edge = std::cmp::min(self_bottom_edge, other_bottom_edge);
-        let width = absolute_right_edge.saturating_sub(absolute_x);
-        let height = absolute_bottom_edge.saturating_sub(absolute_y);
-        let x = absolute_x - self.x;
-        let y = absolute_y - self.y;
-        if width > 0 && height > 0 {
-            return Some(PixelRect {x, y, width, height: height as usize});
-        } else {
-            return None;
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SixelGrid {
-    sixel_image_locations: HashMap<usize, PixelRect>,
-    previous_cell_size: Option<SizeInPixels>,
-    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    currently_parsing: Option<SixelDeserializer>,
-    sixel_cells: HashMap<usize, Vec<usize>>, // cell_id => image_ids
-    image_ids_to_reap: Vec<usize>,
-}
-
-impl SixelGrid {
-    pub fn new(character_cell_size: Rc<RefCell<Option<SizeInPixels>>>) -> Self {
-        let previous_cell_size = *character_cell_size.borrow();
-        SixelGrid {
-            previous_cell_size,
-            character_cell_size,
-            ..Default::default()
-        }
-    }
-    pub fn handle_event(&mut self, sixel_event: SixelEvent) {
-        if let Some(currently_parsing) = self.currently_parsing.as_mut() {
-            currently_parsing.handle_event(sixel_event);
-        }
-    }
-    pub fn start_image(&mut self, max_height_in_pixels: Option<usize>) {
-        match max_height_in_pixels {
-            Some(max_height_in_pixels) => {
-                self.currently_parsing = Some(SixelDeserializer::new().max_height(max_height_in_pixels));
-            },
-            None => {
-                self.currently_parsing = Some(SixelDeserializer::new());
-            }
-        }
-    }
-    pub fn end_image(&mut self, new_image_id: usize, x_pixel_coordinates: usize, y_pixel_coordinates: usize) -> Option<SixelImage> { // usize is image_id
-        if let Some(sixel_deserializer) = self.currently_parsing.as_mut() {
-            if let Ok(sixel_image) = sixel_deserializer.create_image() {
-                let image_pixel_size = sixel_image.pixel_size();
-                let image_size_and_coordinates = PixelRect::new(x_pixel_coordinates, y_pixel_coordinates, image_pixel_size.0, image_pixel_size.1);
-
-                // here we remove images which this image covers completely to save on system
-                // resources - TODO: also do this with partial covers, eg. if several images
-                // together cover one image
-                for (image_id, pixel_rect) in &self.sixel_image_locations {
-                    if let Some(intersecting_rect) = pixel_rect.intersecting_rect(&image_size_and_coordinates) {
-                        if intersecting_rect.x == pixel_rect.x && intersecting_rect.y == pixel_rect.y && intersecting_rect.height == pixel_rect.height && intersecting_rect.width == pixel_rect.width {
-                            self.image_ids_to_reap.push(*image_id);
-                        }
-                    }
-                }
-                for image_id in &self.image_ids_to_reap {
-                    drop(self.sixel_image_locations.remove(&image_id));
-                }
-
-                self.sixel_image_locations.insert(new_image_id, image_size_and_coordinates);
-                self.currently_parsing = None;
-                Some(sixel_image)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-    pub fn new_cell(&mut self) -> usize { // usize is the cell id
-        let next_cell_id = self.sixel_cells.keys().len();
-        self.sixel_cells.insert(next_cell_id, vec![]);
-        next_cell_id
-    }
-    pub fn link_cell_to_image(&mut self, cell_id: usize, image_id: usize) {
-        let cell_images = self.sixel_cells.entry(cell_id).or_insert(vec![]);
-        cell_images.push(image_id);
-    }
-    pub fn image_coordinates(&self) -> impl Iterator<Item=(usize, &PixelRect)> {
-        self.sixel_image_locations.iter().map(|(image_id, pixel_rect)| (*image_id, pixel_rect))
-    }
-    pub fn cut_off_rect_from_images(&mut self, rect_to_cut_out: PixelRect) -> Option<Vec<(usize, PixelRect)>> {
-        // if there is an image at this cursor location, this returns the image ID and the PixelRect inside the image to be removed
-        let mut ret = None;
-        for (image_id, pixel_rect) in &self.sixel_image_locations {
-            if let Some(intersecting_rect) = pixel_rect.intersecting_rect(&rect_to_cut_out) {
-                let ret = ret.get_or_insert(vec![]);
-                ret.push((*image_id, intersecting_rect));
-            }
-        }
-        ret
-    }
-    pub fn offset_grid_top(&mut self) {
-        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-            let height_to_reduce = character_cell_size.height as isize;
-            for (sixel_image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
-                pixel_rect.y -= height_to_reduce;
-                if pixel_rect.y + pixel_rect.height as isize <= 0 {
-                    self.image_ids_to_reap.push(*sixel_image_id);
-                }
-            }
-            for image_id in &self.image_ids_to_reap {
-                drop(self.sixel_image_locations.remove(&image_id));
-            }
-        }
-    }
-    pub fn drain_image_ids_to_reap(&mut self) -> Option<Vec<usize>> {
-        let images_to_reap = self.image_ids_to_reap.drain(..);
-        if images_to_reap.len() > 0 {
-            Some(images_to_reap.collect())
-        } else {
-            None
-        }
-    }
-    pub fn character_cell_size_possibly_changed(&mut self) {
-        match (self.previous_cell_size, *self.character_cell_size.borrow()) {
-            (Some(previous_cell_size), Some(character_cell_size)) => {
-                if previous_cell_size != character_cell_size {
-                    for (image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
-                        pixel_rect.x = (pixel_rect.x / previous_cell_size.width) * character_cell_size.width;
-                        pixel_rect.y = (pixel_rect.y / previous_cell_size.height as isize) * character_cell_size.height as isize;
-                    }
-                }
-            },
-            _ => {}
-        }
-        self.previous_cell_size = *self.character_cell_size.borrow();
-    }
-    pub fn clear(&mut self) -> Option<Vec<usize>> { // returns image ids to reap
-        let mut image_ids: Vec<usize> = self.sixel_image_locations.drain().map(|(image_id, _image_rect)| image_id).collect();
-        image_ids.append(&mut self.image_ids_to_reap);
-        if image_ids.len() > 0 {
-            Some(image_ids)
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SixelImageStore {
-    sixel_images: HashMap<usize, (SixelImage, HashMap<(usize, usize, usize, usize), String>)>, // usize is image id, PixelRect counts from the beginning of the scrollbuffer, the HashMap is an image cache with a key of (x, y, width, height) and a value of the serialized image
-}
-
-
-impl SixelImageStore {
-    pub fn serialize_image(&mut self, image_id: usize, pixel_x: usize, pixel_y: usize, pixel_width: usize, pixel_height: usize) -> Option<String> {
-        self.sixel_images.get_mut(&image_id).and_then(|(sixel_image, sixel_image_cache)| {
-            if let Some(cached_image) = sixel_image_cache.get(&(pixel_x, pixel_y, pixel_width, pixel_height)) {
-                Some(cached_image.clone())
-            } else if let serialized_image = sixel_image.serialize_range(pixel_x, pixel_y, pixel_width, pixel_height) {
-                sixel_image_cache.insert((pixel_x, pixel_y, pixel_width, pixel_height), serialized_image.clone());
-                Some(serialized_image)
-            } else {
-                None
-            }
-        })
-    }
-    pub fn next_image_id(&self) -> usize {
-        self.sixel_images.keys().len()
-    }
-    pub fn new_sixel_image(&mut self, sixel_image_id: usize, sixel_image: SixelImage) {
-        self.sixel_images.insert(sixel_image_id, (sixel_image, HashMap::new()));
-    }
-    pub fn remove_pixels_from_image(&mut self, image_id: usize, pixel_rect: PixelRect) {
-        if let Some((sixel_image, sixel_image_cache)) = self.sixel_images.get_mut(&image_id) {
-            sixel_image.cut_out(pixel_rect.x, pixel_rect.y as usize, pixel_rect.width, pixel_rect.height);
-            sixel_image_cache.clear(); // TODO: more intelligent cache clearing
-        }
-    }
-    pub fn reap_images(&mut self, ids_to_reap: Vec<usize>) {
-        for id in ids_to_reap {
-            drop(self.sixel_images.remove(&id));
-        }
-    }
-}
 
 fn get_top_non_canonical_rows(rows: &mut Vec<Row>) -> Vec<Row> {
     let mut index_of_last_non_canonical_row = None;
@@ -545,7 +284,7 @@ pub struct Grid {
     viewport: Vec<Row>,
     lines_below: Vec<Row>,
     horizontal_tabstops: BTreeSet<usize>,
-    alternate_lines_above_viewport_cursor_and_sixelgrid: Option<(VecDeque<Row>, Vec<Row>, Cursor, SixelGrid)>, // TODO: rename this clunky thing and outsource it to a struct
+    alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
     saved_cursor_position: Option<Cursor>,
     // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
@@ -560,7 +299,6 @@ pub struct Grid {
     output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
-    sixel_parser: Option<sixel_tokenizer::Parser>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     sixel_grid: SixelGrid,
     pub changed_colors: Option<[Option<AnsiCode>; 256]>,
@@ -608,7 +346,6 @@ impl Debug for Grid {
                 let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
                 let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
                 let sixel_indication_word = "Sixel";
-                // for y in image_y..image_y + image_height + height_remainder {
                 for y in image_y..std::cmp::min(image_y + image_height + height_remainder, self.height) {
                     let row = buffer.get_mut(y).unwrap();
                     for x in image_x..image_x + image_width + width_remainder {
@@ -616,7 +353,6 @@ impl Debug for Grid {
                             character: sixel_indication_word.chars().nth(x % sixel_indication_word.len()).unwrap(),
                             width: 1,
                             styles: Default::default(),
-                            sixel_cell: None,
                         };
                         row.add_character_at(fake_sixel_terminal_character, x);
                     }
@@ -667,7 +403,7 @@ impl Grid {
             sixel_scrolling: false,
             insert_mode: false,
             disable_linewrap: false,
-            alternate_lines_above_viewport_cursor_and_sixelgrid: None,
+            alternate_screen_state: None,
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
             pending_messages_to_pty: vec![],
@@ -684,7 +420,7 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: false,
             character_cell_size,
-            sixel_parser: None,
+            // sixel_parser: None,
             sixel_image_store,
             sixel_grid,
         }
@@ -906,7 +642,7 @@ impl Grid {
         }
         self.selection.reset();
         self.sixel_grid.character_cell_size_possibly_changed();
-        if new_columns != self.width && self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
+        if new_columns != self.width && self.alternate_screen_state.is_none() {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
@@ -1028,7 +764,7 @@ impl Grid {
                     saved_cursor_position.x = new_cursor_x;
                 });
         } else if new_columns != self.width
-            && self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_some()
+            && self.alternate_screen_state.is_some()
         {
             // in alternate screen just truncate exceeding width
             for row in &mut self.viewport {
@@ -1068,10 +804,10 @@ impl Grid {
                         self.saved_cursor_position
                             .as_mut()
                             .map(|saved_cursor_position| {
-                                saved_cursor_position.y -= row_count_to_transfer
+                                saved_cursor_position.y = saved_cursor_position.y.saturating_sub(row_count_to_transfer)
                             });
                     }
-                    if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
+                    if self.alternate_screen_state.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
                             &mut self.viewport,
                             &mut self.lines_above,
@@ -1334,7 +1070,7 @@ impl Grid {
         }
     }
     pub fn fill_viewport(&mut self, character: TerminalCharacter) {
-        if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_some() {
+        if self.alternate_screen_state.is_some() {
             self.viewport.clear();
         } else {
             self.transfer_rows_to_lines_above(self.viewport.len())
@@ -1360,7 +1096,7 @@ impl Grid {
                     return;
                 }
                 if scroll_region_bottom == self.height - 1 && scroll_region_top == 0 {
-                    if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
+                    if self.alternate_screen_state.is_none() {
                         self.transfer_rows_to_lines_above(1);
                     } else {
                         self.viewport.remove(0);
@@ -1396,7 +1132,7 @@ impl Grid {
         }
         if self.cursor.y == self.height - 1 {
             if self.scroll_region.is_none() {
-                if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
+                if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
                 } else {
                     self.sixel_grid.offset_grid_top();
@@ -1538,7 +1274,7 @@ impl Grid {
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
         if self.cursor.y == self.height - 1 {
-            if self.alternate_lines_above_viewport_cursor_and_sixelgrid.is_none() {
+            if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {
                 self.viewport.remove(0);
@@ -1783,7 +1519,7 @@ impl Grid {
         self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];
-        self.alternate_lines_above_viewport_cursor_and_sixelgrid = None;
+        self.alternate_screen_state = None;
         self.cursor_key_mode = false;
         self.scroll_region = None;
         self.clear_viewport_before_rendering = true;
@@ -1970,6 +1706,26 @@ impl Grid {
             None
         }
     }
+    fn create_sixel_image(&mut self) {
+        if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
+            let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
+                let scrollback_pixel_height = self.lines_above.len() * self.character_cell_size.borrow().unwrap().height;
+                (0, scrollback_pixel_height)
+            } else {
+                (x_pixel_coordinates, y_pixel_coordinates)
+            };
+            let new_image_id = self.sixel_image_store.borrow().next_image_id();
+            let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
+            if let Some(new_sixel_image) = new_sixel_image {
+                let (image_pixel_height, _image_pixel_width) = new_sixel_image.pixel_size();
+                self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
+                if !self.sixel_scrolling {
+                    self.move_cursor_down_by_pixels(image_pixel_height);
+                }
+                self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
+            }
+        }
+    }
 }
 
 impl Perform for Grid {
@@ -1982,7 +1738,6 @@ impl Perform for Grid {
             character: c,
             width: c.width().unwrap_or(0),
             styles: self.cursor.pending_styles,
-            sixel_cell: None,
         };
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
@@ -2021,121 +1776,36 @@ impl Perform for Grid {
         }
     }
 
-    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
+    fn hook(&mut self, params: &Params, intermediates: &[u8], _ignore: bool, c: char) {
         if c == 'q' {
             // we only process sixel images if we know the pixel size of each character cell,
             // otherwise we can't reliably display them
             if self.current_cursor_pixel_coordinates().is_some() {
-                self.sixel_parser = Some(sixel_tokenizer::Parser::new());
                 let max_sixel_height_in_pixels = if self.sixel_scrolling {
                     let character_cell_height = self.character_cell_size.borrow().unwrap().height; // unwrap here is safe because `current_cursor_pixel_coordinates` above is only Some if it exists
                     Some(self.height * character_cell_height)
                 } else {
                     None
                 };
-                self.sixel_grid.start_image(max_sixel_height_in_pixels);
-
-                // send these bytes to the parser so it has its DCS event and doesn't interpret
-                // this image as corrupted
-                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
-                self.sixel_parser.as_mut().unwrap().advance(&27, |sixel_event| pending_sixel_events.push(sixel_event));
-                self.sixel_parser.as_mut().unwrap().advance(&b'P', |sixel_event| pending_sixel_events.push(sixel_event));
-                for event in pending_sixel_events.drain(..) {
-                    self.handle_sixel_event(event);
-                }
-                for byte in intermediates {
-                    let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
-                    self.sixel_parser.as_mut().unwrap().advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
-                    for event in pending_sixel_events.drain(..) {
-                        self.handle_sixel_event(event);
-                    }
-                }
-
-                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
-                for (i, param) in params.iter().enumerate() {
-                    if i != 0 {
-                        self.sixel_parser.as_mut().unwrap().advance(&b';', |sixel_event| pending_sixel_events.push(sixel_event));
-                    }
-                    // TODO: better
-                    for subparam in param.iter() {
-                        let mut b = [0; 4];
-                        for digit in subparam.to_string().chars() {
-                            let len = digit.encode_utf8(&mut b).len();
-                            for byte in b.iter().take(len) {
-                                self.sixel_parser.as_mut().unwrap().advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
-                            }
-                        }
-                    }
-                }
-
-                let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
-                self.sixel_parser.as_mut().unwrap().advance(&(c as u8), |sixel_event| pending_sixel_events.push(sixel_event));
-                for event in pending_sixel_events.drain(..) {
-                    self.handle_sixel_event(event);
-                }
-
+                self.sixel_grid.start_image(max_sixel_height_in_pixels, intermediates.iter().collect(), params.iter().collect());
             }
         }
     }
 
     fn put(&mut self, byte: u8) {
-        if let Some(sixel_parser) = self.sixel_parser.as_mut() {
-            // TODO: better
-            // let mut pending_sixel_events: ArrayVec<SixelEvent, 2> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better
-            let mut pending_sixel_events: ArrayVec<SixelEvent, 256> = ArrayVec::new(); // there can be a maximum of 2 events emitted TODO: better (handle more than 2 events... unknown??)
-            sixel_parser.advance(&byte, |sixel_event| pending_sixel_events.push(sixel_event));
-            for event in pending_sixel_events.drain(..) {
-                self.handle_sixel_event(event);
-            }
+        if self.sixel_grid.is_parsing() {
+            self.sixel_grid.handle_byte(byte);
+            // we explicitly set this to false here because in the context of Sixel, we only render the
+            // image when it's done, i.e. in the unhook method
+            self.should_render = false;
         }
-        self.should_render = false;
     }
 
     fn unhook(&mut self) {
-        if self.sixel_parser.is_some() {
-            if let Some((x_pixel_coordinates, y_pixel_coordinates)) = self.current_cursor_pixel_coordinates() {
-                // TODO: if parsing Sixel image...
-                let (x_pixel_coordinates, y_pixel_coordinates) = if self.sixel_scrolling {
-                    let scrollback_pixel_height = self.lines_above.len() * self.character_cell_size.borrow().unwrap().height;
-                    (0, scrollback_pixel_height)
-                } else {
-                    (x_pixel_coordinates, y_pixel_coordinates)
-                };
-                let new_image_id = self.sixel_image_store.borrow().next_image_id();
-                let new_sixel_image = self.sixel_grid.end_image(new_image_id, x_pixel_coordinates, y_pixel_coordinates);
-                if let Some(new_sixel_image) = new_sixel_image {
-                    let (image_pixel_height, image_pixel_width) = new_sixel_image.pixel_size();
-                    // TODO: get rid of sixel cells (but if we don't for some reason, not that we don't
-                    // handle sixel_scrolling here)
-                    match self.get_character_under_cursor().as_mut() {
-                        Some(character_under_cursor) => {
-                            if let Some(sixel_cell_id) = character_under_cursor.sixel_cell {
-                                self.sixel_grid.link_cell_to_image(sixel_cell_id, new_image_id);
-                            } else {
-                                let new_sixel_cell_id = self.sixel_grid.new_cell();
-                                character_under_cursor.sixel_cell = Some(new_sixel_cell_id);
-                                self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
-                            }
-                        }
-                        None => {
-                            let new_sixel_cell_id = self.sixel_grid.new_cell();
-                            let mut new_character = EMPTY_TERMINAL_CHARACTER;
-                            new_character.styles = self.cursor.pending_styles;
-                            new_character.sixel_cell = Some(new_sixel_cell_id);
-                            self.sixel_grid.link_cell_to_image(new_sixel_cell_id, new_image_id);
-                            self.add_character_at_cursor_position(new_character, false);
-                        }
-                    }
-                    self.sixel_image_store.borrow_mut().new_sixel_image(new_image_id, new_sixel_image);
-                    if !self.sixel_scrolling {
-                        self.move_cursor_down_by_pixels(image_pixel_height);
-                    }
-                    self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
-                    self.mark_for_rerender();
-                }
-                self.sixel_parser = None;
-            }
+        if self.sixel_grid.is_parsing() {
+            self.create_sixel_image();
         }
+        self.mark_for_rerender();
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
@@ -2401,22 +2071,16 @@ impl Perform for Grid {
                         self.bracketed_paste_mode = false;
                     }
                     Some(1049) => {
-                        // leave alternate buffer
-                        if let Some((
-                            alternative_lines_above,
-                            alternative_viewport,
-                            alternative_cursor,
-                            alternative_sixelgrid,
-                        )) = &mut self.alternate_lines_above_viewport_cursor_and_sixelgrid {
-                            std::mem::swap(&mut self.lines_above, alternative_lines_above);
-                            std::mem::swap(&mut self.viewport, alternative_viewport);
-                            std::mem::swap(&mut self.cursor, alternative_cursor);
-                            std::mem::swap(&mut self.sixel_grid, alternative_sixelgrid);
-                            if let Some(image_ids_to_reap) = alternative_sixelgrid.clear() {
+                        if let Some(mut alternate_screen_state) = self.alternate_screen_state.take() {
+                            if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
+                                // reap images before dropping the alternate_screen_state contents
+                                // - we can't implement a drop method for this because the store is
+                                // outside of the alternate_screen_state struct
                                 self.sixel_image_store.borrow_mut().reap_images(image_ids_to_reap);
                             }
+                            alternate_screen_state.apply_contents_to(&mut self.lines_above, &mut self.viewport, &mut self.cursor, &mut self.sixel_grid);
                         }
-                        self.alternate_lines_above_viewport_cursor_and_sixelgrid = None;
+                        self.alternate_screen_state = None;
                         self.clear_viewport_before_rendering = true;
                         self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
                         self.mark_for_rerender();
@@ -2479,8 +2143,7 @@ impl Perform for Grid {
                         );
                         let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
                         let alternate_sixelgrid = std::mem::replace(&mut self.sixel_grid, SixelGrid::new(self.character_cell_size.clone()));
-                        self.alternate_lines_above_viewport_cursor_and_sixelgrid =
-                            Some((current_lines_above, current_viewport, current_cursor, alternate_sixelgrid));
+                        self.alternate_screen_state = Some(AlternateScreenState::new(current_lines_above, current_viewport, current_cursor, alternate_sixelgrid));
                         self.clear_viewport_before_rendering = true;
                         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
                         self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
@@ -2814,6 +2477,30 @@ impl Perform for Grid {
             }
             _ => {}
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct AlternateScreenState {
+    lines_above: VecDeque<Row>,
+    viewport: Vec<Row>,
+    cursor: Cursor,
+    sixel_grid: SixelGrid
+}
+impl AlternateScreenState {
+    pub fn new(lines_above: VecDeque<Row>, viewport: Vec<Row>, cursor: Cursor, sixel_grid: SixelGrid) -> Self {
+        AlternateScreenState {
+            lines_above,
+            viewport,
+            cursor,
+            sixel_grid,
+        }
+    }
+    pub fn apply_contents_to(&mut self, lines_above: &mut VecDeque<Row>, viewport: &mut Vec<Row>, cursor: &mut Cursor, sixel_grid: &mut SixelGrid) {
+        std::mem::swap(&mut self.lines_above, lines_above);
+        std::mem::swap(&mut self.viewport, viewport);
+        std::mem::swap(&mut self.cursor, cursor);
+        std::mem::swap(&mut self.sixel_grid, sixel_grid);
     }
 }
 

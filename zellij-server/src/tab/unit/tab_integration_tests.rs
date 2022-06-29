@@ -1,7 +1,7 @@
 use super::{Output, Tab};
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
-use crate::panes::grid::SixelImageStore;
+use crate::panes::sixel::SixelImageStore;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,

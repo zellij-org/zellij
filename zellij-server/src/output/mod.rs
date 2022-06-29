@@ -5,7 +5,7 @@ use crate::panes::Row;
 
 use zellij_utils::pane_size::SizeInPixels;
 use crate::{
-    panes::grid::SixelImageStore,
+    panes::sixel::SixelImageStore,
     panes::terminal_character::{AnsiCode, CharacterStyles},
     panes::{LinkHandler, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
     ClientId,

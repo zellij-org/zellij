@@ -20,7 +20,7 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::PaneId,
-    panes::grid::SixelImageStore,
+    panes::sixel::SixelImageStore,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
