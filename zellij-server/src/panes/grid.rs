@@ -1819,8 +1819,13 @@ impl Grid {
         for line in self.search_results.selections.drain(..) {
             self.output_buffer.update_line(line.start.line() as usize);
         }
-        self.search_results.active = None;
         self.search_viewport();
+        // Maybe the selection we had is now gone
+        if let Some(active_idx) = self.search_results.active {
+            if !self.search_results.selections.contains(&active_idx) {
+                self.search_results.active = None;
+            }
+        }
     }
 
     pub fn toggle_search_wrap(&mut self) {

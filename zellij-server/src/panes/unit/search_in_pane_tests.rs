@@ -147,6 +147,7 @@ pub fn searching_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 
+    // sensitivity off
     terminal_pane.toggle_search_case_sensitivity();
 
     assert_snapshot!(
@@ -154,6 +155,7 @@ pub fn searching_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 
+    // sensitivity on
     terminal_pane.toggle_search_case_sensitivity();
 
     assert_snapshot!(
@@ -161,6 +163,52 @@ pub fn searching_case_insensitive() {
         format!("{:?}", terminal_pane.grid)
     );
 
+    // Select one and check that we keep the current selection,
+    // if it wasn't one that vanished
+    terminal_pane.search_backward();
+    assert_snapshot!(
+        "grid_copy_quam_highlighted_cursor_bottom",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // sensitivity off
+    terminal_pane.toggle_search_case_sensitivity();
+
+    assert_snapshot!(
+        "grid_copy_quam_insensitive_cursor_bottom",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // sensitivity on
+    terminal_pane.toggle_search_case_sensitivity();
+
+    assert_snapshot!(
+        "grid_copy_quam_highlighted_cursor_bottom",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // sensitivity off
+    terminal_pane.toggle_search_case_sensitivity();
+
+    // Selecting the case insensitive result
+    terminal_pane.search_backward();
+    terminal_pane.search_backward();
+    terminal_pane.search_backward();
+    terminal_pane.search_backward();
+    terminal_pane.search_backward();
+    assert_snapshot!(
+        "grid_copy_quam_insensitive_selection",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // sensitivity on
+    terminal_pane.toggle_search_case_sensitivity();
+    // Now the selected result vanished and we should be back at
+    // the beginning
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
     terminal_pane.search_backward();
     assert_snapshot!(
         "grid_copy_quam_highlighted_cursor_bottom",
