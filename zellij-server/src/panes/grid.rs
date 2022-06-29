@@ -955,6 +955,14 @@ impl Grid {
             self.set_scroll_region_to_viewport_size();
         }
         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+        self.search_results.selections.clear();
+        self.search_viewport();
+        // If we have thrown out the active element, set it to None
+        if let Some(active_idx) = self.search_results.active {
+            if !self.search_results.selections.contains(&active_idx) {
+                self.search_results.active = None;
+            }
+        }
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {

@@ -255,3 +255,26 @@ pub fn searching_inside_and_scroll() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+#[test]
+pub fn searching_and_resize() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term("tortor");
+    assert_snapshot!(
+        "grid_copy_tortor_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Highlights should still be there, if pane gets resized
+    terminal_pane.grid.change_size(20, 150);
+    assert_snapshot!(
+        "grid_copy_tortor_highlighted_wide",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.grid.change_size(20, 80);
+    assert_snapshot!(
+        "grid_copy_tortor_highlighted_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
