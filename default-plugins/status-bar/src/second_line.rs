@@ -310,8 +310,24 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
                     .chain(action_key!(km, Action::HalfPageScrollUp).into_iter()).collect()),
         (s("Edit scrollback in default editor"), s("Edit"),
             action_key!(km, Action::EditScrollback, to_normal!())),
-    ]} else if mi.mode == IM::Scroll { vec![
+    ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key!(km, Action::Detach)),
+    ]} else if mi.mode == IM::Tmux { vec![
+        (s("Move focus"), s("Move"), action_key!(km, A::MoveFocus(_))),
+        (s("Split down"), s("Down"), action_key!(km, A::NewPane(Some(Dir::Down)), to_normal!())),
+        (s("Split right"), s("Right"), action_key!(km, A::NewPane(Some(Dir::Right)), to_normal!())),
+        (s("Fullscreen"), s("Fullscreen"), action_key!(km, A::ToggleFocusFullscreen, to_normal!())),
+        (s("New tab"), s("New"), action_key!(km, A::NewTab(None), to_normal!())),
+        (s("Rename tab"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenameTab), A::TabNameInput(_))),
+        (s("Previous Tab"), s("Previous"), action_key!(km, A::GoToPreviousTab, to_normal!())),
+        (s("Next Tab"), s("Next"), action_key!(km, A::GoToNextTab, to_normal!())),
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+        // Please let's just assume nobody changes this mapping...
+        (s("When done"), s("Done"), vec![Key::Char('\n')]),
+        (s("Select pane"), s("Select"), action_key!(km, A::MoveFocusOrTab(Dir::Left)).into_iter()
+                    .chain(action_key!(km, A::MoveFocus(Dir::Down)).into_iter())
+                    .chain(action_key!(km, A::MoveFocus(Dir::Up)).into_iter())
+                    .chain(action_key!(km, A::MoveFocusOrTab(Dir::Right)).into_iter()).collect()),
     ]} else { vec![] };
 }
 
