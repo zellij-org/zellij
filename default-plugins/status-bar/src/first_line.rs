@@ -72,7 +72,7 @@ fn long_tile(
     shared_super: bool,
 ) -> LinePart {
     let key_hint = key.full_text();
-    let key_binding= key.letter_shortcut(!shared_super);
+    let key_binding = key.letter_shortcut(!shared_super);
     let colors = match key.mode {
         KeyMode::Unselected => palette.unselected,
         KeyMode::UnselectedAlternate => palette.unselected_alternate,
@@ -101,7 +101,7 @@ fn long_tile(
             + 2                             // "> "
             + key_hint.chars().count()      // Key hint (mode)
             + 1                             // " "
-            + separator.chars().count(),    // Separator
+            + separator.chars().count(), // Separator
     }
 }
 
@@ -119,20 +119,17 @@ fn short_tile(
         KeyMode::Disabled => palette.disabled,
     };
     let prefix_separator = colors.prefix_separator.paint(separator);
-    let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding.to_string()));
+    let char_shortcut = colors
+        .char_shortcut
+        .paint(format!(" {} ", key_binding.to_string()));
     let suffix_separator = colors.suffix_separator.paint(separator);
     LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_shortcut,
-            suffix_separator,
-        ])
-        .to_string(),
+        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
         len: separator.chars().count()      // Separator
             + 1                             // " "
             + key_binding.chars().count()   // Key binding
             + 1                             // " "
-            + separator.chars().count(),    // Separator
+            + separator.chars().count(), // Separator
     }
 }
 
@@ -339,11 +336,5 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
         ));
     }
 
-    key_indicators(
-        max_len,
-        &default_keys,
-        colored_elements,
-        separator,
-        help,
-    )
+    key_indicators(max_len, &default_keys, colored_elements, separator, help)
 }

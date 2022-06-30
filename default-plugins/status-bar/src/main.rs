@@ -105,9 +105,9 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             },
             unselected_alternate: SegmentStyle {
                 prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!( background, alternate_background_color) .bold(),
-                char_shortcut: style!(palette.red, alternate_background_color) .bold(),
-                char_right_separator: style!( background, alternate_background_color) .bold(),
+                char_left_separator: style!(background, alternate_background_color).bold(),
+                char_shortcut: style!(palette.red, alternate_background_color).bold(),
+                char_right_separator: style!(background, alternate_background_color).bold(),
                 styled_text: style!(background, alternate_background_color).bold(),
                 suffix_separator: style!(alternate_background_color, background),
             },
@@ -141,9 +141,9 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
             },
             unselected_alternate: SegmentStyle {
                 prefix_separator: style!(background, alternate_background_color),
-                char_left_separator: style!( background, alternate_background_color) .bold(),
-                char_shortcut: style!(palette.red, alternate_background_color) .bold(),
-                char_right_separator: style!( background, alternate_background_color) .bold(),
+                char_left_separator: style!(background, alternate_background_color).bold(),
+                char_shortcut: style!(palette.red, alternate_background_color).bold(),
+                char_right_separator: style!(background, alternate_background_color).bold(),
                 styled_text: style!(background, alternate_background_color).bold(),
                 suffix_separator: style!(alternate_background_color, background),
             },
@@ -205,11 +205,7 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let first_line = ctrl_keys(
-            &self.mode_info,
-            cols,
-            separator,
-        );
+        let first_line = ctrl_keys(&self.mode_info, cols, separator);
 
         let second_line = self.second_line(cols);
 
