@@ -364,17 +364,19 @@ fn best_effort_shortcut_list_nonstandard_mode(
 ) -> impl FnOnce(&ModeInfo, usize) -> LinePart {
     move |help, max_len| {
         let mut line_part = LinePart::default();
-        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-            if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
+        let keys_and_hints = get_keys_and_hints(help);
+
+        for (_, short, keys) in keys_and_hints.into_iter() {
+            let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
+            if new_line_part.len + MORE_MSG.chars().count() > max_len {
                 // TODO: better
                 line_part.part = format!("{}{}", line_part.part, MORE_MSG);
                 line_part.len += MORE_MSG.chars().count();
                 break;
             }
-            line_part.len += shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, shortcut);
+            line_part = new_line_part;
         }
+
         let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
         if line_part.len + select_pane_shortcut.len <= max_len {
             line_part.len += select_pane_shortcut.len;
