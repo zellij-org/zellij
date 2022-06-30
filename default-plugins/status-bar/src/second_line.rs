@@ -188,16 +188,17 @@ fn select_pane_shortcut(palette: Palette) -> LinePart {
     show_extra_hints(palette, text_with_style.to_vec())
 }
 
-fn add_shortcut(help: &ModeInfo, mut linepart: LinePart, text: &str, keys: Vec<Key>) -> LinePart {
+fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>) -> LinePart {
     let shortcut = if linepart.len == 0 {
         full_length_shortcut(true, keys, text, help.style.colors)
     } else {
         full_length_shortcut(false, keys, text, help.style.colors)
     };
 
-    linepart.len += shortcut.len;
-    linepart.part = format!("{}{}", linepart.part, shortcut);
-    linepart
+    let mut new_linepart = LinePart::default();
+    new_linepart.len += linepart.len + shortcut.len;
+    new_linepart.part = format!("{}{}", linepart.part, shortcut);
+    new_linepart
 }
 
 fn full_shortcut_list_nonstandard_mode(
@@ -208,7 +209,7 @@ fn full_shortcut_list_nonstandard_mode(
         let keys_and_hints = get_keys_and_hints(help);
 
         for (long, _short, keys) in keys_and_hints.into_iter() {
-            lp = add_shortcut(help, lp, &long, keys.to_vec());
+            lp = add_shortcut(help, &lp, &long, keys.to_vec());
         }
 
         let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
@@ -333,7 +334,7 @@ fn shortened_shortcut_list_nonstandard_mode(
         let keys_and_hints = get_keys_and_hints(help);
 
         for (_, short, keys) in keys_and_hints.into_iter() {
-            line_part = add_shortcut(help, line_part, &short, keys.to_vec());
+            line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
         }
 
         let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
