@@ -263,16 +263,12 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let colored_elements = color_elements(self.mode_info.style.colors, !supports_arrow_fonts);
-        let superkey = superkey(colored_elements, separator, &self.mode_info);
-        let ctrl_keys = ctrl_keys(
+        let first_line = ctrl_keys(
             &self.mode_info,
-            cols.saturating_sub(superkey.len),
+            cols,
             separator,
-            superkey.len > 0,
         );
 
-        let first_line = format!("{}{}", superkey, ctrl_keys);
         let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {

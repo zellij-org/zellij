@@ -290,12 +290,13 @@ fn key_indicators(
     keys: &[KeyShortcut],
     palette: ColoredElements,
     separator: &str,
-    shared_super: bool,
+    mode_info: &ModeInfo,
 ) -> LinePart {
     // Print full-width hints
-    let mut line_part = LinePart::default();
+    let mut line_part = superkey(palette, separator, mode_info);
+    let shared_super = line_part.len > 0;
     for ctrl_key in keys {
-        let key = full_ctrl_key(ctrl_key, palette, separator, shared_super);
+        let key = long_tile(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -304,9 +305,10 @@ fn key_indicators(
     }
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
-    line_part = LinePart::default();
+    line_part = superkey(palette, separator, mode_info);
+    let shared_super = line_part.len > 0;
     for ctrl_key in keys {
-        let key = single_letter_ctrl_key(ctrl_key, palette, separator, shared_super);
+        let key = short_tile(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -392,7 +394,7 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     LinePart {
         part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
-        len: prefix_text.chars().count(),
+        len: prefix_text.chars().count() + separator.chars().count(),
     }
 }
 
@@ -409,7 +411,7 @@ pub fn to_char(kv: Vec<Key>) -> Key {
         .unwrap_or(Key::Char('?'))
 }
 
-pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str, shared_super: bool) -> LinePart {
+pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.keybinds;
@@ -491,6 +493,6 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str, shared_super:
         &default_keys,
         colored_elements,
         separator,
-        shared_super,
+        help,
     )
 }
