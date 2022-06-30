@@ -21,6 +21,7 @@ enum KeyAction {
     Quit,
     Session,
     Move,
+    Tmux,
 }
 
 enum KeyMode {
@@ -46,6 +47,7 @@ impl KeyShortcut {
             KeyAction::Quit => String::from("QUIT"),
             KeyAction::Session => String::from("SESSION"),
             KeyAction::Move => String::from("MOVE"),
+            KeyAction::Tmux => String::from("TMUX"),
         }
     }
     pub fn letter_shortcut(&self, with_prefix: bool) -> String {
@@ -412,7 +414,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str, shared_super:
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.keybinds;
     // Unselect all by default
-    let mut default_keys = [
+    let mut default_keys = vec![
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Lock,
@@ -473,6 +475,15 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str, shared_super:
     if let Some(index) = mode_index {
         default_keys[index].mode = KeyMode::Selected;
         default_keys[index].key = to_char(action_key!(binds, to_normal!()));
+    }
+
+    if help.mode == InputMode::Tmux {
+        // Tmux tile is hidden by default
+        default_keys.push(KeyShortcut::new(
+            KeyMode::Selected,
+            KeyAction::Tmux,
+            to_char(action_key!(binds, to_normal!())),
+        ));
     }
 
     key_indicators(
