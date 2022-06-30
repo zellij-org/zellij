@@ -1,4 +1,4 @@
-use super::{action_key, to_normal};
+use super::{action_key, get_common_modifier, to_normal};
 use ansi_term::{
     ANSIStrings,
     Color::{Fixed, RGB},
@@ -17,7 +17,6 @@ use crate::{
 enum StatusBarTextColor {
     White,
     Green,
-    Orange,
 }
 
 #[derive(Clone, Copy)]
@@ -32,80 +31,59 @@ fn full_length_shortcut(
     action: &str,
     palette: Palette,
 ) -> LinePart {
+    if key.is_empty() {
+        return LinePart::default();
+    }
     let text_color = palette_match!(match palette.theme_hue {
         ThemeHue::Dark => palette.white,
         ThemeHue::Light => palette.black,
     });
+
+    let modifier = match get_common_modifier(key.iter().collect()) {
+        Some(text) => format!("{} + ", text),
+        None => String::from(""),
+    };
     let key = key
         .iter()
-        .map(|key| format!("{}", key))
+        .map(|key| {
+            if modifier.is_empty() {
+                format!("{}", key)
+            } else {
+                match key {
+                    Key::Char(c) => format!("{}", c),
+                    Key::Alt(c) => format!("{}", c),
+                    _ => format!("{}", key),
+                }
+            }
+        })
         .collect::<Vec<String>>()
         .join("");
-    if key.is_empty() {
-        return LinePart {
-            part: "".to_string(),
-            len: 0,
-        };
-    }
-    let green_color = palette_match!(palette.green);
-    let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(text_color).paint(separator);
-    let shortcut_len = key.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(key);
-    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
-    let action_len = action.chars().count();
-    let action = Style::new().fg(text_color).bold().paint(action);
-    let len = shortcut_len + action_len + separator.chars().count();
-    LinePart {
-        part: ANSIStrings(&[
-            separator,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            action,
-        ])
-        .to_string(),
-        len,
-    }
-}
 
-fn first_word_shortcut(
-    is_first_shortcut: bool,
-    key: &Key,
-    _action: &[Action],
-    palette: Palette,
-) -> LinePart {
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    });
-    let letter = format!("{}", key);
-    let description = "test".to_string();
     let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(text_color).paint(separator);
-    let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
+    let painted_separator = Style::new().fg(text_color).paint(separator);
+    let painted_modifier = Style::new().fg(orange_color).bold().paint(&modifier);
     let shortcut_left_separator = Style::new().fg(text_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(letter);
+    let shortcut = Style::new().fg(green_color).bold().paint(&key);
     let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
-    let description_first_word = description.split(' ').next().unwrap_or("");
-    let description_first_word_length = description_first_word.chars().count();
-    let description_first_word = Style::new()
-        .fg(text_color)
-        .bold()
-        .paint(description_first_word);
-    let len = shortcut_len + description_first_word_length + separator.chars().count();
+    let painted_action = Style::new().fg(text_color).bold().paint(action);
     LinePart {
         part: ANSIStrings(&[
-            separator,
+            painted_separator,
+            painted_modifier,
             shortcut_left_separator,
             shortcut,
             shortcut_right_separator,
-            description_first_word,
+            painted_action,
         ])
         .to_string(),
-        len,
+        len: separator.chars().count()      // " " or " / "
+            + modifier.chars().count()      // Modifier (Ctrl, Alt), if any
+            + 1                             // "<"
+            + key.chars().count()           // The key shortcut
+            + 2                             // "> "
+            + action.chars().count(), // The action associated with the key
     }
 }
 
@@ -132,7 +110,6 @@ fn show_extra_hints(
     // get the colors
     let white_color = palette_match!(palette.white);
     let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
     // calculate length of tipp
     let len = text_with_style
         .iter()
@@ -144,7 +121,6 @@ fn show_extra_hints(
             let color = match color {
                 White => white_color,
                 Green => green_color,
-                Orange => orange_color,
             };
             match is_bold {
                 Bold => Style::new().fg(color).bold().paint(text),
