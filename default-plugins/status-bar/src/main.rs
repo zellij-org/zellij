@@ -266,6 +266,29 @@ impl State {
     }
 }
 
+/// Get a common modifier key from a key vector.
+///
+/// Iterates over all keys, skipping keys mentioned in `to_ignore` and returns any found common
+/// modifier key.
+pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
+    let mut modifier = "";
+    let mut new_modifier;
+    for key in keyvec.iter() {
+        match key {
+            Key::Ctrl(_) => new_modifier = "Ctrl",
+            Key::Alt(_) => new_modifier = "Alt",
+            _ => return None,
+        }
+        if modifier.is_empty() {
+            modifier = new_modifier;
+        } else if modifier != new_modifier {
+            // Prefix changed!
+            return None;
+        }
+    }
+    Some(modifier.to_string())
+}
+
 /// Get key from action pattern(s).
 ///
 /// This macro takes as arguments a `keymap` that is a `Vec<(Key, Vec<Action>)>` and contains all

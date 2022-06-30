@@ -3,7 +3,7 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::color_elements;
-use crate::{action_key, to_normal};
+use crate::{action_key, get_common_modifier, to_normal};
 use crate::{ColoredElements, LinePart};
 
 struct KeyShortcut {
@@ -119,9 +119,7 @@ fn short_tile(
         KeyMode::Disabled => palette.disabled,
     };
     let prefix_separator = colors.prefix_separator.paint(separator);
-    let char_shortcut = colors
-        .char_shortcut
-        .paint(format!(" {} ", key_binding.to_string()));
+    let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding));
     let suffix_separator = colors.suffix_separator.paint(separator);
     LinePart {
         part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
@@ -221,24 +219,12 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<&Key> {
 
 pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo) -> LinePart {
     // Find a common modifier if any
-    let mut prefix_text: &str = "";
-    let mut new_prefix;
-    for key in mode_switch_keys(mode_info).iter() {
-        match key {
-            Key::Ctrl(_) => new_prefix = " Ctrl +",
-            Key::Alt(_) => new_prefix = " Alt +",
-            _ => break,
-        }
-        if prefix_text.is_empty() {
-            prefix_text = new_prefix;
-        } else if prefix_text != new_prefix {
-            // Prefix changed!
-            prefix_text = "";
-            break;
-        }
-    }
+    let prefix_text = match get_common_modifier(mode_switch_keys(mode_info)) {
+        Some(text) => format!(" {} +", text),
+        _ => return LinePart::default(),
+    };
 
-    let prefix = palette.superkey_prefix.paint(prefix_text);
+    let prefix = palette.superkey_prefix.paint(&prefix_text);
     let suffix_separator = palette.superkey_suffix_separator.paint(separator);
     LinePart {
         part: ANSIStrings(&[prefix, suffix_separator]).to_string(),
