@@ -190,7 +190,12 @@ fn select_pane_shortcut(palette: Palette) -> LinePart {
 }
 
 fn add_shortcut(help: &ModeInfo, mut linepart: LinePart, text: &str, keys: Vec<Key>) -> LinePart {
-    let shortcut = full_length_shortcut(false, keys, text, help.style.colors);
+    let shortcut = if linepart.len == 0 {
+        full_length_shortcut(true, keys, text, help.style.colors)
+    } else {
+        full_length_shortcut(false, keys, text, help.style.colors)
+    };
+
     linepart.len += shortcut.len;
     linepart.part = format!("{}{}", linepart.part, shortcut);
     linepart
