@@ -74,7 +74,7 @@ impl fmt::Display for Key {
                 '\t' => write!(f, "↹"),
                 _ => write!(f, "{}", c),
             },
-            Key::Alt(c) => write!(f, "{}", c),
+            Key::Alt(c) => write!(f, "Alt+{}", c),
             Key::Ctrl(c) => write!(f, "Ctrl+{}", c),
             Key::Null => write!(f, "NULL"),
             Key::Esc => write!(f, "Esc"),
