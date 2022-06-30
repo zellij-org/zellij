@@ -324,40 +324,32 @@ pub struct Grid {
 impl Debug for Grid {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut buffer: Vec<Row> = self.viewport.clone();
-
         // pad buffer
         for _ in buffer.len()..self.height {
             buffer.push(Row::new(self.width).canonical());
         }
-        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-            let scrollback_size_in_pixels = self.lines_above.len() * character_cell_size.height;
-            let viewport_pixel_coordinates_in_scrollback = self.lines_above.len() * character_cell_size.height;
-            for (image_id, pixel_rect) in self.sixel_grid.image_coordinates() {
-                let y_pixel_coordinates_in_viewport = pixel_rect.y - scrollback_size_in_pixels as isize;
-                let image_y = std::cmp::max(y_pixel_coordinates_in_viewport, 0) as usize / character_cell_size.height;
-                let image_x = pixel_rect.x / character_cell_size.width;
-                let image_height_in_pixels = if y_pixel_coordinates_in_viewport < 0 { pixel_rect.height as isize + y_pixel_coordinates_in_viewport } else { pixel_rect.height as isize };
-                if image_height_in_pixels <= 0 {
-                    continue;
-                }
-                let image_height = image_height_in_pixels as usize / character_cell_size.height;
-                let image_width = pixel_rect.width / character_cell_size.width;
-                let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
-                let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
-                let sixel_indication_word = "Sixel";
-                for y in image_y..std::cmp::min(image_y + image_height + height_remainder, self.height) {
-                    let row = buffer.get_mut(y).unwrap();
-                    for x in image_x..image_x + image_width + width_remainder {
-                        let fake_sixel_terminal_character = TerminalCharacter {
-                            character: sixel_indication_word.chars().nth(x % sixel_indication_word.len()).unwrap(),
-                            width: 1,
-                            styles: Default::default(),
-                        };
-                        row.add_character_at(fake_sixel_terminal_character, x);
-                    }
+
+        // display sixel placeholder
+        let sixel_indication_character = |x| {
+            let sixel_indication_word = "Sixel";
+            sixel_indication_word.chars().nth(x % sixel_indication_word.len()).unwrap()
+        };
+        for image_coordinates in self.sixel_grid.image_cell_coordinates_in_viewport(self.height, self.lines_above.len()) {
+            let (image_top_edge, image_bottom_edge, image_left_edge, image_right_edge) = image_coordinates;
+            for y in image_top_edge..image_bottom_edge {
+                let row = buffer.get_mut(y).unwrap();
+                for x in image_left_edge..image_right_edge {
+                    let fake_sixel_terminal_character = TerminalCharacter {
+                        character: sixel_indication_character(x),
+                        width: 1,
+                        styles: Default::default(),
+                    };
+                    row.add_character_at(fake_sixel_terminal_character, x);
                 }
             }
         }
+
+        // display terminal characters with stripped styles
         for (i, row) in buffer.iter().enumerate() {
             if row.is_canonical {
                 writeln!(f, "{:02?} (C): {:?}", i, row)?;

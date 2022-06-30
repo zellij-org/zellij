@@ -228,6 +228,49 @@ impl SixelGrid {
             drop(self.sixel_image_store.borrow_mut().sixel_images.remove(&id));
         }
     }
+//     pub fn image_cell_coordinates_in_viewport(&self, image_id: usize, viewport_height: usize, scrollback_height: usize) -> Option<(usize, usize, usize, usize)> {
+//         let pixel_rect = self.sixel_image_locations.get(&image_id)?;
+//         let character_cell_size = *self.character_cell_size.borrow().as_ref()?;
+//         let scrollback_size_in_pixels = scrollback_height * character_cell_size.height;
+//         let y_pixel_coordinates_in_viewport = pixel_rect.y - scrollback_size_in_pixels as isize;
+//         let image_y = std::cmp::max(y_pixel_coordinates_in_viewport, 0) as usize / character_cell_size.height;
+//         let image_x = pixel_rect.x / character_cell_size.width;
+//         let image_height_in_pixels = if y_pixel_coordinates_in_viewport < 0 { pixel_rect.height as isize + y_pixel_coordinates_in_viewport } else { pixel_rect.height as isize };
+//         let image_height = image_height_in_pixels as usize / character_cell_size.height;
+//         let image_width = pixel_rect.width / character_cell_size.width;
+//         let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
+//         let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
+//         let image_top_edge = image_y;
+//         let image_bottom_edge = std::cmp::min(image_y + image_height + height_remainder, viewport_height);
+//         let image_left_edge = image_x;
+//         let image_right_edge = image_x + image_width + width_remainder;
+//         Some((image_top_edge, image_bottom_edge, image_left_edge, image_right_edge))
+//     }
+    pub fn image_cell_coordinates_in_viewport(&self, viewport_height: usize, scrollback_height: usize) -> Vec<(usize, usize, usize, usize)> {
+        match *self.character_cell_size.borrow()  {
+            Some(character_cell_size) => {
+                self.sixel_image_locations.iter()
+                    .map(|(_image_id, pixel_rect)| {
+                        let scrollback_size_in_pixels = scrollback_height * character_cell_size.height;
+                        let y_pixel_coordinates_in_viewport = pixel_rect.y - scrollback_size_in_pixels as isize;
+                        let image_y = std::cmp::max(y_pixel_coordinates_in_viewport, 0) as usize / character_cell_size.height;
+                        let image_x = pixel_rect.x / character_cell_size.width;
+                        let image_height_in_pixels = if y_pixel_coordinates_in_viewport < 0 { pixel_rect.height as isize + y_pixel_coordinates_in_viewport } else { pixel_rect.height as isize };
+                        let image_height = image_height_in_pixels as usize / character_cell_size.height;
+                        let image_width = pixel_rect.width / character_cell_size.width;
+                        let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
+                        let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
+                        let image_top_edge = image_y;
+                        let image_bottom_edge = std::cmp::min(image_y + image_height + height_remainder, viewport_height);
+                        let image_left_edge = image_x;
+                        let image_right_edge = image_x + image_width + width_remainder;
+                        (image_top_edge, image_bottom_edge, image_left_edge, image_right_edge)
+                    })
+                    .collect()
+            },
+            None => vec![]
+        }
+    }
 }
 
 type SixelImageCache = HashMap<PixelRect, String>;
@@ -247,5 +290,8 @@ impl SixelImageStore {
                 serialized_image
             }
         })
+    }
+    pub fn image_count(&self) -> usize {
+        self.sixel_images.len()
     }
 }

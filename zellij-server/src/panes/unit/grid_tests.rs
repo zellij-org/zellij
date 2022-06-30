@@ -2214,7 +2214,7 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
         grid.add_canonical_line();
     }
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
-    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store");
+    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store");
 }
 
 #[test]
@@ -2238,7 +2238,7 @@ pub fn sixel_images_are_reaped_when_resetting() {
     }
     grid.reset_terminal_state();
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
-    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store");
+    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store");
 }
 
 #[test]
@@ -2273,7 +2273,7 @@ pub fn sixel_image_in_alternate_buffer() {
         vte_parser.advance(&mut grid, *byte);
     }
     assert_snapshot!(format!("{:?}", grid)); // should note include the image
-    assert_eq!(sixel_image_store.borrow().next_image_id(), 0, "all images were deleted from the store when we moved back from alternate screen");
+    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store when we moved back from alternate screen");
 }
 
 #[test]
