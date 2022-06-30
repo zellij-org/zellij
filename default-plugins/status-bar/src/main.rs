@@ -255,7 +255,7 @@ impl State {
                 }
             } else if active_tab.are_floating_panes_visible {
                 match self.mode_info.mode {
-                    InputMode::Normal => floating_panes_are_visible(&self.mode_info.style.colors),
+                    InputMode::Normal => floating_panes_are_visible(&self.mode_info),
                     InputMode::Locked => {
                         locked_floating_panes_are_visible(&self.mode_info.style.colors)
                     },

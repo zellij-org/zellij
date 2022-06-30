@@ -502,7 +502,9 @@ pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> Line
     }
 }
 
-pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
+pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
+    let palette = mode_info.style.colors;
+    let km = &mode_info.keybinds;
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -519,16 +521,23 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
     let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
     let floating_panes = "FLOATING PANES VISIBLE";
     let press = "Press ";
-    let ctrl = "Ctrl-p ";
-    let plus = "+ ";
+    let pane_mode = format!(
+        "{}",
+        action_key!(km, Action::SwitchToMode(InputMode::Pane))
+            .first()
+            .unwrap_or(&Key::Char('?'))
+    );
+    let plus = ", ";
     let p_left_separator = "<";
+    // FIXME: This is wrong. We cannot know this from normal mode, because we transfer only the
+    // keybindings for the current InputMode.
     let p = "w";
     let p_right_separator = "> ";
     let to_hide = "to hide.";
 
     let len = floating_panes.chars().count()
         + press.chars().count()
-        + ctrl.chars().count()
+        + pane_mode.chars().count()
         + plus.chars().count()
         + p_left_separator.chars().count()
         + p.chars().count()
@@ -542,7 +551,7 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
             Style::new().fg(orange_color).bold().paint(floating_panes),
             shortcut_right_separator,
             Style::new().fg(white_color).bold().paint(press),
-            Style::new().fg(green_color).bold().paint(ctrl),
+            Style::new().fg(green_color).bold().paint(pane_mode),
             Style::new().fg(white_color).bold().paint(plus),
             Style::new().fg(white_color).bold().paint(p_left_separator),
             Style::new().fg(green_color).bold().paint(p),
