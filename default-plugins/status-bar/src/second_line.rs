@@ -330,11 +330,12 @@ fn shortened_shortcut_list_nonstandard_mode(
 ) -> impl FnOnce(&ModeInfo) -> LinePart {
     move |help| {
         let mut line_part = LinePart::default();
-        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-            line_part.len += shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, shortcut,);
+        let keys_and_hints = get_keys_and_hints(help);
+
+        for (_, short, keys) in keys_and_hints.into_iter() {
+            line_part = add_shortcut(help, line_part, &short, keys.to_vec());
         }
+
         let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
         line_part.len += select_pane_shortcut.len;
         line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
