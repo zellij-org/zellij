@@ -8,7 +8,7 @@ use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
-use first_line::{ctrl_keys, superkey};
+use first_line::ctrl_keys;
 use second_line::{
     floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
     locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
@@ -45,46 +45,23 @@ impl Display for LinePart {
 
 #[derive(Clone, Copy)]
 pub struct ColoredElements {
-    // selected mode
-    pub selected_prefix_separator: Style,
-    pub selected_char_left_separator: Style,
-    pub selected_char_shortcut: Style,
-    pub selected_char_right_separator: Style,
-    pub selected_styled_text: Style,
-    pub selected_suffix_separator: Style,
-    // unselected mode
-    pub unselected_prefix_separator: Style,
-    pub unselected_char_left_separator: Style,
-    pub unselected_char_shortcut: Style,
-    pub unselected_char_right_separator: Style,
-    pub unselected_styled_text: Style,
-    pub unselected_suffix_separator: Style,
-    // unselected mode alternate color
-    pub unselected_alternate_prefix_separator: Style,
-    pub unselected_alternate_char_left_separator: Style,
-    pub unselected_alternate_char_shortcut: Style,
-    pub unselected_alternate_char_right_separator: Style,
-    pub unselected_alternate_styled_text: Style,
-    pub unselected_alternate_suffix_separator: Style,
-    // disabled mode
-    pub disabled_prefix_separator: Style,
-    pub disabled_styled_text: Style,
-    pub disabled_suffix_separator: Style,
-    // selected single letter
-    pub selected_single_letter_prefix_separator: Style,
-    pub selected_single_letter_char_shortcut: Style,
-    pub selected_single_letter_suffix_separator: Style,
-    // unselected single letter
-    pub unselected_single_letter_prefix_separator: Style,
-    pub unselected_single_letter_char_shortcut: Style,
-    pub unselected_single_letter_suffix_separator: Style,
-    // unselected alternate single letter
-    pub unselected_alternate_single_letter_prefix_separator: Style,
-    pub unselected_alternate_single_letter_char_shortcut: Style,
-    pub unselected_alternate_single_letter_suffix_separator: Style,
+    pub selected: SegmentStyle,
+    pub unselected: SegmentStyle,
+    pub unselected_alternate: SegmentStyle,
+    pub disabled: SegmentStyle,
     // superkey
     pub superkey_prefix: Style,
     pub superkey_suffix_separator: Style,
+}
+
+#[derive(Clone, Copy)]
+pub struct SegmentStyle {
+    pub prefix_separator: Style,
+    pub char_left_separator: Style,
+    pub char_shortcut: Style,
+    pub char_right_separator: Style,
+    pub styled_text: Style,
+    pub suffix_separator: Style,
 }
 
 // I really hate this, but I can't come up with a good solution for this,
@@ -110,109 +87,74 @@ fn color_elements(palette: Palette, different_color_alternates: bool) -> Colored
     };
     match palette.source {
         PaletteSource::Default => ColoredElements {
-            selected_prefix_separator: style!(background, palette.green),
-            selected_char_left_separator: style!(background, palette.green).bold(),
-            selected_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_char_right_separator: style!(background, palette.green).bold(),
-            selected_styled_text: style!(background, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, background).bold(),
-
-            unselected_prefix_separator: style!(background, palette.fg),
-            unselected_char_left_separator: style!(background, palette.fg).bold(),
-            unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(background, palette.fg).bold(),
-            unselected_styled_text: style!(background, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, background),
-
-            unselected_alternate_prefix_separator: style!(background, alternate_background_color),
-            unselected_alternate_char_left_separator: style!(
-                background,
-                alternate_background_color
-            )
-            .bold(),
-            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color)
-                .bold(),
-            unselected_alternate_char_right_separator: style!(
-                background,
-                alternate_background_color
-            )
-            .bold(),
-            unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
-            unselected_alternate_suffix_separator: style!(alternate_background_color, background),
-
-            disabled_prefix_separator: style!(background, palette.fg),
-            disabled_styled_text: style!(background, palette.fg).dimmed().italic(),
-            disabled_suffix_separator: style!(palette.fg, background),
-            selected_single_letter_prefix_separator: style!(background, palette.green),
-            selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_single_letter_suffix_separator: style!(palette.green, background),
-
-            unselected_single_letter_prefix_separator: style!(background, palette.fg),
-            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold().dimmed(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, background),
-
-            unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
-            unselected_alternate_single_letter_char_shortcut: style!(
-                palette.red,
-                alternate_background_color
-            )
-            .bold()
-            .dimmed(),
-            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
-
+            selected: SegmentStyle {
+                prefix_separator: style!(background, palette.green),
+                char_left_separator: style!(background, palette.green).bold(),
+                char_shortcut: style!(palette.red, palette.green).bold(),
+                char_right_separator: style!(background, palette.green).bold(),
+                styled_text: style!(background, palette.green).bold(),
+                suffix_separator: style!(palette.green, background).bold(),
+            },
+            unselected: SegmentStyle {
+                prefix_separator: style!(background, palette.fg),
+                char_left_separator: style!(background, palette.fg).bold(),
+                char_shortcut: style!(palette.red, palette.fg).bold(),
+                char_right_separator: style!(background, palette.fg).bold(),
+                styled_text: style!(background, palette.fg).bold(),
+                suffix_separator: style!(palette.fg, background),
+            },
+            unselected_alternate: SegmentStyle {
+                prefix_separator: style!(background, alternate_background_color),
+                char_left_separator: style!( background, alternate_background_color) .bold(),
+                char_shortcut: style!(palette.red, alternate_background_color) .bold(),
+                char_right_separator: style!( background, alternate_background_color) .bold(),
+                styled_text: style!(background, alternate_background_color).bold(),
+                suffix_separator: style!(alternate_background_color, background),
+            },
+            disabled: SegmentStyle {
+                prefix_separator: style!(background, palette.fg),
+                char_left_separator: style!(background, palette.fg).dimmed().italic(),
+                char_shortcut: style!(background, palette.fg).dimmed().italic(),
+                char_right_separator: style!(background, palette.fg).dimmed().italic(),
+                styled_text: style!(background, palette.fg).dimmed().italic(),
+                suffix_separator: style!(palette.fg, background),
+            },
             superkey_prefix: style!(foreground, background).bold(),
             superkey_suffix_separator: style!(background, background),
         },
         PaletteSource::Xresources => ColoredElements {
-            selected_prefix_separator: style!(background, palette.green),
-            selected_char_left_separator: style!(palette.fg, palette.green).bold(),
-            selected_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_char_right_separator: style!(palette.fg, palette.green).bold(),
-            selected_styled_text: style!(background, palette.green).bold(),
-            selected_suffix_separator: style!(palette.green, background).bold(),
-            unselected_prefix_separator: style!(background, palette.fg),
-            unselected_char_left_separator: style!(background, palette.fg).bold(),
-            unselected_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_char_right_separator: style!(background, palette.fg).bold(),
-            unselected_styled_text: style!(background, palette.fg).bold(),
-            unselected_suffix_separator: style!(palette.fg, background),
-
-            unselected_alternate_prefix_separator: style!(background, alternate_background_color),
-            unselected_alternate_char_left_separator: style!(
-                background,
-                alternate_background_color
-            )
-            .bold(),
-            unselected_alternate_char_shortcut: style!(palette.red, alternate_background_color)
-                .bold(),
-            unselected_alternate_char_right_separator: style!(
-                background,
-                alternate_background_color
-            )
-            .bold(),
-            unselected_alternate_styled_text: style!(background, alternate_background_color).bold(),
-            unselected_alternate_suffix_separator: style!(alternate_background_color, background),
-
-            disabled_prefix_separator: style!(background, palette.fg),
-            disabled_styled_text: style!(background, palette.fg).dimmed(),
-            disabled_suffix_separator: style!(palette.fg, background),
-            selected_single_letter_prefix_separator: style!(palette.fg, palette.green),
-            selected_single_letter_char_shortcut: style!(palette.red, palette.green).bold(),
-            selected_single_letter_suffix_separator: style!(palette.green, palette.fg),
-
-            unselected_single_letter_prefix_separator: style!(palette.fg, background),
-            unselected_single_letter_char_shortcut: style!(palette.red, palette.fg).bold(),
-            unselected_single_letter_suffix_separator: style!(palette.fg, background),
-
-            unselected_alternate_single_letter_prefix_separator: style!(background, palette.fg),
-            unselected_alternate_single_letter_char_shortcut: style!(
-                palette.red,
-                alternate_background_color
-            )
-            .bold()
-            .dimmed(),
-            unselected_alternate_single_letter_suffix_separator: style!(palette.fg, background),
-
+            selected: SegmentStyle {
+                prefix_separator: style!(background, palette.green),
+                char_left_separator: style!(palette.fg, palette.green).bold(),
+                char_shortcut: style!(palette.red, palette.green).bold(),
+                char_right_separator: style!(palette.fg, palette.green).bold(),
+                styled_text: style!(background, palette.green).bold(),
+                suffix_separator: style!(palette.green, background).bold(),
+            },
+            unselected: SegmentStyle {
+                prefix_separator: style!(background, palette.fg),
+                char_left_separator: style!(background, palette.fg).bold(),
+                char_shortcut: style!(palette.red, palette.fg).bold(),
+                char_right_separator: style!(background, palette.fg).bold(),
+                styled_text: style!(background, palette.fg).bold(),
+                suffix_separator: style!(palette.fg, background),
+            },
+            unselected_alternate: SegmentStyle {
+                prefix_separator: style!(background, alternate_background_color),
+                char_left_separator: style!( background, alternate_background_color) .bold(),
+                char_shortcut: style!(palette.red, alternate_background_color) .bold(),
+                char_right_separator: style!( background, alternate_background_color) .bold(),
+                styled_text: style!(background, alternate_background_color).bold(),
+                suffix_separator: style!(alternate_background_color, background),
+            },
+            disabled: SegmentStyle {
+                prefix_separator: style!(background, palette.fg),
+                char_left_separator: style!(background, palette.fg).dimmed(),
+                char_shortcut: style!(background, palette.fg).dimmed(),
+                char_right_separator: style!(background, palette.fg).dimmed(),
+                styled_text: style!(background, palette.fg).dimmed(),
+                suffix_separator: style!(palette.fg, background),
+            },
             superkey_prefix: style!(background, palette.fg).bold(),
             superkey_suffix_separator: style!(palette.fg, background),
         },

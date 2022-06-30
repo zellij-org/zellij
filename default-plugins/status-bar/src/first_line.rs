@@ -65,223 +65,74 @@ impl KeyShortcut {
     }
 }
 
-fn unselected_mode_shortcut(
-    letter: &str,
-    text: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let prefix_separator = palette.unselected_prefix_separator.paint(separator);
-    let char_left_separator = palette.unselected_char_left_separator.paint(" <");
-    let char_shortcut = palette.unselected_char_shortcut.paint(letter.to_string());
-    let char_right_separator = palette.unselected_char_right_separator.paint(">");
-    let styled_text = palette.unselected_styled_text.paint(format!("{} ", text));
-    let suffix_separator = palette.unselected_suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_left_separator,
-            char_shortcut,
-            char_right_separator,
-            styled_text,
-            suffix_separator,
-        ])
-        .to_string(),
-        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
-    }
-}
-
-fn unselected_alternate_mode_shortcut(
-    letter: &str,
-    text: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let prefix_separator = palette
-        .unselected_alternate_prefix_separator
-        .paint(separator);
-    let char_left_separator = palette.unselected_alternate_char_left_separator.paint(" <");
-    let char_shortcut = palette
-        .unselected_alternate_char_shortcut
-        .paint(letter.to_string());
-    let char_right_separator = palette.unselected_alternate_char_right_separator.paint(">");
-    let styled_text = palette
-        .unselected_alternate_styled_text
-        .paint(format!("{} ", text));
-    let suffix_separator = palette
-        .unselected_alternate_suffix_separator
-        .paint(separator);
-    LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_left_separator,
-            char_shortcut,
-            char_right_separator,
-            styled_text,
-            suffix_separator,
-        ])
-        .to_string(),
-        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
-    }
-}
-
-fn selected_mode_shortcut(
-    letter: &str,
-    text: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let prefix_separator = palette.selected_prefix_separator.paint(separator);
-    let char_left_separator = palette.selected_char_left_separator.paint(" <".to_string());
-    let char_shortcut = palette.selected_char_shortcut.paint(letter.to_string());
-    let char_right_separator = palette.selected_char_right_separator.paint(">".to_string());
-    let styled_text = palette.selected_styled_text.paint(format!("{} ", text));
-    let suffix_separator = palette.selected_suffix_separator.paint(separator);
-    LinePart {
-        part: ANSIStrings(&[
-            prefix_separator,
-            char_left_separator,
-            char_shortcut,
-            char_right_separator,
-            styled_text,
-            suffix_separator,
-        ])
-        .to_string(),
-        len: text.chars().count() + 6 + letter.len(), // 2 for the arrows, 3 for the char separators, 1 for the text padding
-    }
-}
-
-fn disabled_mode_shortcut(text: &str, palette: ColoredElements, separator: &str) -> LinePart {
-    let prefix_separator = palette.disabled_prefix_separator.paint(separator);
-    let styled_text = palette.disabled_styled_text.paint(format!("{} ", text));
-    let suffix_separator = palette.disabled_suffix_separator.paint(separator);
-    LinePart {
-        part: format!("{}{}{}", prefix_separator, styled_text, suffix_separator),
-        len: text.chars().count() + 2 + 1, // 2 for the arrows, 1 for the padding in the end
-    }
-}
-
-fn selected_mode_shortcut_single_letter(
-    letter: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let char_shortcut_text = format!(" {} ", letter);
-    let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
-    let prefix_separator = palette
-        .selected_single_letter_prefix_separator
-        .paint(separator);
-    let char_shortcut = palette
-        .selected_single_letter_char_shortcut
-        .paint(char_shortcut_text);
-    let suffix_separator = palette
-        .selected_single_letter_suffix_separator
-        .paint(separator);
-    LinePart {
-        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
-        len,
-    }
-}
-
-fn unselected_mode_shortcut_single_letter(
-    letter: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let char_shortcut_text = format!(" {} ", letter);
-    let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
-    let prefix_separator = palette
-        .unselected_single_letter_prefix_separator
-        .paint(separator);
-    let char_shortcut = palette
-        .unselected_single_letter_char_shortcut
-        .paint(char_shortcut_text);
-    let suffix_separator = palette
-        .unselected_single_letter_suffix_separator
-        .paint(separator);
-    LinePart {
-        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
-        len,
-    }
-}
-
-fn unselected_alternate_mode_shortcut_single_letter(
-    letter: &str,
-    palette: ColoredElements,
-    separator: &str,
-) -> LinePart {
-    let char_shortcut_text = format!(" {} ", letter);
-    let len = char_shortcut_text.chars().count() + 4; // 2 for the arrows, 2 for the padding
-    let prefix_separator = palette
-        .unselected_alternate_single_letter_prefix_separator
-        .paint(separator);
-    let char_shortcut = palette
-        .unselected_alternate_single_letter_char_shortcut
-        .paint(char_shortcut_text);
-    let suffix_separator = palette
-        .unselected_alternate_single_letter_suffix_separator
-        .paint(separator);
-    LinePart {
-        part: ANSIStrings(&[prefix_separator, char_shortcut, suffix_separator]).to_string(),
-        len,
-    }
-}
-
-fn full_ctrl_key(
+fn long_tile(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
     shared_super: bool,
 ) -> LinePart {
-    let full_text = key.full_text();
-    let letter_shortcut = key.letter_shortcut(!shared_super);
-    match key.mode {
-        KeyMode::Unselected => unselected_mode_shortcut(
-            &letter_shortcut,
-            &format!(" {}", full_text),
-            palette,
-            separator,
-        ),
-        KeyMode::UnselectedAlternate => unselected_alternate_mode_shortcut(
-            &letter_shortcut,
-            &format!(" {}", full_text),
-            palette,
-            separator,
-        ),
-        KeyMode::Selected => selected_mode_shortcut(
-            &letter_shortcut,
-            &format!(" {}", full_text),
-            palette,
-            separator,
-        ),
-        KeyMode::Disabled => disabled_mode_shortcut(
-            &format!(" <{}> {}", letter_shortcut, full_text),
-            palette,
-            separator,
-        ),
+    let key_hint = key.full_text();
+    let key_binding= key.letter_shortcut(!shared_super);
+    let colors = match key.mode {
+        KeyMode::Unselected => palette.unselected,
+        KeyMode::UnselectedAlternate => palette.unselected_alternate,
+        KeyMode::Selected => palette.selected,
+        KeyMode::Disabled => palette.disabled,
+    };
+    let prefix_separator = colors.prefix_separator.paint(separator);
+    let char_left_separator = colors.char_left_separator.paint(" <".to_string());
+    let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
+    let char_right_separator = colors.char_right_separator.paint("> ".to_string());
+    let styled_text = colors.styled_text.paint(format!("{} ", key_hint));
+    let suffix_separator = colors.suffix_separator.paint(separator);
+    LinePart {
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_left_separator,
+            char_shortcut,
+            char_right_separator,
+            styled_text,
+            suffix_separator,
+        ])
+        .to_string(),
+        len: separator.chars().count()      // Separator
+            + 2                             // " <"
+            + key_binding.chars().count()   // Key binding
+            + 2                             // "> "
+            + key_hint.chars().count()      // Key hint (mode)
+            + 1                             // " "
+            + separator.chars().count(),    // Separator
     }
 }
 
-fn single_letter_ctrl_key(
+fn short_tile(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
     shared_super: bool,
 ) -> LinePart {
-    let letter_shortcut = key.letter_shortcut(!shared_super);
-    match key.mode {
-        KeyMode::Unselected => {
-            unselected_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
-        },
-        KeyMode::UnselectedAlternate => {
-            unselected_alternate_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
-        },
-        KeyMode::Selected => {
-            selected_mode_shortcut_single_letter(&letter_shortcut, palette, separator)
-        },
-        KeyMode::Disabled => {
-            disabled_mode_shortcut(&format!(" {}", letter_shortcut), palette, separator)
-        },
+    let key_binding = key.letter_shortcut(!shared_super);
+    let colors = match key.mode {
+        KeyMode::Unselected => palette.unselected,
+        KeyMode::UnselectedAlternate => palette.unselected_alternate,
+        KeyMode::Selected => palette.selected,
+        KeyMode::Disabled => palette.disabled,
+    };
+    let prefix_separator = colors.prefix_separator.paint(separator);
+    let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding.to_string()));
+    let suffix_separator = colors.suffix_separator.paint(separator);
+    LinePart {
+        part: ANSIStrings(&[
+            prefix_separator,
+            char_shortcut,
+            suffix_separator,
+        ])
+        .to_string(),
+        len: separator.chars().count()      // Separator
+            + 1                             // " "
+            + key_binding.chars().count()   // Key binding
+            + 1                             // " "
+            + separator.chars().count(),    // Separator
     }
 }
 
