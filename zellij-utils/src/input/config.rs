@@ -131,7 +131,7 @@ impl Config {
                     return Ok(Config::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
 
@@ -149,7 +149,7 @@ impl Config {
                 file.read_to_string(&mut yaml_config)
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
                 Ok(Config::from_yaml(&yaml_config)?)
-            }
+            },
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }
     }

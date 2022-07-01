@@ -11,7 +11,7 @@ Part of the ANSI/VT specification that includes instructions for the terminal em
 Part of the ANSI/VT specification that includes instructions for the underlying operating system (eg. change window title).
 
 ## pty
-A pty (pseudoterminal) is a character device that emulates a traditional terminal. It is a pair of processes (traditionally given culturally incensitive names, here they will be refered to as primary/secondary).
+A pty (pseudoterminal) is a character device that emulates a traditional terminal. It is a pair of processes (traditionally given culturally incensitive names, here they will be referred to as primary/secondary).
 
 The primary part is the part connected to the terminal emulator. The emulator listens to this part of the channel, reads instructions from it that it uses in order to draw characters on the screen.
 The secondary part is used by the program running inside the terminal (eg. the shell) in order to send those instructions.

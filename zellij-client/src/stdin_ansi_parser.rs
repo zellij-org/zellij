@@ -43,13 +43,13 @@ impl StdinAnsiParser {
                     self.decrement_expected_ansi_instructions(1);
                     self.current_buffer.clear();
                     Some(pixel_instruction)
-                }
+                },
                 Err(_) => {
                     self.expected_ansi_instructions = 0;
                     Some(AnsiStdinInstructionOrKeys::Keys(
                         self.current_buffer.drain(..).collect(),
                     ))
-                }
+                },
             }
         } else if let Key::Alt(CharOrArrow::Char('\\')) | Key::Ctrl('g') = key {
             match AnsiStdinInstructionOrKeys::color_sequence_from_keys(&self.current_buffer) {
@@ -57,13 +57,13 @@ impl StdinAnsiParser {
                     self.decrement_expected_ansi_instructions(1);
                     self.current_buffer.clear();
                     Some(color_instruction)
-                }
+                },
                 Err(_) => {
                     self.expected_ansi_instructions = 0;
                     Some(AnsiStdinInstructionOrKeys::Keys(
                         self.current_buffer.drain(..).collect(),
                     ))
-                }
+                },
             }
         } else if self.key_is_valid(key) {
             self.current_buffer.push((key, raw_bytes));
@@ -84,7 +84,7 @@ impl StdinAnsiParser {
                 // if they spam ESC they need to be able to get back to normal mode and not "us
                 // waiting for ansi instructions" mode
                 !self.current_buffer.iter().any(|(key, _)| *key == Key::Esc)
-            }
+            },
             Key::Char(';')
             | Key::Char('[')
             | Key::Char(']')
@@ -97,12 +97,8 @@ impl StdinAnsiParser {
             Key::Alt(CharOrArrow::Char(']')) => true,
             Key::Alt(CharOrArrow::Char('\\')) => true,
             Key::Char(c) => {
-                if let '0'..='9' | 'a'..='f' = c {
-                    true
-                } else {
-                    false
-                }
-            }
+                matches!(c, '0'..='9' | 'a'..='f')
+            },
             _ => false,
         }
     }
@@ -117,7 +113,7 @@ pub enum AnsiStdinInstructionOrKeys {
 }
 
 impl AnsiStdinInstructionOrKeys {
-    pub fn pixel_dimensions_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+    pub fn pixel_dimensions_from_keys(keys: &[(Key, Vec<u8>)]) -> Result<Self, &'static str> {
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
         }
@@ -153,7 +149,7 @@ impl AnsiStdinInstructionOrKeys {
                             }),
                         },
                     ))
-                }
+                },
                 Ok(6) => {
                     // character cell size
                     Ok(AnsiStdinInstructionOrKeys::PixelDimensions(
@@ -165,14 +161,14 @@ impl AnsiStdinInstructionOrKeys {
                             text_area_size: None,
                         },
                     ))
-                }
+                },
                 _ => Err("invalid sequence"),
             }
         } else {
             Err("invalid sequence")
         }
     }
-    pub fn color_sequence_from_keys(keys: &Vec<(Key, Vec<u8>)>) -> Result<Self, &'static str> {
+    pub fn color_sequence_from_keys(keys: &[(Key, Vec<u8>)]) -> Result<Self, &'static str> {
         lazy_static! {
             static ref BACKGROUND_RE: Regex = Regex::new(r"11;(.*)$").unwrap();
         }
@@ -180,9 +176,8 @@ impl AnsiStdinInstructionOrKeys {
             static ref FOREGROUND_RE: Regex = Regex::new(r"10;(.*)$").unwrap();
         }
         let key_string = keys.iter().fold(String::new(), |mut acc, (key, _)| {
-            match key {
-                Key::Char(c) => acc.push(*c),
-                _ => {}
+            if let Key::Char(c) = key {
+                acc.push(*c)
             };
             acc
         });

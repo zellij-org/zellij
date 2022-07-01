@@ -201,7 +201,7 @@ impl LayoutFromYamlIntermediate {
                     return Ok(LayoutFromYamlIntermediate::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
 
@@ -211,7 +211,7 @@ impl LayoutFromYamlIntermediate {
                     tab.check()?;
                 }
                 Ok(layout)
-            }
+            },
             None => Ok(LayoutFromYamlIntermediate::default()),
         }
     }
@@ -225,7 +225,7 @@ impl LayoutFromYamlIntermediate {
                     return Ok(LayoutFromYamlIntermediate::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
         Ok(layout)
@@ -276,7 +276,7 @@ impl LayoutFromYamlIntermediate {
                 } else {
                     LayoutFromYamlIntermediate::from_default_assets(layout)
                 }
-            }
+            },
             None => LayoutFromYamlIntermediate::from_default_assets(layout),
         }
     }
@@ -341,7 +341,7 @@ impl LayoutFromYaml {
                     return Ok(LayoutFromYaml::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
 
@@ -351,7 +351,7 @@ impl LayoutFromYaml {
                     tab.check()?;
                 }
                 Ok(layout)
-            }
+            },
             None => Ok(LayoutFromYaml::default()),
         }
     }
@@ -362,7 +362,7 @@ impl LayoutFromYaml {
         match layout_dir {
             Some(dir) => {
                 Self::new(&dir.join(layout)).or_else(|_| Self::from_default_assets(layout))
-            }
+            },
             None => Self::from_default_assets(layout),
         }
     }
@@ -453,7 +453,7 @@ pub struct LayoutTemplate {
 }
 
 impl LayoutTemplate {
-    // Insert an optional `[TabLayout]` at the correct postion
+    // Insert an optional `[TabLayout]` at the correct position
     pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
         if self.body {
             return tab_layout.unwrap_or_default().into();
@@ -518,8 +518,8 @@ impl Layout {
             match part.run {
                 Some(Run::Command(_)) | None => {
                     total_panes += part.total_terminal_panes();
-                }
-                Some(Run::Plugin(_)) => {}
+                },
+                Some(Run::Plugin(_)) => {},
             }
         }
         total_panes
@@ -624,7 +624,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     panic!("Implicit sizing within fixed-size panes is not supported");
                 };
                 Dimension::percent(free_percent / flex_parts as f64)
-            }
+            },
         };
         inherited_dimension.set_inner(
             layout
@@ -682,7 +682,7 @@ impl TryFrom<Url> for RunPluginLocation {
                         Err(_) => Err(PluginsConfigError::InvalidPluginLocation(path.to_owned())),
                     })
                     .map(Self::File)
-            }
+            },
             _ => Err(PluginsConfigError::InvalidUrl(url)),
         }
     }

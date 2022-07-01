@@ -50,31 +50,29 @@ impl LinkHandler {
     }
 
     pub fn output_osc8(&self, link_anchor: Option<LinkAnchor>) -> Option<String> {
-        link_anchor
-            .map(|link| match link {
-                LinkAnchor::Start(index) => {
-                    let link = self.links.get(&index);
+        link_anchor.and_then(|link| match link {
+            LinkAnchor::Start(index) => {
+                let link = self.links.get(&index);
 
-                    let output = link.map(|link| {
-                        let id = link
-                            .id
-                            .as_ref()
-                            .map_or("".to_string(), |id| format!("id={}", id));
-                        format!("\u{1b}]8;{};{}{}", id, link.uri, TERMINATOR)
-                    });
+                let output = link.map(|link| {
+                    let id = link
+                        .id
+                        .as_ref()
+                        .map_or("".to_string(), |id| format!("id={}", id));
+                    format!("\u{1b}]8;{};{}{}", id, link.uri, TERMINATOR)
+                });
 
-                    if output.is_none() {
-                        log::warn!(
-                            "attempted to output osc8 link start, but id: {} was not found!",
-                            index
-                        );
-                    }
-
-                    output
+                if output.is_none() {
+                    log::warn!(
+                        "attempted to output osc8 link start, but id: {} was not found!",
+                        index
+                    );
                 }
-                LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
-            })
-            .flatten()
+
+                output
+            },
+            LinkAnchor::End => Some(format!("\u{1b}]8;;{}", TERMINATOR)),
+        })
     }
 }
 
@@ -102,7 +100,7 @@ mod tests {
                 let link = link_handler.links.get(&link_id).expect("link was not some");
                 assert_eq!(link.id, Some("test".to_string()));
                 assert_eq!(link.uri, uri);
-            }
+            },
             _ => panic!("pending link handler was not start"),
         }
 

@@ -15,6 +15,7 @@ rust-version = "1.59"
 [dependencies]
 anyhow = "1.0"
 names = { version = "0.13.0", default-features = false }
+miette = { version = "3.3.0", features = ["fancy"] }
 zellij-client = { path = "zellij-client/", version = "0.31.0" }
 zellij-server = { path = "zellij-server/", version = "0.31.0" }
 zellij-utils = { path = "zellij-utils/", version = "0.31.0" }
@@ -67,3 +68,4 @@ pkg-fmt = "tgz"
 
 [features]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
+unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]

@@ -159,29 +159,29 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
 #[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_config: bool,
 
     /// Disables loading of configuration file at default location,
     /// loads the defaults that zellij ships with
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub clean: bool,
 
     /// Checks the configuration of zellij and displays
     /// currently used directories
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub check: bool,
 
     /// Dump the specified layout file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
     /// Generates completion for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_completion: Option<String>,
 
     /// Generates auto-start script for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
 }
 
@@ -218,7 +218,7 @@ impl Setup {
                 Ok(config) => config,
                 Err(e) => {
                     return Err(e);
-                }
+                },
             }
         } else {
             Config::default()
@@ -241,7 +241,7 @@ impl Setup {
             Some(Ok(layout)) => Some(layout),
             Some(Err(e)) => {
                 return Err(e);
-            }
+            },
         };
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
@@ -431,20 +431,20 @@ impl Setup {
             _ => {
                 eprintln!("Unsupported shell: {}", shell);
                 std::process::exit(1);
-            }
+            },
         };
         let mut out = std::io::stdout();
         clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
-            Shell::Bash => {}
-            Shell::Elvish => {}
+            Shell::Bash => {},
+            Shell::Elvish => {},
             Shell::Fish => {
                 let _ = out.write_all(FISH_EXTRA_COMPLETION);
-            }
-            Shell::PowerShell => {}
-            Shell::Zsh => {}
-            _ => {}
+            },
+            Shell::PowerShell => {},
+            Shell::Zsh => {},
+            _ => {},
         };
     }
 
@@ -454,21 +454,21 @@ impl Setup {
             _ => {
                 eprintln!("Unsupported shell: {}", shell);
                 std::process::exit(1);
-            }
+            },
         };
 
         let mut out = std::io::stdout();
         match shell {
             Shell::Bash => {
                 let _ = out.write_all(BASH_AUTO_START_SCRIPT);
-            }
+            },
             Shell::Fish => {
                 let _ = out.write_all(FISH_AUTO_START_SCRIPT);
-            }
+            },
             Shell::Zsh => {
                 let _ = out.write_all(ZSH_AUTO_START_SCRIPT);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

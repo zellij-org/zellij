@@ -47,7 +47,7 @@ impl LocalCache {
                     });
                 }
                 Err(LocalCacheError::Serde(err))
-            }
+            },
         }
     }
 
@@ -64,7 +64,7 @@ impl LocalCache {
 
                 let metadata = LocalCache::from_json(&json_cache)?;
                 Ok(LocalCache { path, metadata })
-            }
+            },
             Err(e) => Err(LocalCacheError::IoPath(e, path)),
         }
     }
@@ -77,7 +77,7 @@ impl LocalCache {
                 file.write_all(json_cache.as_bytes())
                     .map_err(LocalCacheError::Io)?;
                 Ok(())
-            }
+            },
             Err(e) => Err(LocalCacheError::Serde(e)),
         }
     }

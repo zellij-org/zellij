@@ -201,7 +201,7 @@ fn read_from_channel(
                                 terminal_output.cursor_coordinates().unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
-                        }
+                        },
                         Ok(count) => {
                             for byte in buf.iter().take(count) {
                                 vte_parser.advance(&mut terminal_output.grid, *byte);
@@ -212,7 +212,7 @@ fn read_from_channel(
                                 terminal_output.grid.cursor_coordinates().unwrap_or((0, 0));
                             *last_snapshot = current_snapshot;
                             should_sleep = true;
-                        }
+                        },
                         Err(e) => {
                             if e.kind() == std::io::ErrorKind::WouldBlock {
                                 let current_snapshot = take_snapshot(&mut terminal_output);
@@ -226,7 +226,7 @@ fn read_from_channel(
                             } else {
                                 break;
                             }
-                        }
+                        },
                     }
                 }
             }

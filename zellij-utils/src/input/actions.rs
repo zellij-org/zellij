@@ -104,6 +104,7 @@ pub enum Action {
     /// Close the focus pane.
     CloseFocus,
     PaneNameInput(Vec<u8>),
+    UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
     NewTab(Option<TabLayout>),
     /// Do nothing.
@@ -117,7 +118,8 @@ pub enum Action {
     GoToTab(u32),
     ToggleTab,
     TabNameInput(Vec<u8>),
-    /// Run speficied command in new pane.
+    UndoRenameTab,
+    /// Run specified command in new pane.
     Run(RunCommandAction),
     /// Detach session and exit
     Detach,
@@ -146,5 +148,15 @@ impl From<OnForceClose> for Action {
             OnForceClose::Quit => Action::Quit,
             OnForceClose::Detach => Action::Detach,
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ActionsFromYaml(Vec<Action>);
+
+impl ActionsFromYaml {
+    /// Get a reference to the actions from yaml's actions.
+    pub fn actions(&self) -> &[Action] {
+        self.0.as_ref()
     }
 }

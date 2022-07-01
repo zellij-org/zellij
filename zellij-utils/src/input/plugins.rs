@@ -124,7 +124,7 @@ pub struct PluginConfig {
 impl PluginConfig {
     /// Resolve wasm plugin bytes for the plugin path and given plugin directory. Attempts to first
     /// resolve the plugin path as an absolute path, then adds a ".wasm" extension to the path and
-    /// resolves that, finally we use the plugin directoy joined with the path with an appended
+    /// resolves that, finally we use the plugin directory joined with the path with an appended
     /// ".wasm" extension. So if our path is "tab-bar" and the given plugin dir is
     /// "/home/bob/.zellij/plugins" the lookup chain will be this:
     ///
@@ -146,8 +146,8 @@ impl PluginConfig {
         match self.run {
             PluginType::Pane(..) => {
                 self.run = PluginType::Pane(Some(tab_index));
-            }
-            PluginType::Headless => {}
+            },
+            PluginType::Headless => {},
         }
     }
 }
@@ -156,7 +156,7 @@ impl PluginConfig {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PluginType {
-    // TODO: A plugin with output thats cloned across every pane in a tab, or across the entire
+    // TODO: A plugin with output that's cloned across every pane in a tab, or across the entire
     // application might be useful
     // Tab
     // Static

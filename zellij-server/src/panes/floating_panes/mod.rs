@@ -486,7 +486,7 @@ impl FloatingPanes {
 
                     self.set_force_render();
                     return true;
-                }
+                },
                 None => Some(active_pane_id),
             }
         } else {
@@ -500,12 +500,12 @@ impl FloatingPanes {
                 }
                 self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
-            }
+            },
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
                 self.z_indices.clear();
-            }
+            },
         }
         false
     }
@@ -557,7 +557,7 @@ impl FloatingPanes {
                     self.set_pane_active_at(p);
                     self.set_force_render();
                     return true;
-                }
+                },
                 None => Some(active_pane_id),
             }
         } else {
@@ -571,12 +571,12 @@ impl FloatingPanes {
                 }
                 self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
-            }
+            },
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
                 self.z_indices.clear();
-            }
+            },
         }
         false
     }
@@ -627,7 +627,7 @@ impl FloatingPanes {
                     self.set_force_render();
                     self.set_pane_active_at(p);
                     return true;
-                }
+                },
                 None => Some(active_pane_id),
             }
         } else {
@@ -641,12 +641,12 @@ impl FloatingPanes {
                 }
                 self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
-            }
+            },
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
                 self.z_indices.clear();
-            }
+            },
         }
         false
     }
@@ -697,7 +697,7 @@ impl FloatingPanes {
 
                     self.set_force_render();
                     return true;
-                }
+                },
                 None => Some(active_pane_id),
             }
         } else {
@@ -711,12 +711,12 @@ impl FloatingPanes {
                 }
                 self.set_pane_active_at(updated_active_pane);
                 self.set_force_render();
-            }
+            },
             None => {
                 // TODO: can this happen?
                 self.active_panes.clear();
                 self.z_indices.clear();
-            }
+            },
         }
         false
     }
@@ -789,10 +789,10 @@ impl FloatingPanes {
                     Some(next_active_pane) => {
                         self.active_panes.insert(client_id, next_active_pane);
                         self.focus_pane(next_active_pane, client_id);
-                    }
+                    },
                     None => {
                         self.defocus_pane(pane_id, client_id);
-                    }
+                    },
                 }
             }
         }

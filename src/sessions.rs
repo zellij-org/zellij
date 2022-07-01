@@ -21,7 +21,7 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
                 }
             });
             Ok(sessions)
-        }
+        },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
         Err(_) => Ok(Vec::with_capacity(0)),
     }
@@ -43,7 +43,7 @@ pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 
             let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
             Ok(sessions)
-        }
+        },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
         Err(_) => Ok(Vec::with_capacity(0)),
     }
@@ -57,16 +57,14 @@ fn assert_socket(name: &str) -> bool {
             sender.send(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv() {
-                Some((instruction, _)) => {
-                    matches!(instruction, ServerToClientMsg::Connected)
-                }
-                None => false,
+                Some((ServerToClientMsg::Connected, _)) => true,
+                None | Some((_, _)) => false,
             }
-        }
+        },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
             false
-        }
+        },
         Err(_) => false,
     }
 }
@@ -109,7 +107,7 @@ pub(crate) fn get_active_session() -> ActiveSession {
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -118,11 +116,11 @@ pub(crate) fn kill_session(name: &str) {
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     };
 }
 
@@ -131,15 +129,15 @@ pub(crate) fn list_sessions() {
         Ok(sessions) if !sessions.is_empty() => {
             print_sessions(sessions);
             0
-        }
+        },
         Ok(_) => {
             eprintln!("No active zellij sessions found.");
             1
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             1
-        }
+        },
     };
     process::exit(exit_code);
 }
@@ -192,10 +190,10 @@ pub(crate) fn assert_session(name: &str) {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
             }
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
-        }
+        },
     };
     process::exit(1);
 }

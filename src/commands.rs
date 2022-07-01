@@ -6,6 +6,7 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
+use miette::Result;
 use std::path::PathBuf;
 use std::process;
 use zellij_client::start_client as start_client_impl;
@@ -20,6 +21,11 @@ use zellij_utils::{
     setup::{get_default_data_dir, Setup},
 };
 
+#[cfg(feature = "unstable")]
+use miette::IntoDiagnostic;
+#[cfg(feature = "unstable")]
+use zellij_utils::input::actions::ActionsFromYaml;
+
 pub(crate) use crate::sessions::list_sessions;
 
 pub(crate) fn kill_all_sessions(yes: bool) {
@@ -27,7 +33,7 @@ pub(crate) fn kill_all_sessions(yes: bool) {
         Ok(sessions) if sessions.is_empty() => {
             eprintln!("No active zellij sessions found.");
             process::exit(1);
-        }
+        },
         Ok(sessions) => {
             if !yes {
                 println!("WARNING: this action will kill all sessions.");
@@ -44,11 +50,11 @@ pub(crate) fn kill_all_sessions(yes: bool) {
                 kill_session_impl(session);
             }
             process::exit(0);
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -58,11 +64,11 @@ pub(crate) fn kill_session(target_session: &Option<String>) {
             assert_session(target_session);
             kill_session_impl(target_session);
             process::exit(0);
-        }
+        },
         None => {
             println!("Please specify the session name to kill.");
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -74,7 +80,7 @@ fn get_os_input<OsInputOutput>(
         Err(e) => {
             eprintln!("failed to open terminal:\n{}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -108,8 +114,73 @@ fn find_indexed_session(
             );
             print_sessions_with_index(sessions);
             process::exit(1);
-        }
+        },
     }
+}
+
+/// Send a vec of `[Action]` to a currently running session.
+#[cfg(feature = "unstable")]
+pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
+    match get_active_session() {
+        ActiveSession::None => {
+            eprintln!("There is no active session!");
+            std::process::exit(1);
+        },
+        ActiveSession::One(session_name) => {
+            attach_with_fake_client(opts, &session_name);
+        },
+        ActiveSession::Many => {
+            if let Some(session_name) = opts.session.clone() {
+                attach_with_fake_client(opts, &session_name);
+            } else if let Ok(session_name) = envs::get_session_name() {
+                attach_with_fake_client(opts, &session_name);
+            } else {
+                println!("Please specify the session name to send actions to. The following sessions are active:");
+                print_sessions(get_sessions().unwrap());
+                std::process::exit(1);
+            }
+        },
+    };
+}
+
+#[cfg(feature = "unstable")]
+fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
+    if let Some(zellij_utils::cli::Command::Sessions(zellij_utils::cli::Sessions::Action {
+        action: Some(action),
+    })) = opts.command.clone()
+    {
+        let action = format!("[{}]", action);
+        match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
+            Ok(parsed) => {
+                let (config, _, config_options) = match Setup::from_options(&opts) {
+                    Ok(results) => results,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    },
+                };
+                let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
+
+                let actions = parsed.actions().to_vec();
+                log::debug!("Starting fake Zellij client!");
+                zellij_client::fake_client::start_fake_client(
+                    Box::new(os_input),
+                    opts,
+                    *Box::new(config),
+                    config_options,
+                    ClientInfo::New(name.to_string()),
+                    None,
+                    actions,
+                );
+                log::debug!("Quitting fake client now.");
+                std::process::exit(0);
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                std::process::exit(1);
+            },
+        };
+    };
 }
 
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
@@ -122,12 +193,12 @@ fn attach_with_session_index(config_options: Options, index: usize, create: bool
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
             }
-        }
+        },
         Ok(sessions) => find_indexed_session(sessions, config_options, index, create),
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -143,11 +214,11 @@ fn attach_with_session_name(
             } else {
                 ClientInfo::Attach(session_name.unwrap(), config_options)
             }
-        }
+        },
         Some(prefix) => match match_session_name(prefix).unwrap() {
             SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
                 ClientInfo::Attach(s, config_options)
-            }
+            },
             SessionNameMatch::AmbiguousPrefix(sessions) => {
                 println!(
                     "Ambiguous selection: multiple sessions names start with '{}':",
@@ -155,24 +226,24 @@ fn attach_with_session_name(
                 );
                 print_sessions(sessions);
                 process::exit(1);
-            }
+            },
             SessionNameMatch::None => {
                 eprintln!("No session with the name '{}' found!", prefix);
                 process::exit(1);
-            }
+            },
         },
         None => match get_active_session() {
             ActiveSession::None if create => create_new_client(),
             ActiveSession::None => {
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
-            }
+            },
             ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
                 process::exit(1);
-            }
+            },
         },
     }
 }
@@ -183,7 +254,7 @@ pub(crate) fn start_client(opts: CliArgs) {
         Err(e) => {
             eprintln!("{}", e);
             process::exit(1);
-        }
+        },
     };
     let os_input = get_os_input(get_client_os_input);
 

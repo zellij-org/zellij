@@ -7,7 +7,7 @@ expression: "format!(\"{:?}\", terminal_pane.grid)"
 02 (W): ia 🦀
 03 (W):  v1.5
 04 (W): 3.0-b
-05 (W): eta
+05 (W): eta.3
 06 (C): ❯ a##
 07 (W): ##aaa
 08 (W): aaaaa

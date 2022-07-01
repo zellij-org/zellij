@@ -8,6 +8,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: Log errors causing "empty message received from client" (https://github.com/zellij-org/zellij/pull/1459)
 * chore(dependencies): update `crossbeam` `0.8.0` -> `0.8.1` (https://github.com/zellij-org/zellij/pull/1463)
 * add(option): `default-layout` setting for changing the default layout upon start, example: `default_layout: compact` (https://github.com/zellij-org/zellij/pull/1467)
+* fix: many typos (https://github.com/zellij-org/zellij/pull/1481)
+* add: checksum for release binary (https://github.com/zellij-org/zellij/pull/1482)
+* fix: update cli tooltips (https://github.com/zellij-org/zellij/pull/1488)
+* refactor: deduplicate code in `screen.rs` (https://github.com/zellij-org/zellij/pull/1453)
+* chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
+* add: capability to dispatch actions from the cli (https://github.com/zellij-org/zellij/pull/1265)
+
+  This feature is gated behind the `unstable` feature flag.
+  Because the serialization format will be changed at some point.
+  We would still already be glad about early feedback on this feature.
+
+  Can be invoked through `zellij action [ACTIONS]`.
+
+  Automatically sends the action to the current session, or if there is just one
+  to the single session, if there are multiple sessions, then the session name
+  must be specified.
+
+  Example:
+
+  ```
+  zellij
+  zellij action NewTab:
+  ```
+
+  Send actions to a specific session:
+  ```
+  zellij -s fluffy-cat
+  zellij -s fluffy-cat action 'NewPane: , WriteChars: "echo Purrr\n"'
+  ```
+
+  Open `htop` in a new tab:
+  ```
+  zj action "NewTab: {run: {command: {cmd: htop}}}"
+  ```
+
+* fix: send `WriteChars:` once per action (https://github.com/zellij-org/zellij/pull/1516)
+* feat: allow swapping tabs, in a fullscreen pane (https://github.com/zellij-org/zellij/pull/1515)
+* feat: add action of undo renmae (https://github.com/zellij-org/zellij/pull/1513)
+* fix(docs): fix macport installation instructions (https://github.com/zellij-org/zellij/pull/1529)
+* feat: allow hex colors for themes (https://github.com/zellij-org/zellij/pull/1536)
+* fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)
+* fix: properly handle in-place editor in full-screen (https://github.com/zellij-org/zellij/pull/1544)
+* Terminal compatibility: properly trim whitespace in lines with wide-characters when resizing panes (https://github.com/zellij-org/zellij/pull/1545)
+* fix: reset scroll properly when typing in certain edge cases (https://github.com/zellij-org/zellij/pull/1547)
+* fix: logging may fill up /tmp, now logs are capped at 100 kB (https://github.com/zellij-org/zellij/pull/1548)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
@@ -33,6 +78,7 @@ that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 * fix: mouse selection sometimes getting stuck (https://github.com/zellij-org/zellij/pull/1418)
 * feat: tweak simplified UI (https://github.com/zellij-org/zellij/pull/1458)
 * feat: add status more tips (https://github.com/zellij-org/zellij/pull/1462)
+* add: new features to manpage (https://github.com/zellij-org/zellij/pull/1549)
 
 ## [0.29.1] - 2022-05-02
 * fix: forward mouse events to plugin panes (https://github.com/zellij-org/zellij/pull/1369)
@@ -174,7 +220,7 @@ that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 * Fix: handle pasted text properly in windows terminal (https://github.com/zellij-org/zellij/pull/917)
 * Fix: update example config options (https://github.com/zellij-org/zellij/pull/920)
 * Fix: correct handling of unbinds (https://github.com/zellij-org/zellij/issues/923)
-* Fix: improve perfomance when resizing window with a large scrollback buffer (https://github.com/zellij-org/zellij/pull/895)
+* Fix: improve performance when resizing window with a large scrollback buffer (https://github.com/zellij-org/zellij/pull/895)
 * Fix: support multiple users in plugins (https://github.com/zellij-org/zellij/pull/930)
 * Fix: update default layouts (https://github.com/zellij-org/zellij/pull/926)
 * Add: infrastructure to show distinct tips in the `status-bar` plugin (https://github.com/zellij-org/zellij/pull/926)
@@ -183,7 +229,7 @@ that loads the `compact-bar`. (https://github.com/zellij-org/zellij/pull/1450)
 ## [0.21.0] - 2021-11-29
 * Add: initial preparations for overlay's (https://github.com/zellij-org/zellij/pull/871)
 * Add: initial `zellij.desktop` file (https://github.com/zellij-org/zellij/pull/870)
-* Add: section for third party repositiories `THIRD_PARTY_INSTALL.md` (https://github.com/zellij-org/zellij/pull/857)
+* Add: section for third party repositories `THIRD_PARTY_INSTALL.md` (https://github.com/zellij-org/zellij/pull/857)
 * Add: suggestion for similar session name, on attach (https://github.com/zellij-org/zellij/pull/843)
 * Fix: handling and overwriting options through the cli (https://github.com/zellij-org/zellij/pull/859)
 

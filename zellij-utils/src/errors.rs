@@ -265,12 +265,14 @@ pub enum ScreenContext {
     SetFixedWidth,
     ClosePane,
     UpdatePaneName,
+    UndoRenamePane,
     NewTab,
     SwitchTabNext,
     SwitchTabPrev,
     CloseTab,
     GoToTab,
     UpdateTabName,
+    UndoRenameTab,
     TerminalResize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
@@ -333,6 +335,7 @@ pub enum ClientContext {
     ServerError,
     SwitchToMode,
     Connected,
+    ActiveClients,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -348,6 +351,7 @@ pub enum ServerContext {
     DetachSession,
     AttachClient,
     ConnStatus,
+    ActiveClients,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

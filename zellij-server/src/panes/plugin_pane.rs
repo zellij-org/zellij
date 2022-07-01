@@ -30,6 +30,7 @@ pub(crate) struct PluginPane {
     pub active_at: Instant,
     pub pane_title: String,
     pub pane_name: String,
+    prev_pane_name: String,
     frame: bool,
     borderless: bool,
 }
@@ -54,7 +55,8 @@ impl PluginPane {
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
-            pane_name,
+            pane_name: pane_name.clone(),
+            prev_pane_name: pane_name,
         }
     }
 }
@@ -101,7 +103,7 @@ impl Pane for PluginPane {
         self.geom = position_and_size;
         self.should_render = true;
     }
-    fn get_geom_override(&mut self, pane_geom: PaneGeom) {
+    fn set_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
         self.should_render = true;
     }
@@ -268,14 +270,14 @@ impl Pane for PluginPane {
         match name {
             "\0" => {
                 self.pane_name = String::new();
-            }
+            },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
                 self.pane_name.pop();
-            }
+            },
             c => {
                 self.pane_name.push_str(c);
-            }
+            },
         }
     }
     fn pid(&self) -> PaneId {
@@ -386,6 +388,18 @@ impl Pane for PluginPane {
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
     }
+
+    fn store_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.prev_pane_name = self.pane_name.clone()
+        }
+    }
+    fn load_pane_name(&mut self) {
+        if self.pane_name != self.prev_pane_name {
+            self.pane_name = self.prev_pane_name.clone()
+        }
+    }
+
     fn set_borderless(&mut self, borderless: bool) {
         self.borderless = borderless;
     }

@@ -11,48 +11,49 @@ use std::path::PathBuf;
 #[clap(version, name = "zellij")]
 pub struct CliArgs {
     /// Maximum panes on screen, caution: opening more panes will close old ones
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub max_panes: Option<usize>,
 
-    /// Change where zellij looks for layouts and plugins
-    #[clap(long, parse(from_os_str), overrides_with = "data_dir")]
+    /// Change where zellij looks for plugins
+    #[clap(long, value_parser, overrides_with = "data_dir")]
     pub data_dir: Option<PathBuf>,
 
     /// Run server listening at the specified socket path
-    #[clap(long, parse(from_os_str), hide = true, overrides_with = "server")]
+    #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
     /// Specify name of a new session
-    #[clap(long, short, overrides_with = "session")]
+    #[clap(long, short, overrides_with = "session", value_parser)]
     pub session: Option<String>,
 
     /// Name of a predefined layout inside the layout directory or the path to a layout file
-    #[clap(short, long, parse(from_os_str), overrides_with = "layout")]
+    #[clap(short, long, value_parser, overrides_with = "layout")]
     pub layout: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration file
-    #[clap(short, long, overrides_with = "config", env = ZELLIJ_CONFIG_FILE_ENV, parse(from_os_str))]
+    #[clap(short, long, overrides_with = "config", env = ZELLIJ_CONFIG_FILE_ENV, value_parser)]
     pub config: Option<PathBuf>,
 
     /// Change where zellij looks for the configuration directory
-    #[clap(long, overrides_with = "config_dir", env = ZELLIJ_CONFIG_DIR_ENV, parse(from_os_str))]
+    #[clap(long, overrides_with = "config_dir", env = ZELLIJ_CONFIG_DIR_ENV, value_parser)]
     pub config_dir: Option<PathBuf>,
 
     #[clap(subcommand)]
     pub command: Option<Command>,
 
-    #[clap(short, long)]
+    /// Specify emitting additional debug information
+    #[clap(short, long, value_parser)]
     pub debug: bool,
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum Command {
     /// Change the behaviour of zellij
-    #[clap(name = "options")]
+    #[clap(name = "options", value_parser)]
     Options(CliOptions),
 
     /// Setup zellij and check its configuration
-    #[clap(name = "setup")]
+    #[clap(name = "setup", value_parser)]
     Setup(Setup),
 
     /// Explore existing zellij sessions
@@ -77,14 +78,15 @@ pub enum Sessions {
     #[clap(visible_alias = "a")]
     Attach {
         /// Name of the session to attach to.
+        #[clap(value_parser)]
         session_name: Option<String>,
 
         /// Create a session if one does not exist.
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         create: bool,
 
         /// Number of the session index in the active sessions ordered creation date.
-        #[clap(long)]
+        #[clap(long, value_parser)]
         index: Option<usize>,
 
         /// Change the behaviour of zellij
@@ -96,6 +98,7 @@ pub enum Sessions {
     #[clap(visible_alias = "k")]
     KillSession {
         /// Name of target session
+        #[clap(value_parser)]
         target_session: Option<String>,
     },
 
@@ -103,7 +106,10 @@ pub enum Sessions {
     #[clap(visible_alias = "ka")]
     KillAllSessions {
         /// Automatic yes to prompts
-        #[clap(short, long)]
+        #[clap(short, long, value_parser)]
         yes: bool,
     },
+    /// Send actions to a specific session
+    #[cfg(feature = "unstable")]
+    Action { action: Option<String> },
 }

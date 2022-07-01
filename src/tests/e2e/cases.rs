@@ -32,6 +32,7 @@ pub const MOVE_FOCUS_DOWN_IN_PANE_MODE: [u8; 1] = [106]; // j
 pub const MOVE_FOCUS_UP_IN_PANE_MODE: [u8; 1] = [107]; // k
 pub const MOVE_FOCUS_LEFT_IN_PANE_MODE: [u8; 1] = [104]; // h
 pub const MOVE_FOCUS_RIGHT_IN_PANE_MODE: [u8; 1] = [108]; // l
+pub const RENAME_PANE_MODE: [u8; 1] = [99]; // c
 
 pub const SCROLL_MODE: [u8; 1] = [19]; // ctrl-s
 pub const SCROLL_UP_IN_SCROLL_MODE: [u8; 1] = [107]; // k
@@ -51,6 +52,7 @@ pub const NEW_TAB_IN_TAB_MODE: [u8; 1] = [110]; // n
 pub const SWITCH_NEXT_TAB_IN_TAB_MODE: [u8; 1] = [108]; // l
 pub const SWITCH_PREV_TAB_IN_TAB_MODE: [u8; 1] = [104]; // h
 pub const CLOSE_TAB_IN_TAB_MODE: [u8; 1] = [120]; // x
+pub const RENAME_TAB_MODE: [u8; 1] = [114]; // r
 
 pub const SESSION_MODE: [u8; 1] = [15]; // ctrl-o
 pub const DETACH_IN_SESSION_MODE: [u8; 1] = [100]; // d
@@ -1852,4 +1854,103 @@ pub fn edit_scrollback() {
         }
     };
     assert!(last_snapshot.contains(".dump"));
+}
+
+#[test]
+#[ignore]
+pub fn undo_rename_tab() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Undo tab name change",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.snapshot_contains("Tab #1")
+                {
+                    remote_terminal.send_key(&TAB_MODE);
+                    remote_terminal.send_key(&RENAME_TAB_MODE);
+                    remote_terminal.send_key(&[97, 97]);
+                    remote_terminal.send_key(&ESC);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for tab name to apper on screen",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("Tab #1") {
+                    step_is_complete = true
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn undo_rename_pane() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size).add_step(Step {
+            name: "Undo pane name change",
+            instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                {
+                    remote_terminal.send_key(&PANE_MODE);
+                    remote_terminal.send_key(&RENAME_PANE_MODE);
+                    remote_terminal.send_key(&[97, 97]);
+                    remote_terminal.send_key(&ESC);
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for pane name to apper on screen",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("Pane #1") {
+                    step_is_complete = true
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
 }

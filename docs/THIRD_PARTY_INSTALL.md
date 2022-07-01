@@ -42,7 +42,7 @@ brew install zellij
 Or install with [MacPorts](https://ports.macports.org/port/zellij/details/):
 
 ```
-port install zellij
+sudo port install zellij
 ```
 
 ### Void Linux

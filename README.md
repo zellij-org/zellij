@@ -18,6 +18,13 @@
   <img src="https://raw.githubusercontent.com/zellij-org/zellij/main/assets/demo.gif" alt="demo">
 </p>
 
+<h4 align="center">
+  [<a href="https://zellij.dev/documentation/installation">Installation</a>]
+  [<a href="https://zellij.dev/documentation/overview">Overview</a>]
+  [<a href="https://zellij.dev/documentation/configuration">Configuration</a>]
+  [<a href="https://zellij.dev/documentation/layouts-templates">Templates</a>]
+  [<a href="https://zellij.dev/documentation/faq">FAQ</a>]
+</h4>
 
 # What is this?
 
@@ -46,8 +53,16 @@ cargo-binstall zellij
 
 Or you can also use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
-The default plugins make use of characters that are mostly found in [nerdfonts](https://www.nerdfonts.com/).
-To get the best experience either install nerdfonts, or use the simplified ui by starting Zellij with `zellij options --simplified-ui true`, or putting `simplified_ui: true` in the config file.
+#### Try Zellij without installing
+
+bash/zsh:
+```
+bash <(curl -L zellij.dev/launch)
+```
+fish:
+```
+bash (curl -L zellij.dev/launch | psub)
+```
 
 ## How do I get involved?
 
