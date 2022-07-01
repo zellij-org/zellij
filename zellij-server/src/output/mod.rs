@@ -496,6 +496,15 @@ impl OutputBuffer {
             self.changed_lines.push(line_index);
         }
     }
+    pub fn update_lines(&mut self, start: usize, end: usize) {
+        if !self.should_update_all_lines {
+            for idx in start..=end {
+                if !self.changed_lines.contains(&idx) {
+                    self.changed_lines.push(idx);
+                }
+            }
+        }
+    }
     pub fn update_all_lines(&mut self) {
         self.clear();
         self.should_update_all_lines = true;

@@ -133,7 +133,7 @@ pub fn searching_with_wrap() {
     terminal_pane.toggle_search_wrap();
     terminal_pane.search_backward();
     assert_snapshot!(
-        "grid_copy_search_cursor_at_bottom_again",
+        "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
 }
@@ -275,6 +275,31 @@ pub fn searching_and_resize() {
     terminal_pane.grid.change_size(20, 80);
     assert_snapshot!(
         "grid_copy_tortor_highlighted_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
+
+#[test]
+pub fn searching_across_line_wrap() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term("aliquam sem fringilla");
+    // Spread across two lines
+    terminal_pane.grid.change_size(30, 60);
+    assert_snapshot!(
+        "grid_copy_multiline_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Spread across 4 lines
+    terminal_pane.grid.change_size(40, 4);
+    assert_snapshot!(
+        "grid_copy_multiline_highlighted_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.search_backward();
+    assert_snapshot!(
+        "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
     );
 }

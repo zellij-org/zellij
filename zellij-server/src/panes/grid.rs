@@ -321,26 +321,56 @@ impl SearchResult {
                 } else {
                     '#'
                 };
+
+                let (skip, take) = if ridx as isize == s.start.line() {
+                    let skip = s.start.column();
+                    let take = if s.end.line() == s.start.line() {
+                        s.end.column() - s.start.column()
+                    } else {
+                        // Just mark the rest of the line. This number is certainly too big but the iterator takes care of this
+                        row.columns.len()
+                    };
+                    (skip, take)
+                } else if ridx as isize == s.end.line() {
+                    // We wrapped a line and the end is in this row, so take from the begging to the end
+                    (0, s.end.column())
+                } else {
+                    // We are in the middle (start is above and end is below), so mark all
+                    (0, row.columns.len())
+                };
+
                 row.to_mut()
                     .columns
                     .iter_mut()
-                    .skip(s.start.column())
-                    .take(s.end.column() - s.start.column())
+                    .skip(skip)
+                    .take(take)
                     .for_each(|x| *x = TerminalCharacter::new(replacement_char));
             }
         }
     }
 
-    fn search_row(&self, ridx: usize, row: &Row) -> Vec<Selection> {
+    fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
+        #[derive(Debug)]
+        enum SearchSource<'a> {
+            Main(&'a Row),
+            Tail(&'a Row),
+        }
+
         let mut res = Vec::new();
-        if self.needle.is_empty() {
+        if self.needle.is_empty() || row.columns.is_empty() {
             return res;
         }
 
+        let mut tailit = tail.iter();
+        let mut source = SearchSource::Main(row);
+        let mut start = None;
         let mut nidx = 0; // Needle index
         let mut hidx = 0; // Haystack index
-        while hidx < row.columns.len() {
-            let haystack_char = row.columns[hidx].character;
+        loop {
+            let haystack_char = match source {
+                SearchSource::Main(row) => row.columns[hidx].character,
+                SearchSource::Tail(tail) => tail.columns[hidx].character,
+            };
             let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
             let chars_match = if self.case_insensitive {
                 // Currently only ascii, as this whole search-function is very sub-optimal anyways
@@ -349,22 +379,63 @@ impl SearchResult {
                 haystack_char == needle_char
             };
             if chars_match {
+                // If the needle is only 1 long, the next if could also happen, so we are not merging it into one big if-else
+                if nidx == 0 {
+                    start = Some(Position::new(ridx as i32, hidx as u16));
+                }
                 if nidx == self.needle.len() - 1 {
                     let mut selection = Selection::default();
-                    selection.start(Position::new(
-                        ridx as i32,
-                        (hidx + 1 - self.needle.len()) as u16,
-                    ));
+                    selection.start(start.unwrap());
                     selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
                     res.push(selection);
                     nidx = 0;
+                    if matches!(source, SearchSource::Tail(..)) {
+                        // When searching the tail, we can only find one additional selection, so stopping here
+                        break;
+                    }
                 } else {
                     nidx += 1;
                 }
             } else {
+                // Chars don't match
+                start = None;
                 nidx = 0;
+                if matches!(source, SearchSource::Tail(..)) {
+                    // When searching the tail and we find a mismatch, just quit right now
+                    break;
+                }
             }
             hidx += 1;
+            match source {
+                SearchSource::Main(row) => {
+                    if hidx >= row.columns.len() {
+                        let curr_tail = tailit.next();
+                        // If we are at the end and found a partial hit, we have to extend the search into the next line
+                        if start.is_some() && curr_tail.is_some() {
+                            ridx += 1;
+                            hidx = 0;
+                            source = SearchSource::Tail(curr_tail.unwrap());
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                SearchSource::Tail(tail) => {
+                    if hidx >= tail.columns.len() {
+                        // If we are still searching (didn't hit a mismatch yet) and there is still more tail to go
+                        // just continue with the next line
+                        if let Some(curr_tail) = tailit.next() {
+                            ridx += 1;
+                            hidx = 0;
+                            source = SearchSource::Tail(curr_tail);
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
         }
         res
     }
@@ -637,7 +708,9 @@ impl Grid {
         }
         y_coordinates
     }
-    pub fn scroll_up_one_line(&mut self) {
+
+    pub fn scroll_up_one_line(&mut self) -> bool {
+        let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop().unwrap();
@@ -664,7 +737,7 @@ impl Grid {
             // Throw out all search-results outside of the new viewport
             self.search_results
                 .selections
-                .retain(|s| (0..self.height).contains(&(s.start.line() as usize)));
+                .retain(|s| (s.start.line() as usize) < self.height && s.end.line() >= 0);
             // If we have thrown out the active element, set it to None
             if let Some(active_idx) = self.search_results.active {
                 if !self.search_results.selections.contains(&active_idx) {
@@ -675,16 +748,28 @@ impl Grid {
             // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
                 if let Some(row) = self.viewport.first() {
-                    let selections = self.search_results.search_row(0, row);
+                    let mut tail = Vec::new();
+                    loop {
+                        let tail_idx = 1 + tail.len();
+                        if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
+                            tail.push(&self.viewport[tail_idx]);
+                        } else {
+                            break;
+                        }
+                    }
+                    let selections = self.search_results.search_row(0, row, &tail);
                     for selection in selections.iter().rev() {
                         self.search_results.selections.insert(0, *selection);
+                        found_something = true;
                     }
                 }
             }
         }
         self.output_buffer.update_all_lines();
+        found_something
     }
-    pub fn scroll_down_one_line(&mut self) {
+    pub fn scroll_down_one_line(&mut self) -> bool {
+        let mut found_something = false;
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
 
@@ -725,7 +810,7 @@ impl Grid {
             // Throw out all search-results outside of the new viewport
             self.search_results
                 .selections
-                .retain(|s| (0..self.height).contains(&(s.start.line() as usize)));
+                .retain(|s| (s.start.line() as usize) < self.height && s.end.line() >= 0);
             // If we have thrown out the active element, set it to None
             if let Some(active_idx) = self.search_results.active {
                 if !self.search_results.selections.contains(&active_idx) {
@@ -736,9 +821,20 @@ impl Grid {
             // Search the new line for our needle
             if !self.search_results.needle.is_empty() {
                 if let Some(row) = self.viewport.last() {
-                    let selections = self.search_results.search_row(self.viewport.len() - 1, row);
+                    let tail: Vec<&Row> = self
+                        .lines_below
+                        .iter()
+                        .take_while(|r| !r.is_canonical)
+                        .collect();
+                    let selections =
+                        self.search_results
+                            .search_row(self.viewport.len() - 1, row, &tail);
                     for selection in selections {
-                        self.search_results.selections.push(selection);
+                        // We are only interested in results that start in the this new row
+                        if selection.start.line() as usize == self.viewport.len() - 1 {
+                            self.search_results.selections.push(selection);
+                            found_something = true;
+                        }
                     }
                 }
             }
@@ -747,6 +843,7 @@ impl Grid {
         if self.lines_below.is_empty() {
             self.is_scrolled = false;
         }
+        found_something
     }
     fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         // this is an ugly hack - it's here because sometimes we need to change_size to the
@@ -1684,50 +1781,74 @@ impl Grid {
                 .search_results
                 .active
                 .get_or_insert(*self.search_results.selections.first().unwrap());
-            self.output_buffer
-                .update_line(active_idx.start.line() as usize);
+            self.output_buffer.update_lines(
+                active_idx.start.line() as usize,
+                active_idx.end.line() as usize,
+            );
             if !search_viewport_for_the_first_time {
                 self.search_results.move_active_selection_to_next();
                 if let Some(new_active) = self.search_results.active {
-                    self.output_buffer
-                        .update_line(new_active.start.line() as usize);
+                    self.output_buffer.update_lines(
+                        new_active.start.line() as usize,
+                        new_active.end.line() as usize,
+                    );
                 }
             }
         } else {
             // We need to move the viewport
             let mut rows = 0;
             let mut found_something = false;
-            for row in self.lines_below.iter() {
-                rows += calculate_row_display_height(row.width(), self.width);
-                let results = self.search_results.search_row(rows, &row);
-                if !results.is_empty() {
-                    self.move_viewport_down(rows);
-                    self.search_results.move_active_selection_to_next();
-                    found_something = true;
-                    break;
+            while !self.lines_below.is_empty() && !found_something {
+                rows += 1;
+                found_something = self.scroll_down_one_line();
+            }
+
+            // We didn't find something, so we scroll back to the start
+            if !found_something {
+                for _ in 0..rows {
+                    self.scroll_up_one_line();
                 }
+            } else {
+                // We may need to scroll a bit further, because we are at the beginning of the
+                // search result, but the end might be invisible
+                if let Some(last) = self.search_results.selections.last() {
+                    let distance = (last.end.line() - last.start.line()) as usize;
+                    if distance < self.height {
+                        for _ in 0..distance {
+                            self.scroll_down_one_line();
+                        }
+                    }
+                }
+                self.search_results.move_active_selection_to_next();
+                self.output_buffer.update_all_lines();
             }
 
             rows = 0;
             if !found_something && self.search_results.wrap_search {
-                let complete_height = self.lines_above.iter().fold(0, |acc, x| {
-                    acc + calculate_row_display_height(x.width(), self.width)
-                });
-                for row in self.lines_above.iter() {
-                    rows += calculate_row_display_height(row.width(), self.width);
-                    let results = self.search_results.search_row(rows, &row);
-                    if !results.is_empty() {
-                        // We only have the total number of viewport-lines (rows) of this line
-                        // But since this row could be wrapped into multiple lines, we have to check
-                        // in which line it actually is. For this we do as if the line ends at the
-                        // end of the selection and then see how many lines it will end up as.
-                        rows -= calculate_row_display_height(row.width(), self.width)
-                            - calculate_row_display_height(results[0].end.column(), self.width);
-                        self.move_viewport_up(complete_height - rows + 1);
-                        self.search_results.active =
-                            self.search_results.selections.first().cloned();
-                        break;
+                // Go to the top
+                while !self.lines_above.is_empty() {
+                    rows += 1;
+                    self.scroll_up_one_line();
+                }
+                // We are at the bottom. Maybe we found already something there
+                // If not, scroll up again, until we find something
+                if self.search_results.selections.first().is_some() {
+                    found_something = true;
+                } else {
+                    while rows >= 0 && !found_something {
+                        rows -= 1;
+                        found_something = self.scroll_down_one_line();
                     }
+                }
+                if found_something {
+                    // We need to scroll until the found item is at the top
+                    if let Some(first) = self.search_results.selections.first() {
+                        for _ in 0..first.end.line() {
+                            self.scroll_down_one_line();
+                        }
+                    }
+                    self.search_results.active = self.search_results.selections.first().cloned();
+                    self.output_buffer.update_all_lines();
                 }
             }
         }
@@ -1745,52 +1866,58 @@ impl Grid {
                 .search_results
                 .active
                 .get_or_insert(self.search_results.selections.last().cloned().unwrap());
-            self.output_buffer
-                .update_line(active_idx.start.line() as usize);
+            self.output_buffer.update_lines(
+                active_idx.start.line() as usize,
+                active_idx.end.line() as usize,
+            );
             if !search_viewport_for_the_first_time {
                 self.search_results.move_active_selection_to_prev();
                 if let Some(new_active) = self.search_results.active {
-                    self.output_buffer
-                        .update_line(new_active.start.line() as usize);
+                    self.output_buffer.update_lines(
+                        new_active.start.line() as usize,
+                        new_active.end.line() as usize,
+                    );
                 }
             }
         } else {
             // We need to move the viewport
             let mut rows = 0;
             let mut found_something = false;
-            for row in self.lines_above.iter().rev() {
-                rows += calculate_row_display_height(row.width(), self.width);
-                let results = self.search_results.search_row(rows, &row);
-                if !results.is_empty() {
-                    self.move_viewport_up(rows);
-                    self.search_results.move_active_selection_to_prev();
-                    found_something = true;
-                    break;
+            while !self.lines_above.is_empty() && !found_something {
+                rows += 1;
+                found_something = self.scroll_up_one_line();
+            }
+
+            // We didn't find something, so we scroll back to the start
+            if !found_something {
+                for _ in 0..rows {
+                    self.scroll_down_one_line();
                 }
+            } else {
+                self.search_results.move_active_selection_to_prev();
+                self.output_buffer.update_all_lines();
             }
 
             rows = 0;
             if !found_something && self.search_results.wrap_search {
-                let complete_height = self.lines_below.iter().fold(0, |acc, x| {
-                    acc + calculate_row_display_height(x.width(), self.width)
-                });
-                for row in self.lines_below.iter().rev() {
-                    rows += calculate_row_display_height(row.width(), self.width);
-                    let results = self.search_results.search_row(rows, &row);
-                    if !results.is_empty() {
-                        // We only have the total number of viewport-lines (rows) of this line
-                        // But since this row could be wrapped into multiple lines, we have to check
-                        // in which line it actually is. For this we do as if the line ends at the
-                        // end of the selection and then see how many lines it will end up as.
-                        rows -= calculate_row_display_height(row.width(), self.width)
-                            - calculate_row_display_height(
-                                results[results.len() - 1].end.column(),
-                                self.width,
-                            );
-                        self.move_viewport_down(complete_height - rows + 1);
-                        self.search_results.active = self.search_results.selections.last().cloned();
-                        break;
+                // Go to the bottom
+                while !self.lines_below.is_empty() {
+                    rows += 1;
+                    self.scroll_down_one_line();
+                }
+                // We are at the bottom. Maybe we found already something there
+                // If not, scroll up again, until we find something
+                if self.search_results.selections.last().is_some() {
+                    found_something = true;
+                } else {
+                    while rows >= 0 && !found_something {
+                        rows -= 1;
+                        found_something = self.scroll_up_one_line();
                     }
+                }
+                if found_something {
+                    self.search_results.active = self.search_results.selections.last().cloned();
+                    self.output_buffer.update_all_lines();
                 }
             }
         }
@@ -1799,7 +1926,8 @@ impl Grid {
     pub fn clear_search(&mut self) {
         // Clearing all previous highlights
         for res in &self.search_results.selections {
-            self.output_buffer.update_line(res.start.line() as usize);
+            self.output_buffer
+                .update_lines(res.start.line() as usize, res.end.line() as usize);
         }
         self.search_results = Default::default();
     }
@@ -1810,22 +1938,36 @@ impl Grid {
     }
 
     pub fn search_viewport(&mut self) {
-        for (ridx, row) in self.viewport.iter().enumerate() {
-            let selections = self.search_results.search_row(ridx, row);
-            if !selections.is_empty() {
-                self.output_buffer.update_line(ridx);
+        for ridx in 0..self.viewport.len() {
+            let row = &self.viewport[ridx];
+            let mut tail = Vec::new();
+            loop {
+                let tail_idx = ridx + tail.len() + 1;
+                if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
+                    tail.push(&self.viewport[tail_idx]);
+                } else {
+                    break;
+                }
+            }
+            let selections = self.search_results.search_row(ridx, row, &tail);
+            for sel in &selections {
+                // Cast works because we can' be negative here
+                self.output_buffer
+                    .update_lines(sel.start.line() as usize, sel.end.line() as usize);
             }
 
             for selection in selections {
                 self.search_results.selections.push(selection);
             }
+            log::error!("Found: {:?}", self.search_results.selections);
         }
     }
 
     pub fn toggle_search_case_sensitivity(&mut self) {
         self.search_results.case_insensitive = !self.search_results.case_insensitive;
         for line in self.search_results.selections.drain(..) {
-            self.output_buffer.update_line(line.start.line() as usize);
+            self.output_buffer
+                .update_lines(line.start.line() as usize, line.end.line() as usize);
         }
         self.search_viewport();
         // Maybe the selection we had is now gone
@@ -1843,7 +1985,8 @@ impl Grid {
     pub fn toggle_search_whole_words(&mut self) {
         self.search_results.whole_word_only = !self.search_results.whole_word_only;
         for line in self.search_results.selections.drain(..) {
-            self.output_buffer.update_line(line.start.line() as usize);
+            self.output_buffer
+                .update_lines(line.start.line() as usize, line.end.line() as usize);
         }
         self.search_results.active = None;
         self.search_viewport();
