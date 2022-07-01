@@ -55,10 +55,21 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
     unsafe {
         ioctl(fd, TIOCGWINSZ.into(), &mut winsize)
     };
-    Size {
-        rows: winsize.ws_row as usize,
-        cols: winsize.ws_col as usize,
-    }
+
+    // fallback to default values when rows/cols == 0: https://github.com/zellij-org/zellij/issues/1551
+    let rows = if winsize.ws_row != 0 {
+        winsize.ws_row as usize
+    } else {
+        24
+    };
+
+    let cols = if winsize.ws_col != 0 {
+        winsize.ws_col as usize
+    } else {
+        80
+    };
+
+    Size { rows, cols }
 }
 
 #[derive(Clone)]
