@@ -777,4 +777,44 @@ impl OutputBuffer {
             }
         }
     }
+    pub fn changed_rects_in_viewport(&self, viewport_height: usize) -> HashMap<usize, usize> {
+        // group the changed lines into "changed_rects", which indicate where the line starts (the
+        // hashmap key) and how many lines are in there (its value)
+        let mut changed_rects: HashMap<usize, usize> = HashMap::new(); // <start_line_index, line_count>
+        let mut last_changed_line_index: Option<usize> = None;
+        let mut changed_line_count = 0;
+        let mut add_changed_line = |line_index| {
+            match last_changed_line_index.as_mut() {
+                Some(changed_line_index) => {
+                    if *changed_line_index + changed_line_count == line_index {
+                            changed_line_count += 1
+                    } else {
+                        changed_rects.insert(*changed_line_index, changed_line_count);
+                        last_changed_line_index = Some(line_index);
+                        changed_line_count = 1;
+                    }
+                },
+                None => {
+                    last_changed_line_index = Some(line_index);
+                    changed_line_count = 1;
+                }
+            }
+        };
+
+        // TODO: move this whole thing to output_buffer
+        if self.should_update_all_lines {
+            // for line_index in 0..self.viewport.len() {
+            for line_index in 0..viewport_height {
+                add_changed_line(line_index);
+            }
+        } else {
+            for line_index in self.changed_lines.iter().copied() {
+                add_changed_line(line_index);
+            }
+        }
+        if let Some(changed_line_index) = last_changed_line_index {
+            changed_rects.insert(changed_line_index, changed_line_count);
+        }
+        changed_rects
+    }
 }

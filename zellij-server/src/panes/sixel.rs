@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashMap;
+use crate::output::SixelImageChunk;
 
 use sixel_tokenizer::SixelEvent;
 use sixel_image::{SixelImage, SixelDeserializer};
@@ -228,24 +229,6 @@ impl SixelGrid {
             drop(self.sixel_image_store.borrow_mut().sixel_images.remove(&id));
         }
     }
-//     pub fn image_cell_coordinates_in_viewport(&self, image_id: usize, viewport_height: usize, scrollback_height: usize) -> Option<(usize, usize, usize, usize)> {
-//         let pixel_rect = self.sixel_image_locations.get(&image_id)?;
-//         let character_cell_size = *self.character_cell_size.borrow().as_ref()?;
-//         let scrollback_size_in_pixels = scrollback_height * character_cell_size.height;
-//         let y_pixel_coordinates_in_viewport = pixel_rect.y - scrollback_size_in_pixels as isize;
-//         let image_y = std::cmp::max(y_pixel_coordinates_in_viewport, 0) as usize / character_cell_size.height;
-//         let image_x = pixel_rect.x / character_cell_size.width;
-//         let image_height_in_pixels = if y_pixel_coordinates_in_viewport < 0 { pixel_rect.height as isize + y_pixel_coordinates_in_viewport } else { pixel_rect.height as isize };
-//         let image_height = image_height_in_pixels as usize / character_cell_size.height;
-//         let image_width = pixel_rect.width / character_cell_size.width;
-//         let height_remainder = if image_height_in_pixels as usize % character_cell_size.height > 0 { 1 } else { 0 };
-//         let width_remainder = if pixel_rect.width % character_cell_size.width > 0 { 1 } else { 0 };
-//         let image_top_edge = image_y;
-//         let image_bottom_edge = std::cmp::min(image_y + image_height + height_remainder, viewport_height);
-//         let image_left_edge = image_x;
-//         let image_right_edge = image_x + image_width + width_remainder;
-//         Some((image_top_edge, image_bottom_edge, image_left_edge, image_right_edge))
-//     }
     pub fn image_cell_coordinates_in_viewport(&self, viewport_height: usize, scrollback_height: usize) -> Vec<(usize, usize, usize, usize)> {
         match *self.character_cell_size.borrow()  {
             Some(character_cell_size) => {
@@ -270,6 +253,58 @@ impl SixelGrid {
             },
             None => vec![]
         }
+    }
+    pub fn changed_sixel_chunks_in_viewport(&self, changed_rects: HashMap<usize, usize>, scrollback_size_in_lines: usize, viewport_width_in_cells: usize, viewport_x_offset: usize, viewport_y_offset: usize) -> Vec<SixelImageChunk> {
+        let mut changed_sixel_image_chunks = vec![];
+        if let Some(character_cell_size) = { *self.character_cell_size.borrow() } {
+            for (sixel_image_id, sixel_image_pixel_rect) in self.image_coordinates() {
+                for (line_index, line_count) in &changed_rects {
+                    let changed_rect_pixel_height = line_count * character_cell_size.height;
+                    let changed_rect_top_edge = ((line_index + scrollback_size_in_lines) * character_cell_size.height) as isize;
+                    let changed_rect_bottom_edge = changed_rect_top_edge + changed_rect_pixel_height as isize;
+                    let sixel_image_top_edge = sixel_image_pixel_rect.y;
+                    let sixel_image_bottom_edge = sixel_image_pixel_rect.y + sixel_image_pixel_rect.height as isize;
+
+                    let cell_x_in_current_pane = sixel_image_pixel_rect.x / character_cell_size.width;
+                    let cell_x = viewport_x_offset + cell_x_in_current_pane;
+                    let sixel_image_pixel_width = if sixel_image_pixel_rect.x + sixel_image_pixel_rect.width <= (viewport_width_in_cells * character_cell_size.width) {
+                        sixel_image_pixel_rect.width
+                    } else {
+                        (viewport_width_in_cells * character_cell_size.width).saturating_sub(sixel_image_pixel_rect.x)
+                    };
+                    if sixel_image_pixel_width <= 0 {
+                        continue;
+                    }
+
+                    let sixel_image_cell_distance_from_scrollback_top = sixel_image_top_edge as usize / character_cell_size.height;
+                    // if the image is above the rect top, this will be 0
+                    let sixel_image_cell_distance_from_changed_rect_top = sixel_image_cell_distance_from_scrollback_top.saturating_sub(line_index + scrollback_size_in_lines);
+                    let cell_y = viewport_y_offset + line_index + sixel_image_cell_distance_from_changed_rect_top;
+                    let sixel_image_pixel_x = 0;
+                    // if the image is above the rect top, this will be 0
+                    let sixel_image_pixel_y = (changed_rect_top_edge as usize).saturating_sub(sixel_image_top_edge as usize) as usize;
+                    let sixel_image_pixel_height = std::cmp::min(
+                        (std::cmp::min(changed_rect_bottom_edge, sixel_image_bottom_edge) - std::cmp::max(changed_rect_top_edge, sixel_image_top_edge)) as usize,
+                        sixel_image_pixel_rect.height
+                    );
+
+                    if (sixel_image_top_edge >= changed_rect_top_edge && sixel_image_top_edge <= changed_rect_bottom_edge) ||
+                        (sixel_image_bottom_edge >= changed_rect_top_edge && sixel_image_bottom_edge <= changed_rect_bottom_edge) ||
+                        (sixel_image_bottom_edge >= changed_rect_bottom_edge && sixel_image_top_edge <= changed_rect_top_edge) {
+                            changed_sixel_image_chunks.push(SixelImageChunk {
+                                cell_x,
+                                cell_y,
+                                sixel_image_pixel_x,
+                                sixel_image_pixel_y,
+                                sixel_image_pixel_width,
+                                sixel_image_pixel_height,
+                                sixel_image_id,
+                            });
+                    }
+                }
+            }
+        }
+        changed_sixel_image_chunks
     }
 }
 
