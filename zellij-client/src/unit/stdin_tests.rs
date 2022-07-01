@@ -1,7 +1,7 @@
 // TODO: rename this file to reflect it also including stdin_loop tests
 use super::input_loop;
-use crate::stdin_loop;
 use crate::stdin_ansi_parser::StdinAnsiParser;
+use crate::stdin_loop;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
@@ -21,9 +21,9 @@ use std::path::Path;
 use zellij_utils::zellij_tile;
 
 use std::io;
-use std::thread;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
@@ -335,7 +335,13 @@ pub fn terminal_info_queried_from_terminal_emulator() {
             let client_os_api = client_os_api.clone();
             let send_input_instructions = send_input_instructions.clone();
             let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || stdin_loop(Box::new(client_os_api), send_input_instructions, stdin_ansi_parser)
+            move || {
+                stdin_loop(
+                    Box::new(client_os_api),
+                    send_input_instructions,
+                    stdin_ansi_parser,
+                )
+            }
         });
     std::thread::sleep(std::time::Duration::from_millis(500)); // wait for initial query to be sent
 
@@ -357,8 +363,9 @@ pub fn pixel_info_sent_to_server() {
     let fake_stdin_buffer = read_fixture("terminal_emulator_startup_response");
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone())
-        .with_stdin_buffer(fake_stdin_buffer);
+    let client_os_api =
+        FakeClientOsApi::new(events_sent_to_server.clone(), command_is_executing.clone())
+            .with_stdin_buffer(fake_stdin_buffer);
     let config = Config::from_default_assets().unwrap();
     let options = Options::default();
 
@@ -378,22 +385,30 @@ pub fn pixel_info_sent_to_server() {
             let client_os_api = client_os_api.clone();
             let send_input_instructions = send_input_instructions.clone();
             let stdin_ansi_parser = stdin_ansi_parser.clone();
-            move || stdin_loop(Box::new(client_os_api), send_input_instructions, stdin_ansi_parser)
+            move || {
+                stdin_loop(
+                    Box::new(client_os_api),
+                    send_input_instructions,
+                    stdin_ansi_parser,
+                )
+            }
         });
 
     let default_mode = InputMode::Normal;
     let input_thread = thread::Builder::new()
         .name("input_handler".to_string())
         .spawn({
-            move || input_loop(
-                Box::new(client_os_api),
-                config,
-                options,
-                command_is_executing,
-                send_client_instructions,
-                default_mode,
-                receive_input_instructions,
-            )
+            move || {
+                input_loop(
+                    Box::new(client_os_api),
+                    config,
+                    options,
+                    command_is_executing,
+                    send_client_instructions,
+                    default_mode,
+                    receive_input_instructions,
+                )
+            }
         });
     std::thread::sleep(std::time::Duration::from_millis(1000)); // wait for initial query to be sent
     assert_snapshot!(*format!("{:?}", events_sent_to_server.lock().unwrap()));

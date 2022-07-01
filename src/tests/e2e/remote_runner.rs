@@ -1,9 +1,9 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
-use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_server::panes::sixel::SixelImageStore;
+use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 use zellij_utils::vte;
 use zellij_utils::zellij_tile::data::Palette;
@@ -163,7 +163,10 @@ fn read_from_channel(
                 let mut retries_left = 3;
                 let mut should_sleep = false;
                 let mut vte_parser = vte::Parser::new();
-                let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels { height: 21, width: 8})));
+                let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+                    height: 21,
+                    width: 8,
+                })));
                 let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
                 let mut terminal_output = TerminalPane::new(
                     0,

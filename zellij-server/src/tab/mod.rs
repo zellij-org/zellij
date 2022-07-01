@@ -16,8 +16,8 @@ use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
-    panes::{FloatingPanes, TiledPanes},
     panes::sixel::SixelImageStore,
+    panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -1649,7 +1649,12 @@ impl Tab {
             }
         }
     }
-    pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) -> bool { // return value indicates whether we should trigger a render
+    pub fn handle_mouse_hold(
+        &mut self,
+        position_on_screen: &Position,
+        client_id: ClientId,
+    ) -> bool {
+        // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
             position_on_screen == &last_position
@@ -1668,7 +1673,7 @@ impl Tab {
         {
             self.set_force_render();
             return !is_repeated; // we don't need to re-render in this case if the pane did not move
-            // return;
+                                 // return;
         }
 
         let selecting = self.selecting_with_mouse;

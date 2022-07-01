@@ -1,6 +1,6 @@
 use super::super::Grid;
-use crate::panes::link_handler::LinkHandler;
 use crate::panes::grid::SixelImageStore;
+use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -1687,7 +1687,7 @@ pub fn exa_plus_omf_theme() {
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
-    sixel_image_store,
+        sixel_image_store,
     );
     let fixture_name = "exa_plus_omf_theme";
     let content = read_fixture(fixture_name);
@@ -2196,7 +2196,10 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         51,
         112,
@@ -2210,11 +2213,16 @@ pub fn sixel_images_are_reaped_when_scrolled_off() {
     for byte in pane_content {
         vte_parser.advance(&mut grid, byte);
     }
-    for _ in 0..10_051 { // scrollbuffer limit + viewport height
+    for _ in 0..10_051 {
+        // scrollbuffer limit + viewport height
         grid.add_canonical_line();
     }
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
-    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store");
+    assert_eq!(
+        sixel_image_store.borrow().image_count(),
+        0,
+        "all images were deleted from the store"
+    );
 }
 
 #[test]
@@ -2222,7 +2230,10 @@ pub fn sixel_images_are_reaped_when_resetting() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         51,
         112,
@@ -2238,7 +2249,11 @@ pub fn sixel_images_are_reaped_when_resetting() {
     }
     grid.reset_terminal_state();
     let _ = grid.read_changes(0, 0); // we do this because this is where the images are reaped
-    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store");
+    assert_eq!(
+        sixel_image_store.borrow().image_count(),
+        0,
+        "all images were deleted from the store"
+    );
 }
 
 #[test]
@@ -2246,7 +2261,10 @@ pub fn sixel_image_in_alternate_buffer() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         30,
         112,
@@ -2273,7 +2291,11 @@ pub fn sixel_image_in_alternate_buffer() {
         vte_parser.advance(&mut grid, *byte);
     }
     assert_snapshot!(format!("{:?}", grid)); // should note include the image
-    assert_eq!(sixel_image_store.borrow().image_count(), 0, "all images were deleted from the store when we moved back from alternate screen");
+    assert_eq!(
+        sixel_image_store.borrow().image_count(),
+        0,
+        "all images were deleted from the store when we moved back from alternate screen"
+    );
 }
 
 #[test]
@@ -2281,7 +2303,10 @@ pub fn sixel_with_image_scrolling_decsdm() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         30,
         112,
@@ -2356,10 +2381,14 @@ pub fn osc_4_background_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
-        acc.push_str(&s);
-        acc
-    });
+    let message_string = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m))
+        .fold(String::new(), |mut acc, s| {
+            acc.push_str(&s);
+            acc
+        });
     assert_eq!(message_string, "\u{1b}]10;rgb:0000/0000/0000\u{1b}\\");
 }
 
@@ -2381,10 +2410,14 @@ pub fn osc_4_foreground_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
-        acc.push_str(&s);
-        acc
-    });
+    let message_string = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m))
+        .fold(String::new(), |mut acc, s| {
+            acc.push_str(&s);
+            acc
+        });
     assert_eq!(message_string, "\u{1b}]11;rgb:0000/0000/0000\u{1b}\\");
 }
 
@@ -2408,10 +2441,14 @@ pub fn osc_4_color_query() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
-        acc.push_str(&s);
-        acc
-    });
+    let message_string = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m))
+        .fold(String::new(), |mut acc, s| {
+            acc.push_str(&s);
+            acc
+        });
     assert_eq!(message_string, "\u{1b}]4;222;rgb:ffff/d7d7/8787\u{1b}\\");
 }
 
@@ -2433,10 +2470,14 @@ pub fn xtsmgraphics_color_register_count() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
-        acc.push_str(&s);
-        acc
-    });
+    let message_string = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m))
+        .fold(String::new(), |mut acc, s| {
+            acc.push_str(&s);
+            acc
+        });
     assert_eq!(message_string, "\u{1b}[?1;0;65535S");
 }
 
@@ -2445,7 +2486,10 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
     let mut vte_parser = vte::Parser::new();
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         51,
         97,
@@ -2459,9 +2503,13 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
     for byte in content.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    let message_string = grid.pending_messages_to_pty.iter().map(|m| String::from_utf8_lossy(m)).fold(String::new(), |mut acc, s| {
-        acc.push_str(&s);
-        acc
-    });
+    let message_string = grid
+        .pending_messages_to_pty
+        .iter()
+        .map(|m| String::from_utf8_lossy(m))
+        .fold(String::new(), |mut acc, s| {
+            acc.push_str(&s);
+            acc
+        });
     assert_eq!(message_string, "\u{1b}[?2;0;776;1071S");
 }

@@ -1,7 +1,7 @@
 use super::{Output, Tab};
+use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
-use crate::panes::sixel::SixelImageStore;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -18,7 +18,7 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
 use std::cell::RefCell;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -137,7 +137,10 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
-fn create_new_tab_with_sixel_support(size: Size, sixel_image_store: Rc<RefCell<SixelImageStore>>) -> Tab {
+fn create_new_tab_with_sixel_support(
+    size: Size,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
+) -> Tab {
     // this is like the create_new_tab function but includes stuff needed for sixel,
     // eg. character_cell_size
     set_session_name("test".into());
@@ -155,7 +158,10 @@ fn create_new_tab_with_sixel_support(size: Size, sixel_image_store: Rc<RefCell<S
     let mut connected_clients = HashSet::new();
     connected_clients.insert(client_id);
     let connected_clients = Rc::new(RefCell::new(connected_clients));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
@@ -206,7 +212,10 @@ use zellij_utils::vte;
 fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette) -> String {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         rows,
         columns,
@@ -223,9 +232,18 @@ fn take_snapshot(ansi_instructions: &str, rows: usize, columns: usize, palette: 
     format!("{:?}", grid)
 }
 
-fn take_snapshot_with_sixel(ansi_instructions: &str, rows: usize, columns: usize, palette: Palette, sixel_image_store: Rc<RefCell<SixelImageStore>>) -> String {
+fn take_snapshot_with_sixel(
+    ansi_instructions: &str,
+    rows: usize,
+    columns: usize,
+    palette: Palette,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
+) -> String {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut grid = Grid::new(
         rows,
         columns,
@@ -1289,7 +1307,10 @@ fn move_floating_pane_with_sixel_image() {
     let client_id = 1;
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = create_new_tab_with_sixel_support(size, sixel_image_store.clone());
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size.clone());
 
     tab.toggle_floating_panes(client_id, None);
@@ -1321,7 +1342,10 @@ fn floating_pane_above_sixel_image() {
     let client_id = 1;
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = create_new_tab_with_sixel_support(size, sixel_image_store.clone());
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size.clone());
 
     tab.toggle_floating_panes(client_id, None);

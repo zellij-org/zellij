@@ -1,9 +1,9 @@
 use crate::os_input_output::ClientOsApi;
-use crate::InputInstruction;
 use crate::stdin_ansi_parser::StdinAnsiParser;
+use crate::InputInstruction;
+use std::sync::{Arc, Mutex};
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
-use std::sync::{Arc, Mutex};
 
 pub(crate) fn stdin_loop(
     mut os_input: Box<dyn ClientOsApi>,
@@ -15,7 +15,10 @@ pub(crate) fn stdin_loop(
     let mut current_buffer = vec![];
     // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
     // we get a response through STDIN, so it makes sense to do this here
-    let terminal_emulator_query_string = stdin_ansi_parser.lock().unwrap().terminal_emulator_query_string();
+    let terminal_emulator_query_string = stdin_ansi_parser
+        .lock()
+        .unwrap()
+        .terminal_emulator_query_string();
     let _ = os_input
         .get_stdout_writer()
         .write(terminal_emulator_query_string.as_bytes())
@@ -32,7 +35,8 @@ pub(crate) fn stdin_loop(
             if stdin_ansi_parser.should_parse() {
                 let events = stdin_ansi_parser.parse(buf);
                 if !events.is_empty() {
-                    let _ = send_input_instructions.send(InputInstruction::AnsiStdinInstructions(events));
+                    let _ = send_input_instructions
+                        .send(InputInstruction::AnsiStdinInstructions(events));
                 }
                 continue;
             }

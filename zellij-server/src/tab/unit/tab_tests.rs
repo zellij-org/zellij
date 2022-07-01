@@ -1,7 +1,7 @@
 use super::Tab;
+use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::zellij_tile::data::{ModeInfo, Palette};
-use crate::panes::sixel::SixelImageStore;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -16,7 +16,7 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::cell::RefCell;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 

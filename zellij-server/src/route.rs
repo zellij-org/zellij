@@ -34,7 +34,7 @@ fn route_action(
     // this is a bit of a hack around the unfortunate architecture we use with plugins
     // this will change as soon as we refactor
     match action {
-        Action::MouseHold(_) => {},
+        Action::MouseHold(_) => {}
         _ => {
             session
                 .senders
@@ -484,7 +484,9 @@ pub(crate) fn route_thread_main(
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_screen(ScreenInstruction::TerminalColorRegisters(color_registers))
+                            .send_to_screen(ScreenInstruction::TerminalColorRegisters(
+                                color_registers,
+                            ))
                             .unwrap();
                     }
                     ClientToServerMsg::NewClient(

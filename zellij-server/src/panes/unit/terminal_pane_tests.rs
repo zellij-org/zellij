@@ -1,6 +1,6 @@
 use super::super::TerminalPane;
-use crate::panes::LinkHandler;
 use crate::panes::sixel::SixelImageStore;
+use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
@@ -70,7 +70,10 @@ pub fn sixel_image_inside_terminal_pane() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -107,7 +110,10 @@ pub fn partial_sixel_image_inside_terminal_pane() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -138,7 +144,10 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -168,7 +177,10 @@ pub fn scrolling_through_a_sixel_image() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -209,7 +221,10 @@ pub fn multiple_sixel_images_in_pane() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -248,7 +263,10 @@ pub fn resizing_pane_with_sixel_images() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -290,7 +308,10 @@ pub fn changing_character_cell_size_with_sixel_images() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -317,7 +338,10 @@ pub fn changing_character_cell_size_with_sixel_images() {
     let mut new_win_size = PaneGeom::default();
     new_win_size.cols.set_inner(121);
     new_win_size.rows.set_inner(20);
-    *character_cell_size.borrow_mut() = Some(SizeInPixels { width: 8, height: 18});
+    *character_cell_size.borrow_mut() = Some(SizeInPixels {
+        width: 8,
+        height: 18,
+    });
     terminal_pane.set_geom(new_win_size);
     terminal_pane.scroll_up(10, fake_client_id); // scroll up to see both images
     assert_snapshot!(format!("{:?}", terminal_pane.grid));
@@ -334,7 +358,10 @@ pub fn keep_working_after_corrupted_sixel_image() {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels{ width: 8, height: 21})));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -363,4 +390,3 @@ pub fn keep_working_after_corrupted_sixel_image() {
     terminal_pane.handle_pty_bytes(text_to_fill_pane.into_bytes());
     assert_snapshot!(format!("{:?}", terminal_pane.grid));
 }
-

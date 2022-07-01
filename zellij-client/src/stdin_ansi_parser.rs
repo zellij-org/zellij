@@ -1,5 +1,5 @@
+use std::time::{Duration, Instant};
 use zellij_utils::pane_size::SizeInPixels;
-use std::time::{Instant, Duration};
 
 use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
@@ -39,7 +39,8 @@ impl StdinAnsiParser {
         for i in 0..256 {
             query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
         }
-        self.parse_deadline = Some(Instant::now() + Duration::from_millis(STARTUP_PARSE_DEADLINE_MS));
+        self.parse_deadline =
+            Some(Instant::now() + Duration::from_millis(STARTUP_PARSE_DEADLINE_MS));
         query_string
     }
     pub fn window_size_change_query_string(&mut self) -> String {
@@ -48,16 +49,18 @@ impl StdinAnsiParser {
 
         // <ESC>[14t => get text area size in pixels,
         // <ESC>[16t => get character cell size in pixels
-        let query_string =
-            String::from("\u{1b}[14t\u{1b}[16t");
+        let query_string = String::from("\u{1b}[14t\u{1b}[16t");
 
-        self.parse_deadline = Some(Instant::now() + Duration::from_millis(SIGWINCH_PARSE_DEADLINE_MS));
+        self.parse_deadline =
+            Some(Instant::now() + Duration::from_millis(SIGWINCH_PARSE_DEADLINE_MS));
         query_string
     }
     fn drain_pending_events(&mut self) -> Vec<AnsiStdinInstruction> {
         let mut events = vec![];
         events.append(&mut self.pending_events);
-        if let Some(color_registers) = AnsiStdinInstruction::color_registers_from_bytes(&mut self.pending_color_sequences) {
+        if let Some(color_registers) =
+            AnsiStdinInstruction::color_registers_from_bytes(&mut self.pending_color_sequences)
+        {
             events.push(color_registers);
         }
         events
@@ -74,7 +77,7 @@ impl StdinAnsiParser {
         for byte in raw_bytes.drain(..) {
             self.parse_byte(byte);
         }
-        return self.drain_pending_events()
+        return self.drain_pending_events();
     }
     fn parse_byte(&mut self, byte: u8) {
         if byte == b't' {
@@ -83,7 +86,7 @@ impl StdinAnsiParser {
                 Ok(ansi_sequence) => {
                     self.pending_events.push(ansi_sequence);
                     self.raw_buffer.clear();
-                },
+                }
                 Err(_) => {
                     self.raw_buffer.clear();
                 }
@@ -93,9 +96,12 @@ impl StdinAnsiParser {
             if let Ok(ansi_sequence) = AnsiStdinInstruction::bg_or_fg_from_bytes(&self.raw_buffer) {
                 self.pending_events.push(ansi_sequence);
                 self.raw_buffer.clear();
-            } else if let Ok((color_register, color_sequence)) = color_sequence_from_bytes(&self.raw_buffer) {
+            } else if let Ok((color_register, color_sequence)) =
+                color_sequence_from_bytes(&self.raw_buffer)
+            {
                 self.raw_buffer.clear();
-                self.pending_color_sequences.push((color_register, color_sequence));
+                self.pending_color_sequences
+                    .push((color_register, color_sequence));
             } else {
                 self.raw_buffer.clear();
             }
@@ -133,31 +139,25 @@ impl AnsiStdinInstruction {
         match csi_index {
             Ok(4) => {
                 // text area size
-                Ok(AnsiStdinInstruction::PixelDimensions(
-                    PixelDimensions {
-                        character_cell_size: None,
-                        text_area_size: Some(SizeInPixels {
-                            height: first_field.unwrap(),
-                            width: second_field.unwrap(),
-                        }),
-                    },
-                ))
+                Ok(AnsiStdinInstruction::PixelDimensions(PixelDimensions {
+                    character_cell_size: None,
+                    text_area_size: Some(SizeInPixels {
+                        height: first_field.unwrap(),
+                        width: second_field.unwrap(),
+                    }),
+                }))
             }
             Ok(6) => {
                 // character cell size
-                Ok(AnsiStdinInstruction::PixelDimensions(
-                    PixelDimensions {
-                        character_cell_size: Some(SizeInPixels {
-                            height: first_field.unwrap(),
-                            width: second_field.unwrap(),
-                        }),
-                        text_area_size: None,
-                    },
-                ))
+                Ok(AnsiStdinInstruction::PixelDimensions(PixelDimensions {
+                    character_cell_size: Some(SizeInPixels {
+                        height: first_field.unwrap(),
+                        width: second_field.unwrap(),
+                    }),
+                    text_area_size: None,
+                }))
             }
-            _ => {
-                Err("invalid sequence")
-            }
+            _ => Err("invalid sequence"),
         }
     }
     pub fn bg_or_fg_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
@@ -173,26 +173,18 @@ impl AnsiStdinInstruction {
         if let Some(captures) = BACKGROUND_RE.captures_iter(&key_string).next() {
             let background_query_response = captures[1].parse::<String>();
             match background_query_response {
-                Ok(background_query_response) => {
-                    Ok(AnsiStdinInstruction::BackgroundColor(
-                        background_query_response
-                    ))
-                },
-                _ => {
-                    Err("invalid_instruction")
-                }
+                Ok(background_query_response) => Ok(AnsiStdinInstruction::BackgroundColor(
+                    background_query_response,
+                )),
+                _ => Err("invalid_instruction"),
             }
         } else if let Some(captures) = FOREGROUND_RE.captures_iter(&key_string).next() {
             let foreground_query_response = captures[1].parse::<String>();
             match foreground_query_response {
-                Ok(foreground_query_response) => {
-                    Ok(AnsiStdinInstruction::ForegroundColor(
-                        foreground_query_response
-                    ))
-                },
-                _ => {
-                    Err("invalid_instruction")
-                }
+                Ok(foreground_query_response) => Ok(AnsiStdinInstruction::ForegroundColor(
+                    foreground_query_response,
+                )),
+                _ => Err("invalid_instruction"),
             }
         } else {
             Err("invalid_instruction")
@@ -223,23 +215,18 @@ fn color_sequence_from_bytes(bytes: &Vec<u8>) -> Result<(usize, String), &'stati
         let color_register_response = captures[1].parse::<usize>();
         let color_response = captures[2].parse::<String>();
         match (color_register_response, color_response) {
-            (Ok(crr), Ok(cr)) => {
-                Ok((crr, cr))
-            },
-            _ => {
-                Err("invalid_instruction")
-            }
+            (Ok(crr), Ok(cr)) => Ok((crr, cr)),
+            _ => Err("invalid_instruction"),
         }
-    } else if let Some(captures) = ALTERNATIVE_COLOR_REGISTER_RE.captures_iter(&key_string).next() {
+    } else if let Some(captures) = ALTERNATIVE_COLOR_REGISTER_RE
+        .captures_iter(&key_string)
+        .next()
+    {
         let color_register_response = captures[1].parse::<usize>();
         let color_response = captures[2].parse::<String>();
         match (color_register_response, color_response) {
-            (Ok(crr), Ok(cr)) => {
-                Ok((crr, cr))
-            },
-            _ => {
-                Err("invalid_instruction")
-            }
+            (Ok(crr), Ok(cr)) => Ok((crr, cr)),
+            _ => Err("invalid_instruction"),
         }
     } else {
         Err("invalid_instruction")

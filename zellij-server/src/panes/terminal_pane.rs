@@ -1,10 +1,10 @@
 use crate::output::{CharacterChunk, Output, SixelImageChunk};
+use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
-use crate::panes::sixel::SixelImageStore;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ClientId;
@@ -212,7 +212,8 @@ impl Pane for TerminalPane {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
 
-            let (mut character_chunks, sixel_image_chunks) = self.grid.read_changes(content_x, content_y);
+            let (mut character_chunks, sixel_image_chunks) =
+                self.grid.read_changes(content_x, content_y);
             for character_chunk in character_chunks.iter_mut() {
                 character_chunk.add_changed_colors(self.grid.changed_colors);
                 if self

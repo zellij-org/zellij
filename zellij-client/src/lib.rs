@@ -10,15 +10,15 @@ use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
-use std::thread;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use zellij_tile::prelude::Style;
 
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
 };
-use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use zellij_tile::data::InputMode;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
@@ -255,7 +255,10 @@ pub fn start_client(
                             ));
                             // send a query to the terminal emulator in case the font size changed
                             // as well - we'll parse the response through STDIN
-                            let terminal_emulator_query_string = stdin_ansi_parser.lock().unwrap().window_size_change_query_string();
+                            let terminal_emulator_query_string = stdin_ansi_parser
+                                .lock()
+                                .unwrap()
+                                .window_size_change_query_string();
                             let _ = os_api
                                 .get_stdout_writer()
                                 .write(terminal_emulator_query_string.as_bytes())

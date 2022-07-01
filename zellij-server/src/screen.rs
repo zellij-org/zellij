@@ -1,7 +1,7 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
@@ -19,8 +19,8 @@ use crate::panes::terminal_character::AnsiCode;
 
 use crate::{
     output::Output,
-    panes::PaneId,
     panes::sixel::SixelImageStore,
+    panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
@@ -180,9 +180,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalForegroundColor(..) => {
                 ScreenContext::TerminalForegroundColor
             }
-            ScreenInstruction::TerminalColorRegisters(..) => {
-                ScreenContext::TerminalColorRegisters
-            }
+            ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -530,7 +528,10 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let mut output = Output::new(self.sixel_image_store.clone(), self.character_cell_size.clone());
+        let mut output = Output::new(
+            self.sixel_image_store.clone(),
+            self.character_cell_size.clone(),
+        );
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();
