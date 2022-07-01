@@ -302,4 +302,29 @@ pub fn searching_across_line_wrap() {
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
     );
+
+    // Wrap on
+    terminal_pane.toggle_search_wrap();
+    terminal_pane.search_forward();
+    assert_snapshot!(
+        "grid_copy_multiline_selected_wrap_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Wrap off
+    terminal_pane.toggle_search_wrap();
+    // Don't forget the current selection
+    terminal_pane.search_backward();
+    assert_snapshot!(
+        "grid_copy_multiline_selected_wrap_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    // Wrap on
+    terminal_pane.toggle_search_wrap();
+    terminal_pane.search_backward();
+    assert_snapshot!(
+        "grid_copy_multiline_selected_narrow",
+        format!("{:?}", terminal_pane.grid)
+    );
 }

@@ -437,6 +437,16 @@ impl SearchResult {
                 }
             }
         }
+
+        // The tail may have not been wrapped yet (when coming from lines_below),
+        // so it could be that the end extends across more characters than the row is wide.
+        // Therefore we need to reflow the end:
+        for s in res.iter_mut() {
+            while s.end.column() >= row.width() {
+                s.end.column.0 -= row.width();
+                s.end.line.0 += 1;
+            }
+        }
         res
     }
 
@@ -1798,6 +1808,8 @@ impl Grid {
             // We need to move the viewport
             let mut rows = 0;
             let mut found_something = false;
+            // We might loose the current selection, if we can't find anything
+            let current_active_selection = self.search_results.active.clone();
             while !self.lines_below.is_empty() && !found_something {
                 rows += 1;
                 found_something = self.scroll_down_one_line();
@@ -1808,6 +1820,7 @@ impl Grid {
                 for _ in 0..rows {
                     self.scroll_up_one_line();
                 }
+                self.search_results.active = current_active_selection;
             } else {
                 // We may need to scroll a bit further, because we are at the beginning of the
                 // search result, but the end might be invisible
@@ -1825,12 +1838,14 @@ impl Grid {
 
             rows = 0;
             if !found_something && self.search_results.wrap_search {
+                // We might loose the current selection, if we can't find anything
+                let current_active_selection = self.search_results.active.clone();
                 // Go to the top
                 while !self.lines_above.is_empty() {
                     rows += 1;
                     self.scroll_up_one_line();
                 }
-                // We are at the bottom. Maybe we found already something there
+                // We are at the top. Maybe we found already something there
                 // If not, scroll up again, until we find something
                 if self.search_results.selections.first().is_some() {
                     found_something = true;
@@ -1843,12 +1858,14 @@ impl Grid {
                 if found_something {
                     // We need to scroll until the found item is at the top
                     if let Some(first) = self.search_results.selections.first() {
-                        for _ in 0..first.end.line() {
+                        for _ in 0..first.start.line() {
                             self.scroll_down_one_line();
                         }
                     }
                     self.search_results.active = self.search_results.selections.first().cloned();
                     self.output_buffer.update_all_lines();
+                } else {
+                    self.search_results.active = current_active_selection;
                 }
             }
         }
@@ -1881,6 +1898,8 @@ impl Grid {
             }
         } else {
             // We need to move the viewport
+            // We might loose the current selection, if we can't find anything
+            let current_active_selection = self.search_results.active.clone();
             let mut rows = 0;
             let mut found_something = false;
             while !self.lines_above.is_empty() && !found_something {
@@ -1893,6 +1912,7 @@ impl Grid {
                 for _ in 0..rows {
                     self.scroll_down_one_line();
                 }
+                self.search_results.active = current_active_selection;
             } else {
                 self.search_results.move_active_selection_to_prev();
                 self.output_buffer.update_all_lines();
@@ -1900,6 +1920,8 @@ impl Grid {
 
             rows = 0;
             if !found_something && self.search_results.wrap_search {
+                // We might loose the current selection, if we can't find anything
+                let current_active_selection = self.search_results.active.clone();
                 // Go to the bottom
                 while !self.lines_below.is_empty() {
                     rows += 1;
@@ -1918,6 +1940,8 @@ impl Grid {
                 if found_something {
                     self.search_results.active = self.search_results.selections.last().cloned();
                     self.output_buffer.update_all_lines();
+                } else {
+                    self.search_results.active = current_active_selection;
                 }
             }
         }
@@ -1959,7 +1983,6 @@ impl Grid {
             for selection in selections {
                 self.search_results.selections.push(selection);
             }
-            log::error!("Found: {:?}", self.search_results.selections);
         }
     }
 
