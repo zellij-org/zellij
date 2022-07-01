@@ -1,4 +1,4 @@
-use crate::output::{CharacterChunk, Output};
+use crate::output::{CharacterChunk, Output, SixelImageChunk};
 use crate::panes::{
     grid::Grid,
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
@@ -206,16 +206,14 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-        output: &mut Output, // TODO: change it so that we also add the character_chunks etc. to the output instead of just returning them
         z_index: Option<usize>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
 
             let (mut character_chunks, sixel_image_chunks) = self.grid.read_changes(content_x, content_y);
-            output.add_sixel_image_chunks_to_all_clients(sixel_image_chunks, z_index);
             for character_chunk in character_chunks.iter_mut() {
                 character_chunk.add_changed_colors(self.grid.changed_colors);
                 if self
@@ -241,7 +239,7 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Some((character_chunks, Some(raw_vte_output)))
+            Some((character_chunks, Some(raw_vte_output), sixel_image_chunks))
         } else {
             None
         }

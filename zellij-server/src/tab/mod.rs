@@ -15,7 +15,7 @@ use crate::ui::pane_boundaries_frame::FrameParams;
 use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output},
+    output::{CharacterChunk, Output, SixelImageChunk},
     panes::{FloatingPanes, TiledPanes},
     panes::sixel::SixelImageStore,
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -134,9 +134,8 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-        output: &mut Output,
         z_index: Option<usize>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)>; // TODO: better
+    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>; // TODO: better
     fn render_frame(
         &mut self,
         client_id: ClientId,
@@ -981,9 +980,6 @@ impl Tab {
         self.update_active_panes_in_pty_thread();
 
         let floating_panes_stack = self.floating_panes.stack();
-        if let Some(floating_panes_stack) = floating_panes_stack.as_ref() {
-            // TODO: what's going on here??
-        }
         output.add_clients(
             &connected_clients,
             self.link_handler.clone(),

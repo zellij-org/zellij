@@ -68,7 +68,7 @@ fn write_changed_styles(
 
 fn serialize_chunks(
     character_chunks: Vec<CharacterChunk>,
-    sixel_chunks: &Vec<SixelImageChunk>,
+    sixel_chunks: Option<&Vec<SixelImageChunk>>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_image_store: &mut SixelImageStore,
 ) -> String {
@@ -100,18 +100,20 @@ fn serialize_chunks(
         }
         character_styles.clear();
     }
-    for sixel_chunk in sixel_chunks {
-        let serialized_sixel_image = sixel_image_store.serialize_image(
-            sixel_chunk.sixel_image_id,
-            sixel_chunk.sixel_image_pixel_x,
-            sixel_chunk.sixel_image_pixel_y,
-            sixel_chunk.sixel_image_pixel_width,
-            sixel_chunk.sixel_image_pixel_height
-        );
-        if let Some(serialized_sixel_image) = serialized_sixel_image {
-            let mut sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
-            vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, &mut sixel_vte);
-            sixel_vte.push_str(&serialized_sixel_image);
+    if let Some(sixel_chunks) = sixel_chunks {
+        for sixel_chunk in sixel_chunks {
+            let serialized_sixel_image = sixel_image_store.serialize_image(
+                sixel_chunk.sixel_image_id,
+                sixel_chunk.sixel_image_pixel_x,
+                sixel_chunk.sixel_image_pixel_y,
+                sixel_chunk.sixel_image_pixel_width,
+                sixel_chunk.sixel_image_pixel_height
+            );
+            if let Some(serialized_sixel_image) = serialized_sixel_image {
+                let mut sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
+                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, &mut sixel_vte);
+                sixel_vte.push_str(&serialized_sixel_image);
+            }
         }
     }
     if let Some(ref sixel_vte) = sixel_vte {
@@ -176,7 +178,7 @@ pub struct Output {
     pre_vte_instructions: HashMap<ClientId, Vec<String>>,
     post_vte_instructions: HashMap<ClientId, Vec<String>>,
     client_character_chunks: HashMap<ClientId, Vec<CharacterChunk>>,
-    sixel_chunks: Vec<SixelImageChunk>,
+    sixel_chunks: HashMap<ClientId, Vec<SixelImageChunk>>,
     link_handler: Option<Rc<RefCell<LinkHandler>>>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
@@ -278,14 +280,43 @@ impl Output {
             .or_insert_with(Vec::new);
         entry.push(String::from(vte_instruction));
     }
-    pub fn add_sixel_image_chunks_to_all_clients(&mut self, mut sixel_image_chunks: Vec<SixelImageChunk>, z_index: Option<usize>) {
+    pub fn add_sixel_image_chunks_to_client(
+        &mut self,
+        client_id: ClientId,
+        sixel_image_chunks: Vec<SixelImageChunk>,
+        z_index: Option<usize>
+    ) {
         if let Some(character_cell_size) = *self.character_cell_size.borrow() {
-            if let Some(floating_panes_stack) = &self.floating_panes_stack {
-                let mut visible_sixel_image_chunks =
-                    floating_panes_stack.visible_sixel_image_chunks(sixel_image_chunks, z_index, &character_cell_size);
-                self.sixel_chunks.append(&mut visible_sixel_image_chunks);
+            let mut sixel_chunks = if let Some(floating_panes_stack) = &self.floating_panes_stack {
+                floating_panes_stack.visible_sixel_image_chunks(sixel_image_chunks, z_index, &character_cell_size)
             } else {
-                self.sixel_chunks.append(&mut sixel_image_chunks);
+                sixel_image_chunks
+            };
+            let entry = self
+                .sixel_chunks
+                .entry(client_id)
+                .or_insert_with(Vec::new);
+            entry.append(&mut sixel_chunks);
+        }
+    }
+    pub fn add_sixel_image_chunks_to_multiple_clients(
+        &mut self,
+        sixel_image_chunks: Vec<SixelImageChunk>,
+        client_ids: impl Iterator<Item = ClientId>,
+        z_index: Option<usize>
+    ) {
+        if let Some(character_cell_size) = *self.character_cell_size.borrow() {
+            let sixel_chunks = if let Some(floating_panes_stack) = &self.floating_panes_stack {
+                floating_panes_stack.visible_sixel_image_chunks(sixel_image_chunks, z_index, &character_cell_size)
+            } else {
+                sixel_image_chunks
+            };
+            for client_id in client_ids {
+                let entry = self
+                    .sixel_chunks
+                    .entry(client_id)
+                    .or_insert_with(Vec::new);
+                entry.append(&mut sixel_chunks.clone());
             }
         }
     }
@@ -307,7 +338,7 @@ impl Output {
             // append the actual vte
             client_serialized_render_instructions.push_str(&serialize_chunks(
                 client_character_chunks,
-                &self.sixel_chunks,
+                self.sixel_chunks.get(&client_id),
                 self.link_handler.as_mut(),
                 &mut self.sixel_image_store.borrow_mut(),
             )); // TODO: less allocations?
