@@ -361,37 +361,85 @@ impl SearchResult {
             return res;
         }
 
+        let is_word_boundary =
+            |x: Option<char>| x.map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_');
+
         let mut tailit = tail.iter();
         let mut source = SearchSource::Main(row);
+        let orig_ridx = ridx;
         let mut start = None;
         let mut nidx = 0; // Needle index
         let mut hidx = 0; // Haystack index
+        let mut prev_haystack_char: Option<char> = None;
         loop {
-            let haystack_char = match source {
+            let mut haystack_char = match source {
                 SearchSource::Main(row) => row.columns[hidx].character,
                 SearchSource::Tail(tail) => tail.columns[hidx].character,
             };
+            let next_haystack_char = if self.whole_word_only {
+                // Everything (incl. end of line) that is not [a-zA-Z0-9_] is considered a word boundary
+                match source {
+                    SearchSource::Main(row) => row.columns.get(hidx + 1).map(|c| c.character),
+                    SearchSource::Tail(tail) => tail.columns.get(hidx + 1).map(|c| c.character),
+                }
+            } else {
+                None // Doesn't get used
+            };
+
             let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
-            let chars_match = if self.case_insensitive {
+            let mut chars_match = if self.case_insensitive {
                 // Currently only ascii, as this whole search-function is very sub-optimal anyways
                 haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
             } else {
                 haystack_char == needle_char
             };
+
+            if chars_match
+                && self.whole_word_only
+                && nidx == 0
+                && !is_word_boundary(prev_haystack_char)
+            {
+                // Start of the match is not a word boundary, so this is not a hit
+                chars_match = false;
+            }
             if chars_match {
                 // If the needle is only 1 long, the next if could also happen, so we are not merging it into one big if-else
                 if nidx == 0 {
                     start = Some(Position::new(ridx as i32, hidx as u16));
                 }
                 if nidx == self.needle.len() - 1 {
-                    let mut selection = Selection::default();
-                    selection.start(start.unwrap());
-                    selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
-                    res.push(selection);
-                    nidx = 0;
-                    if matches!(source, SearchSource::Tail(..)) {
-                        // When searching the tail, we can only find one additional selection, so stopping here
-                        break;
+                    let mut end_found = true;
+                    if self.whole_word_only && !is_word_boundary(next_haystack_char) {
+                        // The end of the match is not a word boundary, so this is not a hit!
+                        // We have to jump back from where we started (plus one char)
+                        nidx = 0;
+                        ridx = start.unwrap().line() as usize;
+                        hidx = start.unwrap().column(); // Will be incremented below
+                        if start.unwrap().line() as usize == orig_ridx {
+                            source = SearchSource::Main(row);
+                            haystack_char = row.columns[hidx].character; // so that prev_char gets set correctly
+                        } else {
+                            // The -1 comes from the main row
+                            let tail_idx = start.unwrap().line() as usize - orig_ridx - 1;
+                            // We have to reset the tail-iterator as well.
+                            tailit = tail[tail_idx..].iter();
+                            let trow = tailit.next().unwrap();
+                            haystack_char = trow.columns[hidx].character; // so that prev_char gets set correctly
+                            source = SearchSource::Tail(trow);
+                        }
+                        start = None;
+                        end_found = false;
+                    }
+                    if end_found {
+                        let mut selection = Selection::default();
+                        selection.start(start.unwrap());
+                        selection.end(Position::new(ridx as i32, (hidx + 1) as u16));
+                        res.push(selection);
+                        nidx = 0;
+                        if matches!(source, SearchSource::Tail(..)) {
+                            // When searching the tail, we can only find one additional selection, so stopping here
+                            break;
+                        }
                     }
                 } else {
                     nidx += 1;
@@ -405,6 +453,8 @@ impl SearchResult {
                     break;
                 }
             }
+            prev_haystack_char = Some(haystack_char);
+
             hidx += 1;
             match source {
                 SearchSource::Main(row) => {
@@ -2013,6 +2063,12 @@ impl Grid {
         }
         self.search_results.active = None;
         self.search_viewport();
+        // Maybe the selection we had is now gone
+        if let Some(active_idx) = self.search_results.active {
+            if !self.search_results.selections.contains(&active_idx) {
+                self.search_results.active = None;
+            }
+        }
     }
 }
 

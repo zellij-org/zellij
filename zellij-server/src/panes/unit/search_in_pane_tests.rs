@@ -328,3 +328,81 @@ pub fn searching_across_line_wrap() {
         format!("{:?}", terminal_pane.grid)
     );
 }
+
+#[test]
+pub fn searching_whole_word() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term("quam");
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_quam_whole_word_only",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
+
+#[test]
+pub fn searching_whole_word_across_line_wrap() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.handle_pty_bytes(
+        "a:--:aaaaaaaaa:--:--:--:aaaaaaaaaaa:--: :--: :--: aaa :--::--: aaa"
+            .as_bytes()
+            .to_vec(),
+    );
+    terminal_pane.grid.change_size(20, 5);
+    terminal_pane.update_search_term(":--:");
+    assert_snapshot!(
+        "grid_copy_multiline_not_whole_word",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_multiline_whole_word",
+        format!("{:?}", terminal_pane.grid)
+    );
+}
+
+#[test]
+pub fn searching_whole_word_case_insensitive() {
+    let mut terminal_pane = create_pane();
+    terminal_pane.update_search_term("quam");
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_quam_whole_word_only",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_snapshot!(
+        "grid_copy_quam_whole_word_case_insensitive",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_whole_words();
+    assert_snapshot!(
+        "grid_copy_quam_insensitive_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+
+    terminal_pane.toggle_search_case_sensitivity();
+    assert_snapshot!(
+        "grid_copy_quam_highlighted",
+        format!("{:?}", terminal_pane.grid)
+    );
+}

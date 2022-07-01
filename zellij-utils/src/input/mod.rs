@@ -70,7 +70,7 @@ pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabili
             ("p".to_string(), "Previous occurrence".to_string()),
             ("c".to_string(), "Case sensitivity".to_string()),
             ("w".to_string(), "Wrap".to_string()),
-            //("o".to_string(), "Whole words".to_string()),
+            ("o".to_string(), "Whole words".to_string()),
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],

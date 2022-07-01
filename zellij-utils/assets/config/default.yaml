@@ -406,8 +406,8 @@ keybinds:
           key: [Char: 'c']
         - action: [SearchToggleOption: Wrap]
           key: [Char: 'w']
-        #- action: [SearchToggleOption: WholeWord]
-        #  key: [Char: 'o']
+        - action: [SearchToggleOption: WholeWord]
+          key: [Char: 'o']
     renametab:
         - action: [SwitchToMode: Normal,]
           key: [Char: "\n", Ctrl: 'c', Esc]
