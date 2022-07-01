@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use unicode_width::UnicodeWidthChar;
 use super::sixel::{SixelGrid, SixelImageStore, PixelRect};
 
-use sixel_tokenizer::SixelEvent;
-
 use std::{
     cmp::Ordering,
     collections::{BTreeSet, VecDeque},
@@ -1544,9 +1542,6 @@ impl Grid {
 
         self.scrollback_buffer_lines =
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
-    }
-    fn handle_sixel_event(&mut self, sixel_event: SixelEvent) {
-        self.sixel_grid.handle_event(sixel_event);
     }
     fn move_cursor_down_by_pixels(&mut self, pixel_count: usize) {
         if let Some(character_cell_size) = { let c = *self.character_cell_size.borrow(); c } { // thanks borrow checker
