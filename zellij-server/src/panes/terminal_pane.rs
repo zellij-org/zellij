@@ -206,7 +206,6 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-        z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
         if self.should_render() {
             let mut raw_vte_output = String::new();

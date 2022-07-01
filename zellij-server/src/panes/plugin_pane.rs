@@ -139,7 +139,6 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-        _z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;

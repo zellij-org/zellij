@@ -134,7 +134,6 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-        z_index: Option<usize>,
     ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>; // TODO: better
     fn render_frame(
         &mut self,
