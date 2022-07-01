@@ -1076,7 +1076,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
     let last_snapshot = loop {
         RemoteRunner::kill_running_sessions(fake_win_size);
         let mut runner = RemoteRunner::new(fake_win_size)
-            .retry_pause_ms(1000) // we need a longer retry period here because it takes some time to fill the pty buffer
+            .retry_pause_ms(2000) // we need a longer retry period here because it takes some time to fill the pty buffer
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
