@@ -91,7 +91,7 @@ pub enum ScreenInstruction {
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
     CloseTab(ClientId),
-    GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy thie behaviour
+    GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy this behaviour
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),

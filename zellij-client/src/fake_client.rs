@@ -1,5 +1,5 @@
 //! The `[fake_client]` is used to attach to a running server session
-//! and dispatch actions, that are specificed through the command line.
+//! and dispatch actions, that are specified through the command line.
 //! Multiple actions at the same time can be dispatched.
 use log::debug;
 use std::{fs, path::PathBuf, thread};
