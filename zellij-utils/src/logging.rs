@@ -55,7 +55,7 @@ pub fn configure_logger() {
         )
         .unwrap();
 
-    // plugin appender. To be used in loggin_pipe to forward stderr output from plugins. We do some formatting
+    // plugin appender. To be used in logging_pipe to forward stderr output from plugins. We do some formatting
     // in logging_pipe to print plugin name as 'module' and plugin_id instead of thread.
     let log_plugin = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
