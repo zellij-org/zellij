@@ -20,6 +20,7 @@ const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-m
 const SET_ENV_VARIABLES: &str = "EDITOR=/usr/bin/vi";
 const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const ZELLIJ_DATA_DIR: &str = "/usr/src/zellij/e2e-data";
+const ZELLIJ_FIXTURE_PATH: &str = "/usr/src/zellij/fixtures";
 const CONNECTION_STRING: &str = "127.0.0.1:2222";
 const CONNECTION_USERNAME: &str = "test";
 const CONNECTION_PASSWORD: &str = "test";
@@ -326,7 +327,7 @@ impl RemoteTerminal {
     pub fn load_fixture(&mut self, name: &str) {
         let mut channel = self.channel.lock().unwrap();
         channel
-            .write_all(format!("cat /usr/src/zellij/fixtures/{name}\n").as_bytes())
+            .write_all(format!("cat {ZELLIJ_FIXTURE_PATH}/{name}\n").as_bytes())
             .unwrap();
         channel.flush().unwrap();
     }
