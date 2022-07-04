@@ -4,7 +4,8 @@ use crate::{
     data::{ClientId, InputMode, Style},
     errors::{get_current_ctx, ErrorContext},
     input::{
-        actions::Action, keybinds::Keybinds, layout::LayoutFromYaml, options::Options, plugins::PluginsConfig,
+        actions::Action, keybinds::Keybinds, layout::LayoutFromYaml, options::Options,
+        plugins::PluginsConfig,
     },
     pane_size::{Size, SizeInPixels},
 };
@@ -157,7 +158,7 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
     pub fn send(&mut self, msg: T) {
         let err_ctx = get_current_ctx();
-        bincode::serialize_into(&mut self.sender, &(msg, err_ctx)).unwrap();
+        rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).unwrap();
         // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
         // do we need to handle errors here in other cases?
         let _ = self.sender.flush();
@@ -195,7 +196,7 @@ where
 
     /// Receives an event, along with the current [`ErrorContext`], on this [`IpcReceiverWithContext`]'s socket.
     pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
-        match bincode::deserialize_from(&mut self.receiver) {
+        match rmp_serde::decode::from_read(&mut self.receiver) {
             Ok(msg) => Some(msg),
             Err(e) => {
                 warn!("Error in IpcReceiver.recv(): {:?}", e);

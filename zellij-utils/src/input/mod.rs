@@ -31,7 +31,6 @@ mod not_wasm {
         attributes: &ClientAttributes,
         capabilities: PluginCapabilities,
     ) -> ModeInfo {
-        // FIXME: Need access to the real keybindings here
         let keybinds = attributes.keybinds.get_mode_keybinds(&mode).to_cloned_vec();
         let session_name = envs::get_session_name().ok();
 
