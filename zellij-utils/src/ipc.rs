@@ -1,10 +1,11 @@
 //! IPC stuff for starting to split things into a client and server model.
-
 use crate::{
     cli::CliArgs,
     data::{ClientId, InputMode, Style},
     errors::{get_current_ctx, ErrorContext},
-    input::{actions::Action, layout::LayoutFromYaml, options::Options, plugins::PluginsConfig},
+    input::{
+        actions::Action, keybinds::Keybinds, layout::LayoutFromYaml, options::Options, plugins::PluginsConfig,
+    },
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -41,6 +42,7 @@ pub enum ClientType {
 pub struct ClientAttributes {
     pub size: Size,
     pub style: Style,
+    pub keybinds: Keybinds,
 }
 
 #[derive(Default, Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
