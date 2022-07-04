@@ -323,6 +323,13 @@ impl RemoteTerminal {
             .unwrap();
         channel.flush().unwrap();
     }
+    pub fn load_fixture(&mut self, name: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(format!("cat /usr/src/zellij/fixtures/{name}\n").as_bytes())
+            .unwrap();
+        channel.flush().unwrap();
+    }
 }
 
 #[derive(Clone)]
@@ -568,6 +575,7 @@ impl RemoteRunner {
         self.panic_on_no_retries_left = false;
         self
     }
+    #[allow(unused)]
     pub fn retry_pause_ms(mut self, retry_pause_ms: usize) -> Self {
         self.retry_pause_ms = retry_pause_ms;
         self

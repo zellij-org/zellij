@@ -208,7 +208,6 @@ pub fn scrolling_inside_a_pane() {
     let last_snapshot = loop {
         RemoteRunner::kill_running_sessions(fake_win_size);
         let mut runner = RemoteRunner::new(fake_win_size)
-            .retry_pause_ms(1000) // we need a longer retry period here because it takes some time to fill the pty buffer
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -229,32 +228,7 @@ pub fn scrolling_inside_a_pane() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
-                        let mut content_to_send = String::new();
-                        write!(&mut content_to_send, "{:0<56}", "line1 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line2 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line3 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line4 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line5 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line6 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line7 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line8 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line9 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line10 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line11 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line12 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line13 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line14 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line15 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line16 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line17 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line18 ").unwrap();
-                        write!(&mut content_to_send, "{:0<58}", "line19 ").unwrap();
-                        write!(&mut content_to_send, "{:0<57}", "line20 ").unwrap();
-
-                        remote_terminal.send_key(&BRACKETED_PASTE_START);
-                        remote_terminal.send_key(content_to_send.as_bytes());
-                        remote_terminal.send_key(&BRACKETED_PASTE_END);
-
+                        remote_terminal.load_fixture("e2e/scrolling_inside_a_pane");
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -264,7 +238,9 @@ pub fn scrolling_inside_a_pane() {
                 name: "Scroll up inside pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(118, 20) {
+                    if remote_terminal.cursor_position_is(63, 20)
+                        && remote_terminal.snapshot_contains("line21")
+                    {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&SCROLL_MODE);
                         remote_terminal.send_key(&SCROLL_UP_IN_SCROLL_MODE);
@@ -278,10 +254,11 @@ pub fn scrolling_inside_a_pane() {
             name: "Wait for scroll to finish",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(118, 20)
-                    && remote_terminal.snapshot_contains("line1 ")
+                if remote_terminal.cursor_position_is(63, 20)
+                    && remote_terminal.snapshot_contains("line3 ")
+                    && remote_terminal.snapshot_contains("SCROLL:  1/4")
                 {
-                    // scrolled up one line
+                    // keyboard scrolls up 1 line, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
                     step_is_complete = true;
                 }
                 step_is_complete
@@ -1076,7 +1053,6 @@ pub fn scrolling_inside_a_pane_with_mouse() {
     let last_snapshot = loop {
         RemoteRunner::kill_running_sessions(fake_win_size);
         let mut runner = RemoteRunner::new(fake_win_size)
-            .retry_pause_ms(2000) // we need a longer retry period here because it takes some time to fill the pty buffer
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
@@ -1096,27 +1072,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
-                        // cursor is in the newly opened second pane
-                        remote_terminal.send_key(format!("{:0<56}", "line1 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line2 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line3 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line4 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line5 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line6 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line7 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line8 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line9 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line10 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line11 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line12 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line13 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line14 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line15 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line16 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line17 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line18 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<58}", "line19 ").as_bytes());
-                        remote_terminal.send_key(format!("{:0<57}", "line20 ").as_bytes());
+                        remote_terminal.load_fixture("e2e/scrolling_inside_a_pane");
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1126,7 +1082,9 @@ pub fn scrolling_inside_a_pane_with_mouse() {
                 name: "Scroll up inside pane",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.cursor_position_is(118, 20) {
+                    if remote_terminal.cursor_position_is(63, 20)
+                        && remote_terminal.snapshot_contains("line21")
+                    {
                         // all lines have been written to the pane
                         remote_terminal.send_key(&sgr_mouse_report(Position::new(2, 64), 64));
                         step_is_complete = true;
@@ -1139,10 +1097,11 @@ pub fn scrolling_inside_a_pane_with_mouse() {
             name: "Wait for scroll to finish",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(118, 20)
+                if remote_terminal.cursor_position_is(63, 20)
                     && remote_terminal.snapshot_contains("line1 ")
+                    && remote_terminal.snapshot_contains("SCROLL:  3/4")
                 {
-                    // scrolled up one line
+                    // mouse wheel scrolls up 3 lines, scrollback is 4 lines: cat command + 2 extra lines from fixture + prompt
                     step_is_complete = true;
                 }
                 step_is_complete
