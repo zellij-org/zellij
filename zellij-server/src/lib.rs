@@ -104,7 +104,7 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
-    pub style: Style,
+    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
@@ -711,7 +711,7 @@ fn init_session(
         },
         capabilities,
         default_shell,
-        style: client_attributes.style,
+        client_attributes,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
