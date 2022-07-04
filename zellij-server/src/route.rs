@@ -75,22 +75,23 @@ fn route_action(
                 .unwrap();
         },
         Action::SwitchToMode(mode) => {
-            let style = session.style;
+            let attrs = &session.client_attributes;
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around
             // to allow for this
+            // TODO: Need access to `ClientAttributes` here
             session
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, style, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, attrs, session.capabilities)),
                 ))
                 .unwrap();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, style, session.capabilities),
+                    get_mode_info(mode, attrs, session.capabilities),
                     client_id,
                 ))
                 .unwrap();

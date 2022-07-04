@@ -39,7 +39,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{Event, PluginCapabilities, Style},
+    data::{Event, PluginCapabilities},
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
@@ -378,7 +378,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info = get_mode_info(default_mode, attrs.style, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities);
                 let mode = mode_info.mode;
                 session_data
                     .senders

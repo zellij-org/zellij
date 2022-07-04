@@ -12,36 +12,37 @@ pub mod theme;
 #[cfg(not(target_family = "wasm"))]
 pub mod mouse;
 
-use crate::{
-    data::{InputMode, Key, ModeInfo, PluginCapabilities, Style},
-    envs,
-    input::keybinds::Keybinds,
-};
-
-/// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
-/// (as pairs of [`String`]s).
-pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabilities) -> ModeInfo {
-    // FIXME: Need access to the real keybindings here
-    let keybinds = Keybinds::default().get_mode_keybinds(&mode).to_cloned_vec();
-    let session_name = envs::get_session_name().ok();
-
-    ModeInfo {
-        mode,
-        keybinds,
-        style,
-        capabilities,
-        session_name,
-    }
-}
-
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
 
 #[cfg(not(target_family = "wasm"))]
 mod not_wasm {
-    use super::*;
-    use crate::data::{CharOrArrow, Direction};
+    use crate::{
+        data::{CharOrArrow, Direction, InputMode, Key, ModeInfo, PluginCapabilities},
+        envs,
+        ipc::ClientAttributes,
+    };
     use termwiz::input::{InputEvent, InputParser, KeyCode, KeyEvent, Modifiers};
+
+    /// Creates a [`ModeInfo`] struct indicating the current [`InputMode`] and its keybinds
+    /// (as pairs of [`String`]s).
+    pub fn get_mode_info(
+        mode: InputMode,
+        attributes: &ClientAttributes,
+        capabilities: PluginCapabilities,
+    ) -> ModeInfo {
+        // FIXME: Need access to the real keybindings here
+        let keybinds = attributes.keybinds.get_mode_keybinds(&mode).to_cloned_vec();
+        let session_name = envs::get_session_name().ok();
+
+        ModeInfo {
+            mode,
+            keybinds,
+            style: attributes.style,
+            capabilities,
+            session_name,
+        }
+    }
 
     pub fn parse_keys(input_bytes: &[u8]) -> Vec<Key> {
         let mut ret = vec![];
