@@ -37,7 +37,7 @@ pub enum ClientType {
     Writer,
 }
 
-#[derive(Default, Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Default, Serialize, Deserialize, Debug, Clone)]
 pub struct ClientAttributes {
     pub size: Size,
     pub style: Style,

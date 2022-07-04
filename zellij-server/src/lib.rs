@@ -285,7 +285,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session = init_session(
                     os_input.clone(),
                     to_server.clone(),
-                    client_attributes,
+                    client_attributes.clone(),
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
@@ -654,8 +654,14 @@ fn init_session(
             );
             let max_panes = opts.max_panes;
 
+            let client_attributes_clone = client_attributes.clone();
             move || {
-                screen_thread_main(screen_bus, max_panes, client_attributes, config_options);
+                screen_thread_main(
+                    screen_bus,
+                    max_panes,
+                    client_attributes_clone,
+                    config_options,
+                );
             }
         })
         .unwrap();
