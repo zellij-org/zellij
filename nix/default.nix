@@ -206,6 +206,7 @@ in rec {
   };
   packages.default = packages.zellij;
 
+  packages.plugins-compact = plugins.compact-bar;
   packages.plugins-status-bar = plugins.status-bar;
   packages.plugins-tab-bar = plugins.tab-bar;
   packages.plugins-strider = plugins.strider;
