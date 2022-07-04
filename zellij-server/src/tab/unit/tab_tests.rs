@@ -39,7 +39,8 @@ impl ServerOsApi for FakeInputOutput {
         &self,
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd) {
+        _default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str> {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -80,6 +81,10 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn get_cwd(&self, _pid: Pid) -> Option<PathBuf> {
+        unimplemented!()
+    }
+
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
         unimplemented!()
     }
 }
@@ -674,45 +679,64 @@ pub fn toggle_focused_pane_fullscreen() {
 }
 
 #[test]
-pub fn move_focus_is_disabled_in_fullscreen() {
+fn switch_to_next_pane_fullscreen() {
     let size = Size {
         cols: 121,
         rows: 20,
     };
-    let mut tab = create_new_tab(size);
-    for i in 2..5 {
-        let new_pane_id = PaneId::Terminal(i);
-        tab.new_pane(new_pane_id, Some(1));
-    }
-    tab.toggle_active_pane_fullscreen(1);
-    tab.move_focus_left(1);
+
+    let mut active_tab = create_new_tab(size);
+
+    active_tab.new_pane(PaneId::Terminal(1), Some(1));
+    active_tab.new_pane(PaneId::Terminal(2), Some(1));
+    active_tab.new_pane(PaneId::Terminal(3), Some(1));
+    active_tab.new_pane(PaneId::Terminal(4), Some(1));
+    active_tab.toggle_active_pane_fullscreen(1);
+
+    // order is now 1 ->2 -> 3 -> 4 due to how new panes are inserted
+
+    active_tab.switch_next_pane_fullscreen(1);
+    active_tab.switch_next_pane_fullscreen(1);
+    active_tab.switch_next_pane_fullscreen(1);
+    active_tab.switch_next_pane_fullscreen(1);
+
+    // position should now be back in terminal 4.
+
     assert_eq!(
-        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().x(),
-        0,
-        "Pane x is on screen edge"
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(4),
+        "Active pane did not switch in fullscreen mode"
     );
+}
+
+#[test]
+fn switch_to_prev_pane_fullscreen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut active_tab = create_new_tab(size);
+
+    //testing four consecutive switches in fullscreen mode
+
+    active_tab.new_pane(PaneId::Terminal(1), Some(1));
+    active_tab.new_pane(PaneId::Terminal(2), Some(1));
+    active_tab.new_pane(PaneId::Terminal(3), Some(1));
+    active_tab.new_pane(PaneId::Terminal(4), Some(1));
+    active_tab.toggle_active_pane_fullscreen(1);
+    // order is now 1 2 3 4
+
+    active_tab.switch_prev_pane_fullscreen(1);
+    active_tab.switch_prev_pane_fullscreen(1);
+    active_tab.switch_prev_pane_fullscreen(1);
+    active_tab.switch_prev_pane_fullscreen(1);
+
+    // the position should now be in Terminal 4.
+
     assert_eq!(
-        tab.tiled_panes.panes.get(&PaneId::Terminal(4)).unwrap().y(),
-        0,
-        "Pane y is on screen edge"
-    );
-    assert_eq!(
-        tab.tiled_panes
-            .panes
-            .get(&PaneId::Terminal(4))
-            .unwrap()
-            .cols(),
-        121,
-        "Pane cols match fullscreen cols"
-    );
-    assert_eq!(
-        tab.tiled_panes
-            .panes
-            .get(&PaneId::Terminal(4))
-            .unwrap()
-            .rows(),
-        20,
-        "Pane rows match fullscreen rows"
+        active_tab.get_active_pane_id(1).unwrap(),
+        PaneId::Terminal(4),
+        "Active pane did not switch in fullscreen mode"
     );
 }
 

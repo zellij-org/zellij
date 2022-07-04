@@ -42,6 +42,9 @@ keybinds:
           key: [ Alt: '+']
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
+        # uncomment this and adjust key if using copy_on_select=false
+        # - action: [Copy: ]
+        #   key: [ Alt: 'c']
     locked:
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 'g',]
@@ -268,6 +271,8 @@ keybinds:
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
     scroll:
+        - action: [EditScrollback, SwitchToMode: Normal]
+          key: [Char: 'e']
         - action: [SwitchToMode: Normal,]
           key: [Ctrl: 's', Char: ' ', Char: "\n", Esc]
         - action: [SwitchToMode: Tab,]
@@ -316,6 +321,9 @@ keybinds:
           key: [ Alt: '+']
         - action: [Resize: Decrease,]
           key: [ Alt: '-']
+        # uncomment this and adjust key if using copy_on_select=false
+        # - action: [Copy: ]
+        #   key: [ Alt: 'c']
     renametab:
         - action: [SwitchToMode: Normal,]
           key: [Char: "\n", Ctrl: 'c', Esc]
@@ -473,6 +481,8 @@ plugins:
       tag: status-bar
     - path: strider
       tag: strider
+    - path: compact-bar
+      tag: compact-bar
 
 # Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 # eg. when terminal window with an active zellij session is closed
@@ -536,4 +546,10 @@ plugins:
 # Options:
 #   - system (default)
 #   - primary
-# copy_clipboard: primary
+#copy_clipboard: primary
+
+# Enable or disable automatic copy (and clear) of selection when releasing mouse
+#copy_on_select: true
+
+# Path to the default editor to use to edit pane scrollbuffer
+# scrollback_editor: /usr/bin/nano

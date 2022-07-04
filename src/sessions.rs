@@ -1,7 +1,7 @@
 use std::os::unix::fs::FileTypeExt;
 use std::time::SystemTime;
 use std::{fs, io, process};
-use suggestion::Suggest;
+use suggest::Suggest;
 use zellij_utils::{
     consts::ZELLIJ_SOCK_DIR,
     envs,
@@ -21,7 +21,7 @@ pub(crate) fn get_sessions() -> Result<Vec<String>, io::ErrorKind> {
                 }
             });
             Ok(sessions)
-        }
+        },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.kind()),
         Err(_) => Ok(Vec::with_capacity(0)),
     }
@@ -43,7 +43,7 @@ pub(crate) fn get_sessions_sorted_by_mtime() -> anyhow::Result<Vec<String>> {
 
             let sessions = sessions_with_mtime.iter().map(|x| x.0.clone()).collect();
             Ok(sessions)
-        }
+        },
         Err(err) if io::ErrorKind::NotFound != err.kind() => Err(err.into()),
         Err(_) => Ok(Vec::with_capacity(0)),
     }
@@ -57,16 +57,14 @@ fn assert_socket(name: &str) -> bool {
             sender.send(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv() {
-                Some((instruction, _)) => {
-                    matches!(instruction, ServerToClientMsg::Connected)
-                }
-                None => false,
+                Some((ServerToClientMsg::Connected, _)) => true,
+                None | Some((_, _)) => false,
             }
-        }
+        },
         Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
             drop(fs::remove_file(path));
             false
-        }
+        },
         Err(_) => false,
     }
 }
@@ -109,7 +107,7 @@ pub(crate) fn get_active_session() -> ActiveSession {
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -118,11 +116,11 @@ pub(crate) fn kill_session(name: &str) {
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             process::exit(1);
-        }
+        },
     };
 }
 
@@ -131,25 +129,54 @@ pub(crate) fn list_sessions() {
         Ok(sessions) if !sessions.is_empty() => {
             print_sessions(sessions);
             0
-        }
+        },
         Ok(_) => {
             eprintln!("No active zellij sessions found.");
             1
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
             1
-        }
+        },
     };
     process::exit(exit_code);
 }
 
-pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+#[derive(Debug, Clone)]
+pub enum SessionNameMatch {
+    AmbiguousPrefix(Vec<String>),
+    UniquePrefix(String),
+    Exact(String),
+    None,
+}
+
+pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     return match get_sessions() {
-        Ok(sessions) if sessions.iter().any(|s| s == name) => Ok(true),
-        Ok(_) => Ok(false),
+        Ok(sessions) => Ok({
+            let filtered_sessions: Vec<String> = sessions
+                .iter()
+                .filter(|s| s.starts_with(prefix))
+                .cloned()
+                .collect();
+            if filtered_sessions.iter().any(|s| s == prefix) {
+                return Ok(SessionNameMatch::Exact(prefix.to_string()));
+            }
+            match &filtered_sessions[..] {
+                [] => SessionNameMatch::None,
+                [s] => SessionNameMatch::UniquePrefix(s.to_string()),
+                _ => SessionNameMatch::AmbiguousPrefix(filtered_sessions),
+            }
+        }),
         Err(e) => Err(e),
     };
+}
+
+pub(crate) fn session_exists(name: &str) -> Result<bool, io::ErrorKind> {
+    match match_session_name(name) {
+        Ok(SessionNameMatch::Exact(_)) => Ok(true),
+        Ok(_) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 pub(crate) fn assert_session(name: &str) {
@@ -163,10 +190,10 @@ pub(crate) fn assert_session(name: &str) {
                     println!("  help: Did you mean `{}`?", sugg);
                 }
             }
-        }
+        },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
-        }
+        },
     };
     process::exit(1);
 }

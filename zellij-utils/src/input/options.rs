@@ -40,55 +40,68 @@ impl FromStr for OnForceClose {
 pub struct Options {
     /// Allow plugins to use a more simplified layout
     /// that is compatible with more fonts (true or false)
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     pub simplified_ui: Option<bool>,
     /// Set the default theme
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub theme: Option<String>,
     /// Set the default mode
-    #[clap(long, arg_enum, hide_possible_values = true)]
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
     /// Set the default shell
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, value_parser)]
     pub default_shell: Option<PathBuf>,
+    /// Set the default layout
+    #[clap(long, value_parser)]
+    pub default_layout: Option<PathBuf>,
     /// Set the layout_dir, defaults to
     /// subdirectory of config dir
-    #[clap(long, parse(from_os_str))]
+    #[clap(long, value_parser)]
     pub layout_dir: Option<PathBuf>,
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
     /// Can be temporarily bypassed by the [SHIFT] key
     pub mouse_mode: Option<bool>,
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     /// Set display of the pane frames (true or false)
     pub pane_frames: Option<bool>,
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     /// Mirror session when multiple users are connected (true or false)
     pub mirror_session: Option<bool>,
     /// Set behaviour on force close (quit or detach)
-    #[clap(long, arg_enum, hide_possible_values = true)]
+    #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     pub on_force_close: Option<OnForceClose>,
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub scroll_buffer_size: Option<usize>,
 
     /// Switch to using a user supplied command for clipboard instead of OSC52
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     pub copy_command: Option<String>,
 
     /// OSC52 destination clipboard
-    #[clap(long, arg_enum, ignore_case = true, conflicts_with = "copy-command")]
+    #[clap(
+        long,
+        arg_enum,
+        ignore_case = true,
+        conflicts_with = "copy-command",
+        value_parser
+    )]
     #[serde(default)]
     pub copy_clipboard: Option<Clipboard>,
 
     /// Automatically copy when selecting text (true or false)
-    #[clap(long)]
+    #[clap(long, value_parser)]
     #[serde(default)]
     pub copy_on_select: Option<bool>,
+
+    /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
+    #[clap(long, value_parser)]
+    pub scrollback_editor: Option<PathBuf>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -115,7 +128,7 @@ impl Options {
     }
 
     /// Merges two [`Options`] structs, a `Some` in `other`
-    /// will supercede a `Some` in `self`
+    /// will supersede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
@@ -124,6 +137,7 @@ impl Options {
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
@@ -131,12 +145,16 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
             theme,
             default_mode,
             default_shell,
+            default_layout,
             layout_dir,
             mouse_mode,
             pane_frames,
@@ -146,11 +164,12 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            scrollback_editor,
         }
     }
 
     /// Merges two [`Options`] structs,
-    /// - `Some` in `other` will supercede a `Some` in `self`
+    /// - `Some` in `other` will supersede a `Some` in `self`
     /// - `Some(bool)` in `other` will toggle a `Some(bool)` in `self`
     // TODO: Maybe a good candidate for a macro?
     pub fn merge_from_cli(&self, other: Options) -> Options {
@@ -171,6 +190,7 @@ impl Options {
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
@@ -178,12 +198,16 @@ impl Options {
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
         let copy_clipboard = other.copy_clipboard.or(self.copy_clipboard);
         let copy_on_select = other.copy_on_select.or(self.copy_on_select);
+        let scrollback_editor = other
+            .scrollback_editor
+            .or_else(|| self.scrollback_editor.clone());
 
         Options {
             simplified_ui,
             theme,
             default_mode,
             default_shell,
+            default_layout,
             layout_dir,
             mouse_mode,
             pane_frames,
@@ -193,6 +217,7 @@ impl Options {
             copy_command,
             copy_clipboard,
             copy_on_select,
+            scrollback_editor,
         }
     }
 
@@ -210,10 +235,10 @@ impl Options {
 /// boolean flags end up toggling boolean options in `Options`
 pub struct CliOptions {
     /// Disable handling of mouse events
-    #[clap(long, conflicts_with("mouse-mode"))]
+    #[clap(long, conflicts_with("mouse-mode"), value_parser)]
     pub disable_mouse_mode: bool,
     /// Disable display of pane frames
-    #[clap(long, conflicts_with("pane-frames"))]
+    #[clap(long, conflicts_with("pane-frames"), value_parser)]
     pub no_pane_frames: bool,
     #[clap(flatten)]
     options: Options,
@@ -235,6 +260,7 @@ impl From<CliOptions> for Options {
             theme: opts.theme,
             default_mode: opts.default_mode,
             default_shell: opts.default_shell,
+            default_layout: opts.default_layout,
             layout_dir: opts.layout_dir,
             mouse_mode: opts.mouse_mode,
             pane_frames: opts.pane_frames,
@@ -244,6 +270,7 @@ impl From<CliOptions> for Options {
             copy_command: opts.copy_command,
             copy_clipboard: opts.copy_clipboard,
             copy_on_select: opts.copy_on_select,
+            scrollback_editor: opts.scrollback_editor,
         }
     }
 }

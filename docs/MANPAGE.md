@@ -39,6 +39,8 @@ LAYOUTS
 
 Layouts are yaml files which Zellij can load on startup when _--layout_ flag is
 provided.
+By default Zellij will load a layout called `default.yaml`,
+but this can be changed by using the `default_layout: [LAYOUT_NAME]` configuration option.
 
 
 For example a file like this:
@@ -151,6 +153,8 @@ ACTIONS
   next ID.
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
   Right, Up, Down).
+* __DumpScreen: <File\>__ - dumps the screen in the specified file.
+* __EditScrollback__ - replaces the current pane with the scrollback buffer.
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
 * __ScrollDown__ - scrolls down 1 line in the focused pane.
 * __PageScrollUp__ - scrolls up 1 page in the focused pane.
@@ -168,6 +172,8 @@ ACTIONS
 * __Detach__ - detach session and exit.
 * __ToggleActiveSyncTab__ - toggle between sending text commands to all panes
   on the current tab and normal mode.
+* __UndoRenameTab__ - undoes the changed tab name and reverts to the previous name.
+* __UndoRenamePane__ - undoes the changed pane name and reverts to the previous name.
 
 
 KEYS
@@ -196,6 +202,7 @@ MODES
 * __locked__ - disables all keybindings except the one that would switch the
   mode to normal (_ctrl-g_ by default). Useful when Zellij's keybindings
   conflict with those of a chosen terminal app. 
+* __tmux__ - provides convenience keybindings emulating simple tmux behaviour
 * __pane__ - includes instructions that manipulate the panes (adding new panes,
   moving, closing).
 * __tab__ - includes instructions that manipulate the tabs (adding new tabs,
@@ -204,12 +211,14 @@ MODES
 * __scroll__ - allows scrolling within the focused pane.
 * __renametab__ - is a "hidden" mode that can be passed to _SwitchToMode_
   action. It will trigger renaming of a tab.
+* __renamepane__ - is a "hidden" mode that can be passed to _SwitchToMode_
+  action. It will trigger renaming of a pane.
 * __session__ - allows detaching from a session.
 
 
 Theme
 =====
-A color theme can be defined either in truecolor, or 256 format.
+A color theme can be defined either in truecolor, 256 or hex color format.
 Truecolor:
 ```
 fg: [0, 0, 0]
@@ -217,6 +226,11 @@ fg: [0, 0, 0]
 256:
 ```
 fg: 0
+```
+Hex color:
+```
+fg: "#000000"
+bg: "#000"
 ```
 The color theme can be specified in the following way:
 ```
@@ -253,9 +267,18 @@ _tab-bar_.
 FILES
 =====
 
-Default user configuration file location:
-* Linux: _/home/alice/.config/zellij_
+Default user configuration directory location:
+* Linux: _$XDG_HOME/zellij /home/alice/.config/zellij_
 * macOS: _/Users/Alice/Library/Application Support/com.Zellij-Contributors.zellij_
+
+Default user layout directory location:
+* Subdirectory called `layouts` inside of the configuration directory.
+* Linux: _$XDG_HOME/zellij/layouts /home/alice/.config/zellij/layouts
+* macOS: _/Users/Alice/Library/Application/layouts Support/com.Zellij-Contributors.zellij/layouts_
+
+Default plugin directory location:
+* Linux: _$XDG_DATA_HOME/zellij/plugins /home/alice/.local/share/plugins
+
 
 ENVIRONMENT
 ===========

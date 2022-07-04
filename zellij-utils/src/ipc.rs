@@ -7,6 +7,7 @@ use crate::{
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
+use log::warn;
 use nix::unistd::dup;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -16,7 +17,10 @@ use std::{
     os::unix::io::{AsRawFd, FromRawFd},
 };
 
-use zellij_tile::{data::InputMode, prelude::Style};
+use zellij_tile::{
+    data::InputMode,
+    prelude::{ClientId, Style},
+};
 
 type SessionId = u64;
 
@@ -74,6 +78,7 @@ pub enum ClientToServerMsg {
     DetachSession(SessionId),
     // Disconnect from the session we're connected to
     DisconnectFromSession,*/
+    DetachSession(Vec<ClientId>),
     TerminalPixelDimensions(PixelDimensions),
     BackgroundColor(String),
     ForegroundColor(String),
@@ -87,10 +92,11 @@ pub enum ClientToServerMsg {
         Option<PluginsConfig>,
     ),
     AttachClient(ClientAttributes, Options),
-    Action(Action),
+    Action(Action, Option<ClientId>),
     ClientExited,
     KillSession,
     ConnStatus,
+    ListClients,
 }
 
 // Types of messages sent from the server to the client
@@ -105,6 +111,7 @@ pub enum ServerToClientMsg {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -190,7 +197,10 @@ where
     pub fn recv(&mut self) -> Option<(T, ErrorContext)> {
         match bincode::deserialize_from(&mut self.receiver) {
             Ok(msg) => Some(msg),
-            Err(_) => None,
+            Err(e) => {
+                warn!("Error in IpcReceiver.recv(): {:?}", e);
+                None
+            },
         }
     }
 

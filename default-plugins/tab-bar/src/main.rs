@@ -49,23 +49,23 @@ impl ZellijPlugin for State {
                 } else {
                     eprintln!("Could not find active tab.");
                 }
-            }
+            },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
                     self.mouse_click_pos = col;
                     self.should_render = true;
-                }
+                },
                 Mouse::ScrollUp(_) => {
                     switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
-                }
+                },
                 Mouse::ScrollDown(_) => {
                     switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
-                }
-                _ => {}
+                },
+                _ => {},
             },
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);
-            }
+            },
         }
     }
 
@@ -75,6 +75,7 @@ impl ZellijPlugin for State {
         }
         let mut all_tabs: Vec<LinePart> = vec![];
         let mut active_tab_index = 0;
+        let mut is_alternate_tab = false;
         for t in &mut self.tabs {
             let mut tabname = t.name.clone();
             if t.active && self.mode_info.mode == InputMode::RenameTab {
@@ -88,11 +89,13 @@ impl ZellijPlugin for State {
             let tab = tab_style(
                 tabname,
                 t.active,
+                is_alternate_tab,
                 t.is_sync_panes_active,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
                 t.other_focused_clients.as_slice(),
             );
+            is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
         }
         let tab_line = tab_line(
@@ -126,10 +129,10 @@ impl ZellijPlugin for State {
         match background {
             PaletteColor::Rgb((r, g, b)) => {
                 println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
-            }
+            },
             PaletteColor::EightBit(color) => {
                 println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
-            }
+            },
         }
         self.should_render = false;
     }

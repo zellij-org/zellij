@@ -26,10 +26,15 @@ pub struct TiledPaneGrid<'a> {
 impl<'a> TiledPaneGrid<'a> {
     pub fn new(
         panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes_to_hide: &HashSet<PaneId>,
         display_area: Size,
         viewport: Viewport,
     ) -> Self {
-        let panes: HashMap<_, _> = panes.into_iter().map(|(p_id, p)| (*p_id, p)).collect();
+        let panes: HashMap<_, _> = panes
+            .into_iter()
+            .filter(|(p_id, _)| !panes_to_hide.contains(p_id))
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
         TiledPaneGrid {
             panes: Rc::new(RefCell::new(panes)),
             display_area,
@@ -1569,12 +1574,12 @@ impl<'a> TiledPaneGrid<'a> {
                 for pane_id in panes {
                     self.increase_pane_width(pane_id, width);
                 }
-            }
+            },
             Direction::Vertical => {
                 for pane_id in panes {
                     self.increase_pane_height(pane_id, height);
                 }
-            }
+            },
         };
     }
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {

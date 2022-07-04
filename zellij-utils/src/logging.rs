@@ -9,37 +9,62 @@ use std::{
 
 use log::LevelFilter;
 
-use log4rs::append::file::FileAppender;
+use log4rs::append::rolling_file::{
+    policy::compound::{
+        roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger, CompoundPolicy,
+    },
+    RollingFileAppender,
+};
 use log4rs::config::{Appender, Config, Logger, Root};
 use log4rs::encode::pattern::PatternEncoder;
 
 use crate::consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 use crate::shared::set_permissions;
 
+const LOG_MAX_BYTES: u64 = 1024 * 100;
+
 pub fn configure_logger() {
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
     atomic_create_dir(&*ZELLIJ_TMP_LOG_DIR).unwrap();
     atomic_create_file(&*ZELLIJ_TMP_LOG_FILE).unwrap();
+
+    let trigger = SizeTrigger::new(LOG_MAX_BYTES);
+    let roller = FixedWindowRoller::builder()
+        .build(
+            ZELLIJ_TMP_LOG_DIR
+                .join("zellij.log.old.{}")
+                .to_str()
+                .unwrap(),
+            1,
+        )
+        .unwrap();
 
     // {n} means platform dependent newline
     // module is padded to exactly 25 bytes and thread is padded to be between 10 and 15 bytes.
     let file_pattern = "{highlight({level:<6})} |{module:<25.25}| {date(%Y-%m-%d %H:%M:%S.%3f)} [{thread:<10.15}] [{file}:{line}]: {message} {n}";
 
     // default zellij appender, should be used across most of the codebase.
-    let log_file = FileAppender::builder()
+    let log_file = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(file_pattern)))
-        .append(true)
-        .build(&*ZELLIJ_TMP_LOG_FILE)
+        .build(
+            &*ZELLIJ_TMP_LOG_FILE,
+            Box::new(CompoundPolicy::new(
+                Box::new(trigger),
+                Box::new(roller.clone()),
+            )),
+        )
         .unwrap();
 
-    // plugin appender. To be used in loggin_pipe to forward stderr output from plugins. We do some formatting
+    // plugin appender. To be used in logging_pipe to forward stderr output from plugins. We do some formatting
     // in logging_pipe to print plugin name as 'module' and plugin_id instead of thread.
-    let log_plugin = FileAppender::builder()
+    let log_plugin = RollingFileAppender::builder()
         .encoder(Box::new(PatternEncoder::new(
             "{highlight({level:<6})} {message} {n}",
         )))
-        .append(true)
-        .build(&*ZELLIJ_TMP_LOG_FILE)
+        .build(
+            &*ZELLIJ_TMP_LOG_FILE,
+            Box::new(CompoundPolicy::new(Box::new(trigger), Box::new(roller))),
+        )
         .unwrap();
 
     // Set the default logging level to "info" and log it to zellij.log file

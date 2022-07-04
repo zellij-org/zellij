@@ -5,6 +5,7 @@ pub mod tab;
 
 mod logging_pipe;
 mod pty;
+mod pty_writer;
 mod route;
 mod screen;
 mod thread_bus;
@@ -12,6 +13,7 @@ mod ui;
 mod wasm_vm;
 
 use log::info;
+use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
@@ -70,9 +72,10 @@ pub enum ServerInstruction {
     RemoveClient(ClientId),
     Error(String),
     KillSession,
-    DetachSession(ClientId),
+    DetachSession(Vec<ClientId>),
     AttachClient(ClientAttributes, Options, ClientId),
     ConnStatus(ClientId),
+    ActiveClients(ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -88,6 +91,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::DetachSession(..) => ServerContext::DetachSession,
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
+            ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
         }
     }
 }
@@ -106,6 +110,7 @@ pub(crate) struct SessionMetaData {
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     wasm_thread: Option<thread::JoinHandle<()>>,
+    pty_writer_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for SessionMetaData {
@@ -113,9 +118,11 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_pty(PtyInstruction::Exit);
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
+        let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
         let _ = self.screen_thread.take().unwrap().join();
         let _ = self.pty_thread.take().unwrap().join();
         let _ = self.wasm_thread.take().unwrap().join();
+        let _ = self.pty_writer_thread.take().unwrap().join();
     }
 }
 
@@ -255,10 +262,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                     })
                                     .unwrap(),
                             );
-                        }
+                        },
                         Err(err) => {
                             panic!("err {:?}", err);
-                        }
+                        },
                     }
                 }
             }
@@ -346,7 +353,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
-            }
+            },
             ServerInstruction::AttachClient(attrs, options, client_id) => {
                 let rlock = session_data.read().unwrap();
                 let session_data = rlock.as_ref().unwrap();
@@ -387,12 +394,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     ))
                     .unwrap();
                 os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode));
-            }
+            },
             ServerInstruction::UnblockInputThread => {
                 for client_id in session_state.read().unwrap().clients.keys() {
                     os_input.send_to_client(*client_id, ServerToClientMsg::UnblockInputThread);
                 }
-            }
+            },
             ServerInstruction::ClientExit(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
@@ -426,7 +433,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     *session_data.write().unwrap() = None;
                     break;
                 }
-            }
+            },
             ServerInstruction::RemoveClient(client_id) => {
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
@@ -455,7 +462,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .senders
                     .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                     .unwrap();
-            }
+            },
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
@@ -463,37 +470,40 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
-            }
-            ServerInstruction::DetachSession(client_id) => {
-                os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
-                remove_client!(client_id, os_input, session_state);
-                if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
+            },
+            ServerInstruction::DetachSession(client_ids) => {
+                for client_id in client_ids {
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    remove_client!(client_id, os_input, session_state);
+                    if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
+                    {
+                        session_data
+                            .write()
+                            .unwrap()
+                            .as_ref()
+                            .unwrap()
+                            .senders
+                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                            .unwrap();
+                    }
                     session_data
                         .write()
                         .unwrap()
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                        .send_to_screen(ScreenInstruction::RemoveClient(client_id))
+                        .unwrap();
+                    session_data
+                        .write()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .senders
+                        .send_to_plugin(PluginInstruction::RemoveClient(client_id))
                         .unwrap();
                 }
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_screen(ScreenInstruction::RemoveClient(client_id))
-                    .unwrap();
-                session_data
-                    .write()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .senders
-                    .send_to_plugin(PluginInstruction::RemoveClient(client_id))
-                    .unwrap();
-            }
+            },
             ServerInstruction::Render(serialized_output) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 // If `Some(_)`- unwrap it and forward it to the clients to render.
@@ -513,7 +523,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     }
                     break;
                 }
-            }
+            },
             ServerInstruction::Error(backtrace) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
@@ -524,11 +534,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
-            }
+            },
             ServerInstruction::ConnStatus(client_id) => {
                 os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
-            }
+            },
+            ServerInstruction::ActiveClients(client_id) => {
+                let client_ids = session_state.read().unwrap().client_ids();
+                log::error!(
+                    "Sending client_ids {:?} to client {}",
+                    client_ids,
+                    client_id
+                );
+                os_input.send_to_client(client_id, ServerToClientMsg::ActiveClients(client_ids));
+            },
         }
     }
 
@@ -583,6 +602,10 @@ fn init_session(
     let (to_pty, pty_receiver): ChannelWithContext<PtyInstruction> = channels::unbounded();
     let to_pty = SenderWithContext::new(to_pty);
 
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
@@ -607,9 +630,11 @@ fn init_session(
                     None,
                     Some(&to_plugin),
                     Some(&to_server),
+                    Some(&to_pty_writer),
                     Some(os_input.clone()),
                 ),
                 opts.debug,
+                config_options.scrollback_editor.clone(),
             );
 
             move || pty_thread_main(pty, layout)
@@ -625,6 +650,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 Some(&to_server),
+                Some(&to_pty_writer),
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
@@ -644,6 +670,7 @@ fn init_session(
                 Some(&to_pty),
                 Some(&to_plugin),
                 None,
+                Some(&to_pty_writer),
                 None,
             );
             let store = Store::default();
@@ -651,11 +678,29 @@ fn init_session(
             move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
         })
         .unwrap();
+
+    let pty_writer_thread = thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            let pty_writer_bus = Bus::new(
+                vec![pty_writer_receiver],
+                Some(&to_screen),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_server),
+                None,
+                Some(os_input.clone()),
+            );
+            || pty_writer_main(pty_writer_bus)
+        })
+        .unwrap();
+
     SessionMetaData {
         senders: ThreadSenders {
             to_screen: Some(to_screen),
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
+            to_pty_writer: Some(to_pty_writer),
             to_server: None,
             should_silently_fail: false,
         },
@@ -665,5 +710,6 @@ fn init_session(
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),
+        pty_writer_thread: Some(pty_writer_thread),
     }
 }

@@ -201,7 +201,7 @@ impl LayoutFromYamlIntermediate {
                     return Ok(LayoutFromYamlIntermediate::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
 
@@ -211,7 +211,7 @@ impl LayoutFromYamlIntermediate {
                     tab.check()?;
                 }
                 Ok(layout)
-            }
+            },
             None => Ok(LayoutFromYamlIntermediate::default()),
         }
     }
@@ -225,7 +225,7 @@ impl LayoutFromYamlIntermediate {
                     return Ok(LayoutFromYamlIntermediate::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
         Ok(layout)
@@ -239,12 +239,21 @@ impl LayoutFromYamlIntermediate {
 
     pub fn from_path_or_default(
         layout: Option<&PathBuf>,
-        layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
     ) -> Option<LayoutFromYamlIntermediateResult> {
         layout
-            .map(|p| LayoutFromYamlIntermediate::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| LayoutFromYamlIntermediate::from_path(p)))
+            .map(|layout| {
+                // The way we determine where to look for the layout is similar to
+                // how a path would look for an executable.
+                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
+                if layout.extension().is_some() || layout.components().count() > 1 {
+                    // We look localy!
+                    LayoutFromYamlIntermediate::from_path(layout)
+                } else {
+                    // We look in the default dir
+                    LayoutFromYamlIntermediate::from_dir(layout, layout_dir.as_ref())
+                }
+            })
             .or_else(|| {
                 Some(LayoutFromYamlIntermediate::from_dir(
                     &std::path::PathBuf::from("default"),
@@ -260,8 +269,14 @@ impl LayoutFromYamlIntermediate {
         layout_dir: Option<&PathBuf>,
     ) -> LayoutFromYamlIntermediateResult {
         match layout_dir {
-            Some(dir) => Self::from_path(&dir.join(layout))
-                .or_else(|_| LayoutFromYamlIntermediate::from_default_assets(layout)),
+            Some(dir) => {
+                let layout_path = &dir.join(layout);
+                if layout_path.with_extension("yaml").exists() {
+                    Self::from_path(layout_path)
+                } else {
+                    LayoutFromYamlIntermediate::from_default_assets(layout)
+                }
+            },
             None => LayoutFromYamlIntermediate::from_default_assets(layout),
         }
     }
@@ -273,6 +288,7 @@ impl LayoutFromYamlIntermediate {
             Some("default") => Self::default_from_assets(),
             Some("strider") => Self::strider_from_assets(),
             Some("disable-status-bar") => Self::disable_status_from_assets(),
+            Some("compact") => Self::compact_from_assets(),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -299,6 +315,12 @@ impl LayoutFromYamlIntermediate {
             serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
         Ok(layout)
     }
+
+    pub fn compact_from_assets() -> LayoutFromYamlIntermediateResult {
+        let layout: LayoutFromYamlIntermediate =
+            serde_yaml::from_str(&String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)?;
+        Ok(layout)
+    }
 }
 
 type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
@@ -319,7 +341,7 @@ impl LayoutFromYaml {
                     return Ok(LayoutFromYaml::default());
                 }
                 return Err(ConfigError::Serde(e));
-            }
+            },
             Ok(config) => config,
         };
 
@@ -329,7 +351,7 @@ impl LayoutFromYaml {
                     tab.check()?;
                 }
                 Ok(layout)
-            }
+            },
             None => Ok(LayoutFromYaml::default()),
         }
     }
@@ -340,7 +362,7 @@ impl LayoutFromYaml {
         match layout_dir {
             Some(dir) => {
                 Self::new(&dir.join(layout)).or_else(|_| Self::from_default_assets(layout))
-            }
+            },
             None => Self::from_default_assets(layout),
         }
     }
@@ -431,7 +453,7 @@ pub struct LayoutTemplate {
 }
 
 impl LayoutTemplate {
-    // Insert an optional `[TabLayout]` at the correct postion
+    // Insert an optional `[TabLayout]` at the correct position
     pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
         if self.body {
             return tab_layout.unwrap_or_default().into();
@@ -496,8 +518,8 @@ impl Layout {
             match part.run {
                 Some(Run::Command(_)) | None => {
                     total_panes += part.total_terminal_panes();
-                }
-                Some(Run::Plugin(_)) => {}
+                },
+                Some(Run::Plugin(_)) => {},
             }
         }
         total_panes
@@ -602,7 +624,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                     panic!("Implicit sizing within fixed-size panes is not supported");
                 };
                 Dimension::percent(free_percent / flex_parts as f64)
-            }
+            },
         };
         inherited_dimension.set_inner(
             layout
@@ -660,7 +682,7 @@ impl TryFrom<Url> for RunPluginLocation {
                         Err(_) => Err(PluginsConfigError::InvalidPluginLocation(path.to_owned())),
                     })
                     .map(Self::File)
-            }
+            },
             _ => Err(PluginsConfigError::InvalidUrl(url)),
         }
     }

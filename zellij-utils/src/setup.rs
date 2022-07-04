@@ -109,6 +109,12 @@ pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/disable-status-bar.yaml"
 ));
 
+pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.yaml"
+));
+
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -141,6 +147,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     match layout {
         "strider" => dump_asset(STRIDER_LAYOUT),
         "default" => dump_asset(DEFAULT_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_LAYOUT),
         "disable-status" => dump_asset(NO_STATUS_LAYOUT),
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -152,29 +159,29 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
 #[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_config: bool,
 
     /// Disables loading of configuration file at default location,
     /// loads the defaults that zellij ships with
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub clean: bool,
 
     /// Checks the configuration of zellij and displays
     /// currently used directories
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub check: bool,
 
     /// Dump the specified layout file to stdout
-    #[clap(long)]
+    #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
     /// Generates completion for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_completion: Option<String>,
 
     /// Generates auto-start script for the specified shell
-    #[clap(long, value_name = "SHELL")]
+    #[clap(long, value_name = "SHELL", value_parser)]
     pub generate_auto_start: Option<String>,
 }
 
@@ -185,7 +192,7 @@ impl Setup {
     /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
-    ///    (`layout.yaml` / `zellij --layout` / `zellij --layout-path`)
+    ///    (`layout.yaml` / `zellij --layout`)
     /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
@@ -211,7 +218,7 @@ impl Setup {
                 Ok(config) => config,
                 Err(e) => {
                     return Err(e);
-                }
+                },
             }
         } else {
             Config::default()
@@ -223,17 +230,18 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let layout_result = LayoutFromYamlIntermediate::from_path_or_default(
-            opts.layout.as_ref(),
-            opts.layout_path.as_ref(),
-            layout_dir,
-        );
+        let chosen_layout = opts
+            .layout
+            .clone()
+            .or_else(|| config_options.default_layout.clone());
+        let layout_result =
+            LayoutFromYamlIntermediate::from_path_or_default(chosen_layout.as_ref(), layout_dir);
         let layout = match layout_result {
             None => None,
             Some(Ok(layout)) => Some(layout),
             Some(Err(e)) => {
                 return Err(e);
-            }
+            },
         };
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
@@ -399,6 +407,10 @@ impl Setup {
         message.push_str(" Can be temporarily disabled through pressing the [SHIFT] key.\n");
         message.push_str(" If that doesn't fix any issues consider to disable the mouse handling of zellij: 'zellij options --disable-mouse-mode'\n");
 
+        let default_editor = std::env::var("EDITOR")
+            .or_else(|_| std::env::var("VISUAL"))
+            .unwrap_or_else(|_| String::from("Not set, checked $EDITOR and $VISUAL"));
+        writeln!(&mut message, "[DEFAULT EDITOR]: {}", default_editor).unwrap();
         writeln!(&mut message, "[FEATURES]: {:?}", FEATURES).unwrap();
         let mut hyperlink = String::new();
         hyperlink.push_str(hyperlink_start);
@@ -419,20 +431,20 @@ impl Setup {
             _ => {
                 eprintln!("Unsupported shell: {}", shell);
                 std::process::exit(1);
-            }
+            },
         };
         let mut out = std::io::stdout();
         clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
-            Shell::Bash => {}
-            Shell::Elvish => {}
+            Shell::Bash => {},
+            Shell::Elvish => {},
             Shell::Fish => {
                 let _ = out.write_all(FISH_EXTRA_COMPLETION);
-            }
-            Shell::PowerShell => {}
-            Shell::Zsh => {}
-            _ => {}
+            },
+            Shell::PowerShell => {},
+            Shell::Zsh => {},
+            _ => {},
         };
     }
 
@@ -442,21 +454,21 @@ impl Setup {
             _ => {
                 eprintln!("Unsupported shell: {}", shell);
                 std::process::exit(1);
-            }
+            },
         };
 
         let mut out = std::io::stdout();
         match shell {
             Shell::Bash => {
                 let _ = out.write_all(BASH_AUTO_START_SCRIPT);
-            }
+            },
             Shell::Fish => {
                 let _ = out.write_all(FISH_AUTO_START_SCRIPT);
-            }
+            },
             Shell::Zsh => {
                 let _ = out.write_all(ZSH_AUTO_START_SCRIPT);
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 }

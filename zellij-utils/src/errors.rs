@@ -182,6 +182,7 @@ pub enum ContextType {
     IPCServer(ServerContext),
     StdinHandler,
     AsyncTask,
+    PtyWrite(PtyWriteContext),
     /// An empty, placeholder call. This should be thought of as representing no call at all.
     /// A call stack representation filled with these is the representation of an empty call stack.
     Empty,
@@ -197,6 +198,7 @@ impl Display for ContextType {
             ContextType::IPCServer(c) => Some(("ipc_server:", format!("{:?}", c))),
             ContextType::StdinHandler => Some(("stdin_handler_thread:", "AcceptInput".to_string())),
             ContextType::AsyncTask => Some(("stream_terminal_bytes:", "AsyncTask".to_string())),
+            ContextType::PtyWrite(c) => Some(("pty_writer_thread:", format!("{:?}", c))),
             ContextType::Empty => None,
         } {
             write!(f, "{} {}", left.purple(), right.green())
@@ -213,6 +215,7 @@ pub enum ScreenContext {
     HandlePtyBytes,
     Render,
     NewPane,
+    OpenInPlaceEditor,
     ToggleFloatingPanes,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
@@ -240,6 +243,8 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    DumpScreen,
+    EditScrollback,
     ScrollUp,
     ScrollUpAt,
     ScrollDown,
@@ -260,12 +265,14 @@ pub enum ScreenContext {
     SetFixedWidth,
     ClosePane,
     UpdatePaneName,
+    UndoRenamePane,
     NewTab,
     SwitchTabNext,
     SwitchTabPrev,
     CloseTab,
     GoToTab,
     UpdateTabName,
+    UndoRenameTab,
     TerminalResize,
     TerminalPixelDimensions,
     TerminalBackgroundColor,
@@ -290,6 +297,7 @@ pub enum ScreenContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PtyContext {
     SpawnTerminal,
+    OpenInPlaceEditor,
     SpawnTerminalVertically,
     SpawnTerminalHorizontally,
     UpdateActivePane,
@@ -322,6 +330,7 @@ pub enum ClientContext {
     ServerError,
     SwitchToMode,
     Connected,
+    ActiveClients,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
@@ -337,4 +346,11 @@ pub enum ServerContext {
     DetachSession,
     AttachClient,
     ConnStatus,
+    ActiveClients,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum PtyWriteContext {
+    Write,
+    Exit,
 }

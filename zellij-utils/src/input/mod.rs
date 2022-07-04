@@ -53,8 +53,12 @@ pub fn get_mode_info(mode: InputMode, style: Style, capabilities: PluginCapabili
         ],
         InputMode::Scroll => vec![
             ("↓↑".to_string(), "Scroll".to_string()),
-            ("PgUp/PgDn".to_string(), "Scroll Page".to_string()),
-            ("u/d".to_string(), "Scroll Half Page".to_string()),
+            ("PgDn/PgUp".to_string(), "Scroll Page".to_string()),
+            ("d/u".to_string(), "Scroll Half Page".to_string()),
+            (
+                "e".to_string(),
+                "Edit Scrollback in Default Editor".to_string(),
+            ),
         ],
         InputMode::RenameTab => vec![("Enter".to_string(), "when done".to_string())],
         InputMode::RenamePane => vec![("Enter".to_string(), "when done".to_string())],
@@ -114,7 +118,7 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
             } else {
                 Key::Char(c)
             }
-        }
+        },
         KeyCode::Backspace => Key::Backspace,
         KeyCode::LeftArrow | KeyCode::ApplicationLeftArrow => {
             if modifiers.contains(Modifiers::ALT) {
@@ -122,14 +126,14 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
             } else {
                 Key::Left
             }
-        }
+        },
         KeyCode::RightArrow | KeyCode::ApplicationRightArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 Key::Alt(CharOrArrow::Direction(Direction::Right))
             } else {
                 Key::Right
             }
-        }
+        },
         KeyCode::UpArrow | KeyCode::ApplicationUpArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 //Key::AltPlusUpArrow
@@ -137,14 +141,14 @@ pub fn cast_termwiz_key(event: KeyEvent, raw_bytes: &[u8]) -> Key {
             } else {
                 Key::Up
             }
-        }
+        },
         KeyCode::DownArrow | KeyCode::ApplicationDownArrow => {
             if modifiers.contains(Modifiers::ALT) {
                 Key::Alt(CharOrArrow::Direction(Direction::Down))
             } else {
                 Key::Down
             }
-        }
+        },
         KeyCode::Home => Key::Home,
         KeyCode::End => Key::End,
         KeyCode::PageUp => Key::PageUp,

@@ -215,7 +215,7 @@ impl<'a> PaneContentsAndUi<'a> {
                         let colors = client_id_to_colors(client_id, self.style.colors);
                         colors.map(|colors| colors.0)
                     }
-                }
+                },
                 _ => Some(self.style.colors.orange),
             }
         } else {

@@ -1,10 +1,13 @@
 pub mod os_input_output;
 
 mod command_is_executing;
+pub mod fake_client;
 mod input_handler;
+mod sessions;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
+use log::error;
 use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
@@ -12,7 +15,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use zellij_tile::prelude::Style;
+use zellij_tile::prelude::{ClientId, Style};
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use crate::{
@@ -40,6 +43,7 @@ pub(crate) enum ClientInstruction {
     Exit(ExitReason),
     SwitchToMode(InputMode),
     Connected,
+    ActiveClients(Vec<ClientId>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -50,8 +54,9 @@ impl From<ServerToClientMsg> for ClientInstruction {
             ServerToClientMsg::UnblockInputThread => ClientInstruction::UnblockInputThread,
             ServerToClientMsg::SwitchToMode(input_mode) => {
                 ClientInstruction::SwitchToMode(input_mode)
-            }
+            },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
+            ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
         }
     }
 }
@@ -65,6 +70,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::UnblockInputThread => ClientContext::UnblockInputThread,
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
+            ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
         }
     }
 }
@@ -126,7 +132,7 @@ pub fn start_client(
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
 
     let _ = os_input
         .get_stdout_writer()
@@ -161,7 +167,7 @@ pub fn start_client(
             envs::set_session_name(name);
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
-        }
+        },
         ClientInfo::New(name) => {
             envs::set_session_name(name);
 
@@ -174,7 +180,7 @@ pub fn start_client(
                 Box::new(layout.unwrap()),
                 Some(config.plugins.clone()),
             )
-        }
+        },
     };
 
     os_input.connect_to_server(&*ZELLIJ_IPC_PIPE);
@@ -203,8 +209,10 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            os_input.unset_raw_mode(0);
-            handle_panic(info, &send_client_instructions);
+            error!("Panic occurred in client:\n{:?}", info);
+            if let Ok(()) = os_input.unset_raw_mode(0) {
+                handle_panic(info, &send_client_instructions);
+            }
         })
     });
 
@@ -268,7 +276,10 @@ pub fn start_client(
                     Box::new({
                         let os_api = os_input.clone();
                         move || {
-                            os_api.send_to_server(ClientToServerMsg::Action(on_force_close.into()));
+                            os_api.send_to_server(ClientToServerMsg::Action(
+                                on_force_close.into(),
+                                None,
+                            ));
                         }
                     }),
                 );
@@ -292,25 +303,31 @@ pub fn start_client(
                         if should_break {
                             break;
                         }
-                    }
+                    },
                     None => {
                         send_client_instructions
                             .send(ClientInstruction::UnblockInputThread)
                             .unwrap();
                         log::error!("Received empty message from server");
-                    }
+                        send_client_instructions
+                            .send(ClientInstruction::Error(
+                                "Received empty message from server".to_string(),
+                            ))
+                            .unwrap();
+                        break;
+                    },
                 }
             }
         })
         .unwrap();
 
     let handle_error = |backtrace: String| {
-        os_input.unset_raw_mode(0);
+        os_input.unset_raw_mode(0).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
         os_input.disable_mouse();
         let error = format!(
-            "{}\n{}{}",
+            "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
         );
         let _ = os_input
@@ -338,27 +355,27 @@ pub fn start_client(
                 }
                 exit_msg = reason.to_string();
                 break;
-            }
+            },
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit));
+                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
-            }
+            },
             ClientInstruction::Render(output) => {
                 let mut stdout = os_input.get_stdout_writer();
                 stdout
                     .write_all(output.as_bytes())
                     .expect("cannot write to stdout");
                 stdout.flush().expect("could not flush");
-            }
+            },
             ClientInstruction::UnblockInputThread => {
                 command_is_executing.unblock_input_thread();
-            }
+            },
             ClientInstruction::SwitchToMode(input_mode) => {
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
@@ -376,7 +393,7 @@ pub fn start_client(
 
     os_input.disable_mouse();
     info!("{}", exit_msg);
-    os_input.unset_raw_mode(0);
+    os_input.unset_raw_mode(0).unwrap();
     let mut stdout = os_input.get_stdout_writer();
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
     stdout.flush().unwrap();

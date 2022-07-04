@@ -398,10 +398,10 @@ impl FloatingPanesStack {
                         }
                     }
                     visible_chunks.push(c_chunk);
-                }
+                },
                 None => {
                     break 'chunk_loop;
-                }
+                },
             }
         }
         visible_chunks
@@ -843,7 +843,7 @@ impl OutputBuffer {
             Some(row) => self.extract_characters_from_row(row, viewport_width),
             None => {
                 vec![EMPTY_TERMINAL_CHARACTER; viewport_width]
-            }
+            },
         }
     }
     pub fn changed_rects_in_viewport(&self, viewport_height: usize) -> HashMap<usize, usize> {

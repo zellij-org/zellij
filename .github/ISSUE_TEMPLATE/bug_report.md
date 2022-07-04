@@ -17,8 +17,7 @@ Please attach the files that were created in `/tmp/zellij-1000/zellij-log/` to t
 **Basic information**
 
 `zellij --version`:
-`tput lines`:
-`tput cols`:
+`stty size`:
 `uname -av` or `ver`(Windows):
 
 List of programs you interact with as, `PROGRAM --version`: output cropped meaningful, for example:

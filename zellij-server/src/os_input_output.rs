@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::{fs::File, io::Write};
 
 use crate::panes::PaneId;
+use zellij_utils::tempfile::tempfile;
 
 use std::env;
 use std::os::unix::io::RawFd;
@@ -71,10 +73,10 @@ fn handle_command_exit(mut child: Child) {
                 // and exit this function
                 // TODO: handle errors?
                 break 'handle_exit;
-            }
+            },
             Ok(None) => {
                 ::std::thread::sleep(::std::time::Duration::from_millis(10));
-            }
+            },
             Err(e) => panic!("error attempting to wait: {}", e),
         }
 
@@ -143,6 +145,7 @@ fn handle_openpty(
 ///
 fn handle_terminal(
     cmd: RunCommand,
+    failover_cmd: Option<RunCommand>,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
 ) -> (RawFd, RawFd) {
@@ -150,9 +153,12 @@ fn handle_terminal(
     // parent.
     match openpty(None, Some(&orig_termios)) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb),
-        Err(e) => {
-            panic!("failed to start pty{:?}", e);
-        }
+        Err(e) => match failover_cmd {
+            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb),
+            None => {
+                panic!("failed to start pty{:?}", e);
+            },
+        },
     }
 }
 
@@ -172,29 +178,57 @@ pub fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
-) -> (RawFd, RawFd) {
+    default_editor: Option<PathBuf>,
+) -> Result<(RawFd, RawFd), &'static str> {
+    let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open) => {
-            if env::var("EDITOR").is_err() && env::var("VISUAL").is_err() {
-                panic!("Can't edit files if an editor is not defined. To fix: define the EDITOR or VISUAL environment variables with the path to your editor (eg. /usr/bin/vim)");
+        TerminalAction::OpenFile(file_to_open, line_number) => {
+            if default_editor.is_none()
+                && env::var("EDITOR").is_err()
+                && env::var("VISUAL").is_err()
+            {
+                return Err(
+                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL",
+                );
             }
-            let command =
-                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()));
+            let command = default_editor.unwrap_or_else(|| {
+                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()))
+            });
 
-            let args = vec![file_to_open
+            let mut args = vec![];
+            let file_to_open = file_to_open
                 .into_os_string()
                 .into_string()
-                .expect("Not valid Utf8 Encoding")];
+                .expect("Not valid Utf8 Encoding");
+            if let Some(line_number) = line_number {
+                if command.ends_with("vim")
+                    || command.ends_with("nvim")
+                    || command.ends_with("emacs")
+                    || command.ends_with("nano")
+                    || command.ends_with("kak")
+                {
+                    failover_cmd_args = Some(vec![file_to_open.clone()]);
+                    args.push(format!("+{}", line_number));
+                }
+            }
+            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
                 cwd: None,
             }
-        }
+        },
         TerminalAction::RunCommand(command) => command,
     };
+    let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
+        let mut cmd = cmd.clone();
+        cmd.args = failover_cmd_args;
+        Some(cmd)
+    } else {
+        None
+    };
 
-    handle_terminal(cmd, orig_termios, quit_cb)
+    Ok(handle_terminal(cmd, failover_cmd, orig_termios, quit_cb))
 }
 
 #[derive(Clone)]
@@ -237,13 +271,14 @@ pub trait ServerOsApi: Send + Sync {
     /// Sets the size of the terminal associated to file descriptor `fd`.
     fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
-    /// descriptor of the forked psuedo terminal and a [ChildId] struct containing process id's for
+    /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd);
+        default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str>;
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -268,6 +303,8 @@ pub trait ServerOsApi: Send + Sync {
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
+    /// Writes the given buffer to a string
+    fn write_to_file(&mut self, buf: String, file: Option<String>);
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -280,9 +317,15 @@ impl ServerOsApi for ServerOsInputOutput {
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
-    ) -> (RawFd, RawFd) {
+        default_editor: Option<PathBuf>,
+    ) -> Result<(RawFd, RawFd), &'static str> {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(terminal_action, orig_termios.clone(), quit_cb)
+        spawn_terminal(
+            terminal_action,
+            orig_termios.clone(),
+            quit_cb,
+            default_editor,
+        )
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
@@ -344,6 +387,15 @@ impl ServerOsApi for ServerOsInputOutput {
             return Some(process.cwd().to_path_buf());
         }
         None
+    }
+    fn write_to_file(&mut self, buf: String, name: Option<String>) {
+        let mut f: File = match name {
+            Some(x) => File::create(x).unwrap(),
+            None => tempfile().unwrap(),
+        };
+        if let Err(e) = write!(f, "{}", buf) {
+            log::error!("could not write to file: {}", e);
+        }
     }
 }
 
