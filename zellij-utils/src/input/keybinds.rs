@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
 use super::config;
-use crate::input::{InputMode, Key};
+use crate::data::{InputMode, Key};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
