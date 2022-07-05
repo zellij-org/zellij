@@ -161,7 +161,9 @@ fn create_new_tab_with_sixel_support(
     let index = 0;
     let position = 0;
     let name = String::new();
-    let os_api = Box::new(FakeInputOutput {});
+    let os_api = Box::new(FakeInputOutput {
+        file_dumps: Arc::new(Mutex::new(HashMap::new())),
+    });
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
     let mode_info = ModeInfo::default();

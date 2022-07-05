@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, Output, SixelImageChunk};
+use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;

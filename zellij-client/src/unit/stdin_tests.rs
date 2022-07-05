@@ -6,6 +6,7 @@ use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::pane_size::Size;
+use zellij_utils::nix;
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
 use zellij_utils::zellij_tile::data::Palette;
 
@@ -146,7 +147,7 @@ impl ClientOsApi for FakeClientOsApi {
     fn set_raw_mode(&mut self, _fd: RawFd) {
         unimplemented!()
     }
-    fn unset_raw_mode(&self, _fd: RawFd) {
+    fn unset_raw_mode(&self, _fd: RawFd) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn get_stdout_writer(&self) -> Box<dyn io::Write> {
@@ -196,7 +197,7 @@ fn extract_actions_sent_to_server(
 ) -> Vec<Action> {
     let events_sent_to_server = events_sent_to_server.lock().unwrap();
     events_sent_to_server.iter().fold(vec![], |mut acc, event| {
-        if let ClientToServerMsg::Action(action) = event {
+        if let ClientToServerMsg::Action(action, None) = event {
             acc.push(action.clone());
         }
         acc

@@ -1,4 +1,4 @@
-use crate::output::{CharacterChunk, Output, SixelImageChunk};
+use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
