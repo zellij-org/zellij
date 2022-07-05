@@ -310,6 +310,8 @@ pub struct SearchResult {
 }
 
 impl SearchResult {
+    /// This is only used for Debug formatting Grid, which itself is only used
+    /// for tests.
     fn mark_search_results_in_row(&self, row: &mut Cow<Row>, ridx: usize) {
         for s in &self.selections {
             if s.contains_row(ridx) {
@@ -346,6 +348,8 @@ impl SearchResult {
         }
     }
 
+    /// Search a row and its tail.
+    /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
     fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
         #[derive(Debug)]
         enum SearchSource<'a> {
