@@ -36,9 +36,7 @@ fn adjust_styles_for_possible_selection(
     chunk_selection_and_background_color
         .iter()
         .find(|(selection, _background_color)| selection.contains(chunk_y, chunk_width))
-        .and_then(|(_selection, background_color)| {
-            Some(character_styles.background(Some(*background_color)))
-        })
+        .map(|(_selection, background_color)| character_styles.background(Some(*background_color)))
         .unwrap_or(character_styles)
 }
 
