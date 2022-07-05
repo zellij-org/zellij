@@ -1,31 +1,31 @@
 pub mod data;
 
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod channels;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod cli;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod consts;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod envs;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod errors;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod input;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod ipc;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod logging;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod pane_size;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod position;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod setup;
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub mod shared;
 
-#[cfg(feature = "full")]
+#[cfg(not(target_family = "wasm"))]
 pub use ::{
     anyhow, async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, serde_yaml,
     signal_hook, tempfile, termwiz, vte,
