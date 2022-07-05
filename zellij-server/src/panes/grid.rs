@@ -528,6 +528,86 @@ impl SearchResult {
             self.active = self.selections.last().cloned();
         }
     }
+
+    fn unset_active_selection_if_nonexistent(&mut self) {
+        if let Some(active_idx) = self.active {
+            if !self.selections.contains(&active_idx) {
+                self.active = None;
+            }
+        }
+    }
+
+    fn move_down(&mut self, amount: usize, viewport: &[Row], grid_height: usize) -> bool {
+        let mut found_something = false;
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|x| x.move_down(amount));
+
+        // Throw out all search-results outside of the new viewport
+        self.adjust_selections_to_moved_viewport(grid_height);
+
+        // Search the new line for our needle
+        if !self.needle.is_empty() {
+            if let Some(row) = viewport.first() {
+                let mut tail = Vec::new();
+                loop {
+                    let tail_idx = 1 + tail.len();
+                    if tail_idx < viewport.len() && !viewport[tail_idx].is_canonical {
+                        tail.push(&viewport[tail_idx]);
+                    } else {
+                        break;
+                    }
+                }
+                let selections = self.search_row(0, row, &tail);
+                for selection in selections.iter().rev() {
+                    self.selections.insert(0, *selection);
+                    found_something = true;
+                }
+            }
+        }
+        found_something
+    }
+
+    fn move_up(
+        &mut self,
+        amount: usize,
+        viewport: &[Row],
+        lines_below: &[Row],
+        grid_height: usize,
+    ) -> bool {
+        let mut found_something = false;
+        self.selections
+            .iter_mut()
+            .chain(self.active.iter_mut())
+            .for_each(|x| x.move_up(amount));
+        // Throw out all search-results outside of the new viewport
+        self.adjust_selections_to_moved_viewport(grid_height);
+
+        // Search the new line for our needle
+        if !self.needle.is_empty() {
+            if let Some(row) = viewport.last() {
+                let tail: Vec<&Row> = lines_below.iter().take_while(|r| !r.is_canonical).collect();
+                let selections = self.search_row(viewport.len() - 1, row, &tail);
+                for selection in selections {
+                    // We are only interested in results that start in the this new row
+                    if selection.start.line() as usize == viewport.len() - 1 {
+                        self.selections.push(selection);
+                        found_something = true;
+                    }
+                }
+            }
+        }
+        found_something
+    }
+
+    fn adjust_selections_to_moved_viewport(&mut self, grid_height: usize) {
+        // Throw out all search-results outside of the new viewport
+        self.selections
+            .retain(|s| (s.start.line() as usize) < grid_height && s.end.line() >= 0);
+        // If we have thrown out the active element, set it to None
+        self.unset_active_selection_if_nonexistent();
+    }
 }
 
 #[derive(Clone)]
@@ -788,42 +868,9 @@ impl Grid {
 
             self.selection.move_down(1);
             // Move all search-selections down one line as well
-            self.search_results
-                .selections
-                .iter_mut()
-                .chain(self.search_results.active.iter_mut())
-                .for_each(|x| x.move_down(1));
-
-            // Throw out all search-results outside of the new viewport
-            self.search_results
-                .selections
-                .retain(|s| (s.start.line() as usize) < self.height && s.end.line() >= 0);
-            // If we have thrown out the active element, set it to None
-            if let Some(active_idx) = self.search_results.active {
-                if !self.search_results.selections.contains(&active_idx) {
-                    self.search_results.active = None;
-                }
-            }
-
-            // Search the new line for our needle
-            if !self.search_results.needle.is_empty() {
-                if let Some(row) = self.viewport.first() {
-                    let mut tail = Vec::new();
-                    loop {
-                        let tail_idx = 1 + tail.len();
-                        if tail_idx < self.viewport.len() && !self.viewport[tail_idx].is_canonical {
-                            tail.push(&self.viewport[tail_idx]);
-                        } else {
-                            break;
-                        }
-                    }
-                    let selections = self.search_results.search_row(0, row, &tail);
-                    for selection in selections.iter().rev() {
-                        self.search_results.selections.insert(0, *selection);
-                        found_something = true;
-                    }
-                }
-            }
+            found_something = self
+                .search_results
+                .move_down(1, &self.viewport, self.height);
         }
         self.output_buffer.update_all_lines();
         found_something
@@ -862,42 +909,9 @@ impl Grid {
 
             self.selection.move_up(1);
             // Move all search-selections up one line as well
-            self.search_results
-                .selections
-                .iter_mut()
-                .chain(self.search_results.active.iter_mut())
-                .for_each(|x| x.move_up(1));
-            // Throw out all search-results outside of the new viewport
-            self.search_results
-                .selections
-                .retain(|s| (s.start.line() as usize) < self.height && s.end.line() >= 0);
-            // If we have thrown out the active element, set it to None
-            if let Some(active_idx) = self.search_results.active {
-                if !self.search_results.selections.contains(&active_idx) {
-                    self.search_results.active = None;
-                }
-            }
-
-            // Search the new line for our needle
-            if !self.search_results.needle.is_empty() {
-                if let Some(row) = self.viewport.last() {
-                    let tail: Vec<&Row> = self
-                        .lines_below
-                        .iter()
-                        .take_while(|r| !r.is_canonical)
-                        .collect();
-                    let selections =
-                        self.search_results
-                            .search_row(self.viewport.len() - 1, row, &tail);
-                    for selection in selections {
-                        // We are only interested in results that start in the this new row
-                        if selection.start.line() as usize == self.viewport.len() - 1 {
-                            self.search_results.selections.push(selection);
-                            found_something = true;
-                        }
-                    }
-                }
-            }
+            found_something =
+                self.search_results
+                    .move_up(1, &self.viewport, &self.lines_below, self.height);
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
@@ -1112,11 +1126,7 @@ impl Grid {
         self.search_results.selections.clear();
         self.search_viewport();
         // If we have thrown out the active element, set it to None
-        if let Some(active_idx) = self.search_results.active {
-            if !self.search_results.selections.contains(&active_idx) {
-                self.search_results.active = None;
-            }
-        }
+        self.search_results.unset_active_selection_if_nonexistent();
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -2041,11 +2051,7 @@ impl Grid {
         }
         self.search_viewport();
         // Maybe the selection we had is now gone
-        if let Some(active_idx) = self.search_results.active {
-            if !self.search_results.selections.contains(&active_idx) {
-                self.search_results.active = None;
-            }
-        }
+        self.search_results.unset_active_selection_if_nonexistent();
     }
 
     pub fn toggle_search_wrap(&mut self) {
@@ -2061,11 +2067,7 @@ impl Grid {
         self.search_results.active = None;
         self.search_viewport();
         // Maybe the selection we had is now gone
-        if let Some(active_idx) = self.search_results.active {
-            if !self.search_results.selections.contains(&active_idx) {
-                self.search_results.active = None;
-            }
-        }
+        self.search_results.unset_active_selection_if_nonexistent();
     }
 }
 
