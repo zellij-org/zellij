@@ -343,7 +343,7 @@ pub struct RemoteRunner {
     steps: Vec<Step>,
     current_step_index: usize,
     channel: Arc<Mutex<ssh2::Channel>>,
-    currently_running_step: Option<String>,
+    pub currently_running_step: Option<String>,
     retries_left: usize,
     retry_pause_ms: usize,
     panic_on_no_retries_left: bool,

@@ -407,11 +407,13 @@ pub fn close_tab() {
     };
     let mut test_attempts = 10;
     let last_snapshot = loop {
+        println!("remaining attempts: {}", test_attempts);
         RemoteRunner::kill_running_sessions(fake_win_size);
         let mut runner = RemoteRunner::new(fake_win_size)
             .add_step(Step {
                 name: "Split pane to the right",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("split pane to the right");
                     let mut step_is_complete = false;
                     if remote_terminal.status_bar_appears()
                         && remote_terminal.cursor_position_is(3, 2)
@@ -426,6 +428,7 @@ pub fn close_tab() {
             .add_step(Step {
                 name: "Open new tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("open new tab");
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(63, 2) && remote_terminal.tip_appears() {
                         // cursor is in the newly opened second pane
@@ -439,6 +442,7 @@ pub fn close_tab() {
             .add_step(Step {
                 name: "Close tab",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    println!("close tab");
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
@@ -457,6 +461,7 @@ pub fn close_tab() {
         let last_snapshot = runner.take_snapshot_after(Step {
             name: "Wait for tab to close",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                println!("wait for tab to close");
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && !remote_terminal.snapshot_contains("Tab #2")
@@ -469,6 +474,7 @@ pub fn close_tab() {
             },
         });
         if runner.test_timed_out && test_attempts > 0 {
+            println!("timed out at: {:?}", runner.currently_running_step);
             test_attempts -= 1;
             continue;
         } else {
