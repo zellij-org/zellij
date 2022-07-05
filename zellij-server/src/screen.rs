@@ -1332,57 +1332,33 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input();
             },
             ScreenInstruction::UpdateSearch(c, client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.update_search_term(c, client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .update_search_term(c, client_id));
                 screen.render();
             },
             ScreenInstruction::SearchForward(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.search_forward(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .search_forward(client_id));
                 screen.render();
             },
             ScreenInstruction::SearchBackward(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.search_backward(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .search_backward(client_id));
                 screen.render();
             },
             ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.toggle_search_case_sensitivity(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_case_sensitivity(client_id));
                 screen.render();
             },
             ScreenInstruction::SearchToggleWrap(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.toggle_search_wrap(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_wrap(client_id));
                 screen.render();
             },
             ScreenInstruction::SearchToggleWholeWord(client_id) => {
-                if let Some(active_tab) = screen.get_active_tab_mut(client_id) {
-                    active_tab.toggle_search_whole_words(client_id);
-                } else {
-                    log::error!("Active tab not found for client id: {:?}", client_id);
-                }
-
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_whole_words(client_id));
                 screen.render();
             },
         }
