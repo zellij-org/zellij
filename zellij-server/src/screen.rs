@@ -215,7 +215,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SearchBackward(..) => ScreenContext::SearchBackward,
             ScreenInstruction::SearchToggleCaseSensitivity(..) => {
                 ScreenContext::SearchToggleCaseSensitivity
-            }
+            },
             ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
             ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
         }

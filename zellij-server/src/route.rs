@@ -425,7 +425,7 @@ fn route_action(
             let instruction = match o {
                 SearchOption::CaseSensitivity => {
                     ScreenInstruction::SearchToggleCaseSensitivity(client_id)
-                }
+                },
                 SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
                 SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
             };

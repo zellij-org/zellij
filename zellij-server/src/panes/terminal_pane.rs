@@ -540,14 +540,14 @@ impl Pane for TerminalPane {
         match needle {
             "\0" => {
                 self.search_term = String::new();
-            }
+            },
             "\u{007F}" | "\u{0008}" => {
                 //delete and backspace keys
                 self.search_term.pop();
-            }
+            },
             c => {
                 self.search_term.push_str(c);
-            }
+            },
         }
         self.grid.clear_search();
         if !self.search_term.is_empty() {

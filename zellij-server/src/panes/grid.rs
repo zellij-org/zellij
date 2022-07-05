@@ -470,7 +470,7 @@ impl SearchResult {
                             break;
                         }
                     }
-                }
+                },
                 SearchSource::Tail(tail) => {
                     if hidx >= tail.columns.len() {
                         // If we are still searching (didn't hit a mismatch yet) and there is still more tail to go
@@ -484,7 +484,7 @@ impl SearchResult {
                             break;
                         }
                     }
-                }
+                },
             }
         }
 
