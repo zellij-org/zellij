@@ -198,9 +198,8 @@ fn transfer_rows_from_lines_below_to_viewport(
     viewport: &mut Vec<Row>,
     count: usize,
     max_viewport_width: usize,
-) -> usize {
+) {
     let mut next_lines: Vec<Row> = vec![];
-    let mut transferred_rows_count: usize = 0;
     for _ in 0..count {
         let mut lines_pulled_from_viewport = 0;
         if next_lines.is_empty() {
@@ -225,7 +224,6 @@ fn transfer_rows_from_lines_below_to_viewport(
         for _ in 0..(lines_pulled_from_viewport + 1) {
             if !next_lines.is_empty() {
                 viewport.push(next_lines.remove(0));
-                transferred_rows_count += 1;
             }
         }
     }
@@ -233,7 +231,6 @@ fn transfer_rows_from_lines_below_to_viewport(
         let excess_row = Row::from_rows(next_lines, 0);
         lines_below.insert(0, excess_row);
     }
-    transferred_rows_count
 }
 
 fn bounded_push(vec: &mut VecDeque<Row>, value: Row) -> Option<usize> {
@@ -852,7 +849,7 @@ impl Grid {
                     .saturating_sub(dropped_line_height);
             }
 
-            let _transferred_rows_height = transfer_rows_from_lines_below_to_viewport(
+            transfer_rows_from_lines_below_to_viewport(
                 &mut self.lines_below,
                 &mut self.viewport,
                 1,
