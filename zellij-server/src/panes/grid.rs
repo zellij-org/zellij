@@ -462,8 +462,7 @@ impl SearchResult {
                     if hidx >= row.columns.len() {
                         let curr_tail = tailit.next();
                         // If we are at the end and found a partial hit, we have to extend the search into the next line
-                        // Wanted to write `if let Some(curr_tail) = curr_tail && start.is_some()`, but that feature is not stabilized yet
-                        if let Some((_, curr_tail)) = start.zip(curr_tail) {
+                        if let Some(curr_tail) = start.and(curr_tail) {
                             ridx += 1;
                             hidx = 0;
                             source = SearchSource::Tail(curr_tail);
@@ -2016,6 +2015,17 @@ impl Grid {
     pub fn set_search_string(&mut self, needle: &str) {
         self.search_results.needle = needle.to_string();
         self.search_viewport();
+        // If the current viewport does not contain any hits,
+        // we jump around until we find something. Starting
+        // going backwards.
+        if self.search_results.selections.is_empty() {
+            self.search_backward();
+        }
+        if self.search_results.selections.is_empty() {
+            self.search_forward();
+        }
+        // We still don't want to pre-select anything at this stage
+        self.search_results.active = None;
     }
 
     pub fn search_viewport(&mut self) {
