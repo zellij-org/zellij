@@ -54,6 +54,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: reset scroll properly when typing in certain edge cases (https://github.com/zellij-org/zellij/pull/1547)
 * fix: logging may fill up /tmp, now logs are capped at 100 kB (https://github.com/zellij-org/zellij/pull/1548)
 * fix: crash when terminal rows or columns are 0 (https://github.com/zellij-org/zellij/pull/1552)
+* refactor: moved shared data structures to zellij-utils (https://github.com/zellij-org/zellij/pull/1541)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
