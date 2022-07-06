@@ -3,7 +3,7 @@ use crate::panes::link_handler::LinkHandler;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_utils::{pane_size::SizeInPixels, position::Position, vte, zellij_tile::data::Palette};
+use zellij_utils::{data::Palette, pane_size::SizeInPixels, position::Position, vte};
 
 fn read_fixture(fixture_name: &str) -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();

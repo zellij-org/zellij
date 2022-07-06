@@ -1,5 +1,5 @@
 use zellij_utils::pane_size::Size;
-use zellij_utils::{interprocess, libc, nix, signal_hook, zellij_tile};
+use zellij_utils::{interprocess, libc, nix, signal_hook};
 
 use interprocess::local_socket::LocalSocketStream;
 use mio::{unix::SourceFd, Events, Interest, Poll, Token};
@@ -11,8 +11,8 @@ use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::{io, thread, time};
-use zellij_tile::data::Palette;
 use zellij_utils::{
+    data::Palette,
     errors::ErrorContext,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,

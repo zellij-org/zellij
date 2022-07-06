@@ -5,8 +5,8 @@ use serde::{
 use std::{collections::HashMap, fmt};
 
 use super::options::Options;
+use crate::data::{Palette, PaletteColor};
 use crate::shared::detect_theme_hue;
-use zellij_tile::data::{Palette, PaletteColor};
 
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -137,6 +137,7 @@ impl ThemesFromYaml {
         self.0.remove(&theme)
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_default_theme(&mut self, theme: String) -> Option<Palette> {
         self.clone()
             .get_theme(theme)

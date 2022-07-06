@@ -4,9 +4,10 @@ use crate::tab::Pane;
 use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_tile::data::Palette;
-use zellij_tile::prelude::Style;
-use zellij_utils::pane_size::PaneGeom;
+use zellij_utils::{
+    data::{Palette, Style},
+    pane_size::PaneGeom,
+};
 
 use std::fmt::Write;
 

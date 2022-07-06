@@ -3,10 +3,9 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use unicode_width::UnicodeWidthChar;
 
-use zellij_utils::vte::ParamsIter;
+use zellij_utils::{data::PaletteColor, vte::ParamsIter};
 
 use crate::panes::alacritty_functions::parse_sgr_color;
-use zellij_tile::data::PaletteColor;
 
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',

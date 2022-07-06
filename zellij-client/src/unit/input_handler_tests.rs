@@ -1,11 +1,11 @@
 use super::input_loop;
+use zellij_utils::data::{InputMode, Palette};
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
-use zellij_utils::zellij_tile::data::Palette;
 
 use crate::InputInstruction;
 use crate::{
@@ -15,12 +15,9 @@ use crate::{
 
 use std::path::Path;
 
-use zellij_utils::zellij_tile;
-
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
-use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, PixelDimensions, ServerToClientMsg},

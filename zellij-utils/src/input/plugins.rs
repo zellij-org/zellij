@@ -12,8 +12,8 @@ use url::Url;
 
 use super::config::ConfigFromYaml;
 use super::layout::{RunPlugin, RunPluginLocation};
+pub use crate::data::PluginTag;
 use crate::setup;
-pub use zellij_tile::data::PluginTag;
 
 lazy_static! {
     static ref DEFAULT_CONFIG_PLUGINS: PluginsConfig = {

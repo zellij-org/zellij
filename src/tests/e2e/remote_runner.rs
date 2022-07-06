@@ -2,10 +2,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use zellij_server::panes::{LinkHandler, TerminalPane};
+use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
 use zellij_utils::vte;
-use zellij_utils::zellij_tile::data::Palette;
-use zellij_utils::zellij_tile::prelude::Style;
 
 use ssh2::Session;
 use std::io::prelude::*;
