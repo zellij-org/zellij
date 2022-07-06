@@ -283,6 +283,7 @@ pub trait Pane {
     fn toggle_search_case_sensitivity(&mut self);
     fn toggle_search_whole_words(&mut self);
     fn toggle_search_wrap(&mut self);
+    fn clear_search(&mut self);
 }
 
 impl Tab {
@@ -2017,6 +2018,12 @@ impl Tab {
     pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.toggle_search_whole_words();
+        }
+    }
+
+    pub fn clear_search(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_search();
         }
     }
 }

@@ -34,6 +34,29 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
+/// Get the active tab and call a closure on it
+///
+/// If no active tab can be found, an error is logged instead.
+///
+/// # Parameters
+///
+/// - screen: An instance of `Screen` to operate on
+/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
+/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
+macro_rules! active_tab {
+    ($screen:ident, $client_id:ident, $closure:expr) => {
+        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
+            // This could be made more ergonomic by declaring the type of 'active_tab' in the
+            // closure, known as "Type Ascription". Then we could hint the type here and forego the
+            // "&mut Tab" in all the closures below...
+            // See: https://github.com/rust-lang/rust/issues/23416
+            $closure(active_tab);
+        } else {
+            log::error!("Active tab not found for client id: {:?}", $client_id);
+        }
+    };
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -777,6 +800,12 @@ impl Screen {
             .unwrap_or(&self.default_mode_info)
             .mode;
 
+        // If we leave the Search-related modes, we need to clear all previous searches
+        if ![InputMode::EnterSearch, InputMode::Search, InputMode::Scroll].contains(&mode_info.mode)
+        {
+            active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
+        }
+
         if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
@@ -844,29 +873,6 @@ impl Screen {
             .send_to_server(ServerInstruction::UnblockInputThread)
             .unwrap();
     }
-}
-
-/// Get the active tab and call a closure on it
-///
-/// If no active tab can be found, an error is logged instead.
-///
-/// # Parameters
-///
-/// - screen: An instance of `Screen` to operate on
-/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
-/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
-macro_rules! active_tab {
-    ($screen:ident, $client_id:ident, $closure:expr) => {
-        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
-            // This could be made more ergonomic by declaring the type of 'active_tab' in the
-            // closure, known as "Type Ascription". Then we could hint the type here and forego the
-            // "&mut Tab" in all the closures below...
-            // See: https://github.com/rust-lang/rust/issues/23416
-            $closure(active_tab);
-        } else {
-            log::error!("Active tab not found for client id: {:?}", $client_id);
-        }
-    };
 }
 
 // The box is here in order to make the

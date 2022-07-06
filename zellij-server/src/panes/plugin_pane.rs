@@ -436,4 +436,7 @@ impl Pane for PluginPane {
     fn toggle_search_wrap(&mut self) {
         // No-op: Plugins don't have search-capability
     }
+    fn clear_search(&mut self) {
+        // No-op: Plugins don't have search-capability
+    }
 }
