@@ -17,7 +17,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_tile::data::ModeInfo;
-use zellij_utils::pane_size::{Offset, PaneGeom, Size, Viewport};
+use zellij_utils::pane_size::{Constraint, Offset, PaneGeom, Size, Viewport};
 
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
@@ -292,6 +292,7 @@ impl FloatingPanes {
     pub fn resize_active_pane_left(
         &mut self,
         client_id: ClientId,
+        constraint: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -304,7 +305,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_left(active_floating_pane_id);
+            floating_pane_grid.resize_pane_left(active_floating_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -316,6 +317,7 @@ impl FloatingPanes {
     pub fn resize_active_pane_right(
         &mut self,
         client_id: ClientId,
+        constraint: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -328,7 +330,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_right(active_floating_pane_id);
+            floating_pane_grid.resize_pane_right(active_floating_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -340,6 +342,7 @@ impl FloatingPanes {
     pub fn resize_active_pane_down(
         &mut self,
         client_id: ClientId,
+        constraint: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -352,7 +355,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_down(active_floating_pane_id);
+            floating_pane_grid.resize_pane_down(active_floating_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -364,6 +367,7 @@ impl FloatingPanes {
     pub fn resize_active_pane_up(
         &mut self,
         client_id: ClientId,
+        constraint: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -376,7 +380,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_pane_up(active_floating_pane_id);
+            floating_pane_grid.resize_pane_up(active_floating_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -388,6 +392,8 @@ impl FloatingPanes {
     pub fn resize_active_pane_increase(
         &mut self,
         client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -400,7 +406,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_increase(active_floating_pane_id);
+            floating_pane_grid.resize_increase(active_floating_pane_id, cx, cy);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }
@@ -412,6 +418,8 @@ impl FloatingPanes {
     pub fn resize_active_pane_decrease(
         &mut self,
         client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
         os_api: &mut Box<dyn ServerOsApi>,
     ) -> bool {
         // true => successfully resized
@@ -424,7 +432,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.resize_decrease(active_floating_pane_id);
+            floating_pane_grid.resize_decrease(active_floating_pane_id, cx, cy);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api);
             }

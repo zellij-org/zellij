@@ -9,7 +9,7 @@ use std::str;
 use zellij_tile::data::{Palette, PaletteColor};
 use zellij_tile::prelude::Style;
 use zellij_utils::input::options::Clipboard;
-use zellij_utils::pane_size::{Size, SizeInPixels};
+use zellij_utils::pane_size::{Constraint, Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction, input::layout::Layout, position::Position, zellij_tile,
 };
@@ -46,12 +46,12 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId, ClientId),
     VerticalSplit(PaneId, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
-    ResizeLeft(ClientId),
-    ResizeRight(ClientId),
-    ResizeDown(ClientId),
-    ResizeUp(ClientId),
-    ResizeIncrease(ClientId),
-    ResizeDecrease(ClientId),
+    ResizeLeft(ClientId, Option<Constraint>),
+    ResizeRight(ClientId, Option<Constraint>),
+    ResizeDown(ClientId, Option<Constraint>),
+    ResizeUp(ClientId, Option<Constraint>),
+    ResizeIncrease(ClientId, Option<Constraint>, Option<Constraint>),
+    ResizeDecrease(ClientId, Option<Constraint>, Option<Constraint>),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -973,33 +973,34 @@ pub(crate) fn screen_thread_main(
                     }
                 });
             },
-            ScreenInstruction::ResizeLeft(client_id) => {
+            ScreenInstruction::ResizeLeft(client_id, constraint) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .resize_left(client_id));
+                    .resize_left(client_id, constraint));
                 screen.render();
             },
-            ScreenInstruction::ResizeRight(client_id) => {
+            ScreenInstruction::ResizeRight(client_id, constraint) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .resize_right(client_id));
+                    .resize_right(client_id, constraint));
                 screen.render();
             },
-            ScreenInstruction::ResizeDown(client_id) => {
+            ScreenInstruction::ResizeDown(client_id, constraint) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .resize_down(client_id));
+                    .resize_down(client_id, constraint));
                 screen.render();
             },
-            ScreenInstruction::ResizeUp(client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab.resize_up(client_id));
+            ScreenInstruction::ResizeUp(client_id, constraint) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .resize_up(client_id, constraint));
                 screen.render();
             },
-            ScreenInstruction::ResizeIncrease(client_id) => {
+            ScreenInstruction::ResizeIncrease(client_id, cx, cy) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .resize_increase(client_id));
+                    .resize_increase(client_id, cx, cy));
                 screen.render();
             },
-            ScreenInstruction::ResizeDecrease(client_id) => {
+            ScreenInstruction::ResizeDecrease(client_id, cx, cy) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .resize_decrease(client_id));
+                    .resize_decrease(client_id, cx, cy));
                 screen.render();
             },
             ScreenInstruction::SwitchFocus(client_id) => {

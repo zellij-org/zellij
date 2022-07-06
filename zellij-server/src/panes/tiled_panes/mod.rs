@@ -18,7 +18,7 @@ use std::time::Instant;
 use zellij_tile::data::ModeInfo;
 use zellij_utils::{
     input::layout::Direction,
-    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
+    pane_size::{Constraint, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -476,7 +476,7 @@ impl TiledPanes {
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
-    pub fn resize_active_pane_left(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_left(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -484,13 +484,17 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_pane_left(&active_pane_id);
+            pane_grid.resize_pane_left(&active_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
         }
     }
-    pub fn resize_active_pane_right(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_right(
+        &mut self,
+        client_id: ClientId,
+        constraint: Option<Constraint>,
+    ) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -498,13 +502,13 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_pane_right(&active_pane_id);
+            pane_grid.resize_pane_right(&active_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
         }
     }
-    pub fn resize_active_pane_up(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_up(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -512,13 +516,13 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_pane_up(&active_pane_id);
+            pane_grid.resize_pane_up(&active_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
         }
     }
-    pub fn resize_active_pane_down(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_down(&mut self, client_id: ClientId, constraint: Option<Constraint>) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -526,13 +530,18 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_pane_down(&active_pane_id);
+            pane_grid.resize_pane_down(&active_pane_id, constraint);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
         }
     }
-    pub fn resize_active_pane_increase(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_increase(
+        &mut self,
+        client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -540,13 +549,18 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_increase(&active_pane_id);
+            pane_grid.resize_increase(&active_pane_id, cx, cy);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
         }
     }
-    pub fn resize_active_pane_decrease(&mut self, client_id: ClientId) {
+    pub fn resize_active_pane_decrease(
+        &mut self,
+        client_id: ClientId,
+        cx: Option<Constraint>,
+        cy: Option<Constraint>,
+    ) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -554,7 +568,7 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_decrease(&active_pane_id);
+            pane_grid.resize_decrease(&active_pane_id, cx, cy);
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api);
             }
