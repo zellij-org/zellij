@@ -282,8 +282,26 @@ impl Pane for TerminalPane {
             && self.search_term.is_empty()
         {
             String::from("Enter search...")
-        } else if input_mode == InputMode::EnterSearch && !self.search_term.is_empty() {
-            self.search_term.clone()
+        } else if (input_mode == InputMode::EnterSearch || input_mode == InputMode::Search)
+            && !self.search_term.is_empty()
+        {
+            let mut modifier_text = String::new();
+            if self.grid.search_results.has_modifiers_set() {
+                let mut modifiers = Vec::new();
+                modifier_text.push_str(" [");
+                if self.grid.search_results.case_insensitive {
+                    modifiers.push("c")
+                }
+                if self.grid.search_results.whole_word_only {
+                    modifiers.push("o")
+                }
+                if self.grid.search_results.wrap_search {
+                    modifiers.push("w")
+                }
+                modifier_text.push_str(&modifiers.join(", "));
+                modifier_text.push_str("]");
+            }
+            format!("SEARCHING: {}{}", self.search_term, modifier_text)
         } else if self.pane_name.is_empty() {
             self.grid
                 .title

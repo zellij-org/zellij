@@ -348,6 +348,10 @@ impl SearchResult {
         }
     }
 
+    pub fn has_modifiers_set(&self) -> bool {
+        self.wrap_search || self.whole_word_only || self.case_insensitive
+    }
+
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
     fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
