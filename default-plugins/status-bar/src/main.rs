@@ -317,7 +317,7 @@ macro_rules! action_key {
 /// Expands verbosely to `Action::SwitchToMode(InputMode::Normal)`, which is an action that often
 /// repeats in the keybindings configuration. We need it to expand to verbose rust code (i.e. a
 /// "Textual replacement", similar to C `#define`) so it gets picked up as proper pattern in the
-/// `key_hint!` macro.
+/// `action_key!` macro.
 #[macro_export]
 macro_rules! to_normal {
     () => {

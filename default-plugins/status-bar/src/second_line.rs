@@ -13,18 +13,6 @@ use crate::{
     LinePart, MORE_MSG,
 };
 
-#[derive(Clone, Copy)]
-enum StatusBarTextColor {
-    White,
-    Green,
-}
-
-#[derive(Clone, Copy)]
-enum StatusBarTextBoldness {
-    Bold,
-    NotBold,
-}
-
 fn full_length_shortcut(
     is_first_shortcut: bool,
     key: Vec<Key>,
@@ -101,51 +89,6 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
-fn show_extra_hints(
-    palette: Palette,
-    text_with_style: Vec<(&str, StatusBarTextColor, StatusBarTextBoldness)>,
-) -> LinePart {
-    use StatusBarTextBoldness::*;
-    use StatusBarTextColor::*;
-    // get the colors
-    let white_color = palette_match!(palette.white);
-    let green_color = palette_match!(palette.green);
-    // calculate length of tipp
-    let len = text_with_style
-        .iter()
-        .fold(0, |len_sum, (text, _, _)| len_sum + text.chars().count());
-    // apply the styles defined above
-    let styled_text = text_with_style
-        .into_iter()
-        .map(|(text, color, is_bold)| {
-            let color = match color {
-                White => white_color,
-                Green => green_color,
-            };
-            match is_bold {
-                Bold => Style::new().fg(color).bold().paint(text),
-                NotBold => Style::new().fg(color).paint(text),
-            }
-        })
-        .collect::<Vec<_>>();
-    LinePart {
-        part: ANSIStrings(&styled_text[..]).to_string(),
-        len,
-    }
-}
-
-/// Creates hints for usage of Pane Mode
-fn confirm_pane_selection(palette: Palette) -> LinePart {
-    use StatusBarTextBoldness::*;
-    use StatusBarTextColor::*;
-    let text_with_style = [
-        (" / ", White, NotBold),
-        ("<ENTER>", Green, Bold),
-        (" Select pane", White, Bold),
-    ];
-    show_extra_hints(palette, text_with_style.to_vec())
-}
-
 fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>) -> LinePart {
     let shortcut = if linepart.len == 0 {
         full_length_shortcut(true, keys, text, help.style.colors)
@@ -159,22 +102,14 @@ fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>
     new_linepart
 }
 
-fn full_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo) -> LinePart {
-    move |help| {
-        let mut lp = LinePart::default();
-        let keys_and_hints = get_keys_and_hints(help);
+fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
 
-        for (long, _short, keys) in keys_and_hints.into_iter() {
-            lp = add_shortcut(help, &lp, &long, keys.to_vec());
-        }
-
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        lp.len += select_pane_shortcut.len;
-        lp.part = format!("{}{}", lp.part, select_pane_shortcut,);
-        lp
+    for (long, _short, keys) in keys_and_hints.into_iter() {
+        line_part = add_shortcut(help, &line_part, &long, keys.to_vec());
     }
+    line_part
 }
 
 /// Collect all relevant keybindings and hints to display.
@@ -210,6 +145,16 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     let mut old_keymap = mi.keybinds.clone();
     let s = |string: &str| string.to_string();
 
+    // Find a keybinding to get back to "Normal" input mode. In this case we prefer '\n' over other
+    // choices. Do it here before we dedupe the keymap below!
+    let to_normal_keys = action_key!(old_keymap, to_normal!());
+    let to_normal_key = if to_normal_keys.contains(&Key::Char('\n')) {
+        vec![Key::Char('\n')]
+    } else {
+        // Yield `vec![key]` if `to_normal_keys` has at least one key, or an empty vec otherwise.
+        to_normal_keys.into_iter().take(1).collect()
+    };
+
     // Sort and deduplicate the keybindings first. We sort after the `Key`s, and deduplicate by
     // their `Action` vectors. An unstable sort is fine here because if the user maps anything to
     // the same key again, anything will happen...
@@ -227,7 +172,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         }
     }
 
-    return if mi.mode == IM::Pane { vec![
+    if mi.mode == IM::Pane { vec![
         (s("Move focus"), s("Move"), action_key!(km, A::MoveFocus(_))),
         (s("New"), s("New"), action_key!(km, A::NewPane(None), to_normal!())),
         (s("Close"), s("Close"), action_key!(km, A::CloseFocus, to_normal!())),
@@ -239,6 +184,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Floating toggle"), s("Floating"), action_key!(km, A::ToggleFloatingPanes, to_normal!())),
         (s("Embed pane"), s("Embed"), action_key!(km, A::TogglePaneEmbedOrFloating, to_normal!())),
         (s("Next"), s("Next"), action_key!(km, A::SwitchFocus)),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tab { vec![
         (s("Move focus"), s("Move"), action_key!(km, A::GoToPreviousTab).into_iter()
                     .chain(action_key!(km, A::GoToNextTab).into_iter()).collect()),
@@ -247,6 +193,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Rename"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenameTab), A::TabNameInput(_))),
         (s("Sync"), s("Sync"), action_key!(km, A::ToggleActiveSyncTab, to_normal!())),
         (s("Toggle"), s("Toggle"), action_key!(km, A::ToggleTab)),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
         (s("Resize"), s("Resize"), action_key!(km, A::Resize(RDir::Left)).into_iter()
                     .chain(action_key!(km, A::Resize(RDir::Down)).into_iter())
@@ -256,6 +203,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Increase/Decrease size"), s("Increase/Decrease"),
             action_key!(km, A::Resize(RDir::Increase)).into_iter()
                     .chain(action_key!(km, A::Resize(RDir::Decrease)).into_iter()).collect()),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Move"), s("Move"), action_key!(km, Action::MovePane(Some(_)))),
         (s("Next pane"), s("Next"), action_key!(km, Action::MovePane(None))),
@@ -268,8 +216,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
                     .chain(action_key!(km, Action::HalfPageScrollUp).into_iter()).collect()),
         (s("Edit scrollback in default editor"), s("Edit"),
             action_key!(km, Action::EditScrollback, to_normal!())),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key!(km, Action::Detach)),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
         (s("Move focus"), s("Move"), action_key!(km, A::MoveFocus(_))),
         (s("Split down"), s("Down"), action_key!(km, A::NewPane(Some(Dir::Down)), to_normal!())),
@@ -279,75 +229,57 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Rename tab"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenameTab), A::TabNameInput(_))),
         (s("Previous Tab"), s("Previous"), action_key!(km, A::GoToPreviousTab, to_normal!())),
         (s("Next Tab"), s("Next"), action_key!(km, A::GoToNextTab, to_normal!())),
+        (s("Select pane"), s("Select"), to_normal_key),
     ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
-        // Please let's just assume nobody changes this mapping...
-        (s("When done"), s("Done"), vec![Key::Char('\n')]),
+        (s("When done"), s("Done"), to_normal_key),
         (s("Select pane"), s("Select"), action_key!(km, A::MoveFocusOrTab(Dir::Left)).into_iter()
                     .chain(action_key!(km, A::MoveFocus(Dir::Down)).into_iter())
                     .chain(action_key!(km, A::MoveFocus(Dir::Up)).into_iter())
                     .chain(action_key!(km, A::MoveFocusOrTab(Dir::Right)).into_iter()).collect()),
-    ]} else { vec![] };
+    ]} else { vec![] }
 }
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
         InputMode::Normal => tip(help.style.colors),
         InputMode::Locked => locked_interface_indication(help.style.colors),
-        _ => full_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+        _ => full_shortcut_list_nonstandard_mode(help),
     }
 }
 
-fn shortened_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo) -> LinePart {
-    move |help| {
-        let mut line_part = LinePart::default();
-        let keys_and_hints = get_keys_and_hints(help);
+fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
 
-        for (_, short, keys) in keys_and_hints.into_iter() {
-            line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
-        }
-
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        line_part.len += select_pane_shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-        line_part
+    for (_, short, keys) in keys_and_hints.into_iter() {
+        line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
     }
+    line_part
 }
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
         InputMode::Normal => tip(help.style.colors),
         InputMode::Locked => locked_interface_indication(help.style.colors),
-        _ => shortened_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+        _ => shortened_shortcut_list_nonstandard_mode(help),
     }
 }
 
-fn best_effort_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo, usize) -> LinePart {
-    move |help, max_len| {
-        let mut line_part = LinePart::default();
-        let keys_and_hints = get_keys_and_hints(help);
+fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
 
-        for (_, short, keys) in keys_and_hints.into_iter() {
-            let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
-            if new_line_part.len + MORE_MSG.chars().count() > max_len {
-                // TODO: better
-                line_part.part = format!("{}{}", line_part.part, MORE_MSG);
-                line_part.len += MORE_MSG.chars().count();
-                break;
-            }
-            line_part = new_line_part;
+    for (_, short, keys) in keys_and_hints.into_iter() {
+        let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
+        if new_line_part.len + MORE_MSG.chars().count() > max_len {
+            // TODO: better
+            line_part.part = format!("{}{}", line_part.part, MORE_MSG);
+            line_part.len += MORE_MSG.chars().count();
+            break;
         }
-
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        if line_part.len + select_pane_shortcut.len <= max_len {
-            line_part.len += select_pane_shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-        }
-        line_part
+        line_part = new_line_part;
     }
+    line_part
 }
 
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
@@ -368,7 +300,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
                 LinePart::default()
             }
         },
-        _ => best_effort_shortcut_list_nonstandard_mode(confirm_pane_selection)(help, max_len),
+        _ => best_effort_shortcut_list_nonstandard_mode(help, max_len),
     }
 }
 
