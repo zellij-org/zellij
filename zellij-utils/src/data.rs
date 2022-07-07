@@ -72,6 +72,7 @@ impl fmt::Display for Key {
             Key::Char(c) => match c {
                 '\n' => write!(f, "↩"),
                 '\t' => write!(f, "↹"),
+                ' ' => write!(f, "␣"),
                 _ => write!(f, "{}", c),
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
