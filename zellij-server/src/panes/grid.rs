@@ -397,7 +397,7 @@ impl Grid {
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
     ) -> Self {
-        let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store.clone());
+        let sixel_grid = SixelGrid::new(character_cell_size.clone(), sixel_image_store);
         Grid {
             lines_above: VecDeque::with_capacity(
                 // .get_or_init() is used instead of .get().unwrap() to prevent
@@ -774,12 +774,10 @@ impl Grid {
             }
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
-            self.saved_cursor_position
-                .as_mut()
-                .map(|saved_cursor_position| {
-                    saved_cursor_position.y = new_cursor_y;
-                    saved_cursor_position.x = new_cursor_x;
-                });
+            if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                saved_cursor_position.y = new_cursor_y;
+                saved_cursor_position.x = new_cursor_x;
+            };
         } else if new_columns != self.width && self.alternate_screen_state.is_some() {
             // in alternate screen just truncate exceeding width
             for row in &mut self.viewport {
@@ -816,13 +814,11 @@ impl Grid {
                         };
                     } else {
                         self.cursor.y -= row_count_to_transfer;
-                        self.saved_cursor_position
-                            .as_mut()
-                            .map(|saved_cursor_position| {
-                                saved_cursor_position.y = saved_cursor_position
-                                    .y
-                                    .saturating_sub(row_count_to_transfer)
-                            });
+                        if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
+                            saved_cursor_position.y = saved_cursor_position
+                                .y
+                                .saturating_sub(row_count_to_transfer);
+                        };
                     }
                     if self.alternate_screen_state.is_none() {
                         transfer_rows_from_viewport_to_lines_above(
@@ -2213,7 +2209,6 @@ impl Perform for Grid {
                         },
                     }
                 }
-                return;
             } else {
                 // move scroll up
                 let count = next_param_or(1);

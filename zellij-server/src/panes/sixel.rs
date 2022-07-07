@@ -47,14 +47,14 @@ impl PixelRect {
         let x = absolute_x - self.x;
         let y = absolute_y - self.y;
         if width > 0 && height > 0 {
-            return Some(PixelRect {
+            Some(PixelRect {
                 x,
                 y,
                 width,
                 height: height as usize,
-            });
+            })
         } else {
-            return None;
+            None
         }
     }
 }
@@ -177,7 +177,7 @@ impl SixelGrid {
                     }
                 }
                 for image_id in &self.image_ids_to_reap {
-                    drop(self.sixel_image_locations.remove(&image_id));
+                    self.sixel_image_locations.remove(image_id);
                 }
 
                 self.sixel_image_locations
@@ -220,7 +220,7 @@ impl SixelGrid {
                 }
             }
             for image_id in &self.image_ids_to_reap {
-                drop(self.sixel_image_locations.remove(&image_id));
+                self.sixel_image_locations.remove(image_id);
             }
         }
     }
@@ -233,18 +233,17 @@ impl SixelGrid {
         }
     }
     pub fn character_cell_size_possibly_changed(&mut self) {
-        match (self.previous_cell_size, *self.character_cell_size.borrow()) {
-            (Some(previous_cell_size), Some(character_cell_size)) => {
-                if previous_cell_size != character_cell_size {
-                    for (_image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
-                        pixel_rect.x =
-                            (pixel_rect.x / previous_cell_size.width) * character_cell_size.width;
-                        pixel_rect.y = (pixel_rect.y / previous_cell_size.height as isize)
-                            * character_cell_size.height as isize;
-                    }
+        if let (Some(previous_cell_size), Some(character_cell_size)) =
+            (self.previous_cell_size, *self.character_cell_size.borrow())
+        {
+            if previous_cell_size != character_cell_size {
+                for (_image_id, pixel_rect) in self.sixel_image_locations.iter_mut() {
+                    pixel_rect.x =
+                        (pixel_rect.x / previous_cell_size.width) * character_cell_size.width;
+                    pixel_rect.y = (pixel_rect.y / previous_cell_size.height as isize)
+                        * character_cell_size.height as isize;
                 }
-            },
-            _ => {},
+            }
         }
         self.previous_cell_size = *self.character_cell_size.borrow();
     }
@@ -256,7 +255,7 @@ impl SixelGrid {
             .map(|(image_id, _image_rect)| image_id)
             .collect();
         image_ids.append(&mut self.image_ids_to_reap);
-        if image_ids.len() > 0 {
+        if !image_ids.is_empty() {
             Some(image_ids)
         } else {
             None
@@ -376,7 +375,7 @@ impl SixelGrid {
                         (viewport_width_in_cells * character_cell_size.width)
                             .saturating_sub(sixel_image_pixel_rect.x)
                     };
-                    if sixel_image_pixel_width <= 0 {
+                    if sixel_image_pixel_width == 0 {
                         continue;
                     }
 

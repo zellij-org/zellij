@@ -251,7 +251,6 @@ pub fn start_client(
         .name("signal_listener".to_string())
         .spawn({
             let os_input = os_input.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 os_input.handle_signals(
                     Box::new({

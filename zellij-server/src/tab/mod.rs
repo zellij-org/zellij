@@ -1856,7 +1856,7 @@ impl Tab {
                 return true; // we need to re-render in this case so the selection is updated
             }
         }
-        return false; // we shouldn't even get here, but might as well not needlessly render if we do
+        false // we shouldn't even get here, but might as well not needlessly render if we do
     }
 
     pub fn copy_selection(&self, client_id: ClientId) {

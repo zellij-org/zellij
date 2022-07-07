@@ -77,7 +77,7 @@ impl StdinAnsiParser {
         for byte in raw_bytes.drain(..) {
             self.parse_byte(byte);
         }
-        return self.drain_pending_events();
+        self.drain_pending_events()
     }
     fn parse_byte(&mut self, byte: u8) {
         if byte == b't' {
@@ -120,7 +120,7 @@ pub enum AnsiStdinInstruction {
 }
 
 impl AnsiStdinInstruction {
-    pub fn pixel_dimensions_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
+    pub fn pixel_dimensions_from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         // eg. <ESC>[4;21;8t
         lazy_static! {
             static ref RE: Regex = Regex::new(r"^\u{1b}\[(\d+);(\d+);(\d+)t$").unwrap();
@@ -160,7 +160,7 @@ impl AnsiStdinInstruction {
             _ => Err("invalid sequence"),
         }
     }
-    pub fn bg_or_fg_from_bytes(bytes: &Vec<u8>) -> Result<Self, &'static str> {
+    pub fn bg_or_fg_from_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         // eg. <ESC>]11;rgb:0000/0000/0000\
         lazy_static! {
             static ref BACKGROUND_RE: Regex = Regex::new(r"\]11;(.*)\u{1b}\\$").unwrap();
@@ -202,7 +202,7 @@ impl AnsiStdinInstruction {
     }
 }
 
-fn color_sequence_from_bytes(bytes: &Vec<u8>) -> Result<(usize, String), &'static str> {
+fn color_sequence_from_bytes(bytes: &[u8]) -> Result<(usize, String), &'static str> {
     lazy_static! {
         static ref COLOR_REGISTER_RE: Regex = Regex::new(r"\]4;(.*);(.*)\u{1b}\\$").unwrap();
     }

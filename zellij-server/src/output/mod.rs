@@ -110,8 +110,8 @@ fn serialize_chunks(
                 sixel_chunk.sixel_image_pixel_height,
             );
             if let Some(serialized_sixel_image) = serialized_sixel_image {
-                let mut sixel_vte = sixel_vte.get_or_insert_with(|| String::new());
-                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, &mut sixel_vte);
+                let sixel_vte = sixel_vte.get_or_insert_with(String::new);
+                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, sixel_vte);
                 sixel_vte.push_str(&serialized_sixel_image);
             }
         }
@@ -123,7 +123,7 @@ fn serialize_chunks(
         let save_cursor_position = "\u{1b}[s";
         let restore_cursor_position = "\u{1b}[u";
         vte_output.push_str(save_cursor_position);
-        vte_output.push_str(&sixel_vte);
+        vte_output.push_str(sixel_vte);
         vte_output.push_str(restore_cursor_position);
     }
     vte_output

@@ -89,7 +89,6 @@ pub fn start_fake_client(
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || stdin_loop(os_input, send_input_instructions, stdin_ansi_parser)
         });
 
