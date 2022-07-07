@@ -317,7 +317,7 @@ pub fn move_focus_left_in_normal_mode() {
 pub fn terminal_info_queried_from_terminal_emulator() {
     let events_sent_to_server = Arc::new(Mutex::new(vec![]));
     let command_is_executing = CommandIsExecuting::new();
-    let client_os_api = FakeClientOsApi::new(events_sent_to_server, command_is_executing.clone());
+    let client_os_api = FakeClientOsApi::new(events_sent_to_server, command_is_executing);
 
     let client_os_api_clone = client_os_api.clone();
     let (send_input_instructions, _receive_input_instructions): ChannelWithContext<
@@ -329,9 +329,6 @@ pub fn terminal_info_queried_from_terminal_emulator() {
     let stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
-            let client_os_api = client_os_api.clone();
-            let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 stdin_loop(
                     Box::new(client_os_api),
@@ -380,8 +377,6 @@ pub fn pixel_info_sent_to_server() {
         .name("stdin_handler".to_string())
         .spawn({
             let client_os_api = client_os_api.clone();
-            let send_input_instructions = send_input_instructions.clone();
-            let stdin_ansi_parser = stdin_ansi_parser.clone();
             move || {
                 stdin_loop(
                     Box::new(client_os_api),
