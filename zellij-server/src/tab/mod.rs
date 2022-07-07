@@ -7,9 +7,8 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_tile::prelude::Style;
 use zellij_utils::position::{Column, Line};
-use zellij_utils::{position::Position, serde, zellij_tile};
+use zellij_utils::{position::Position, serde};
 
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
@@ -37,8 +36,8 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
-use zellij_tile::data::{Event, InputMode, ModeInfo, Palette, PaletteColor};
 use zellij_utils::{
+    data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
         layout::{Layout, Run},

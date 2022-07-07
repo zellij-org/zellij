@@ -2,6 +2,7 @@
 
 use crate::{
     cli::CliArgs,
+    data::{ClientId, InputMode, Style},
     errors::{get_current_ctx, ErrorContext},
     input::{actions::Action, layout::LayoutFromYaml, options::Options, plugins::PluginsConfig},
     pane_size::{Size, SizeInPixels},
@@ -15,11 +16,6 @@ use std::{
     io::{self, Write},
     marker::PhantomData,
     os::unix::io::{AsRawFd, FromRawFd},
-};
-
-use zellij_tile::{
-    data::InputMode,
-    prelude::{ClientId, Style},
 };
 
 type SessionId = u64;

@@ -1,10 +1,13 @@
 use std::time::{Duration, Instant};
-use zellij_utils::pane_size::SizeInPixels;
-
-use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
 
 const STARTUP_PARSE_DEADLINE_MS: u64 = 1000;
 const SIGWINCH_PARSE_DEADLINE_MS: u64 = 1000;
+use zellij_utils::{
+    ipc::PixelDimensions,
+    lazy_static::lazy_static,
+    pane_size::SizeInPixels,
+    regex::Regex,
+};
 
 #[derive(Debug)]
 pub struct StdinAnsiParser {

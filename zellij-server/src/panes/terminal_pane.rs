@@ -14,15 +14,14 @@ use std::fmt::Debug;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::time::{self, Instant};
-use zellij_tile::prelude::Style;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
+    data::{InputMode, Palette, PaletteColor, Style},
     pane_size::SizeInPixels,
     pane_size::{Dimension, PaneGeom},
     position::Position,
     shared::make_terminal_title,
     vte,
-    zellij_tile::data::{InputMode, Palette, PaletteColor},
 };
 
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;

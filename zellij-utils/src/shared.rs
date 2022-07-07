@@ -2,6 +2,7 @@
 
 use std::{iter, str::from_utf8};
 
+use crate::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 use crate::envs::get_session_name;
 use colorsys::Rgb;
 use std::os::unix::fs::PermissionsExt;
@@ -9,7 +10,6 @@ use std::path::Path;
 use std::{fs, io};
 use strip_ansi_escapes::strip;
 use unicode_width::UnicodeWidthStr;
-use zellij_tile::data::{Palette, PaletteColor, PaletteSource, ThemeHue};
 
 pub fn set_permissions(path: &Path, mode: u32) -> io::Result<()> {
     let mut permissions = fs::metadata(path)?.permissions();

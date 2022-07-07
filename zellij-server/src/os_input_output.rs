@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
-use zellij_utils::{async_std, interprocess, libc, nix, signal_hook, zellij_tile};
+use zellij_utils::{async_std, interprocess, libc, nix, signal_hook};
 
 use async_std::fs::File as AsyncFile;
 use async_std::os::unix::io::FromRawFd;
@@ -25,8 +25,8 @@ use nix::sys::termios;
 
 use nix::unistd;
 use signal_hook::consts::*;
-use zellij_tile::data::Palette;
 use zellij_utils::{
+    data::Palette,
     input::command::{RunCommand, TerminalAction},
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
     shared::default_palette,

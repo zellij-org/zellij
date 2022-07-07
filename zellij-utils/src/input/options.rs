@@ -1,10 +1,10 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
+use crate::data::InputMode;
 use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use zellij_tile::data::InputMode;
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
 pub enum OnForceClose {

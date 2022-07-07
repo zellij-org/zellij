@@ -1,25 +1,23 @@
 //! Main input logic.
-use zellij_utils::{
-    input::{
-        mouse::{MouseButton, MouseEvent},
-        options::Options,
-    },
-    termwiz::input::InputEvent,
-    zellij_tile,
-};
-
 use crate::{
     os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
     ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
+    data::{InputMode, Key},
     errors::{ContextType, ErrorContext},
-    input::{actions::Action, cast_termwiz_key, config::Config, keybinds::Keybinds},
+    input::{
+        actions::Action,
+        cast_termwiz_key,
+        config::Config,
+        keybinds::Keybinds,
+        mouse::{MouseButton, MouseEvent},
+        options::Options,
+    },
     ipc::{ClientToServerMsg, ExitReason},
+    termwiz::input::InputEvent,
 };
-
-use zellij_tile::data::{InputMode, Key};
 
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].

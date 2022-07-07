@@ -1,6 +1,5 @@
-use zellij_tile::prelude::Style;
 mod floating_pane_grid;
-use zellij_utils::{position::Position, zellij_tile};
+use zellij_utils::position::Position;
 
 use crate::tab::Pane;
 use floating_pane_grid::FloatingPaneGrid;
@@ -16,8 +15,10 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
-use zellij_tile::data::ModeInfo;
-use zellij_utils::pane_size::{Offset, PaneGeom, Size, Viewport};
+use zellij_utils::{
+    data::{ModeInfo, Style},
+    pane_size::{Offset, PaneGeom, Size, Viewport},
+};
 
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {

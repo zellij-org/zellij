@@ -1,4 +1,3 @@
-// TODO: rename this file to reflect it also including stdin_loop tests
 use super::input_loop;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::stdin_loop;
@@ -8,7 +7,7 @@ use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::pane_size::Size;
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
-use zellij_utils::zellij_tile::data::Palette;
+use zellij_utils::data::{Palette, InputMode};
 
 use crate::InputInstruction;
 use crate::{
@@ -19,13 +18,10 @@ use crate::{
 use ::insta::assert_snapshot;
 use std::path::Path;
 
-use zellij_utils::zellij_tile;
-
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use zellij_tile::data::InputMode;
 use zellij_utils::{
     errors::ErrorContext,
     ipc::{ClientToServerMsg, ServerToClientMsg},

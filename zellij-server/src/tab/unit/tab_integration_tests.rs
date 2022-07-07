@@ -1,7 +1,6 @@
 use super::{Output, Tab};
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
-use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::Arc;
 use crate::Mutex;
 use crate::{
@@ -12,7 +11,6 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
-use zellij_tile::prelude::Style;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -27,6 +25,7 @@ use std::rc::Rc;
 use zellij_utils::nix;
 
 use zellij_utils::{
+    data::{ModeInfo, Palette, Style},
     input::command::TerminalAction,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},

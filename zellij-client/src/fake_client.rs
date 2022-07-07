@@ -4,8 +4,6 @@
 use log::debug;
 use std::sync::{Arc, Mutex};
 use std::{fs, path::PathBuf, thread};
-use zellij_tile::prelude::{ClientId, Style};
-use zellij_utils::errors::ContextType;
 
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_actions,
@@ -15,6 +13,8 @@ use crate::{
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
+    data::{ClientId, Style},
+    errors::ContextType,
     input::{actions::Action, config::Config, layout::LayoutFromYaml, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };

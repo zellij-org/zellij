@@ -2,9 +2,8 @@ use crate::output::CharacterChunk;
 use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
-use zellij_tile::prelude::Style;
+use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
 use zellij_utils::pane_size::Viewport;
-use zellij_utils::zellij_tile::prelude::{client_id_to_colors, PaletteColor};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 

@@ -6,9 +6,10 @@ use ::insta::assert_snapshot;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use zellij_tile::data::Palette;
-use zellij_tile::prelude::Style;
-use zellij_utils::pane_size::{PaneGeom, SizeInPixels};
+use zellij_utils::{
+    data::{Palette, Style},
+    pane_size::{PaneGeom, SizeInPixels},
+};
 
 use std::fmt::Write;
 

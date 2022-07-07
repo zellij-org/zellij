@@ -1,7 +1,6 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{io, path::Path};
-
-use crate::data::*;
+use zellij_utils::data::*;
 
 // Subscription Handling
 

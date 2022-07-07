@@ -1,9 +1,6 @@
 mod pane_resizer;
 mod tiled_pane_grid;
 
-use zellij_tile::prelude::Style;
-use zellij_utils::zellij_tile;
-
 use crate::tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use tiled_pane_grid::{split, TiledPaneGrid};
 
@@ -15,8 +12,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
-use zellij_tile::data::ModeInfo;
 use zellij_utils::{
+    data::{ModeInfo, Style},
     input::layout::Direction,
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };

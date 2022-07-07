@@ -17,7 +17,6 @@ use wasmer::{
     WasmerEnv,
 };
 use wasmer_wasi::{Pipe, WasiEnv, WasiState};
-use zellij_tile::data::{Event, EventType, PluginIds};
 
 use crate::{
     logging_pipe::LoggingPipe,
@@ -30,13 +29,14 @@ use crate::{
 
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    data::{Event, EventType, PluginIds},
     errors::{ContextType, PluginContext},
 };
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::RunPlugin,
     input::plugins::{PluginConfig, PluginType, PluginsConfig},
-    serde, zellij_tile,
+    serde,
 };
 
 #[derive(Clone, Debug)]
