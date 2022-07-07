@@ -104,7 +104,6 @@ impl Pane for TerminalPane {
         for &byte in &bytes {
             self.vte_parser.advance(&mut self.grid, byte);
         }
-        // self.set_should_render(true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
