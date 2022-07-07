@@ -3,10 +3,7 @@ use std::time::{Duration, Instant};
 const STARTUP_PARSE_DEADLINE_MS: u64 = 1000;
 const SIGWINCH_PARSE_DEADLINE_MS: u64 = 1000;
 use zellij_utils::{
-    ipc::PixelDimensions,
-    lazy_static::lazy_static,
-    pane_size::SizeInPixels,
-    regex::Regex,
+    ipc::PixelDimensions, lazy_static::lazy_static, pane_size::SizeInPixels, regex::Regex,
 };
 
 #[derive(Debug)]

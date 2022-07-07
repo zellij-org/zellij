@@ -1,13 +1,13 @@
 use super::input_loop;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::stdin_loop;
+use zellij_utils::data::{InputMode, Palette};
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::pane_size::Size;
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
-use zellij_utils::data::{Palette, InputMode};
 
 use crate::InputInstruction;
 use crate::{
