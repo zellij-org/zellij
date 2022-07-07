@@ -189,7 +189,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::TerminalForegroundColor(..) => {
                 ScreenContext::TerminalForegroundColor
-            }
+            },
             ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,

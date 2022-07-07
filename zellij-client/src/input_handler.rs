@@ -9,9 +9,8 @@ use zellij_utils::{
 };
 
 use crate::{
-    ClientId,
-    os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientInstruction,
-    CommandIsExecuting, InputInstruction,
+    os_input_output::ClientOsApi, stdin_ansi_parser::AnsiStdinInstruction, ClientId,
+    ClientInstruction, CommandIsExecuting, InputInstruction,
 };
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
@@ -81,7 +80,7 @@ impl InputHandler {
                         InputEvent::Key(key_event) => {
                             let key = cast_termwiz_key(key_event, &raw_bytes);
                             self.handle_key(&key, raw_bytes);
-                        }
+                        },
                         InputEvent::Mouse(mouse_event) => {
                             let mouse_event =
                                 zellij_utils::input::mouse::MouseEvent::from(mouse_event);
@@ -108,7 +107,7 @@ impl InputHandler {
                 },
                 Ok((InputInstruction::SwitchToMode(input_mode), _error_context)) => {
                     self.mode = input_mode;
-                }
+                },
                 Ok((
                     InputInstruction::AnsiStdinInstructions(ansi_stdin_instructions),
                     _error_context,
@@ -116,7 +115,7 @@ impl InputHandler {
                     for ansi_instruction in ansi_stdin_instructions {
                         self.handle_stdin_ansi_instruction(ansi_instruction);
                     }
-                }
+                },
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }
@@ -135,23 +134,23 @@ impl InputHandler {
             AnsiStdinInstruction::PixelDimensions(pixel_dimensions) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions));
-            }
+            },
             AnsiStdinInstruction::BackgroundColor(background_color_instruction) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::BackgroundColor(
                         background_color_instruction,
                     ));
-            }
+            },
             AnsiStdinInstruction::ForegroundColor(foreground_color_instruction) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ForegroundColor(
                         foreground_color_instruction,
                     ));
-            }
+            },
             AnsiStdinInstruction::ColorRegisters(color_registers) => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::ColorRegisters(color_registers));
-            }
+            },
         }
     }
     fn handle_mouse_event(&mut self, mouse_event: &MouseEvent) {

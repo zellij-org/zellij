@@ -34,7 +34,7 @@ fn route_action(
     // this is a bit of a hack around the unfortunate architecture we use with plugins
     // this will change as soon as we refactor
     match action {
-        Action::MouseHold(_) => {}
+        Action::MouseHold(_) => {},
         _ => {
             session
                 .senders
@@ -44,7 +44,7 @@ fn route_action(
                     Event::InputReceived,
                 ))
                 .unwrap();
-        }
+        },
     }
 
     match action {
@@ -503,7 +503,7 @@ pub(crate) fn route_thread_main(
                                 foreground_color_instruction,
                             ))
                             .unwrap();
-                    }
+                    },
                     ClientToServerMsg::ColorRegisters(color_registers) => {
                         rlocked_sessions
                             .as_ref()
@@ -513,7 +513,7 @@ pub(crate) fn route_thread_main(
                                 color_registers,
                             ))
                             .unwrap();
-                    }
+                    },
                     ClientToServerMsg::NewClient(
                         client_attributes,
                         cli_args,

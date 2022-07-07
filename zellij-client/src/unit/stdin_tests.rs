@@ -5,8 +5,8 @@ use crate::stdin_loop;
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
 use zellij_utils::input::options::Options;
-use zellij_utils::pane_size::Size;
 use zellij_utils::nix;
+use zellij_utils::pane_size::Size;
 use zellij_utils::termwiz::input::{InputEvent, KeyCode, KeyEvent, Modifiers};
 use zellij_utils::zellij_tile::data::Palette;
 

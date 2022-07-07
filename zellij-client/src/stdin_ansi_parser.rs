@@ -86,10 +86,10 @@ impl StdinAnsiParser {
                 Ok(ansi_sequence) => {
                     self.pending_events.push(ansi_sequence);
                     self.raw_buffer.clear();
-                }
+                },
                 Err(_) => {
                     self.raw_buffer.clear();
-                }
+                },
             }
         } else if byte == b'\\' {
             self.raw_buffer.push(byte);
@@ -146,7 +146,7 @@ impl AnsiStdinInstruction {
                         width: second_field.unwrap(),
                     }),
                 }))
-            }
+            },
             Ok(6) => {
                 // character cell size
                 Ok(AnsiStdinInstruction::PixelDimensions(PixelDimensions {
@@ -156,7 +156,7 @@ impl AnsiStdinInstruction {
                     }),
                     text_area_size: None,
                 }))
-            }
+            },
             _ => Err("invalid sequence"),
         }
     }

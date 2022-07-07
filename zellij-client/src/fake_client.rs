@@ -2,16 +2,15 @@
 //! and dispatch actions, that are specified through the command line.
 //! Multiple actions at the same time can be dispatched.
 use log::debug;
-use std::{fs, path::PathBuf, thread};
 use std::sync::{Arc, Mutex};
+use std::{fs, path::PathBuf, thread};
 use zellij_tile::prelude::{ClientId, Style};
 use zellij_utils::errors::ContextType;
 
 use crate::{
-    stdin_ansi_parser::StdinAnsiParser,
     command_is_executing::CommandIsExecuting, input_handler::input_actions,
-    os_input_output::ClientOsApi, stdin_handler::stdin_loop, ClientInfo, ClientInstruction,
-    InputInstruction,
+    os_input_output::ClientOsApi, stdin_ansi_parser::StdinAnsiParser, stdin_handler::stdin_loop,
+    ClientInfo, ClientInstruction, InputInstruction,
 };
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},

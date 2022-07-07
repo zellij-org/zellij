@@ -861,11 +861,11 @@ impl OutputBuffer {
                     last_changed_line_index = Some(line_index);
                     changed_line_count = 1;
                 }
-            }
+            },
             None => {
                 last_changed_line_index = Some(line_index);
                 changed_line_count = 1;
-            }
+            },
         };
 
         // TODO: move this whole thing to output_buffer

@@ -2038,10 +2038,10 @@ impl Perform for Grid {
                     },
                     Some(7) => {
                         self.disable_linewrap = true;
-                    }
+                    },
                     Some(80) => {
                         self.sixel_scrolling = false;
-                    }
+                    },
                     Some(1006) => {
                         self.mouse_mode = false;
                     },
@@ -2195,7 +2195,7 @@ impl Perform for Grid {
                             let response = "\u{1b}[?1;0;65535S";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
-                        }
+                        },
                         Some(&[2]) => {
                             // Sixel graphics geometry in pixels
                             if let Some(character_cell_size) = *self.character_cell_size.borrow() {
@@ -2207,10 +2207,10 @@ impl Perform for Grid {
                                 self.pending_messages_to_pty
                                     .push(sixel_area_geometry.as_bytes().to_vec());
                             }
-                        }
+                        },
                         _ => {
                             // unsupported (eg. ReGIS graphics geometry)
-                        }
+                        },
                     }
                 }
                 return;

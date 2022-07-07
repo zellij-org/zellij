@@ -112,10 +112,10 @@ impl SixelGrid {
             Some(max_height_in_pixels) => {
                 self.currently_parsing =
                     Some(SixelDeserializer::new().max_height(max_height_in_pixels));
-            }
+            },
             None => {
                 self.currently_parsing = Some(SixelDeserializer::new());
-            }
+            },
         }
 
         self.handle_byte(27);
@@ -243,8 +243,8 @@ impl SixelGrid {
                             * character_cell_size.height as isize;
                     }
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
         self.previous_cell_size = *self.character_cell_size.borrow();
     }
