@@ -2314,7 +2314,7 @@ pub fn sixel_with_image_scrolling_decsdm() {
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
-        sixel_image_store.clone(),
+        sixel_image_store,
     );
 
     // enter DECSDM
