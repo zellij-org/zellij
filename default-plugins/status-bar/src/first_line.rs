@@ -9,7 +9,7 @@ use crate::{ColoredElements, LinePart};
 struct KeyShortcut {
     mode: KeyMode,
     action: KeyAction,
-    key: Key,
+    key: Option<Key>,
 }
 
 enum KeyAction {
@@ -33,7 +33,7 @@ enum KeyMode {
 
 impl KeyShortcut {
     //pub fn new(mode: KeyMode, action: KeyAction, bind: KeyBind) -> Self {
-    pub fn new(mode: KeyMode, action: KeyAction, key: Key) -> Self {
+    pub fn new(mode: KeyMode, action: KeyAction, key: Option<Key>) -> Self {
         KeyShortcut { mode, action, key } //, bind }
     }
 
@@ -51,13 +51,17 @@ impl KeyShortcut {
         }
     }
     pub fn letter_shortcut(&self, with_prefix: bool) -> String {
+        let key = match self.key {
+            Some(k) => k,
+            None => return String::from("?"),
+        };
         if with_prefix {
-            format!("{}", self.key)
+            format!("{}", key)
         } else {
-            match self.key {
+            match key {
                 Key::F(c) => format!("{}", c),
                 Key::Ctrl(c) => format!("{}", c),
-                Key::Char(_) => format!("{}", self.key),
+                Key::Char(_) => format!("{}", key),
                 Key::Alt(c) => format!("{}", c),
                 _ => String::from("??"),
             }
@@ -71,6 +75,10 @@ fn long_tile(
     separator: &str,
     shared_super: bool,
 ) -> LinePart {
+    if key.key.is_none() {
+        return LinePart::default();
+    }
+
     let key_hint = key.full_text();
     let key_binding = key.letter_shortcut(!shared_super);
     let colors = match key.mode {
@@ -111,6 +119,10 @@ fn short_tile(
     separator: &str,
     shared_super: bool,
 ) -> LinePart {
+    if key.key.is_none() {
+        return LinePart::default();
+    }
+
     let key_binding = key.letter_shortcut(!shared_super);
     let colors = match key.mode {
         KeyMode::Unselected => palette.unselected,
@@ -232,7 +244,7 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     }
 }
 
-pub fn to_char(kv: Vec<Key>) -> Key {
+pub fn to_char(kv: Vec<Key>) -> Option<Key> {
     kv.into_iter()
         .filter(|key| {
             // These are general "keybindings" to get back to normal, they aren't interesting here.
@@ -242,7 +254,6 @@ pub fn to_char(kv: Vec<Key>) -> Key {
         .collect::<Vec<Key>>()
         .into_iter()
         .next()
-        .unwrap_or(Key::Char('?'))
 }
 
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
