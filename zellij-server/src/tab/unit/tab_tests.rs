@@ -1,4 +1,5 @@
 use super::Tab;
+use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
@@ -13,7 +14,7 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -105,12 +106,15 @@ fn create_new_tab(size: Size) -> Tab {
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
         character_cell_info,
+        sixel_image_store,
         os_api,
         senders,
         max_panes,
@@ -122,6 +126,7 @@ fn create_new_tab(size: Size) -> Tab {
         client_id,
         copy_options,
         terminal_emulator_colors,
+        terminal_emulator_color_codes,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),
@@ -152,12 +157,15 @@ fn create_new_tab_with_cell_size(
     let connected_clients = Rc::new(RefCell::new(connected_clients));
     let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
     let copy_options = CopyOptions::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
         index,
         position,
         name,
         size,
         character_cell_size,
+        sixel_image_store,
         os_api,
         senders,
         max_panes,
@@ -169,6 +177,7 @@ fn create_new_tab_with_cell_size(
         client_id,
         copy_options,
         terminal_emulator_colors,
+        terminal_emulator_color_codes,
     );
     tab.apply_layout(
         LayoutTemplate::default().try_into().unwrap(),

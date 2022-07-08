@@ -1,0 +1,26 @@
+---
+source: zellij-server/src/panes/./unit/terminal_pane_tests.rs
+assertion_line: 156
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+01 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+02 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+03 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+04 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+05 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+06 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+07 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+08 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+09 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+10 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+11 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+12 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+13 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+14 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+15 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+16 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+17 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+18 (C): SixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSixelSix
+19 (C): 
+

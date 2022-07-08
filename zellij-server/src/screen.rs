@@ -1,7 +1,7 @@
 //! Things related to [`Screen`]s.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
@@ -15,6 +15,7 @@ use crate::panes::terminal_character::AnsiCode;
 
 use crate::{
     output::Output,
+    panes::sixel::SixelImageStore,
     panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
@@ -95,6 +96,7 @@ pub enum ScreenInstruction {
     TerminalPixelDimensions(PixelDimensions),
     TerminalBackgroundColor(String),
     TerminalForegroundColor(String),
+    TerminalColorRegisters(Vec<(usize, String)>),
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
@@ -184,6 +186,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TerminalForegroundColor(..) => {
                 ScreenContext::TerminalForegroundColor
             },
+            ScreenInstruction::TerminalColorRegisters(..) => ScreenContext::TerminalColorRegisters,
             ScreenInstruction::ChangeMode(..) => ScreenContext::ChangeMode,
             ScreenInstruction::ToggleActiveSyncTab(..) => ScreenContext::ToggleActiveSyncTab,
             ScreenInstruction::ScrollUpAt(..) => ScreenContext::ScrollUpAt,
@@ -247,9 +250,11 @@ pub(crate) struct Screen {
     size: Size,
     pixel_dimensions: PixelDimensions,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     /// The overlay that is drawn on top of [`Pane`]'s', [`Tab`]'s and the [`Screen`]
     overlay: OverlayWindow,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     /// The indices of this [`Screen`]'s active [`Tab`]s.
     active_tab_indices: BTreeMap<ClientId, usize>,
@@ -279,12 +284,14 @@ impl Screen {
             size: client_attributes.size,
             pixel_dimensions: Default::default(),
             character_cell_size: Rc::new(RefCell::new(None)),
+            sixel_image_store: Rc::new(RefCell::new(SixelImageStore::default())),
             style: client_attributes.style,
             connected_clients: Rc::new(RefCell::new(HashSet::new())),
             active_tab_indices: BTreeMap::new(),
             tabs: BTreeMap::new(),
             overlay: OverlayWindow::default(),
             terminal_emulator_colors: Rc::new(RefCell::new(Palette::default())),
+            terminal_emulator_color_codes: Rc::new(RefCell::new(HashMap::new())),
             tab_history: BTreeMap::new(),
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
@@ -518,10 +525,19 @@ impl Screen {
             self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
         }
     }
+    pub fn update_terminal_color_registers(&mut self, color_registers: Vec<(usize, String)>) {
+        let mut terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow_mut();
+        for (color_register, color_sequence) in color_registers {
+            terminal_emulator_color_codes.insert(color_register, color_sequence);
+        }
+    }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) {
-        let mut output = Output::default();
+        let mut output = Output::new(
+            self.sixel_image_store.clone(),
+            self.character_cell_size.clone(),
+        );
         let mut tabs_to_close = vec![];
         let size = self.size;
         let overlay = self.overlay.clone();
@@ -599,6 +615,7 @@ impl Screen {
             String::new(),
             self.size,
             self.character_cell_size.clone(),
+            self.sixel_image_store.clone(),
             self.bus.os_input.as_ref().unwrap().clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -610,6 +627,7 @@ impl Screen {
             client_id,
             self.copy_options.clone(),
             self.terminal_emulator_colors.clone(),
+            self.terminal_emulator_color_codes.clone(),
         );
         tab.apply_layout(layout, new_pids, tab_index, client_id);
         if self.session_is_mirrored {
@@ -793,7 +811,6 @@ impl Screen {
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) {
         if let Some(active_tab) = self.get_active_tab_mut(client_id) {
             if !active_tab.move_focus_left(client_id) {
-                println!("can has true");
                 self.switch_tab_prev(client_id);
             }
         } else {
@@ -1236,6 +1253,9 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
                 screen.update_terminal_foreground_color(background_color_instruction);
             },
+            ScreenInstruction::TerminalColorRegisters(color_registers) => {
+                screen.update_terminal_color_registers(color_registers);
+            },
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
                 screen.change_mode(mode_info, client_id);
                 screen.render();
@@ -1264,8 +1284,9 @@ pub(crate) fn screen_thread_main(
                 screen.render();
             },
             ScreenInstruction::MouseHold(point, client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .handle_mouse_hold(&point, client_id));
+                active_tab!(screen, client_id, |tab: &mut Tab| {
+                    tab.handle_mouse_hold(&point, client_id);
+                });
                 screen.render();
             },
             ScreenInstruction::Copy(client_id) => {

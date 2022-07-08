@@ -1,4 +1,5 @@
-use crate::output::CharacterChunk;
+use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
@@ -99,10 +100,10 @@ impl Pane for TerminalPane {
         self.reflow_lines();
     }
     fn handle_pty_bytes(&mut self, bytes: VteBytes) {
+        self.set_should_render(true);
         for &byte in &bytes {
             self.vte_parser.advance(&mut self.grid, byte);
         }
-        self.set_should_render(true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
@@ -205,13 +206,14 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
 
-            let mut character_chunks = self.grid.read_changes(content_x, content_y);
+            let (mut character_chunks, sixel_image_chunks) =
+                self.grid.read_changes(content_x, content_y);
             for character_chunk in character_chunks.iter_mut() {
                 character_chunk.add_changed_colors(self.grid.changed_colors);
                 if self
@@ -237,7 +239,7 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Some((character_chunks, Some(raw_vte_output)))
+            Some((character_chunks, Some(raw_vte_output), sixel_image_chunks))
         } else {
             None
         }
@@ -509,15 +511,19 @@ impl TerminalPane {
         pane_name: String,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_image_store: Rc<RefCell<SixelImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
+        terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     ) -> TerminalPane {
         let initial_pane_title = format!("Pane #{}", pane_index);
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
             terminal_emulator_colors,
+            terminal_emulator_color_codes,
             link_handler,
             character_cell_size,
+            sixel_image_store,
         );
         TerminalPane {
             frame: HashMap::new(),

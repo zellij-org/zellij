@@ -1,0 +1,36 @@
+---
+source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 2338
+expression: "format!(\"{:?}\", grid)"
+---
+00 (C): SixelSixelSix
+01 (C): SixelSixelSix
+02 (C): SixelSixelSix
+03 (C): SixelSixelSix
+04 (C): SixelSixelSix
+05 (C): line 6
+06 (C): line 7
+07 (C): line 8
+08 (C): line 9
+09 (C): line 10
+10 (C): 
+11 (C): 
+12 (C): SixelSixelSix
+13 (C): SixelSixelSix
+14 (C): SixelSixelSix
+15 (C): SixelSixelSix
+16 (C): SixelSixelSix
+17 (C): 
+18 (C): 
+19 (C): 
+20 (C): 
+21 (C): 
+22 (C): 
+23 (C): 
+24 (C): 
+25 (C): 
+26 (C): 
+27 (C): 
+28 (C): 
+29 (C): 
+
