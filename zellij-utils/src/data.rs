@@ -31,6 +31,9 @@ pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
     (colors.green, colors.black)
 }
 
+// TODO: Add a shortened string representation (beyond `Display::fmt` below) that can be used when
+// screen space is scarce. Useful for e.g. "ENTER", "SPACE", "TAB" to display as Unicode
+// representations instead.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Key {
     Backspace,
@@ -70,9 +73,9 @@ impl fmt::Display for Key {
             Key::Insert => write!(f, "Ins"),
             Key::F(n) => write!(f, "F{}", n),
             Key::Char(c) => match c {
-                '\n' => write!(f, "↩"),
-                '\t' => write!(f, "↹"),
-                ' ' => write!(f, "␣"),
+                '\n' => write!(f, "ENTER"),
+                '\t' => write!(f, "TAB"),
+                ' ' => write!(f, "SPACE"),
                 _ => write!(f, "{}", c),
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
