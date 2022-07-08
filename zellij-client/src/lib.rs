@@ -164,11 +164,13 @@ pub fn start_client(
     let first_msg = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name);
+            envs::set_initial_environment_vars();
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
         },
         ClientInfo::New(name) => {
             envs::set_session_name(name);
+            envs::set_initial_environment_vars();
 
             spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 

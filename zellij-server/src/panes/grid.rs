@@ -2188,7 +2188,7 @@ impl Perform for Grid {
                     match query_type {
                         Some(&[1]) => {
                             // number of color registers
-                            let response = "\u{1b}[?1;0;65535S";
+                            let response = "\u{1b}[?1;0;65536S";
                             self.pending_messages_to_pty
                                 .push(response.as_bytes().to_vec());
                         },
@@ -2264,6 +2264,11 @@ impl Perform for Grid {
                 if let Some(cursor_shape) = shape {
                     self.cursor.change_shape(cursor_shape);
                 }
+            } else if matches!(intermediates.get(0), Some(b'>')) {
+                let version = version_number(VERSION);
+                let xtversion = format!("\u{1b}P>|Zellij({})\u{1b}\\", version);
+                self.pending_messages_to_pty
+                    .push(xtversion.as_bytes().to_vec());
             }
         } else if c == 'Z' {
             for _ in 0..next_param_or(1) {
