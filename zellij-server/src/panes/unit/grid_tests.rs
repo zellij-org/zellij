@@ -2478,7 +2478,7 @@ pub fn xtsmgraphics_color_register_count() {
             acc.push_str(&s);
             acc
         });
-    assert_eq!(message_string, "\u{1b}[?1;0;65535S");
+    assert_eq!(message_string, "\u{1b}[?1;0;65536S");
 }
 
 #[test]
