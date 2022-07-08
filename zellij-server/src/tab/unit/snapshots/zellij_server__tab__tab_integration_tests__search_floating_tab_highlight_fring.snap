@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 1721
 expression: snapshot
 ---
 00 (C): 
@@ -17,4 +18,9 @@ expression: snapshot
 12 (C):                               │                                                          │                               
 13 (C):                               │                                                          │                               
 14 (C):                               └──────────────────────────────────────────────────────────┘                               
+15 (C): 
+16 (C): 
+17 (C): 
+18 (C): 
+19 (C): 
 

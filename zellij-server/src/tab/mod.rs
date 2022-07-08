@@ -17,7 +17,8 @@ use crate::ui::pane_boundaries_frame::FrameParams;
 use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output},
+    output::{CharacterChunk, Output, SixelImageChunk},
+    panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
@@ -77,6 +78,7 @@ pub(crate) struct Tab {
     viewport: Rc<RefCell<Viewport>>, // includes all non-UI panes
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
     os_api: Box<dyn ServerOsApi>,
     pub senders: ThreadSenders,
     synchronize_is_active: bool,
@@ -96,6 +98,7 @@ pub(crate) struct Tab {
     copy_on_select: bool,
     last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -135,7 +138,7 @@ pub trait Pane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)>; // TODO: better
+    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>; // TODO: better
     fn render_frame(
         &mut self,
         client_id: ClientId,
@@ -308,6 +311,7 @@ impl Tab {
         name: String,
         display_area: Size,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        sixel_image_store: Rc<RefCell<SixelImageStore>>,
         os_api: Box<dyn ServerOsApi>,
         senders: ThreadSenders,
         max_panes: Option<usize>,
@@ -319,6 +323,7 @@ impl Tab {
         client_id: ClientId,
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
+        terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -375,6 +380,7 @@ impl Tab {
             viewport,
             display_area,
             character_cell_size,
+            sixel_image_store,
             synchronize_is_active: false,
             os_api,
             senders,
@@ -392,6 +398,7 @@ impl Tab {
             copy_on_select: copy_options.copy_on_select,
             last_mouse_hold_position: None,
             terminal_emulator_colors,
+            terminal_emulator_color_codes,
         }
     }
 
@@ -459,7 +466,9 @@ impl Tab {
                     layout.pane_name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -689,7 +698,9 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -712,7 +723,9 @@ impl Tab {
                         String::new(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -738,7 +751,9 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
@@ -783,7 +798,9 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -811,7 +828,9 @@ impl Tab {
                     String::new(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -1808,7 +1827,12 @@ impl Tab {
             }
         }
     }
-    pub fn handle_mouse_hold(&mut self, position_on_screen: &Position, client_id: ClientId) {
+    pub fn handle_mouse_hold(
+        &mut self,
+        position_on_screen: &Position,
+        client_id: ClientId,
+    ) -> bool {
+        // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
             position_on_screen == &last_position
@@ -1826,7 +1850,8 @@ impl Tab {
                 .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
-            return;
+            return !is_repeated; // we don't need to re-render in this case if the pane did not move
+                                 // return;
         }
 
         let selecting = self.selecting_with_mouse;
@@ -1846,10 +1871,13 @@ impl Tab {
 
                 let mouse_event = format!("\u{1b}[<32;{:?};{:?}M", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                return true; // we need to re-render in this case so the selection disappears
             } else if selecting {
                 active_pane.update_selection(&relative_position, client_id);
+                return true; // we need to re-render in this case so the selection is updated
             }
         }
+        false // we shouldn't even get here, but might as well not needlessly render if we do
     }
 
     pub fn copy_selection(&self, client_id: ClientId) {

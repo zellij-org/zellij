@@ -4,8 +4,10 @@ use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::HashMap;
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::PaneGeom;
+use crate::panes::sixel::SixelImageStore;
 
 fn read_fixture() -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
@@ -24,6 +26,8 @@ fn create_pane() -> TerminalPane {
 
     let pid = 1;
     let style = Style::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut terminal_pane = TerminalPane::new(
         pid,
         fake_win_size,
@@ -32,7 +36,9 @@ fn create_pane() -> TerminalPane {
         String::new(),
         Rc::new(RefCell::new(LinkHandler::new())),
         Rc::new(RefCell::new(None)),
+        sixel_image_store,
         Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);

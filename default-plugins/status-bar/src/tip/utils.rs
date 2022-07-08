@@ -50,7 +50,6 @@ pub fn get_cached_tip_name() -> String {
     }
 
     let quicknav_show_count = local_cache.get_cached_data().get("quicknav").unwrap_or(&0);
-    eprintln!("quicknav_show_count: {:?}", quicknav_show_count);
     if quicknav_show_count <= &MAX_CACHE_HITS {
         let _ = local_cache.caching("quicknav");
         return String::from("quicknav");

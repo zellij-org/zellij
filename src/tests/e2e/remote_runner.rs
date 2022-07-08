@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use zellij_server::panes::sixel::SixelImageStore;
 use zellij_server::panes::{LinkHandler, TerminalPane};
 use zellij_utils::data::{Palette, Style};
-use zellij_utils::pane_size::{Dimension, PaneGeom, Size};
+use zellij_utils::pane_size::{Dimension, PaneGeom, Size, SizeInPixels};
 use zellij_utils::vte;
 
 use ssh2::Session;
@@ -76,6 +78,7 @@ fn start_zellij(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
@@ -90,6 +93,7 @@ fn start_zellij_mirrored_session(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirrored: bool) {
@@ -108,6 +112,7 @@ fn start_zellij_in_session(channel: &mut ssh2::Channel, session_name: &str, mirr
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
@@ -121,6 +126,7 @@ fn attach_to_existing_session(channel: &mut ssh2::Channel, session_name: &str) {
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
@@ -135,6 +141,7 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
@@ -153,6 +160,7 @@ fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
         )
         .unwrap();
     channel.flush().unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
 }
 
 fn read_from_channel(
@@ -174,6 +182,11 @@ fn read_from_channel(
                 let mut retries_left = 3;
                 let mut should_sleep = false;
                 let mut vte_parser = vte::Parser::new();
+                let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+                    height: 21,
+                    width: 8,
+                })));
+                let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
                 let mut terminal_output = TerminalPane::new(
                     0,
                     pane_geom,
@@ -181,8 +194,10 @@ fn read_from_channel(
                     0,
                     String::new(),
                     Rc::new(RefCell::new(LinkHandler::new())),
-                    Rc::new(RefCell::new(None)),
+                    character_cell_size,
+                    sixel_image_store,
                     Rc::new(RefCell::new(Palette::default())),
+                    Rc::new(RefCell::new(HashMap::new())),
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -322,6 +337,7 @@ impl RemoteTerminal {
             )
             .unwrap();
         channel.flush().unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
     }
     pub fn load_fixture(&mut self, name: &str) {
         let mut channel = self.channel.lock().unwrap();

@@ -1,7 +1,7 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 1576
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C):                                                                                                                                                      
 01 (C):  OS: 5.9.14-arch1-1 GNU/Linux
@@ -24,4 +24,11 @@ expression: "format!(\"{:?}\", grid)"
 18 (W): )$/\\\\e[0;33m\1\\\\e[0m/' | \
 19 (C):                                             paste -sd ''\                                                                                            
 20 (C):                                         )                                                                                                            
+21 (C): 
+22 (C): 
+23 (C): 
+24 (C): 
+25 (C): 
+26 (C): 
+27 (C): 
 

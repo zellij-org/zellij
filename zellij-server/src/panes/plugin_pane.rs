@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 
-use crate::output::CharacterChunk;
+use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -141,7 +141,7 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
         // this is a bit of a hack but works in a pinch
         client_id?;
         let client_id = client_id.unwrap();
@@ -214,7 +214,7 @@ impl Pane for PluginPane {
                     }
                 }
             }
-            Some((vec![], Some(vte_output))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
+            Some((vec![], Some(vte_output), vec![])) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
         } else {
             None
         }

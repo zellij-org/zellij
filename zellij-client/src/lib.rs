@@ -13,8 +13,10 @@ use std::env::current_exe;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use crate::{
     command_is_executing::CommandIsExecuting, input_handler::input_loop,
     os_input_output::ClientOsApi, stdin_handler::stdin_loop,
@@ -114,7 +116,7 @@ impl ClientInfo {
 pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
-    PossiblePixelRatioChange,
+    AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
 }
 
 pub fn start_client(
@@ -126,7 +128,7 @@ pub fn start_client(
     layout: Option<LayoutFromYaml>,
 ) {
     info!("Starting Zellij client!");
-    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}12l\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
+    let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
     let bracketed_paste = "\u{1b}[?2004h";
     os_input.unset_raw_mode(0).unwrap();
@@ -162,11 +164,13 @@ pub fn start_client(
     let first_msg = match info {
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name);
+            envs::set_initial_environment_vars();
 
             ClientToServerMsg::AttachClient(client_attributes, config_options)
         },
         ClientInfo::New(name) => {
             envs::set_session_name(name);
+            envs::set_initial_environment_vars();
 
             spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
 
@@ -214,13 +218,15 @@ pub fn start_client(
     });
 
     let on_force_close = config_options.on_force_close.unwrap_or_default();
+    let stdin_ansi_parser = Arc::new(Mutex::new(StdinAnsiParser::new()));
 
     let _stdin_thread = thread::Builder::new()
         .name("stdin_handler".to_string())
         .spawn({
             let os_input = os_input.clone();
             let send_input_instructions = send_input_instructions.clone();
-            move || stdin_loop(os_input, send_input_instructions)
+            let stdin_ansi_parser = stdin_ansi_parser.clone();
+            move || stdin_loop(os_input, send_input_instructions, stdin_ansi_parser)
         });
 
     let _input_thread = thread::Builder::new()
@@ -246,7 +252,6 @@ pub fn start_client(
     let _signal_thread = thread::Builder::new()
         .name("signal_listener".to_string())
         .spawn({
-            let send_input_instructions = send_input_instructions.clone();
             let os_input = os_input.clone();
             move || {
                 os_input.handle_signals(
@@ -256,8 +261,16 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
-                            let _ = send_input_instructions
-                                .send(InputInstruction::PossiblePixelRatioChange);
+                            // send a query to the terminal emulator in case the font size changed
+                            // as well - we'll parse the response through STDIN
+                            let terminal_emulator_query_string = stdin_ansi_parser
+                                .lock()
+                                .unwrap()
+                                .window_size_change_query_string();
+                            let _ = os_api
+                                .get_stdout_writer()
+                                .write(terminal_emulator_query_string.as_bytes())
+                                .unwrap();
                         }
                     }),
                     Box::new({
@@ -385,3 +398,7 @@ pub fn start_client(
     let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
     stdout.flush().unwrap();
 }
+
+#[cfg(test)]
+#[path = "./unit/stdin_tests.rs"]
+mod stdin_tests;
