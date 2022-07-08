@@ -113,6 +113,7 @@ pub enum ServerToClientMsg {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ExitReason {
     Normal,
+    NormalDetached,
     ForceDetached,
     CannotAttach,
     Error(String),
@@ -122,6 +123,7 @@ impl Display for ExitReason {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             Self::Normal => write!(f, "Bye from Zellij!"),
+            Self::NormalDetached => write!(f, "Zellij detached"),
             Self::ForceDetached => write!(
                 f,
                 "Session was detached from this client (possibly because another client connected)"
