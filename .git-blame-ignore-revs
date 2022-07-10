@@ -13,3 +13,5 @@
 67d2673cae60954e8287c2a1f58a21a56e066afb
 # clippy fixes
 3de59dac42c05de43beba2f7d09b07111c711394
+# chore: move `nix` directory
+47540d7cabae144f032c0fc4972e7c9af5ab5e8d
