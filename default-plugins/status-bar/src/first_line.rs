@@ -245,15 +245,20 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
 }
 
 pub fn to_char(kv: Vec<Key>) -> Option<Key> {
-    kv.into_iter()
+    let key = kv
+        .iter()
         .filter(|key| {
             // These are general "keybindings" to get back to normal, they aren't interesting here.
-            // The user will figure these out for himself if he configured no other.
             !matches!(key, Key::Char('\n') | Key::Char(' ') | Key::Esc)
         })
-        .collect::<Vec<Key>>()
+        .collect::<Vec<&Key>>()
         .into_iter()
-        .next()
+        .next();
+    // Maybe the user bound one of the ignored keys?
+    if key.is_none() {
+        return kv.get(0).cloned();
+    }
+    key.cloned()
 }
 
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
