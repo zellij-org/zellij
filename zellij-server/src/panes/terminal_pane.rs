@@ -299,7 +299,7 @@ impl Pane for TerminalPane {
                     modifiers.push("w")
                 }
                 modifier_text.push_str(&modifiers.join(", "));
-                modifier_text.push_str("]");
+                modifier_text.push(']');
             }
             format!("SEARCHING: {}{}", self.search_term, modifier_text)
         } else if self.pane_name.is_empty() {
