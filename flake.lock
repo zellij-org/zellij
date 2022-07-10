@@ -3,11 +3,11 @@
     "crate2nix": {
       "flake": false,
       "locked": {
-        "lastModified": 1656671959,
-        "narHash": "sha256-7GPPgq665fm2k/aXca9P25huieEq7lu4jAwItiZlYFs=",
+        "lastModified": 1657377206,
+        "narHash": "sha256-a+ky5g6Ud7JcyMWxNBRIKMjVVK6BHUJcVznDc64lDA0=",
         "owner": "kolloch",
         "repo": "crate2nix",
-        "rev": "91f333aca414ee346bc5bdea76fe9938f73a15f9",
+        "rev": "2d20dec4ae330f39b0bebeb8eb4a201b58d2b82c",
         "type": "github"
       },
       "original": {
@@ -34,11 +34,11 @@
     },
     "flake-utils": {
       "locked": {
-        "lastModified": 1656065134,
-        "narHash": "sha256-oc6E6ByIw3oJaIyc67maaFcnjYOz1mMcOtHxbEf9NwQ=",
+        "lastModified": 1656928814,
+        "narHash": "sha256-RIFfgBuKz6Hp89yRr7+NR5tzIAbn52h8vT6vXkYjZoM=",
         "owner": "numtide",
         "repo": "flake-utils",
-        "rev": "bee6a7250dd1b01844a2de7e02e4df7d8a0a206c",
+        "rev": "7e2a3b3dfd9af950a856d66b0a7d01e3c18aa249",
         "type": "github"
       },
       "original": {
@@ -49,11 +49,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1656753965,
-        "narHash": "sha256-BCrB3l0qpJokOnIVc3g2lHiGhnjUi0MoXiw6t1o8H1E=",
+        "lastModified": 1657265485,
+        "narHash": "sha256-PUQ9C7mfi0/BnaAUX2R/PIkoNCb/Jtx9EpnhMBNrO/o=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "0ea7a8f1b939d74e5df8af9a8f7342097cdf69eb",
+        "rev": "b39924fc7764c08ae3b51beef9a3518c414cdb7d",
         "type": "github"
       },
       "original": {
@@ -82,11 +82,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1656816597,
-        "narHash": "sha256-Y3f7wOZIvgr5IGW0u3d8stemjQPPRs4n93DjKJbrvXs=",
+        "lastModified": 1657421459,
+        "narHash": "sha256-KTBvUmhMfyUwbbpo5QIcUlIpUOkIaL9Ixpcnch6o2jM=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "bbba5e73a21c8c67d5fe1d4d8b3fde60ab6946cd",
+        "rev": "3dfc78e42a285caaf83633224a42e7fb7dde191b",
         "type": "github"
       },
       "original": {
