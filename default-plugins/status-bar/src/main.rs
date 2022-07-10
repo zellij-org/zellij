@@ -286,7 +286,10 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
             return None;
         }
     }
-    Some(modifier.to_string())
+    match modifier.is_empty() {
+        true => None,
+        false => Some(modifier.to_string()),
+    }
 }
 
 /// Get key from action pattern(s).
