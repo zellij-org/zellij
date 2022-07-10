@@ -64,13 +64,13 @@ impl fmt::Display for Key {
             Key::Right => write!(f, "{}", Direction::Right),
             Key::Up => write!(f, "{}", Direction::Up),
             Key::Down => write!(f, "{}", Direction::Down),
-            Key::Home => write!(f, "Home"),
-            Key::End => write!(f, "End"),
+            Key::Home => write!(f, "HOME"),
+            Key::End => write!(f, "END"),
             Key::PageUp => write!(f, "PgUp"),
-            Key::PageDown => write!(f, "PgDown"),
-            Key::BackTab => write!(f, "BackTab"),
-            Key::Delete => write!(f, "Del"),
-            Key::Insert => write!(f, "Ins"),
+            Key::PageDown => write!(f, "PgDn"),
+            Key::BackTab => write!(f, "TAB"),
+            Key::Delete => write!(f, "DEL"),
+            Key::Insert => write!(f, "INS"),
             Key::F(n) => write!(f, "F{}", n),
             Key::Char(c) => match c {
                 '\n' => write!(f, "ENTER"),
@@ -79,7 +79,7 @@ impl fmt::Display for Key {
                 _ => write!(f, "{}", c),
             },
             Key::Alt(c) => write!(f, "Alt+{}", c),
-            Key::Ctrl(c) => write!(f, "Ctrl+{}", c),
+            Key::Ctrl(c) => write!(f, "Ctrl+{}", Key::Char(*c)),
             Key::Null => write!(f, "NULL"),
             Key::Esc => write!(f, "Esc"),
         }
@@ -96,7 +96,7 @@ pub enum CharOrArrow {
 impl fmt::Display for CharOrArrow {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CharOrArrow::Char(c) => write!(f, "{}", c),
+            CharOrArrow::Char(c) => write!(f, "{}", Key::Char(*c)),
             CharOrArrow::Direction(d) => write!(f, "{}", d),
         }
     }
