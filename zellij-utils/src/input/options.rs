@@ -1,5 +1,6 @@
 //! Handles cli and configuration options
 use crate::cli::Command;
+use crate::consts::ZELLIJ_THEME_DIR_ENV;
 use crate::data::InputMode;
 use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,10 @@ pub struct Options {
     /// Set the default theme
     #[clap(long, value_parser)]
     pub theme: Option<String>,
+    /// Set the theme_dir, defaults to
+    /// subdirectory of config dir
+    #[clap(long, env = ZELLIJ_THEME_DIR_ENV, value_parser)]
+    pub theme_dir: Option<PathBuf>,
     /// Set the default mode
     #[clap(long, arg_enum, hide_possible_values = true, value_parser)]
     pub default_mode: Option<InputMode>,
@@ -140,6 +145,7 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
+        let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -152,6 +158,7 @@ impl Options {
         Options {
             simplified_ui,
             theme,
+            theme_dir,
             default_mode,
             default_shell,
             default_layout,
@@ -193,6 +200,7 @@ impl Options {
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
+        let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
         let copy_command = other.copy_command.or_else(|| self.copy_command.clone());
@@ -205,6 +213,7 @@ impl Options {
         Options {
             simplified_ui,
             theme,
+            theme_dir,
             default_mode,
             default_shell,
             default_layout,
@@ -258,6 +267,7 @@ impl From<CliOptions> for Options {
         Self {
             simplified_ui: opts.simplified_ui,
             theme: opts.theme,
+            theme_dir: opts.theme_dir,
             default_mode: opts.default_mode,
             default_shell: opts.default_shell,
             default_layout: opts.default_layout,

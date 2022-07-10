@@ -2,11 +2,18 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+use thiserror::Error;
+
+use std::fs::File;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
 use std::{collections::HashMap, fmt};
 
 use super::options::Options;
 use crate::data::{Palette, PaletteColor};
 use crate::shared::detect_theme_hue;
+
+type ThemeResult = Result<Theme, ThemeError>;
 
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -23,9 +30,27 @@ pub struct FrameConfigFromYaml {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+struct ThemeFromYaml {
+    palette: PaletteFromYaml,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 struct Theme {
     #[serde(flatten)]
     palette: PaletteFromYaml,
+}
+
+#[derive(Debug, Error)]
+pub enum ThemeError {
+    // Deserialization error
+    #[error("Deserialization error: {0}")]
+    Serde(#[from] serde_yaml::Error),
+    // Io error
+    #[error("IoError: {0}")]
+    Io(#[from] io::Error),
+    // Io error with path context
+    #[error("IoError: {0}, File: {1}")]
+    IoPath(io::Error, PathBuf),
 }
 
 /// Intermediate deserialization struct
@@ -124,10 +149,43 @@ impl Default for PaletteColorFromYaml {
     }
 }
 
+impl Theme {
+    pub fn from_path(theme_path: &Path) -> ThemeResult {
+        let mut theme_file = File::open(&theme_path)
+            .or_else(|_| File::open(&theme_path.with_extension("yaml")))
+            .map_err(|e| ThemeError::IoPath(e, theme_path.into()))?;
+
+        let mut theme = String::new();
+        theme_file.read_to_string(&mut theme)?;
+
+        let theme_from_yaml: ThemeFromYaml = match serde_yaml::from_str(&theme) {
+            Err(e) => return Err(ThemeError::Serde(e)),
+            Ok(config) => config,
+        };
+
+        theme_from_yaml.try_into()
+    }
+
+    pub fn get_palette(self) -> Palette {
+        Palette::from(self.palette)
+    }
+}
+
+impl TryFrom<ThemeFromYaml> for Theme {
+    type Error = ThemeError;
+
+    fn try_from(theme_from_yaml: ThemeFromYaml) -> ThemeResult {
+        Ok(Self {
+            palette: theme_from_yaml.palette,
+        })
+    }
+}
+
 impl ThemesFromYaml {
     pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {
+            // TODO: if the theme does not exist in the config, check the `themes` dir.
             Some(theme) => from_yaml.from_default_theme(theme.to_owned()),
             None => from_yaml.from_default_theme("default".into()),
         }
@@ -182,3 +240,8 @@ impl From<PaletteColorFromYaml> for PaletteColor {
         }
     }
 }
+
+// The unit test location.
+#[cfg(test)]
+#[path = "./unit/theme_test.rs"]
+mod theme_test;

@@ -80,6 +80,10 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("layouts"))
 }
 
+pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    config_dir.map(|dir| dir.join("themes"))
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
