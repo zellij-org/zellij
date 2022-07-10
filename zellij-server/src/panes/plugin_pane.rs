@@ -418,25 +418,4 @@ impl Pane for PluginPane {
     fn mouse_mode(&self) -> bool {
         false
     }
-    fn update_search_term(&mut self, _needle: &str) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn search_forward(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn search_backward(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn toggle_search_case_sensitivity(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn toggle_search_whole_words(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn toggle_search_wrap(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
-    fn clear_search(&mut self) {
-        // No-op: Plugins don't have search-capability
-    }
 }

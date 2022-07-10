@@ -277,13 +277,27 @@ pub trait Pane {
     fn get_line_number(&self) -> Option<usize> {
         None
     }
-    fn update_search_term(&mut self, needle: &str);
-    fn search_forward(&mut self);
-    fn search_backward(&mut self);
-    fn toggle_search_case_sensitivity(&mut self);
-    fn toggle_search_whole_words(&mut self);
-    fn toggle_search_wrap(&mut self);
-    fn clear_search(&mut self);
+    fn update_search_term(&mut self, _needle: &str) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_forward(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_backward(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_whole_words(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_wrap(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn clear_search(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
 }
 
 impl Tab {
