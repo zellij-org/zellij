@@ -5,6 +5,84 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use zellij_utils::position::Position;
 
+// If char is neither alphanumeric nor an underscore do we consider it a word-boundary
+fn is_word_boundary(x: &Option<char>) -> bool {
+    x.map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+}
+
+#[derive(Debug)]
+enum SearchSource<'a> {
+    Main(&'a Row),
+    Tail(&'a Row),
+}
+
+impl<'a> SearchSource<'a> {
+    /// Returns true, if a new source was found, false otherwise (reached the end of the tail).
+    /// If we are in the middle of a line, nothing will be changed.
+    /// Only, when we have to switch to a new line, will the source update itself,
+    /// as well as the corresponding indices.
+    fn get_next_source(
+        &mut self,
+        ridx: &mut usize,
+        hidx: &mut usize,
+        tailit: &mut std::slice::Iter<&'a Row>,
+        start: &Option<Position>,
+    ) -> bool {
+        match self {
+            SearchSource::Main(row) => {
+                // If we are at the end of the main row, we need to start looking into the tail
+                if hidx >= &mut row.columns.len() {
+                    let curr_tail = tailit.next();
+                    // If we are at the end and found a partial hit, we have to extend the search into the next line
+                    if let Some(curr_tail) = start.and(curr_tail) {
+                        *ridx += 1; // Go one line down
+                        *hidx = 0; // and start from the beginning of the new line
+                        *self = SearchSource::Tail(curr_tail);
+                    } else {
+                        return false; // We reached the end of the tail
+                    }
+                }
+            },
+            SearchSource::Tail(tail) => {
+                if hidx >= &mut tail.columns.len() {
+                    // If we are still searching (didn't hit a mismatch yet) and there is still more tail to go
+                    // just continue with the next line
+                    if let Some(curr_tail) = tailit.next() {
+                        *ridx += 1; // Go one line down
+                        *hidx = 0; // and start from the beginning of the new line
+                        *self = SearchSource::Tail(curr_tail);
+                    } else {
+                        return false; // We reached the end of the tail
+                    }
+                }
+            },
+        }
+        // We have found a new source, or we are in the middle of a line, so no need to change anything
+        true
+    }
+
+    // Get the char at hidx and, if existing, the following char as well
+    fn get_next_two_chars(&self, hidx: usize, whole_word_search: bool) -> (char, Option<char>) {
+        // Get the current haystack character
+        let haystack_char = match self {
+            SearchSource::Main(row) => row.columns[hidx].character,
+            SearchSource::Tail(tail) => tail.columns[hidx].character,
+        };
+
+        // Get the next haystack character (relevant for whole-word search only)
+        let next_haystack_char = if whole_word_search {
+            // Everything (incl. end of line) that is not [a-zA-Z0-9_] is considered a word boundary
+            match self {
+                SearchSource::Main(row) => row.columns.get(hidx + 1).map(|c| c.character),
+                SearchSource::Tail(tail) => tail.columns.get(hidx + 1).map(|c| c.character),
+            }
+        } else {
+            None // Doesn't get used, when not doing whole-word search
+        };
+        (haystack_char, next_haystack_char)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SearchResult {
     // What we have already found in the viewport
@@ -64,69 +142,77 @@ impl SearchResult {
         self.wrap_search || self.whole_word_only || self.case_insensitive
     }
 
+    fn check_if_haystack_char_matches_needle(
+        &self,
+        nidx: usize,
+        needle_char: char,
+        haystack_char: char,
+        prev_haystack_char: Option<char>,
+    ) -> bool {
+        let mut chars_match = if self.case_insensitive {
+            // Case insensitive search
+            // Currently only ascii, as this whole search-function is very sub-optimal anyways
+            haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
+        } else {
+            // Case sensitive search
+            haystack_char == needle_char
+        };
+
+        // Whole-word search
+        // It's a match only, if the first haystack char that is _not_ a hit, is a word-boundary
+        if chars_match
+            && self.whole_word_only
+            && nidx == 0
+            && !is_word_boundary(&prev_haystack_char)
+        {
+            // Start of the match is not a word boundary, so this is not a hit
+            chars_match = false;
+        }
+
+        chars_match
+    }
+
     /// Search a row and its tail.
     /// The tail are all the non-canonical lines below `row`, with `row` not necessarily being canonical itself.
     pub(crate) fn search_row(&self, mut ridx: usize, row: &Row, tail: &[&Row]) -> Vec<Selection> {
-        #[derive(Debug)]
-        enum SearchSource<'a> {
-            Main(&'a Row),
-            Tail(&'a Row),
-        }
-
         let mut res = Vec::new();
         if self.needle.is_empty() || row.columns.is_empty() {
             return res;
         }
 
-        let is_word_boundary =
-            |x: Option<char>| x.map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_');
-
         let mut tailit = tail.iter();
-        let mut source = SearchSource::Main(row);
+        let mut source = SearchSource::Main(row); // Where we currently get the haystack-characters from
         let orig_ridx = ridx;
-        let mut start = None;
+        let mut start = None; // If we find a hit, this is where it starts
         let mut nidx = 0; // Needle index
         let mut hidx = 0; // Haystack index
         let mut prev_haystack_char: Option<char> = None;
         loop {
-            let mut haystack_char = match source {
-                SearchSource::Main(row) => row.columns[hidx].character,
-                SearchSource::Tail(tail) => tail.columns[hidx].character,
-            };
-            let next_haystack_char = if self.whole_word_only {
-                // Everything (incl. end of line) that is not [a-zA-Z0-9_] is considered a word boundary
-                match source {
-                    SearchSource::Main(row) => row.columns.get(hidx + 1).map(|c| c.character),
-                    SearchSource::Tail(tail) => tail.columns.get(hidx + 1).map(|c| c.character),
-                }
-            } else {
-                None // Doesn't get used
-            };
+            // Get the current and next haystack character
+            let (mut haystack_char, next_haystack_char) =
+                source.get_next_two_chars(hidx, self.whole_word_only);
 
+            // Get current needle character
             let needle_char = self.needle.chars().nth(nidx).unwrap(); // Unwrapping is safe here
-            let mut chars_match = if self.case_insensitive {
-                // Currently only ascii, as this whole search-function is very sub-optimal anyways
-                haystack_char.to_ascii_lowercase() == needle_char.to_ascii_lowercase()
-            } else {
-                haystack_char == needle_char
-            };
 
-            if chars_match
-                && self.whole_word_only
-                && nidx == 0
-                && !is_word_boundary(prev_haystack_char)
-            {
-                // Start of the match is not a word boundary, so this is not a hit
-                chars_match = false;
-            }
+            // Check if needle and haystack match (with search-options)
+            let chars_match = self.check_if_haystack_char_matches_needle(
+                nidx,
+                needle_char,
+                haystack_char,
+                prev_haystack_char,
+            );
+
             if chars_match {
-                // If the needle is only 1 long, the next if could also happen, so we are not merging it into one big if-else
+                // If the needle is only 1 long, the next `if` could also happen, so we are not merging it into one big if-else
                 if nidx == 0 {
                     start = Some(Position::new(ridx as i32, hidx as u16));
                 }
                 if nidx == self.needle.len() - 1 {
                     let mut end_found = true;
-                    if self.whole_word_only && !is_word_boundary(next_haystack_char) {
+                    // If we search whole-word-only, the next non-needle char needs to be a word-boundary,
+                    // otherwise its not a hit (e.g. some occurrence inside a longer word).
+                    if self.whole_word_only && !is_word_boundary(&next_haystack_char) {
                         // The end of the match is not a word boundary, so this is not a hit!
                         // We have to jump back from where we started (plus one char)
                         nidx = 0;
@@ -162,7 +248,7 @@ impl SearchResult {
                     nidx += 1;
                 }
             } else {
-                // Chars don't match
+                // Chars don't match. Start searching the needle from the beginning
                 start = None;
                 nidx = 0;
                 if matches!(source, SearchSource::Tail(..)) {
@@ -170,38 +256,12 @@ impl SearchResult {
                     break;
                 }
             }
-            prev_haystack_char = Some(haystack_char);
 
             hidx += 1;
-            match source {
-                SearchSource::Main(row) => {
-                    if hidx >= row.columns.len() {
-                        let curr_tail = tailit.next();
-                        // If we are at the end and found a partial hit, we have to extend the search into the next line
-                        if let Some(curr_tail) = start.and(curr_tail) {
-                            ridx += 1;
-                            hidx = 0;
-                            source = SearchSource::Tail(curr_tail);
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-                },
-                SearchSource::Tail(tail) => {
-                    if hidx >= tail.columns.len() {
-                        // If we are still searching (didn't hit a mismatch yet) and there is still more tail to go
-                        // just continue with the next line
-                        if let Some(curr_tail) = tailit.next() {
-                            ridx += 1;
-                            hidx = 0;
-                            source = SearchSource::Tail(curr_tail);
-                            continue;
-                        } else {
-                            break;
-                        }
-                    }
-                },
+            prev_haystack_char = Some(haystack_char);
+            // We might need to switch to a new line in the tail
+            if !source.get_next_source(&mut ridx, &mut hidx, &mut tailit, &start) {
+                break;
             }
         }
 
