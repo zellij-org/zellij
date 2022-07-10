@@ -34,24 +34,26 @@ pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
 // TODO: Add a shortened string representation (beyond `Display::fmt` below) that can be used when
 // screen space is scarce. Useful for e.g. "ENTER", "SPACE", "TAB" to display as Unicode
 // representations instead.
+// NOTE: Do not reorder the key variants since that influences what the `status_bar` plugin
+// displays!
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Key {
-    Backspace,
+    PageDown,
+    PageUp,
     Left,
     Down,
     Up,
     Right,
     Home,
     End,
-    PageDown,
-    PageUp,
-    BackTab,
+    Backspace,
     Delete,
     Insert,
     F(u8),
     Char(char),
     Alt(CharOrArrow),
     Ctrl(char),
+    BackTab,
     Null,
     Esc,
 }
