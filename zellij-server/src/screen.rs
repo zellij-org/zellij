@@ -801,7 +801,9 @@ impl Screen {
             .mode;
 
         // If we leave the Search-related modes, we need to clear all previous searches
-        if ![InputMode::EnterSearch, InputMode::Search, InputMode::Scroll].contains(&mode_info.mode)
+        let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
+        if search_related_modes.contains(&previous_mode)
+            && !search_related_modes.contains(&mode_info.mode)
         {
             active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
         }

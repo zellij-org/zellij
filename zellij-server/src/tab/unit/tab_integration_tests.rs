@@ -1,6 +1,6 @@
 use super::{Output, Tab};
 use crate::screen::CopyOptions;
-use crate::zellij_tile::data::{ModeInfo, Palette};
+use crate::zellij_tile::data::{InputMode, ModeInfo, Palette};
 use crate::Arc;
 use crate::Mutex;
 use crate::{
@@ -99,7 +99,7 @@ impl ServerOsApi for FakeInputOutput {
 }
 
 // TODO: move to shared thingy with other test file
-fn create_new_tab(size: Size) -> Tab {
+fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
@@ -109,7 +109,7 @@ fn create_new_tab(size: Size) -> Tab {
     });
     let senders = ThreadSenders::default().silently_fail_on_send();
     let max_panes = None;
-    let mode_info = ModeInfo::default();
+    let mode_info = default_mode;
     let style = Style::default();
     let draw_pane_frames = true;
     let client_id = 1;
@@ -205,7 +205,7 @@ fn dump_screen() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let map = Arc::new(Mutex::new(HashMap::new()));
     tab.os_api = Box::new(FakeInputOutput {
         file_dumps: map.clone(),
@@ -229,7 +229,7 @@ fn new_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -255,7 +255,7 @@ fn floating_panes_persist_across_toggles() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -285,7 +285,7 @@ fn toggle_floating_panes_off() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -312,7 +312,7 @@ fn toggle_floating_panes_on() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -340,7 +340,7 @@ fn five_new_floating_panes() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -378,7 +378,7 @@ fn increase_floating_pane_size() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -405,7 +405,7 @@ fn decrease_floating_pane_size() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -432,7 +432,7 @@ fn resize_floating_pane_left() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -459,7 +459,7 @@ fn resize_floating_pane_right() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -486,7 +486,7 @@ fn resize_floating_pane_up() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -513,7 +513,7 @@ fn resize_floating_pane_down() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -540,7 +540,7 @@ fn move_floating_pane_focus_left() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -585,7 +585,7 @@ fn move_floating_pane_focus_right() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -631,7 +631,7 @@ fn move_floating_pane_focus_up() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -676,7 +676,7 @@ fn move_floating_pane_focus_down() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -722,7 +722,7 @@ fn move_floating_pane_focus_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -768,7 +768,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -814,7 +814,7 @@ fn drag_pane_with_mouse() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -860,7 +860,7 @@ fn mark_text_inside_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -914,7 +914,7 @@ fn resize_tab_with_floating_panes() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -957,7 +957,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -997,7 +997,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     let new_pane_id_3 = PaneId::Terminal(4);
@@ -1041,7 +1041,7 @@ fn embed_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
@@ -1068,7 +1068,7 @@ fn float_embedded_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.new_pane(new_pane_id, Some(client_id));
@@ -1094,7 +1094,7 @@ fn cannot_float_only_embedded_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let mut output = Output::default();
     tab.handle_pty_bytes(
         1,
@@ -1121,7 +1121,7 @@ fn replacing_existing_wide_characters() {
         rows: 48,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let mut output = Output::default();
     let pane_content = read_fixture("ncmpcpp-wide-chars");
     tab.handle_pty_bytes(1, pane_content);
@@ -1142,7 +1142,7 @@ fn rename_embedded_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let mut output = Output::default();
     tab.handle_pty_bytes(
         1,
@@ -1166,7 +1166,7 @@ fn rename_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.new_pane(new_pane_id, Some(client_id));
@@ -1194,7 +1194,7 @@ fn wide_characters_in_left_title_side() {
         rows: 48,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let mut output = Output::default();
     let pane_content = read_fixture("title-wide-chars");
     tab.handle_pty_bytes(1, pane_content);
@@ -1214,7 +1214,7 @@ fn save_cursor_position_across_resizes() {
     // resize the pane
     let size = Size { cols: 100, rows: 5 };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let mut output = Output::default();
 
     tab.handle_pty_bytes(
@@ -1241,7 +1241,7 @@ fn suppress_tiled_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
@@ -1263,7 +1263,7 @@ fn suppress_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let editor_pane_id = PaneId::Terminal(3);
     let mut output = Output::default();
@@ -1289,7 +1289,7 @@ fn close_suppressing_tiled_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
@@ -1313,7 +1313,7 @@ fn close_suppressing_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let editor_pane_id = PaneId::Terminal(3);
     let mut output = Output::default();
@@ -1341,7 +1341,7 @@ fn suppress_tiled_pane_float_it_and_close() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
@@ -1366,7 +1366,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let editor_pane_id = PaneId::Terminal(3);
     let mut output = Output::default();
@@ -1395,7 +1395,7 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.suppress_active_pane(new_pane_id, client_id);
@@ -1421,7 +1421,7 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let editor_pane_id = PaneId::Terminal(3);
     let mut output = Output::default();
@@ -1451,7 +1451,11 @@ fn enter_search_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mode_info = ModeInfo {
+        mode: InputMode::Search,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(size, mode_info);
     let mut output = Output::default();
     let pane_content = read_fixture("grid_copy");
     tab.handle_pty_bytes(1, pane_content);
@@ -1464,8 +1468,10 @@ fn enter_search_pane() {
     );
     assert_snapshot!("search_tab_nothing_highlighted", snapshot);
 
-    // Only the lines which contain 't' should be in the new snapshot
-    tab.update_search_term(vec![b't'], client_id);
+    // Pane title should show 'tortor' as search term
+    // Only lines containing 'tortor' get marked as render-targets, so
+    // only those are updated (search-styling is not visible here).
+    tab.update_search_term("tortor".as_bytes().to_vec(), client_id);
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1473,10 +1479,26 @@ fn enter_search_pane() {
         size.cols,
         Palette::default(),
     );
-    assert_snapshot!("search_tab_highlight_t", snapshot);
+    assert_snapshot!("search_tab_highlight_tortor", snapshot);
 
-    // Only the lines which contain 'tortor' should be in the new snapshot
-    tab.update_search_term("ortor".as_bytes().to_vec(), client_id);
+    // Pane title should show search modifiers
+    tab.toggle_search_wrap(client_id);
+    tab.toggle_search_whole_words(client_id);
+    tab.toggle_search_case_sensitivity(client_id);
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!("search_tab_highlight_tortor_modified", snapshot);
+
+    // And only the search term again
+    tab.toggle_search_wrap(client_id);
+    tab.toggle_search_whole_words(client_id);
+    tab.toggle_search_case_sensitivity(client_id);
+
     tab.render(&mut output, None);
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1494,7 +1516,11 @@ fn enter_search_floating_pane() {
         rows: 20,
     };
     let client_id = 1;
-    let mut tab = create_new_tab(size);
+    let mode_info = ModeInfo {
+        mode: InputMode::Search,
+        ..Default::default()
+    };
+    let mut tab = create_new_tab(size, mode_info);
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None);
