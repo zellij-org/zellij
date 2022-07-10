@@ -3,7 +3,7 @@
 Thanks for considering contributing to Zellij!
 
 **First**: if you're unsure of anything, feel free to ask on our [Discord
-server](https://discord.gg/MHV3n76PDq). We're a friendly and welcoming bunch!
+server](https://discord.gg/MHV3n76PDq), or on [Matrix](https://matrix.to/#/#zellij_general:matrix.org). We're a friendly and welcoming bunch!
 
 # Code of Conduct
 
