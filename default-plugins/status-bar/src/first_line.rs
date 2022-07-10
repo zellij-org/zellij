@@ -152,7 +152,7 @@ fn key_indicators(
 ) -> LinePart {
     // Print full-width hints
     let mut line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 0;
+    let shared_super = line_part.len > 1;
     for ctrl_key in keys {
         let key = long_tile(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
@@ -164,7 +164,7 @@ fn key_indicators(
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
     line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 0;
+    let shared_super = line_part.len > 1;
     for ctrl_key in keys {
         let key = short_tile(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
@@ -233,7 +233,12 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     // Find a common modifier if any
     let prefix_text = match get_common_modifier(mode_switch_keys(mode_info)) {
         Some(text) => format!(" {} +", text),
-        _ => return LinePart::default(),
+        _ => {
+            return LinePart {
+                part: palette.superkey_prefix.paint(" ").to_string(),
+                len: 1,
+            }
+        },
     };
 
     let prefix = palette.superkey_prefix.paint(&prefix_text);
