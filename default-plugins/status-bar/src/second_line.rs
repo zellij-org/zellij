@@ -44,32 +44,31 @@ fn full_length_shortcut(
                 }
             }
         })
-        .collect::<Vec<String>>()
-        .join("");
+        .collect::<Vec<String>>();
 
     let green_color = palette_match!(palette.green);
     let orange_color = palette_match!(palette.orange);
     let separator = if is_first_shortcut { " " } else { " / " };
-    let painted_separator = Style::new().fg(text_color).paint(separator);
-    let painted_modifier = Style::new().fg(orange_color).bold().paint(&modifier);
-    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(&key);
-    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
-    let painted_action = Style::new().fg(text_color).bold().paint(action);
+
+    let mut ansi_string = vec![
+        Style::new().fg(text_color).paint(separator),
+        Style::new().fg(orange_color).bold().paint(&modifier),
+        Style::new().fg(text_color).paint("<"),
+    ];
+    for (idx, key) in key.iter().enumerate() {
+        if idx > 0 {
+            ansi_string.push(Style::new().fg(text_color).paint("|"));
+        }
+        ansi_string.push(Style::new().fg(green_color).bold().paint(key));
+    }
+    ansi_string.push(Style::new().fg(text_color).paint("> "));
+    ansi_string.push(Style::new().fg(text_color).bold().paint(action));
     LinePart {
-        part: ANSIStrings(&[
-            painted_separator,
-            painted_modifier,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            painted_action,
-        ])
-        .to_string(),
+        part: ANSIStrings(&ansi_string).to_string(),
         len: separator.chars().count()      // " " or " / "
             + modifier.chars().count()      // Modifier (Ctrl, Alt), if any
             + 1                             // "<"
-            + key.chars().count()           // The key shortcut
+            + key.join("/").chars().count() // The key shortcut
             + 2                             // "> "
             + action.chars().count(), // The action associated with the key
     }
