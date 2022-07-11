@@ -153,13 +153,9 @@ pub enum SessionNameMatch {
 pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::ErrorKind> {
     let sessions = get_sessions()?;
 
-    let filtered_sessions: Vec<String> = sessions
-        .iter()
-        .filter(|s| s.starts_with(prefix))
-        .cloned()
-        .collect();
+    let filtered_sessions: Vec<_> = sessions.iter().filter(|s| s.starts_with(prefix)).collect();
 
-    if filtered_sessions.iter().any(|s| s == prefix) {
+    if filtered_sessions.iter().any(|s| *s == prefix) {
         return Ok(SessionNameMatch::Exact(prefix.to_string()));
     }
 
@@ -167,7 +163,9 @@ pub(crate) fn match_session_name(prefix: &str) -> Result<SessionNameMatch, io::E
         match &filtered_sessions[..] {
             [] => SessionNameMatch::None,
             [s] => SessionNameMatch::UniquePrefix(s.to_string()),
-            _ => SessionNameMatch::AmbiguousPrefix(filtered_sessions),
+            _ => {
+                SessionNameMatch::AmbiguousPrefix(filtered_sessions.into_iter().cloned().collect())
+            },
         }
     })
 }
