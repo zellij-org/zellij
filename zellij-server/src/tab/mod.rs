@@ -1708,7 +1708,7 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
 
-            if pane.mouse_mode() {
+            if pane.mouse_mode() && !pane.position_is_on_frame(position) {
                 let mouse_event = format!(
                     "\u{1b}[<0;{:?};{:?}M",
                     relative_position.column.0 + 1,
