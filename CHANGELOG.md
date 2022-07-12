@@ -56,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: crash when terminal rows or columns are 0 (https://github.com/zellij-org/zellij/pull/1552)
 * refactor: moved shared data structures to zellij-utils (https://github.com/zellij-org/zellij/pull/1541)
 * feat: support displaying images/video in the terminal with sixel graphics (https://github.com/zellij-org/zellij/pull/1557)
+* fix: add usage comment to fish `auto-start` script (https://github.com/zellij-org/zellij/pull/1583)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
