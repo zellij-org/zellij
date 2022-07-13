@@ -75,12 +75,15 @@ fn long_tile(
     separator: &str,
     shared_super: bool,
 ) -> LinePart {
-    if key.key.is_none() {
-        return LinePart::default();
-    }
-
     let key_hint = key.full_text();
-    let key_binding = key.letter_shortcut(!shared_super);
+    let key_binding = if let KeyMode::Disabled = key.mode {
+        "".to_string()
+    } else if key.key.is_none() {
+        return LinePart::default();
+    } else {
+        key.letter_shortcut(!shared_super)
+    };
+
     let colors = match key.mode {
         KeyMode::Unselected => palette.unselected,
         KeyMode::UnselectedAlternate => palette.unselected_alternate,
@@ -233,12 +236,7 @@ pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo)
     // Find a common modifier if any
     let prefix_text = match get_common_modifier(mode_switch_keys(mode_info)) {
         Some(text) => format!(" {} +", text),
-        _ => {
-            return LinePart {
-                part: palette.superkey_prefix.paint(" ").to_string(),
-                len: 1,
-            }
-        },
+        _ => return LinePart::default(),
     };
 
     let prefix = palette.superkey_prefix.paint(&prefix_text);
