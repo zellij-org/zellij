@@ -281,7 +281,7 @@ pub trait Pane {
             ..(self.y() + self.rows()) as isize)
             .contains(&position.line())
         {
-            // position is on right border
+            // position is on bottom border
             return true;
         }
         false
