@@ -1,28 +1,32 @@
+pub mod data;
+
+#[cfg(not(target_family = "wasm"))]
 pub mod channels;
+#[cfg(not(target_family = "wasm"))]
 pub mod cli;
+#[cfg(not(target_family = "wasm"))]
 pub mod consts;
+#[cfg(not(target_family = "wasm"))]
 pub mod envs;
+#[cfg(not(target_family = "wasm"))]
 pub mod errors;
+#[cfg(not(target_family = "wasm"))]
 pub mod input;
+#[cfg(not(target_family = "wasm"))]
 pub mod ipc;
+#[cfg(not(target_family = "wasm"))]
 pub mod logging;
+#[cfg(not(target_family = "wasm"))]
 pub mod pane_size;
+#[cfg(not(target_family = "wasm"))]
 pub mod position;
+#[cfg(not(target_family = "wasm"))]
 pub mod setup;
+#[cfg(not(target_family = "wasm"))]
 pub mod shared;
 
-pub use anyhow;
-pub use async_std;
-pub use clap;
-pub use interprocess;
-pub use lazy_static;
-pub use libc;
-pub use nix;
-pub use regex;
-pub use serde;
-pub use serde_yaml;
-pub use signal_hook;
-pub use tempfile;
-pub use termwiz;
-pub use vte;
-pub use zellij_tile;
+#[cfg(not(target_family = "wasm"))]
+pub use ::{
+    anyhow, async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, serde_yaml,
+    signal_hook, tempfile, termwiz, vte,
+};

@@ -4,8 +4,7 @@ use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
 use std::rc::Rc;
-use zellij_tile::data::Palette;
-use zellij_tile::prelude::Style;
+use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::PaneGeom;
 
 fn read_fixture() -> Vec<u8> {

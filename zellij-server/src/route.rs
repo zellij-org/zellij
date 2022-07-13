@@ -1,7 +1,5 @@
 use std::sync::{Arc, RwLock};
 
-use zellij_utils::zellij_tile::data::Event;
-
 use crate::{
     os_input_output::ServerOsApi,
     pty::{ClientOrTabIndex, PtyInstruction},
@@ -11,6 +9,7 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
+    data::Event,
     input::{
         actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
         command::TerminalAction,

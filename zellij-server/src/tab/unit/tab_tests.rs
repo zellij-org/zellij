@@ -1,6 +1,5 @@
 use super::Tab;
 use crate::screen::CopyOptions;
-use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -9,7 +8,6 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
-use zellij_tile::prelude::Style;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -22,6 +20,7 @@ use std::rc::Rc;
 use zellij_utils::nix;
 
 use zellij_utils::{
+    data::{ModeInfo, Palette, Style},
     input::command::TerminalAction,
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},

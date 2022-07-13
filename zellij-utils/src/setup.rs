@@ -476,6 +476,7 @@ impl Setup {
 #[cfg(test)]
 mod setup_test {
     use super::Setup;
+    use crate::data::InputMode;
     use crate::input::{
         config::{Config, ConfigError},
         layout::LayoutFromYamlIntermediate,
@@ -554,7 +555,7 @@ mod setup_test {
     fn nonempty_config_nonempty_layout() {
         let mut goal = Config::default();
         goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
-        goal.options.default_mode = Some(zellij_tile::prelude::InputMode::Locked);
+        goal.options.default_mode = Some(InputMode::Locked);
         let config = r"---
         default_mode: locked";
         let layout = r"---

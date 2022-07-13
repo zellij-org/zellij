@@ -20,14 +20,11 @@ use std::{
     sync::{Arc, Mutex, RwLock},
     thread,
 };
-use zellij_tile::prelude::Style;
 use zellij_utils::envs;
 use zellij_utils::nix::sys::stat::{umask, Mode};
 use zellij_utils::pane_size::Size;
-use zellij_utils::zellij_tile;
 
 use wasmer::Store;
-use zellij_tile::data::{Event, PluginCapabilities};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -41,6 +38,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    data::{Event, PluginCapabilities, Style},
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},

@@ -1,8 +1,10 @@
-use zellij_utils::pane_size::SizeInPixels;
-
-use zellij_utils::{ipc::PixelDimensions, lazy_static::lazy_static, regex::Regex};
-
-use zellij_tile::data::{CharOrArrow, Key};
+use zellij_utils::{
+    data::{CharOrArrow, Key},
+    ipc::PixelDimensions,
+    lazy_static::lazy_static,
+    pane_size::SizeInPixels,
+    regex::Regex,
+};
 
 pub struct StdinAnsiParser {
     expected_ansi_instructions: usize,

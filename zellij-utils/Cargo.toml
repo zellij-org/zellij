@@ -18,7 +18,6 @@ colored = "2.0.0"
 colorsys = "0.6.5"
 crossbeam = "0.8.1"
 directories-next = "2.0"
-interprocess = "1.1.1"
 lazy_static = "1.4.0"
 libc = "0.2"
 nix = "0.23.1"
@@ -26,25 +25,25 @@ once_cell = "1.8.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
 serde_json = "1.0"
-signal-hook = "0.3"
 strip-ansi-escapes = "0.1.0"
 strum = "0.20.0"
+strum_macros = "0.20.1"
 thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
 vte = "0.10.1"
-zellij-tile = { path = "../zellij-tile/", version = "0.31.0" }
 log = "0.4.17"
-log4rs = "1.0.0"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
 regex = "1.5.5"
-termwiz = "0.16.0"
 tempfile = "3.2.0"
 
-
-[dependencies.async-std]
-version = "1.3.0"
-features = ["unstable"]
+#[cfg(not(target_family = "wasm"))]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+termwiz = "0.16.0"
+log4rs = "1.0.0"
+signal-hook = "0.3"
+interprocess = "1.1.1"
+async-std = { version = "1.3.0", features = ["unstable"] }
 
 [dev-dependencies]
 

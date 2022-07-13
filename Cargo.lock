@@ -3265,7 +3265,6 @@ dependencies = [
  "insta",
  "log",
  "mio",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -3292,7 +3291,6 @@ dependencies = [
  "uuid",
  "wasmer",
  "wasmer-wasi",
- "zellij-tile",
  "zellij-utils",
 ]
 
@@ -3305,6 +3303,7 @@ dependencies = [
  "serde_json",
  "strum",
  "strum_macros",
+ "zellij-utils",
 ]
 
 [[package]]
@@ -3343,13 +3342,13 @@ dependencies = [
  "signal-hook 0.3.14",
  "strip-ansi-escapes",
  "strum",
+ "strum_macros",
  "tempfile",
  "termwiz",
  "thiserror",
  "unicode-width",
  "url",
  "vte",
- "zellij-tile",
 ]
 
 [[package]]

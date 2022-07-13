@@ -1,8 +1,7 @@
-pub mod data;
 pub mod prelude;
 pub mod shim;
 
-use data::*;
+use zellij_utils::data::Event;
 
 #[allow(unused_variables)]
 pub trait ZellijPlugin {

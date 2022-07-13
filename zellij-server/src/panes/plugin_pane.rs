@@ -12,9 +12,9 @@ use crate::ClientId;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::position::Position;
 use zellij_utils::shared::ansi_len;
-use zellij_utils::zellij_tile::prelude::{Event, InputMode, Mouse, PaletteColor};
 use zellij_utils::{
     channels::SenderWithContext,
+    data::{Event, InputMode, Mouse, PaletteColor},
     pane_size::{Dimension, PaneGeom},
     shared::make_terminal_title,
 };

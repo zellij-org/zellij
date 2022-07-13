@@ -3,10 +3,10 @@ use std::collections::HashMap;
 
 use super::actions::Action;
 use super::config;
+use crate::input::{InputMode, Key};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
-use zellij_tile::data::*;
 
 /// Used in the config struct
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]

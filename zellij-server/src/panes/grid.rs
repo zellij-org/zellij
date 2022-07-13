@@ -13,16 +13,16 @@ use std::{
 
 use zellij_utils::{
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    data::{Palette, PaletteColor},
     pane_size::SizeInPixels,
     position::Position,
-    vte, zellij_tile,
+    vte,
 };
 
 const TABSTOP_WIDTH: usize = 8; // TODO: is this always right?
 pub const MAX_TITLE_STACK_SIZE: usize = 1000;
 
 use vte::{Params, Perform};
-use zellij_tile::data::{Palette, PaletteColor};
 use zellij_utils::{consts::VERSION, shared::version_number};
 
 use crate::output::{CharacterChunk, OutputBuffer};

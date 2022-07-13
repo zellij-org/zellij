@@ -1,6 +1,5 @@
 use super::{CopyOptions, Screen, ScreenInstruction};
 use crate::panes::PaneId;
-use crate::zellij_tile::data::{ModeInfo, Palette};
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     thread_bus::Bus,
@@ -19,6 +18,7 @@ use zellij_utils::ipc::{ClientAttributes, PixelDimensions};
 use zellij_utils::nix;
 
 use zellij_utils::{
+    data::{ModeInfo, Palette},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
