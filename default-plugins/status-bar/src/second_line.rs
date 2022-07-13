@@ -55,9 +55,17 @@ fn full_length_shortcut(
         Style::new().fg(orange_color).bold().paint(&modifier),
         Style::new().fg(text_color).paint("<"),
     ];
+    let key_string = key.join("");
+    let key_separator = match &key_string[..] {
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←↓" => "",
+        "↓↑" => "",
+        _ => "|",
+    };
     for (idx, key) in key.iter().enumerate() {
-        if idx > 0 {
-            ansi_string.push(Style::new().fg(text_color).paint("|"));
+        if idx > 0 && !key_separator.is_empty() {
+            ansi_string.push(Style::new().fg(text_color).paint(key_separator));
         }
         ansi_string.push(Style::new().fg(green_color).bold().paint(key));
     }
