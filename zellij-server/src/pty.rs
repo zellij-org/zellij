@@ -1,13 +1,12 @@
 use crate::{
-    os_input_output::{AsyncReader, ServerOsApi},
     panes::PaneId,
     screen::ScreenInstruction,
-    thread_bus::{Bus, ThreadSenders},
+    thread_bus::Bus,
     wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
+use crate::terminal_bytes::TerminalBytes;
 use async_std::{
-    future::timeout as async_timeout,
     task::{self, JoinHandle},
 };
 use std::{
@@ -15,17 +14,15 @@ use std::{
     env,
     os::unix::io::RawFd,
     path::PathBuf,
-    time::{Duration, Instant},
 };
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
-    errors::{get_current_ctx, ContextType, PtyContext},
+    errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
         layout::{Layout, LayoutFromYaml, Run, TabLayout},
     },
-    logging::debug_to_file,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -198,100 +195,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
     }
 }
 
-enum ReadResult {
-    Ok(usize),
-    Timeout,
-    Err(std::io::Error),
-}
-
-impl From<std::io::Result<usize>> for ReadResult {
-    fn from(e: std::io::Result<usize>) -> ReadResult {
-        match e {
-            Err(e) => ReadResult::Err(e),
-            Ok(n) => ReadResult::Ok(n),
-        }
-    }
-}
-
-async fn deadline_read(
-    reader: &mut dyn AsyncReader,
-    deadline: Option<Instant>,
-    buf: &mut [u8],
-) -> ReadResult {
-    if let Some(deadline) = deadline {
-        let timeout = deadline.checked_duration_since(Instant::now());
-        if let Some(timeout) = timeout {
-            match async_timeout(timeout, reader.read(buf)).await {
-                Ok(res) => res.into(),
-                _ => ReadResult::Timeout,
-            }
-        } else {
-            // deadline has already elapsed
-            ReadResult::Timeout
-        }
-    } else {
-        reader.read(buf).await.into()
-    }
-}
-
-async fn async_send_to_screen(senders: ThreadSenders, screen_instruction: ScreenInstruction) {
-    task::spawn_blocking(move || senders.send_to_screen(screen_instruction))
-        .await
-        .unwrap()
-}
-
-fn stream_terminal_bytes(
-    pid: RawFd,
-    senders: ThreadSenders,
-    os_input: Box<dyn ServerOsApi>,
-    debug: bool,
-) -> JoinHandle<()> {
-    let mut err_ctx = get_current_ctx();
-    task::spawn({
-        async move {
-            err_ctx.add_call(ContextType::AsyncTask);
-
-            // After a successful read, we keep on reading additional data up to a duration of
-            // `RENDER_PAUSE`. This is in order to batch up PtyBytes before rendering them.
-            // Once `render_deadline` has elapsed, we send Render.
-            const RENDER_PAUSE: Duration = Duration::from_millis(30);
-            let mut render_deadline = None;
-            // Keep track of the last render time so we can render immediately if something shows
-            // up after a period of inactivity. This reduces input latency perception.
-            let mut last_render = Instant::now();
-
-            let mut buf = [0u8; 65536];
-            let mut async_reader = os_input.async_file_reader(pid);
-            loop {
-                match deadline_read(async_reader.as_mut(), render_deadline, &mut buf).await {
-                    ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
-                    ReadResult::Timeout => {
-                        async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
-                        // next read does not need a deadline as we just rendered everything
-                        render_deadline = None;
-                        last_render = Instant::now();
-                    },
-                    ReadResult::Ok(n_bytes) => {
-                        let bytes = &buf[..n_bytes];
-                        if debug {
-                            let _ = debug_to_file(bytes, pid);
-                        }
-                        async_send_to_screen(
-                            senders.clone(),
-                            ScreenInstruction::PtyBytes(pid, bytes.to_vec()),
-                        )
-                        .await;
-                        // if we already have a render_deadline we keep it, otherwise we set it
-                        // to RENDER_PAUSE since the last time we rendered.
-                        render_deadline.get_or_insert(last_render + RENDER_PAUSE);
-                    },
-                }
-            }
-            async_send_to_screen(senders.clone(), ScreenInstruction::Render).await;
-        }
-    })
-}
-
 impl Pty {
     pub fn new(
         bus: Bus<PtyInstruction>,
@@ -361,13 +264,21 @@ impl Pty {
             .as_mut()
             .unwrap()
             .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
-        let task_handle = stream_terminal_bytes(
-            pid_primary,
-            self.bus.senders.clone(),
-            self.bus.os_input.as_ref().unwrap().clone(),
-            self.debug_to_file,
-        );
-        self.task_handles.insert(pid_primary, task_handle);
+        let terminal_bytes = task::spawn({
+            let senders = self.bus.senders.clone();
+            let os_input = self.bus.os_input.as_ref().unwrap().clone();
+            let debug_to_file = self.debug_to_file;
+            async move {
+                TerminalBytes::new(
+                    pid_primary,
+                    senders,
+                    os_input,
+                    debug_to_file,
+                ).listen().await;
+            }
+        });
+
+        self.task_handles.insert(pid_primary, terminal_bytes);
         self.id_to_child_pid.insert(pid_primary, child_fd);
         Ok(pid_primary)
     }
@@ -425,13 +336,20 @@ impl Pty {
             ))
             .unwrap();
         for id in new_pane_pids {
-            let task_handle = stream_terminal_bytes(
-                id,
-                self.bus.senders.clone(),
-                self.bus.os_input.as_ref().unwrap().clone(),
-                self.debug_to_file,
-            );
-            self.task_handles.insert(id, task_handle);
+            let terminal_bytes = task::spawn({
+                let senders = self.bus.senders.clone();
+                let os_input = self.bus.os_input.as_ref().unwrap().clone();
+                let debug_to_file = self.debug_to_file;
+                async move {
+                    TerminalBytes::new(
+                        id,
+                        senders,
+                        os_input,
+                        debug_to_file,
+                    ).listen().await;
+                }
+            });
+            self.task_handles.insert(id, terminal_bytes);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
