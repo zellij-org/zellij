@@ -274,7 +274,7 @@ pub trait Pane {
             return true;
         }
         if (self.y() as isize..self.get_content_y() as isize).contains(&position.line()) {
-            // position is on left border
+            // position is on top border
             return true;
         }
         if ((self.get_content_y() + self.get_content_rows()) as isize
