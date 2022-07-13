@@ -1,20 +1,10 @@
+use crate::terminal_bytes::TerminalBytes;
 use crate::{
-    panes::PaneId,
-    screen::ScreenInstruction,
-    thread_bus::Bus,
-    wasm_vm::PluginInstruction,
+    panes::PaneId, screen::ScreenInstruction, thread_bus::Bus, wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
-use crate::terminal_bytes::TerminalBytes;
-use async_std::{
-    task::{self, JoinHandle},
-};
-use std::{
-    collections::HashMap,
-    env,
-    os::unix::io::RawFd,
-    path::PathBuf,
-};
+use async_std::task::{self, JoinHandle};
+use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -269,12 +259,9 @@ impl Pty {
             let os_input = self.bus.os_input.as_ref().unwrap().clone();
             let debug_to_file = self.debug_to_file;
             async move {
-                TerminalBytes::new(
-                    pid_primary,
-                    senders,
-                    os_input,
-                    debug_to_file,
-                ).listen().await;
+                TerminalBytes::new(pid_primary, senders, os_input, debug_to_file)
+                    .listen()
+                    .await;
             }
         });
 
@@ -341,12 +328,9 @@ impl Pty {
                 let os_input = self.bus.os_input.as_ref().unwrap().clone();
                 let debug_to_file = self.debug_to_file;
                 async move {
-                    TerminalBytes::new(
-                        id,
-                        senders,
-                        os_input,
-                        debug_to_file,
-                    ).listen().await;
+                    TerminalBytes::new(id, senders, os_input, debug_to_file)
+                        .listen()
+                        .await;
                 }
             });
             self.task_handles.insert(id, terminal_bytes);

@@ -3,10 +3,7 @@ use crate::{
     screen::ScreenInstruction,
     thread_bus::ThreadSenders,
 };
-use async_std::{
-    future::timeout as async_timeout,
-    task,
-};
+use async_std::{future::timeout as async_timeout, task};
 use std::{
     os::unix::io::RawFd,
     time::{Duration, Instant},
@@ -41,11 +38,16 @@ pub(crate) struct TerminalBytes {
     backed_up: bool,
     minimum_render_send_time: Option<Duration>,
     buffering_pause: Duration,
-    last_render: Instant
+    last_render: Instant,
 }
 
 impl TerminalBytes {
-    pub fn new(pid: RawFd, senders: ThreadSenders, os_input: Box<dyn ServerOsApi>, debug: bool) -> Self {
+    pub fn new(
+        pid: RawFd,
+        senders: ThreadSenders,
+        os_input: Box<dyn ServerOsApi>,
+        debug: bool,
+    ) -> Self {
         TerminalBytes {
             pid,
             senders,
@@ -75,10 +77,11 @@ impl TerminalBytes {
         let mut buf = [0u8; 65536];
         loop {
             match self.deadline_read(&mut buf).await {
-            // match deadline_read(async_reader.as_mut(), self.render_deadline, &mut buf).await {
+                // match deadline_read(async_reader.as_mut(), self.render_deadline, &mut buf).await {
                 ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                 ReadResult::Timeout => {
-                    let time_to_send_render = self.async_send_to_screen(ScreenInstruction::Render).await;
+                    let time_to_send_render =
+                        self.async_send_to_screen(ScreenInstruction::Render).await;
                     self.update_render_send_time(time_to_send_render);
                     // next read does not need a deadline as we just rendered everything
                     self.render_deadline = None;
@@ -89,21 +92,28 @@ impl TerminalBytes {
                     if self.debug {
                         let _ = debug_to_file(bytes, self.pid);
                     }
-                    self.async_send_to_screen(ScreenInstruction::PtyBytes(self.pid, bytes.to_vec())).await;
+                    self.async_send_to_screen(ScreenInstruction::PtyBytes(
+                        self.pid,
+                        bytes.to_vec(),
+                    ))
+                    .await;
                     if !self.backed_up {
                         // we're not backed up, let's send an immediate render instruction
-                        let time_to_send_render = self.async_send_to_screen(ScreenInstruction::Render).await;
+                        let time_to_send_render =
+                            self.async_send_to_screen(ScreenInstruction::Render).await;
                         self.update_render_send_time(time_to_send_render);
                     }
                     // if we already have a render_deadline we keep it, otherwise we set it
                     // to buffering_pause since the last time we rendered.
-                    self.render_deadline.get_or_insert(self.last_render + self.buffering_pause);
+                    self.render_deadline
+                        .get_or_insert(self.last_render + self.buffering_pause);
                 },
             }
         }
         self.async_send_to_screen(ScreenInstruction::Render).await;
     }
-    async fn async_send_to_screen(&self, screen_instruction: ScreenInstruction) -> Duration { // returns the time it blocked the thread for
+    async fn async_send_to_screen(&self, screen_instruction: ScreenInstruction) -> Duration {
+        // returns the time it blocked the thread for
         let sent_at = Instant::now();
         let senders = self.senders.clone();
         task::spawn_blocking(move || senders.send_to_screen(screen_instruction))
@@ -130,13 +140,10 @@ impl TerminalBytes {
             },
             None => {
                 self.minimum_render_send_time = Some(time_to_send_render);
-            }
+            },
         }
     }
-    async fn deadline_read(
-        &mut self,
-        buf: &mut [u8],
-    ) -> ReadResult {
+    async fn deadline_read(&mut self, buf: &mut [u8]) -> ReadResult {
         if let Some(deadline) = self.render_deadline {
             let timeout = deadline.checked_duration_since(Instant::now());
             if let Some(timeout) = timeout {

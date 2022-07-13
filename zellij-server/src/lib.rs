@@ -5,10 +5,10 @@ pub mod tab;
 
 mod logging_pipe;
 mod pty;
-mod terminal_bytes;
 mod pty_writer;
 mod route;
 mod screen;
+mod terminal_bytes;
 mod thread_bus;
 mod ui;
 mod wasm_vm;
