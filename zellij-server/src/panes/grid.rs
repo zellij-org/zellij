@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

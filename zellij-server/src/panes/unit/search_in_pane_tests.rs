@@ -1,13 +1,13 @@
 use super::super::TerminalPane;
+use crate::panes::sixel::SixelImageStore;
 use crate::panes::LinkHandler;
 use crate::tab::Pane;
 use insta::assert_snapshot;
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 use zellij_utils::data::{Palette, Style};
 use zellij_utils::pane_size::PaneGeom;
-use crate::panes::sixel::SixelImageStore;
 
 fn read_fixture() -> Vec<u8> {
     let mut path_to_file = std::path::PathBuf::new();
