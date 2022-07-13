@@ -74,6 +74,7 @@ fn long_tile(
     palette: ColoredElements,
     separator: &str,
     shared_super: bool,
+    first_tile: bool,
 ) -> LinePart {
     let key_hint = key.full_text();
     let key_binding = if let KeyMode::Disabled = key.mode {
@@ -90,7 +91,12 @@ fn long_tile(
         KeyMode::Selected => palette.selected,
         KeyMode::Disabled => palette.disabled,
     };
-    let prefix_separator = colors.prefix_separator.paint(separator);
+    let start_separator = if !shared_super && first_tile {
+        ""
+    } else {
+        separator
+    };
+    let prefix_separator = colors.prefix_separator.paint(start_separator);
     let char_left_separator = colors.char_left_separator.paint(" <".to_string());
     let char_shortcut = colors.char_shortcut.paint(key_binding.to_string());
     let char_right_separator = colors.char_right_separator.paint("> ".to_string());
@@ -106,12 +112,12 @@ fn long_tile(
             suffix_separator,
         ])
         .to_string(),
-        len: separator.chars().count()      // Separator
-            + 2                             // " <"
-            + key_binding.chars().count()   // Key binding
-            + 2                             // "> "
-            + key_hint.chars().count()      // Key hint (mode)
-            + 1                             // " "
+        len: start_separator.chars().count() // Separator
+            + 2                              // " <"
+            + key_binding.chars().count()    // Key binding
+            + 2                              // "> "
+            + key_hint.chars().count()       // Key hint (mode)
+            + 1                              // " "
             + separator.chars().count(), // Separator
     }
 }
@@ -155,9 +161,9 @@ fn key_indicators(
 ) -> LinePart {
     // Print full-width hints
     let mut line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 1;
-    for ctrl_key in keys {
-        let key = long_tile(ctrl_key, palette, separator, shared_super);
+    let shared_super = line_part.len > 0;
+    for (i, ctrl_key) in keys.iter().enumerate() {
+        let key = long_tile(ctrl_key, palette, separator, shared_super, i == 0);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -167,7 +173,7 @@ fn key_indicators(
 
     // Full-width doesn't fit, try shortened hints (just keybindings, no meanings/actions)
     line_part = superkey(palette, separator, mode_info);
-    let shared_super = line_part.len > 1;
+    let shared_super = line_part.len > 0;
     for ctrl_key in keys {
         let key = short_tile(ctrl_key, palette, separator, shared_super);
         line_part.part = format!("{}{}", line_part.part, key.part);
