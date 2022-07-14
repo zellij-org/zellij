@@ -226,28 +226,34 @@ impl Pane for TerminalPane {
                         PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                         PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                     };
-                    character_chunk.add_selection_and_background(
+                    character_chunk.add_selection_and_colors(
                         self.grid.selection,
                         background_color,
+                        None,
                         content_x,
                         content_y,
                     );
                 } else if !self.grid.search_results.selections.is_empty() {
                     for res in self.grid.search_results.selections.iter() {
                         if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                            let select_color_palette =
+                            let (select_background_palette, select_foreground_palette) =
                                 if Some(res) == self.grid.search_results.active.as_ref() {
-                                    self.style.colors.orange
+                                    (self.style.colors.orange, self.style.colors.black)
                                 } else {
-                                    self.style.colors.green
+                                    (self.style.colors.green, self.style.colors.black)
                                 };
-                            let background_color = match select_color_palette {
+                            let background_color = match select_background_palette {
                                 PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                                 PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                             };
-                            character_chunk.add_selection_and_background(
+                            let foreground_color = match select_foreground_palette {
+                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                            };
+                            character_chunk.add_selection_and_colors(
                                 *res,
                                 background_color,
+                                Some(foreground_color),
                                 content_x,
                                 content_y,
                             );
