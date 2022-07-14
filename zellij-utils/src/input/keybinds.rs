@@ -84,6 +84,14 @@ impl Keybinds {
             .keybinds
     }
 
+    pub fn to_keybinds_vec(&self) -> Vec<(InputMode, Vec<(Key, Vec<Action>)>)> {
+        let mut ret = vec![];
+        for (mode, mode_binds) in &self.0 {
+            ret.push((mode.clone(), mode_binds.to_cloned_vec()));
+        }
+        ret
+    }
+
     pub fn get_mode_keybinds(&self, mode: &InputMode) -> &ModeKeybinds {
         self.0
             .get(mode)

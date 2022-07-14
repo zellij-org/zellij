@@ -61,7 +61,7 @@ pub enum Key {
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Key::Backspace => write!(f, "Backspace"),
+            Key::Backspace => write!(f, "BACKSPACE"),
             Key::Left => write!(f, "{}", Direction::Left),
             Key::Right => write!(f, "{}", Direction::Right),
             Key::Up => write!(f, "{}", Direction::Up),
@@ -83,7 +83,7 @@ impl fmt::Display for Key {
             Key::Alt(c) => write!(f, "Alt+{}", c),
             Key::Ctrl(c) => write!(f, "Ctrl+{}", Key::Char(*c)),
             Key::Null => write!(f, "NULL"),
-            Key::Esc => write!(f, "Esc"),
+            Key::Esc => write!(f, "ESC"),
         }
     }
 }
@@ -299,10 +299,26 @@ pub struct Style {
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
-    pub keybinds: Vec<(Key, Vec<Action>)>,
+    // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
+    pub keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)>,
     pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
+}
+
+impl ModeInfo {
+    pub fn get_mode_keybinds(&self) -> Vec<(Key, Vec<Action>)> {
+        self.get_keybinds_for_mode(self.mode)
+    }
+
+    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(Key, Vec<Action>)> {
+        for (vec_mode, map) in &self.keybinds {
+            if mode == *vec_mode {
+                return map.to_vec();
+            }
+        }
+        vec![]
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

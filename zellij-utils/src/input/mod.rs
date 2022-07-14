@@ -31,7 +31,7 @@ mod not_wasm {
         attributes: &ClientAttributes,
         capabilities: PluginCapabilities,
     ) -> ModeInfo {
-        let keybinds = attributes.keybinds.get_mode_keybinds(&mode).to_cloned_vec();
+        let keybinds = attributes.keybinds.to_keybinds_vec();
         let session_name = envs::get_session_name().ok();
 
         ModeInfo {
