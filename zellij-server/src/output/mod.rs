@@ -37,7 +37,9 @@ fn adjust_styles_for_possible_selection(
 ) -> CharacterStyles {
     chunk_selection_and_colors
         .iter()
-        .find(|(selection, _background_color, _foreground_color)| selection.contains(chunk_y, chunk_width))
+        .find(|(selection, _background_color, _foreground_color)| {
+            selection.contains(chunk_y, chunk_width)
+        })
         .map(|(_selection, background_color, foreground_color)| {
             let mut character_styles = character_styles.background(Some(*background_color));
             if let Some(foreground_color) = foreground_color {
@@ -674,10 +676,14 @@ impl CharacterChunk {
         offset_x: usize,
         offset_y: usize,
     ) {
-        self.selection_and_colors
-            .push((selection.offset(offset_x, offset_y), background_color, foreground_color));
+        self.selection_and_colors.push((
+            selection.offset(offset_x, offset_y),
+            background_color,
+            foreground_color,
+        ));
     }
-    pub fn selection_and_colors(&self) -> Vec<(Selection, AnsiCode, Option<AnsiCode>)> { // Selection, background color, optional foreground color
+    pub fn selection_and_colors(&self) -> Vec<(Selection, AnsiCode, Option<AnsiCode>)> {
+        // Selection, background color, optional foreground color
         self.selection_and_colors.clone()
     }
     pub fn add_changed_colors(&mut self, changed_colors: Option<[Option<AnsiCode>; 256]>) {
