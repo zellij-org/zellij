@@ -2513,3 +2513,54 @@ pub fn xtsmgraphics_pixel_graphics_geometry() {
         });
     assert_eq!(message_string, "\u{1b}[?2;0;776;1071S");
 }
+
+#[test]
+pub fn cursor_hide_persists_through_alternate_screen() {
+    let mut vte_parser = vte::Parser::new();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    let mut grid = Grid::new(
+        30,
+        112,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+    );
+
+    let hide_cursor = "\u{1b}[?25l";
+    for byte in hide_cursor.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(grid.cursor_coordinates(), None, "Cursor hidden properly");
+
+    let move_to_alternate_screen = "\u{1b}[?1049h";
+    for byte in move_to_alternate_screen.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert_eq!(
+        grid.cursor_coordinates(),
+        None,
+        "Cursor still hidden in alternate screen"
+    );
+
+    let show_cursor = "\u{1b}[?25h";
+    for byte in show_cursor.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(grid.cursor_coordinates().is_some(), "Cursor shown");
+
+    let move_away_from_alternate_screen = "\u{1b}[?1049l";
+    for byte in move_away_from_alternate_screen.as_bytes() {
+        vte_parser.advance(&mut grid, *byte);
+    }
+    assert!(
+        grid.cursor_coordinates().is_some(),
+        "Cursor still shown away from alternate screen"
+    );
+}
