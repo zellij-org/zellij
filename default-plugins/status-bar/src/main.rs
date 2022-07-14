@@ -5,8 +5,8 @@ mod tip;
 use ansi_term::Style;
 
 use std::fmt::{Display, Error, Formatter};
-use zellij_tile::prelude::*;
 use zellij_tile::prelude::actions::Action;
+use zellij_tile::prelude::*;
 use zellij_tile_utils::style;
 
 use first_line::ctrl_keys;
@@ -302,8 +302,9 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
 // TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
 // into one group under 'text'.
 pub fn action_key(keymap: &Vec<(Key, Vec<Action>)>, action: &[Action]) -> Vec<Key> {
-    keymap.iter().
-        filter_map(|(key, acvec)| {
+    keymap
+        .iter()
+        .filter_map(|(key, acvec)| {
             if acvec.as_slice() == action {
                 Some(*key)
             } else {

@@ -231,7 +231,7 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
                         | InputMode::Tab
                         | InputMode::Resize
                         | InputMode::Move
-                        | InputMode::Search
+                        | InputMode::Scroll
                         | InputMode::Session => Some(*key),
                         _ => None,
                     };
@@ -287,42 +287,54 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Lock,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Locked)])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Locked)],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Pane,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Pane)])),
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Pane)])),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Tab,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Tab)])),
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Tab)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Resize,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Resize)])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Resize)],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Move,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Move)])),
+            to_char(action_key(binds, &[Action::SwitchToMode(InputMode::Move)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Search,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Search)])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Scroll)],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Session,
-            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Session)])),
+            to_char(action_key(
+                binds,
+                &[Action::SwitchToMode(InputMode::Session)],
+            )),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Quit,
-            to_char(action_key(&binds, &[Action::Quit])),
+            to_char(action_key(binds, &[Action::Quit])),
         ),
     ];
 
@@ -343,7 +355,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     };
     if let Some(index) = mode_index {
         default_keys[index].mode = KeyMode::Selected;
-        default_keys[index].key = to_char(action_key(&binds, &[TO_NORMAL]));
+        default_keys[index].key = to_char(action_key(binds, &[TO_NORMAL]));
     }
 
     if help.mode == InputMode::Tmux {
@@ -351,7 +363,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
         default_keys.push(KeyShortcut::new(
             KeyMode::Selected,
             KeyAction::Tmux,
-            to_char(action_key(&binds, &[TO_NORMAL])),
+            to_char(action_key(binds, &[TO_NORMAL])),
         ));
     }
 
