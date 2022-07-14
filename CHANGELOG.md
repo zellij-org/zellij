@@ -58,6 +58,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support displaying images/video in the terminal with sixel graphics (https://github.com/zellij-org/zellij/pull/1557)
 * fix: add usage comment to fish `auto-start` script (https://github.com/zellij-org/zellij/pull/1583)
 * fix: refactor match session name (https://github.com/zellij-org/zellij/pull/1582)
+* fix: print "Session detached" rather than "Bye from Zellij!" when detaching from a session (https://github.com/zellij-org/zellij/pull/1573#issuecomment-1181562138)
+* performance: improve terminal responsiveness (https://github.com/zellij-org/zellij/pull/1585)
+* Terminal compatibility: persist cursor show/hide across alternate screen (https://github.com/zellij-org/zellij/pull/1586)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
