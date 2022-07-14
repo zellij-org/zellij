@@ -53,13 +53,13 @@ pub fn searching_inside_a_viewport() {
         "grid_copy_tortor_highlighted",
         format!("{:?}", terminal_pane.grid)
     );
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     // snapshot-size optimization: We use a named one here to de-duplicate
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_second",
         format!("{:?}", terminal_pane.grid)
@@ -70,19 +70,19 @@ pub fn searching_inside_a_viewport() {
 pub fn searching_scroll_viewport() {
     let mut terminal_pane = create_pane();
     terminal_pane.update_search_term("tortor");
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     // snapshot-size optimization: We use a named one here to de-duplicate
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_second",
         format!("{:?}", terminal_pane.grid)
     );
     // Scroll away
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_scrolled_up",
         format!("{:?}", terminal_pane.grid)
@@ -95,31 +95,31 @@ pub fn searching_with_wrap() {
     // Searching for "tortor"
     terminal_pane.update_search_term("tortor");
     // Selecting the last place tortor was found
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
     // Search backwards again
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_second",
         format!("{:?}", terminal_pane.grid)
     );
-    terminal_pane.search_forward();
+    terminal_pane.search_down();
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
     // Searching forward again should do nothing here
-    terminal_pane.search_forward();
+    terminal_pane.search_down();
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
     );
     // Only after wrapping search is active, do we actually jump in the scroll buffer
     terminal_pane.toggle_search_wrap();
-    terminal_pane.search_forward();
+    terminal_pane.search_down();
     assert_snapshot!(
         "grid_copy_search_cursor_at_top",
         format!("{:?}", terminal_pane.grid)
@@ -128,7 +128,7 @@ pub fn searching_with_wrap() {
     // Deactivate wrap again
     terminal_pane.toggle_search_wrap();
     // Should be a no-op again
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_top",
         format!("{:?}", terminal_pane.grid)
@@ -136,7 +136,7 @@ pub fn searching_with_wrap() {
 
     // Re-activate wrap again
     terminal_pane.toggle_search_wrap();
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_search_cursor_at_bottom",
         format!("{:?}", terminal_pane.grid)
@@ -170,7 +170,7 @@ pub fn searching_case_insensitive() {
 
     // Select one and check that we keep the current selection,
     // if it wasn't one that vanished
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_quam_highlighted_cursor_bottom",
         format!("{:?}", terminal_pane.grid)
@@ -196,11 +196,11 @@ pub fn searching_case_insensitive() {
     terminal_pane.toggle_search_case_sensitivity();
 
     // Selecting the case insensitive result
-    terminal_pane.search_backward();
-    terminal_pane.search_backward();
-    terminal_pane.search_backward();
-    terminal_pane.search_backward();
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
+    terminal_pane.search_up();
+    terminal_pane.search_up();
+    terminal_pane.search_up();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_quam_insensitive_selection",
         format!("{:?}", terminal_pane.grid)
@@ -214,7 +214,7 @@ pub fn searching_case_insensitive() {
         "grid_copy_quam_highlighted",
         format!("{:?}", terminal_pane.grid)
     );
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_quam_highlighted_cursor_bottom",
         format!("{:?}", terminal_pane.grid)
@@ -226,7 +226,7 @@ pub fn searching_inside_and_scroll() {
     let fake_client_id = 1;
     let mut terminal_pane = create_pane();
     terminal_pane.update_search_term("quam");
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_quam_highlighted_cursor_bottom",
         format!("{:?}", terminal_pane.grid)
@@ -302,7 +302,7 @@ pub fn searching_across_line_wrap() {
         format!("{:?}", terminal_pane.grid)
     );
 
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -310,7 +310,7 @@ pub fn searching_across_line_wrap() {
 
     // Wrap on
     terminal_pane.toggle_search_wrap();
-    terminal_pane.search_forward();
+    terminal_pane.search_down();
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -319,7 +319,7 @@ pub fn searching_across_line_wrap() {
     // Wrap off
     terminal_pane.toggle_search_wrap();
     // Don't forget the current selection
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_multiline_selected_wrap_narrow",
         format!("{:?}", terminal_pane.grid)
@@ -327,7 +327,7 @@ pub fn searching_across_line_wrap() {
 
     // Wrap on
     terminal_pane.toggle_search_wrap();
-    terminal_pane.search_backward();
+    terminal_pane.search_up();
     assert_snapshot!(
         "grid_copy_multiline_selected_narrow",
         format!("{:?}", terminal_pane.grid)
