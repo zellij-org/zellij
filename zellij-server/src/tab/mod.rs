@@ -263,6 +263,9 @@ pub trait Pane {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
     fn position_is_on_frame(&self, position: &Position) -> bool {
+        if !self.contains(position) {
+            return false;
+        }
         if (self.x()..self.get_content_x()).contains(&position.column()) {
             // position is on left border
             return true;
