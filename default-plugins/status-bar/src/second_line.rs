@@ -432,9 +432,15 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     );
     let plus = ", ";
     let p_left_separator = "<";
-    // FIXME: This is wrong. We cannot know this from normal mode, because we transfer only the
-    // keybindings for the current InputMode.
-    let p = "w";
+    let p = format!(
+        "{}",
+        action_key(
+            &mode_info.get_keybinds_for_mode(InputMode::Pane),
+            &[Action::ToggleFloatingPanes, TO_NORMAL]
+        )
+        .first()
+        .unwrap_or(&Key::Char('?'))
+    );
     let p_right_separator = "> ";
     let to_hide = "to hide.";
 
