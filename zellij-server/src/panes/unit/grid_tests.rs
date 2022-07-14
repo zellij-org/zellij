@@ -2543,7 +2543,11 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     for byte in move_to_alternate_screen.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    assert_eq!(grid.cursor_coordinates(), None, "Cursor still hidden in alternate screen");
+    assert_eq!(
+        grid.cursor_coordinates(),
+        None,
+        "Cursor still hidden in alternate screen"
+    );
 
     let show_cursor = "\u{1b}[?25h";
     for byte in show_cursor.as_bytes() {
@@ -2555,5 +2559,8 @@ pub fn cursor_hide_persists_through_alternate_screen() {
     for byte in move_away_from_alternate_screen.as_bytes() {
         vte_parser.advance(&mut grid, *byte);
     }
-    assert!(grid.cursor_coordinates().is_some(), "Cursor still shown away from alternate screen");
+    assert!(
+        grid.cursor_coordinates().is_some(),
+        "Cursor still shown away from alternate screen"
+    );
 }
