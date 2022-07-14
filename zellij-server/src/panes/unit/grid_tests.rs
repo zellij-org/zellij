@@ -2530,7 +2530,7 @@ pub fn cursor_hide_persists_through_alternate_screen() {
         terminal_emulator_color_codes,
         Rc::new(RefCell::new(LinkHandler::new())),
         character_cell_size,
-        sixel_image_store.clone(),
+        sixel_image_store,
     );
 
     let hide_cursor = "\u{1b}[?25l";
