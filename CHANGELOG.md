@@ -61,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: print "Session detached" rather than "Bye from Zellij!" when detaching from a session (https://github.com/zellij-org/zellij/pull/1573#issuecomment-1181562138)
 * performance: improve terminal responsiveness (https://github.com/zellij-org/zellij/pull/1585)
 * Terminal compatibility: persist cursor show/hide across alternate screen (https://github.com/zellij-org/zellij/pull/1586)
+* fix: support multi-argument EDITOR/VISUAL/scrollback-editor commands (https://github.com/zellij-org/zellij/pull/1587)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
