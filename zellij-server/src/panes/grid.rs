@@ -307,6 +307,7 @@ pub struct Grid {
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
+    cursor_is_hidden: bool,
     saved_cursor_position: Option<Cursor>,
     // FIXME: change scroll_region to be (usize, usize) - where the top line is always the first
     // line of the viewport and the bottom line the last unless it's changed with CSI r and friends
@@ -414,6 +415,7 @@ impl Grid {
             lines_below: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0),
+            cursor_is_hidden: false,
             saved_cursor_position: None,
             scroll_region: None,
             preceding_char: None,
@@ -922,7 +924,7 @@ impl Grid {
         (changed_character_chunks, changed_sixel_image_chunks)
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
-        if self.cursor.is_hidden {
+        if self.cursor_is_hidden {
             None
         } else {
             Some((self.cursor.x, self.cursor.y))
@@ -1333,10 +1335,10 @@ impl Grid {
         }
     }
     pub fn hide_cursor(&mut self) {
-        self.cursor.is_hidden = true;
+        self.cursor_is_hidden = true;
     }
     pub fn show_cursor(&mut self) {
-        self.cursor.is_hidden = false;
+        self.cursor_is_hidden = false;
     }
     pub fn set_scroll_region(&mut self, top_line_index: usize, bottom_line_index: Option<usize>) {
         let bottom_line_index = bottom_line_index.unwrap_or(self.height);

@@ -672,7 +672,6 @@ pub enum CursorShape {
 pub struct Cursor {
     pub x: usize,
     pub y: usize,
-    pub is_hidden: bool,
     pub pending_styles: CharacterStyles,
     pub charsets: Charsets,
     shape: CursorShape,
@@ -683,7 +682,6 @@ impl Cursor {
         Cursor {
             x,
             y,
-            is_hidden: false,
             pending_styles: RESET_STYLES,
             charsets: Default::default(),
             shape: CursorShape::Initial,
