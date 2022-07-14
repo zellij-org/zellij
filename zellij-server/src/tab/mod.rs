@@ -282,10 +282,10 @@ pub trait Pane {
     fn update_search_term(&mut self, _needle: &str) {
         // No-op by default (only terminal-panes currently have search capability)
     }
-    fn search_forward(&mut self) {
+    fn search_down(&mut self) {
         // No-op by default (only terminal-panes currently have search capability)
     }
-    fn search_backward(&mut self) {
+    fn search_up(&mut self) {
         // No-op by default (only terminal-panes currently have search capability)
     }
     fn toggle_search_case_sensitivity(&mut self) {
@@ -2032,15 +2032,15 @@ impl Tab {
         }
     }
 
-    pub fn search_forward(&mut self, client_id: ClientId) {
+    pub fn search_down(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.search_forward();
+            active_pane.search_down();
         }
     }
 
-    pub fn search_backward(&mut self, client_id: ClientId) {
+    pub fn search_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            active_pane.search_backward();
+            active_pane.search_up();
         }
     }
 

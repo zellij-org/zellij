@@ -574,18 +574,18 @@ impl Pane for TerminalPane {
         }
         self.set_should_render(true);
     }
-    fn search_forward(&mut self) {
+    fn search_down(&mut self) {
         if self.search_term.is_empty() {
             return; // No-op
         }
-        self.grid.search_forward();
+        self.grid.search_down();
         self.set_should_render(true);
     }
-    fn search_backward(&mut self) {
+    fn search_up(&mut self) {
         if self.search_term.is_empty() {
             return; // No-op
         }
-        self.grid.search_backward();
+        self.grid.search_up();
         self.set_should_render(true);
     }
     fn toggle_search_case_sensitivity(&mut self) {

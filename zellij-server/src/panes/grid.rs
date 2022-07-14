@@ -1618,7 +1618,7 @@ impl Grid {
         self.scrollback_buffer_lines =
             subtract_isize_from_usize(self.scrollback_buffer_lines, transferred_rows_count);
     }
-    pub fn search_forward(&mut self) {
+    pub fn search_down(&mut self) {
         let search_viewport_for_the_first_time =
             self.search_results.active.is_none() && !self.search_results.selections.is_empty();
         let search_viewport_again = !self.search_results.selections.is_empty()
@@ -1711,7 +1711,7 @@ impl Grid {
         }
     }
 
-    pub fn search_backward(&mut self) {
+    pub fn search_up(&mut self) {
         let search_viewport_for_the_first_time =
             self.search_results.active.is_none() && !self.search_results.selections.is_empty();
         let search_viewport_again = !self.search_results.selections.is_empty()
@@ -1803,10 +1803,10 @@ impl Grid {
         // we jump around until we find something. Starting
         // going backwards.
         if self.search_results.selections.is_empty() {
-            self.search_backward();
+            self.search_up();
         }
         if self.search_results.selections.is_empty() {
-            self.search_forward();
+            self.search_down();
         }
         // We still don't want to pre-select anything at this stage
         self.search_results.active = None;

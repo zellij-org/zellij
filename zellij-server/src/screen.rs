@@ -133,8 +133,8 @@ pub enum ScreenInstruction {
     ConfirmPrompt(ClientId),
     DenyPrompt(ClientId),
     UpdateSearch(Vec<u8>, ClientId),
-    SearchForward(ClientId),
-    SearchBackward(ClientId),
+    SearchDown(ClientId),
+    SearchUp(ClientId),
     SearchToggleCaseSensitivity(ClientId),
     SearchToggleWholeWord(ClientId),
     SearchToggleWrap(ClientId),
@@ -233,8 +233,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
             ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
             ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
-            ScreenInstruction::SearchForward(..) => ScreenContext::SearchForward,
-            ScreenInstruction::SearchBackward(..) => ScreenContext::SearchBackward,
+            ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
+            ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
             ScreenInstruction::SearchToggleCaseSensitivity(..) => {
                 ScreenContext::SearchToggleCaseSensitivity
             },
@@ -1361,14 +1361,13 @@ pub(crate) fn screen_thread_main(
                     .update_search_term(c, client_id));
                 screen.render();
             },
-            ScreenInstruction::SearchForward(client_id) => {
+            ScreenInstruction::SearchDown(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .search_forward(client_id));
+                    .search_down(client_id));
                 screen.render();
             },
-            ScreenInstruction::SearchBackward(client_id) => {
-                active_tab!(screen, client_id, |tab: &mut Tab| tab
-                    .search_backward(client_id));
+            ScreenInstruction::SearchUp(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab.search_up(client_id));
                 screen.render();
             },
             ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {

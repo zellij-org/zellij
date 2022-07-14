@@ -425,8 +425,8 @@ fn route_action(
         },
         Action::Search(d) => {
             let instruction = match d {
-                SearchDirection::Forward => ScreenInstruction::SearchForward(client_id),
-                SearchDirection::Backward => ScreenInstruction::SearchBackward(client_id),
+                SearchDirection::Down => ScreenInstruction::SearchDown(client_id),
+                SearchDirection::Up => ScreenInstruction::SearchUp(client_id),
             };
             session.senders.send_to_screen(instruction).unwrap();
         },

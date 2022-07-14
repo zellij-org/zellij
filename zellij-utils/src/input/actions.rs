@@ -29,8 +29,8 @@ pub enum ResizeDirection {
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum SearchDirection {
-    Forward,
-    Backward,
+    Down,
+    Up,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
