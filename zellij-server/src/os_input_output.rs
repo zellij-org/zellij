@@ -165,7 +165,11 @@ fn handle_terminal(
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
 // Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
 fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
-    if let Some(file_name) = command.file_name().and_then(|f_n| f_n.to_str()).map(|f_n| f_n.to_string()) {
+    if let Some(file_name) = command
+        .file_name()
+        .and_then(|f_n| f_n.to_str())
+        .map(|f_n| f_n.to_string())
+    {
         let mut file_name_parts = file_name.split_ascii_whitespace();
         if let Some(first_part) = file_name_parts.next() {
             command.set_file_name(first_part);
