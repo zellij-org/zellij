@@ -1,5 +1,5 @@
 use ansi_term::{
-    ANSIStrings,
+    unstyled_len, ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };
@@ -8,7 +8,7 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::{
-    action_key, action_key_group, get_common_modifier,
+    action_key, action_key_group, style_key_with_modifier,
     tip::{data::TIPS, TipFn},
     LinePart, MORE_MSG, TO_NORMAL,
 };
@@ -22,63 +22,26 @@ fn full_length_shortcut(
     if key.is_empty() {
         return LinePart::default();
     }
+
     let text_color = palette_match!(match palette.theme_hue {
         ThemeHue::Dark => palette.white,
         ThemeHue::Light => palette.black,
     });
 
-    let modifier = match get_common_modifier(key.iter().collect()) {
-        Some(text) => format!("{} + ", text),
-        None => String::from(""),
-    };
-    let key = key
-        .iter()
-        .map(|key| {
-            if modifier.is_empty() {
-                format!("{}", key)
-            } else {
-                match key {
-                    Key::Ctrl(c) => format!("{}", c),
-                    Key::Alt(c) => format!("{}", c),
-                    _ => format!("{}", key),
-                }
-            }
-        })
-        .collect::<Vec<String>>();
-
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
     let separator = if is_first_shortcut { " " } else { " / " };
+    let mut bits: Vec<ANSIString> = vec![Style::new().fg(text_color).paint(separator)];
+    bits.extend(style_key_with_modifier(&key, &palette));
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .bold()
+            .paint(format!(" {}", action)),
+    );
+    let part = ANSIStrings(&bits);
 
-    let mut ansi_string = vec![
-        Style::new().fg(text_color).paint(separator),
-        Style::new().fg(orange_color).bold().paint(&modifier),
-        Style::new().fg(text_color).paint("<"),
-    ];
-    let key_string = key.join("");
-    let key_separator = match &key_string[..] {
-        "hjkl" => "",
-        "←↓↑→" => "",
-        "←→" => "",
-        "↓↑" => "",
-        _ => "|",
-    };
-    for (idx, key) in key.iter().enumerate() {
-        if idx > 0 && !key_separator.is_empty() {
-            ansi_string.push(Style::new().fg(text_color).paint(key_separator));
-        }
-        ansi_string.push(Style::new().fg(green_color).bold().paint(key));
-    }
-    ansi_string.push(Style::new().fg(text_color).paint("> "));
-    ansi_string.push(Style::new().fg(text_color).bold().paint(action));
     LinePart {
-        part: ANSIStrings(&ansi_string).to_string(),
-        len: separator.chars().count()      // " " or " / "
-            + modifier.chars().count()      // Modifier (Ctrl, Alt), if any
-            + 1                             // "<"
-            + key.join(key_separator).chars().count() // The key shortcut
-            + 2                             // "> "
-            + action.chars().count(), // The action associated with the key
+        part: part.to_string(),
+        len: unstyled_len(&part),
     }
 }
 
@@ -149,7 +112,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     use actions::Direction as Dir;
     use actions::ResizeDirection as RDir;
 
-    let mut old_keymap = mi.get_mode_keybinds().clone();
+    let mut old_keymap = mi.get_mode_keybinds();
     let s = |string: &str| string.to_string();
 
     // Find a keybinding to get back to "Normal" input mode. In this case we prefer '\n' over other
@@ -203,7 +166,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         // "left" and DownArrow for "right". What we really expect is to see LeftArrow and
         // RightArrow.
         // FIXME: So for lack of a better idea we just check this case manually here.
-        let old_keymap = mi.get_mode_keybinds().clone();
+        let old_keymap = mi.get_mode_keybinds();
         let focus_keys_full: Vec<Key> = action_key_group(&old_keymap,
             &[&[A::GoToPreviousTab], &[A::GoToNextTab]]);
         let focus_keys = if focus_keys_full.contains(&Key::Left)

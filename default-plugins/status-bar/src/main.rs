@@ -2,12 +2,16 @@ mod first_line;
 mod second_line;
 mod tip;
 
-use ansi_term::Style;
+use ansi_term::{
+    ANSIString,
+    Colour::{Fixed, RGB},
+    Style,
+};
 
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
-use zellij_tile_utils::style;
+use zellij_tile_utils::{palette_match, style};
 
 use first_line::ctrl_keys;
 use second_line::{
@@ -20,6 +24,8 @@ use tip::utils::get_cached_tip_name;
 // for more of these, copy paste from: https://en.wikipedia.org/wiki/Box-drawing_character
 static ARROW_SEPARATOR: &str = "";
 static MORE_MSG: &str = " ... ";
+/// Shorthand for `Action::SwitchToMode(InputMode::Normal)`.
+const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
 
 #[derive(Default)]
 struct State {
@@ -301,7 +307,7 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
 /// trigger the action pattern are returned as vector of `Vec<Key>`.
 // TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
 // into one group under 'text'.
-pub fn action_key(keymap: &Vec<(Key, Vec<Action>)>, action: &[Action]) -> Vec<Key> {
+pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> {
     keymap
         .iter()
         .filter_map(|(key, acvec)| {
@@ -314,13 +320,75 @@ pub fn action_key(keymap: &Vec<(Key, Vec<Action>)>, action: &[Action]) -> Vec<Ke
         .collect::<Vec<Key>>()
 }
 
-pub fn action_key_group(keymap: &Vec<(Key, Vec<Action>)>, actions: &[&[Action]]) -> Vec<Key> {
+pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) -> Vec<Key> {
     let mut ret = vec![];
     for action in actions {
-        ret.extend(action_key(&keymap, action));
+        ret.extend(action_key(keymap, action));
     }
     ret
 }
 
-/// Shorthand for `Action::SwitchToMode(InputMode::Normal)`.
-pub const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
+pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIString<'static>> {
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+    let green_color = palette_match!(palette.green);
+    let orange_color = palette_match!(palette.orange);
+    let mut ret = vec![];
+
+    // Prints modifier key
+    let modifier_str = match get_common_modifier(keyvec.iter().collect()) {
+        Some(modifier) => modifier,
+        None => "".to_string(),
+    };
+    let no_modifier = modifier_str.is_empty();
+    let painted_modifier = if modifier_str.is_empty() {
+        Style::new().paint("")
+    } else {
+        Style::new().fg(orange_color).bold().paint(modifier_str)
+    };
+    ret.push(painted_modifier);
+
+    // Prints key group start
+    let group_start_str = if no_modifier { "<" } else { " + <" };
+    ret.push(Style::new().fg(text_color).paint(group_start_str));
+
+    // Prints the keys
+    let key = keyvec
+        .iter()
+        .map(|key| {
+            if no_modifier {
+                format!("{}", key)
+            } else {
+                match key {
+                    Key::Ctrl(c) => format!("{}", c),
+                    Key::Alt(c) => format!("{}", c),
+                    _ => format!("{}", key),
+                }
+            }
+        })
+        .collect::<Vec<String>>();
+
+    // Special handling of some pre-defined keygroups
+    let key_string = key.join("");
+    let key_separator = match &key_string[..] {
+        "hjkl" => "",
+        "←↓↑→" => "",
+        "←→" => "",
+        "↓↑" => "",
+        _ => "|",
+    };
+
+    for (idx, key) in key.iter().enumerate() {
+        if idx > 0 && !key_separator.is_empty() {
+            ret.push(Style::new().fg(text_color).paint(key_separator));
+        }
+        ret.push(Style::new().fg(green_color).bold().paint(key.clone()));
+    }
+
+    let group_end_str = ">";
+    ret.push(Style::new().fg(text_color).paint(group_end_str));
+
+    ret
+}
