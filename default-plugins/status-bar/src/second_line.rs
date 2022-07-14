@@ -38,7 +38,7 @@ fn full_length_shortcut(
                 format!("{}", key)
             } else {
                 match key {
-                    Key::Char(c) => format!("{}", c),
+                    Key::Ctrl(c) => format!("{}", c),
                     Key::Alt(c) => format!("{}", c),
                     _ => format!("{}", key),
                 }
