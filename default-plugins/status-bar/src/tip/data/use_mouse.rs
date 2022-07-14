@@ -10,7 +10,7 @@ use zellij_tile_utils::palette_match;
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,10 +21,10 @@ macro_rules! strings {
     }};
 }
 
-pub fn use_mouse_full(palette: Palette) -> LinePart {
+pub fn use_mouse_full(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch pane focus, scroll through the pane
     // scrollbuffer, switch or scroll through tabs
-    let green_color = palette_match!(palette.green);
+    let green_color = palette_match!(help.style.colors.green);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -33,10 +33,10 @@ pub fn use_mouse_full(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn use_mouse_medium(palette: Palette) -> LinePart {
+pub fn use_mouse_medium(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch panes/tabs or scroll through the pane
     // scrollbuffer
-    let green_color = palette_match!(palette.green);
+    let green_color = palette_match!(help.style.colors.green);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -45,9 +45,9 @@ pub fn use_mouse_medium(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn use_mouse_short(palette: Palette) -> LinePart {
+pub fn use_mouse_short(help: &ModeInfo) -> LinePart {
     // Tip: Use the mouse to switch panes/tabs or scroll
-    let green_color = palette_match!(palette.green);
+    let green_color = palette_match!(help.style.colors.green);
 
     strings!(&[
         Style::new().fg(green_color).bold().paint(" Use the mouse"),

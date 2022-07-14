@@ -10,7 +10,7 @@ use zellij_tile_utils::palette_match;
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,10 +21,10 @@ macro_rules! strings {
     }};
 }
 
-pub fn floating_panes_mouse_full(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_full(help: &ModeInfo) -> LinePart {
     // Tip: Toggle floating panes with Ctrl + <p> + <w> and move them with keyboard or mouse
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -38,10 +38,10 @@ pub fn floating_panes_mouse_full(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn floating_panes_mouse_medium(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_medium(help: &ModeInfo) -> LinePart {
     // Tip: Toggle floating panes with Ctrl + <p> + <w>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().paint("Toggle floating panes with "),
@@ -53,10 +53,10 @@ pub fn floating_panes_mouse_medium(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn floating_panes_mouse_short(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_short(help: &ModeInfo) -> LinePart {
     // Ctrl + <p> + <w> => floating panes
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().fg(orange_color).bold().paint(" Ctrl"),

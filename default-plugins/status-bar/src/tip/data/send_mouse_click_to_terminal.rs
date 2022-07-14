@@ -10,7 +10,7 @@ use zellij_tile_utils::palette_match;
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,10 +21,10 @@ macro_rules! strings {
     }};
 }
 
-pub fn mouse_click_to_terminal_full(palette: Palette) -> LinePart {
+pub fn mouse_click_to_terminal_full(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click> bypasses Zellij and sends the mouse click directly to the terminal
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -35,10 +35,10 @@ pub fn mouse_click_to_terminal_full(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn mouse_click_to_terminal_medium(palette: Palette) -> LinePart {
+pub fn mouse_click_to_terminal_medium(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click> sends the click directly to the terminal
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
     strings!(&[
         Style::new().paint(" Tip: "),
         Style::new().fg(orange_color).bold().paint("SHIFT"),
@@ -48,10 +48,10 @@ pub fn mouse_click_to_terminal_medium(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn mouse_click_to_terminal_short(palette: Palette) -> LinePart {
+pub fn mouse_click_to_terminal_short(help: &ModeInfo) -> LinePart {
     // Tip: SHIFT + <mouse-click>  => sends click to terminal.
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Tip: "),

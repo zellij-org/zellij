@@ -232,7 +232,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.style.colors),
+        InputMode::Normal => tip(help),
         InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => full_shortcut_list_nonstandard_mode(help),
     }
@@ -250,7 +250,7 @@ fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.style.colors),
+        InputMode::Normal => tip(help),
         InputMode::Locked => locked_interface_indication(help.style.colors),
         _ => shortened_shortcut_list_nonstandard_mode(help),
     }
@@ -275,7 +275,7 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = tip(help.style.colors);
+            let line_part = tip(help);
             if line_part.len <= max_len {
                 line_part
             } else {
