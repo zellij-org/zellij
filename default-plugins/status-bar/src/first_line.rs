@@ -3,7 +3,7 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::color_elements;
-use crate::{action_key, get_common_modifier, to_normal};
+use crate::{action_key, get_common_modifier, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 
 struct KeyShortcut {
@@ -209,9 +209,9 @@ fn key_indicators(
 ///   to get back to normal mode from any input mode, but they aren't of interest when searching
 ///   for the super key. If for any input mode the user has bound only these keys to switching back
 ///   to `InputMode::Normal`, a '?' will be displayed as keybinding instead.
-pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<&Key> {
+pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
     mode_info
-        .keybinds
+        .get_mode_keybinds()
         .iter()
         .filter_map(|(key, vac)| match vac.first() {
             // No actions defined, ignore
@@ -231,13 +231,13 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<&Key> {
                         | InputMode::Tab
                         | InputMode::Resize
                         | InputMode::Move
-                        | InputMode::Scroll
-                        | InputMode::Session => Some(key),
+                        | InputMode::Search
+                        | InputMode::Session => Some(*key),
                         _ => None,
                     };
                 }
                 if let actions::Action::Quit = vac {
-                    return Some(key);
+                    return Some(*key);
                 }
                 // Not a `SwitchToMode` or `Quit` action, ignore
                 None
@@ -248,7 +248,7 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<&Key> {
 
 pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo) -> LinePart {
     // Find a common modifier if any
-    let prefix_text = match get_common_modifier(mode_switch_keys(mode_info)) {
+    let prefix_text = match get_common_modifier(mode_switch_keys(mode_info).iter().collect()) {
         Some(text) => format!(" {} +", text),
         _ => return LinePart::default(),
     };
@@ -273,7 +273,7 @@ pub fn to_char(kv: Vec<Key>) -> Option<Key> {
         .next();
     // Maybe the user bound one of the ignored keys?
     if key.is_none() {
-        return kv.get(0).cloned();
+        return kv.first().cloned();
     }
     key.cloned()
 }
@@ -281,48 +281,48 @@ pub fn to_char(kv: Vec<Key>) -> Option<Key> {
 pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
-    let binds = &help.keybinds;
+    let binds = &help.get_mode_keybinds();
     // Unselect all by default
     let mut default_keys = vec![
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Lock,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Locked))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Locked)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Pane,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Pane))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Pane)])),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Tab,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Tab))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Tab)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Resize,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Resize))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Resize)])),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Move,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Move))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Move)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Search,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Scroll))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Search)])),
         ),
         KeyShortcut::new(
             KeyMode::Unselected,
             KeyAction::Session,
-            to_char(action_key!(binds, Action::SwitchToMode(InputMode::Session))),
+            to_char(action_key(&binds, &[Action::SwitchToMode(InputMode::Session)])),
         ),
         KeyShortcut::new(
             KeyMode::UnselectedAlternate,
             KeyAction::Quit,
-            to_char(action_key!(binds, Action::Quit)),
+            to_char(action_key(&binds, &[Action::Quit])),
         ),
     ];
 
@@ -343,7 +343,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     };
     if let Some(index) = mode_index {
         default_keys[index].mode = KeyMode::Selected;
-        default_keys[index].key = to_char(action_key!(binds, to_normal!()));
+        default_keys[index].key = to_char(action_key(&binds, &[TO_NORMAL]));
     }
 
     if help.mode == InputMode::Tmux {
@@ -351,7 +351,7 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
         default_keys.push(KeyShortcut::new(
             KeyMode::Selected,
             KeyAction::Tmux,
-            to_char(action_key!(binds, to_normal!())),
+            to_char(action_key(&binds, &[TO_NORMAL])),
         ));
     }
 

@@ -1,4 +1,3 @@
-use super::{action_key, get_common_modifier, to_normal};
 use ansi_term::{
     ANSIStrings,
     Color::{Fixed, RGB},
@@ -9,8 +8,9 @@ use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::{
+    action_key, action_key_group, get_common_modifier,
     tip::{data::TIPS, TipFn},
-    LinePart, MORE_MSG,
+    LinePart, MORE_MSG, TO_NORMAL,
 };
 
 fn full_length_shortcut(
@@ -59,7 +59,7 @@ fn full_length_shortcut(
     let key_separator = match &key_string[..] {
         "hjkl" => "",
         "←↓↑→" => "",
-        "←↓" => "",
+        "←→" => "",
         "↓↑" => "",
         _ => "|",
     };
@@ -149,12 +149,12 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     use actions::Direction as Dir;
     use actions::ResizeDirection as RDir;
 
-    let mut old_keymap = mi.keybinds.clone();
+    let mut old_keymap = mi.get_mode_keybinds().clone();
     let s = |string: &str| string.to_string();
 
     // Find a keybinding to get back to "Normal" input mode. In this case we prefer '\n' over other
     // choices. Do it here before we dedupe the keymap below!
-    let to_normal_keys = action_key!(old_keymap, to_normal!());
+    let to_normal_keys = action_key(&old_keymap, &[TO_NORMAL]);
     let to_normal_key = if to_normal_keys.contains(&Key::Char('\n')) {
         vec![Key::Char('\n')]
     } else {
@@ -169,7 +169,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
     let mut known_actions: Vec<Vec<Action>> = vec![];
     let mut km = vec![];
-    for (key, acvec) in old_keymap.into_iter() {
+    for (key, acvec) in old_keymap {
         if known_actions.contains(&acvec) {
             // This action is known already
             continue;
@@ -180,69 +180,90 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     }
 
     if mi.mode == IM::Pane { vec![
-        (s("Move focus"), s("Move"), action_key!(km, A::MoveFocus(_))),
-        (s("New"), s("New"), action_key!(km, A::NewPane(None), to_normal!())),
-        (s("Close"), s("Close"), action_key!(km, A::CloseFocus, to_normal!())),
-        (s("Rename"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenamePane), A::PaneNameInput(_))),
-        (s("Split down"), s("Down"), action_key!(km, A::NewPane(Some(Dir::Down)), to_normal!())),
-        (s("Split right"), s("Right"), action_key!(km, A::NewPane(Some(Dir::Right)), to_normal!())),
-        (s("Fullscreen"), s("Fullscreen"), action_key!(km, A::ToggleFocusFullscreen, to_normal!())),
-        (s("Frames"), s("Frames"), action_key!(km, A::TogglePaneFrames, to_normal!())),
-        (s("Floating toggle"), s("Floating"), action_key!(km, A::ToggleFloatingPanes, to_normal!())),
-        (s("Embed pane"), s("Embed"), action_key!(km, A::TogglePaneEmbedOrFloating, to_normal!())),
-        (s("Next"), s("Next"), action_key!(km, A::SwitchFocus)),
+        (s("Move focus"), s("Move"),
+            action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+                &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane(None), TO_NORMAL])),
+        (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
+        (s("Rename"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down)), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right)), TO_NORMAL])),
+        (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
+        (s("Frames"), s("Frames"), action_key(&km, &[A::TogglePaneFrames, TO_NORMAL])),
+        (s("Floating toggle"), s("Floating"),
+            action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
+        (s("Embed pane"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
+        (s("Next"), s("Next"), action_key(&km, &[A::SwitchFocus])),
         (s("Select pane"), s("Select"), to_normal_key),
-    ]} else if mi.mode == IM::Tab { vec![
-        (s("Move focus"), s("Move"), action_key!(km, A::GoToPreviousTab).into_iter()
-                    .chain(action_key!(km, A::GoToNextTab).into_iter()).collect()),
-        (s("New"), s("New"), action_key!(km, A::NewTab(None), to_normal!())),
-        (s("Close"), s("Close"), action_key!(km, A::CloseTab, to_normal!())),
-        (s("Rename"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenameTab), A::TabNameInput(_))),
-        (s("Sync"), s("Sync"), action_key!(km, A::ToggleActiveSyncTab, to_normal!())),
-        (s("Toggle"), s("Toggle"), action_key!(km, A::ToggleTab)),
+    ]} else if mi.mode == IM::Tab { 
+        // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
+        // to moving tabs focus (left/up go left, right/down go right). Since we sort the keys
+        // above and then dedpulicate based on the actions, we will end up with LeftArrow for
+        // "left" and DownArrow for "right". What we really expect is to see LeftArrow and
+        // RightArrow.
+        // FIXME: So for lack of a better idea we just check this case manually here.
+        let old_keymap = mi.get_mode_keybinds().clone();
+        let focus_keys_full: Vec<Key> = action_key_group(&old_keymap,
+            &[&[A::GoToPreviousTab], &[A::GoToNextTab]]);
+        let focus_keys = if focus_keys_full.contains(&Key::Left)
+            && focus_keys_full.contains(&Key::Right) {
+            vec![Key::Left, Key::Right]
+        } else {
+            action_key_group(&km, &[&[A::GoToPreviousTab], &[A::GoToNextTab]])
+        };
+
+        vec![
+        (s("Move focus"), s("Move"), focus_keys),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None), TO_NORMAL])),
+        (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
+        (s("Rename"), s("Rename"), action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+        (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
+        (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
-        (s("Resize"), s("Resize"), action_key!(km, A::Resize(RDir::Left)).into_iter()
-                    .chain(action_key!(km, A::Resize(RDir::Down)).into_iter())
-                    .chain(action_key!(km, A::Resize(RDir::Up)).into_iter())
-                    .chain(action_key!(km, A::Resize(RDir::Right)).into_iter())
-                    .collect::<Vec<Key>>()),
+        (s("Resize"), s("Resize"), action_key_group(&km, &[
+            &[A::Resize(RDir::Left)], &[A::Resize(RDir::Down)],
+            &[A::Resize(RDir::Up)], &[A::Resize(RDir::Right)]])),
         (s("Increase/Decrease size"), s("Increase/Decrease"),
-            action_key!(km, A::Resize(RDir::Increase)).into_iter()
-                    .chain(action_key!(km, A::Resize(RDir::Decrease)).into_iter()).collect()),
+            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])), 
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
-        (s("Move"), s("Move"), action_key!(km, Action::MovePane(Some(_)))),
-        (s("Next pane"), s("Next"), action_key!(km, Action::MovePane(None))),
+        (s("Move"), s("Move"), action_key_group(&km, &[
+            &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
+            &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
+        (s("Next pane"), s("Next"), action_key(&km, &[Action::MovePane(None)])),
     ]} else if mi.mode == IM::Scroll { vec![
-        (s("Scroll"), s("Scroll"), action_key!(km, Action::ScrollDown).into_iter()
-                    .chain(action_key!(km, Action::ScrollUp).into_iter()).collect()),
-        (s("Scroll page"), s("Scroll"), action_key!(km, Action::PageScrollDown).into_iter()
-                    .chain(action_key!(km, Action::PageScrollUp).into_iter()).collect()),
-        (s("Scroll half page"), s("Scroll"), action_key!(km, Action::HalfPageScrollDown).into_iter()
-                    .chain(action_key!(km, Action::HalfPageScrollUp).into_iter()).collect()),
+        (s("Scroll"), s("Scroll"),
+            action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
+        (s("Scroll page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
+        (s("Scroll half page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
         (s("Edit scrollback in default editor"), s("Edit"),
-            action_key!(km, Action::EditScrollback, to_normal!())),
+            action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Session { vec![
-        (s("Detach"), s("Detach"), action_key!(km, Action::Detach)),
+        (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Tmux { vec![
-        (s("Move focus"), s("Move"), action_key!(km, A::MoveFocus(_))),
-        (s("Split down"), s("Down"), action_key!(km, A::NewPane(Some(Dir::Down)), to_normal!())),
-        (s("Split right"), s("Right"), action_key!(km, A::NewPane(Some(Dir::Right)), to_normal!())),
-        (s("Fullscreen"), s("Fullscreen"), action_key!(km, A::ToggleFocusFullscreen, to_normal!())),
-        (s("New tab"), s("New"), action_key!(km, A::NewTab(None), to_normal!())),
-        (s("Rename tab"), s("Rename"), action_key!(km, A::SwitchToMode(IM::RenameTab), A::TabNameInput(_))),
-        (s("Previous Tab"), s("Previous"), action_key!(km, A::GoToPreviousTab, to_normal!())),
-        (s("Next Tab"), s("Next"), action_key!(km, A::GoToNextTab, to_normal!())),
+        (s("Move focus"), s("Move"), action_key_group(&km, &[
+            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down)), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right)), TO_NORMAL])),
+        (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None), TO_NORMAL])),
+        (s("Rename tab"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+        (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
+        (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
         (s("When done"), s("Done"), to_normal_key),
-        (s("Select pane"), s("Select"), action_key!(km, A::MoveFocusOrTab(Dir::Left)).into_iter()
-                    .chain(action_key!(km, A::MoveFocus(Dir::Down)).into_iter())
-                    .chain(action_key!(km, A::MoveFocus(Dir::Up)).into_iter())
-                    .chain(action_key!(km, A::MoveFocusOrTab(Dir::Right)).into_iter()).collect()),
+        (s("Select pane"), s("Select"), action_key_group(&km, &[
+            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
     ]} else { vec![] }
 }
 
@@ -279,7 +300,6 @@ fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -
     for (_, short, keys) in keys_and_hints.into_iter() {
         let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
         if new_line_part.len + MORE_MSG.chars().count() > max_len {
-            // TODO: better
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
             break;
@@ -387,7 +407,7 @@ pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> Line
 
 pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let palette = mode_info.style.colors;
-    let km = &mode_info.keybinds;
+    let km = &mode_info.get_mode_keybinds();
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -406,7 +426,7 @@ pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
     let press = "Press ";
     let pane_mode = format!(
         "{}",
-        action_key!(km, Action::SwitchToMode(InputMode::Pane))
+        action_key(km, &[Action::SwitchToMode(InputMode::Pane)])
             .first()
             .unwrap_or(&Key::Char('?'))
     );
