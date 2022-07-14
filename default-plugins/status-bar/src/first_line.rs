@@ -127,6 +127,7 @@ fn short_tile(
     palette: ColoredElements,
     separator: &str,
     shared_super: bool,
+    first_tile: bool,
 ) -> LinePart {
     if key.key.is_none() {
         return LinePart::default();
@@ -139,7 +140,12 @@ fn short_tile(
         KeyMode::Selected => palette.selected,
         KeyMode::Disabled => palette.disabled,
     };
-    let prefix_separator = colors.prefix_separator.paint(separator);
+    let start_separator = if !shared_super && first_tile {
+        ""
+    } else {
+        separator
+    };
+    let prefix_separator = colors.prefix_separator.paint(start_separator);
     let char_shortcut = colors.char_shortcut.paint(format!(" {} ", key_binding));
     let suffix_separator = colors.suffix_separator.paint(separator);
     LinePart {
@@ -162,8 +168,9 @@ fn key_indicators(
     // Print full-width hints
     let mut line_part = superkey(palette, separator, mode_info);
     let shared_super = line_part.len > 0;
-    for (i, ctrl_key) in keys.iter().enumerate() {
-        let key = long_tile(ctrl_key, palette, separator, shared_super, i == 0);
+    for ctrl_key in keys {
+        let line_empty = line_part.len == 0;
+        let key = long_tile(ctrl_key, palette, separator, shared_super, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -175,7 +182,8 @@ fn key_indicators(
     line_part = superkey(palette, separator, mode_info);
     let shared_super = line_part.len > 0;
     for ctrl_key in keys {
-        let key = short_tile(ctrl_key, palette, separator, shared_super);
+        let line_empty = line_part.len == 0;
+        let key = short_tile(ctrl_key, palette, separator, shared_super, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
