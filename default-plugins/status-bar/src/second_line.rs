@@ -76,7 +76,7 @@ fn full_length_shortcut(
         len: separator.chars().count()      // " " or " / "
             + modifier.chars().count()      // Modifier (Ctrl, Alt), if any
             + 1                             // "<"
-            + key.join("/").chars().count() // The key shortcut
+            + key.join(key_separator).chars().count() // The key shortcut
             + 2                             // "> "
             + action.chars().count(), // The action associated with the key
     }
