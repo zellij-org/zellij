@@ -293,14 +293,16 @@ pub struct Style {
     pub rounded_corners: bool,
 }
 
+// FIXME: Poor devs hashtable since HashTable can't derive `Default`...
+pub type KeybindsVec = Vec<(InputMode, Vec<(Key, Vec<Action>)>)>;
+
 /// Represents the contents of the help message that is printed in the status bar,
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
 #[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
-    // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
-    pub keybinds: Vec<(InputMode, Vec<(Key, Vec<Action>)>)>,
+    pub keybinds: KeybindsVec,
     pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,

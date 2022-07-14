@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
 use super::config;
-use crate::data::{InputMode, Key};
+use crate::data::{InputMode, Key, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -84,10 +84,10 @@ impl Keybinds {
             .keybinds
     }
 
-    pub fn to_keybinds_vec(&self) -> Vec<(InputMode, Vec<(Key, Vec<Action>)>)> {
+    pub fn to_keybinds_vec(&self) -> KeybindsVec {
         let mut ret = vec![];
         for (mode, mode_binds) in &self.0 {
-            ret.push((mode.clone(), mode_binds.to_cloned_vec()));
+            ret.push((*mode, mode_binds.to_cloned_vec()));
         }
         ret
     }
