@@ -6,6 +6,7 @@ use ansi_term::Style;
 
 use std::fmt::{Display, Error, Formatter};
 use zellij_tile::prelude::*;
+use zellij_tile::prelude::actions::Action;
 use zellij_tile_utils::style;
 
 use first_line::ctrl_keys;
@@ -300,30 +301,25 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
 /// trigger the action pattern are returned as vector of `Vec<Key>`.
 // TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
 // into one group under 'text'.
-#[macro_export]
-macro_rules! action_key {
-    ($keymap:ident, $( $p:pat ),+) => {
-        //let mut ret: Vec<Key>;
-        $keymap.iter().
-            filter_map(|(key, acvec)| {
-                match matches!(acvec.as_slice(), &[$($p),+]) {
-                    true => Some(*key),
-                    false => None
-                }
-            })
-            .collect::<Vec<Key>>()
-    };
+pub fn action_key(keymap: &Vec<(Key, Vec<Action>)>, action: &[Action]) -> Vec<Key> {
+    keymap.iter().
+        filter_map(|(key, acvec)| {
+            if acvec.as_slice() == action {
+                Some(*key)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<Key>>()
 }
 
-/// Helper macro to represent common pattern.
-///
-/// Expands verbosely to `Action::SwitchToMode(InputMode::Normal)`, which is an action that often
-/// repeats in the keybindings configuration. We need it to expand to verbose rust code (i.e. a
-/// "Textual replacement", similar to C `#define`) so it gets picked up as proper pattern in the
-/// `action_key!` macro.
-#[macro_export]
-macro_rules! to_normal {
-    () => {
-        Action::SwitchToMode(InputMode::Normal)
-    };
+pub fn action_key_group(keymap: &Vec<(Key, Vec<Action>)>, actions: &[&[Action]]) -> Vec<Key> {
+    let mut ret = vec![];
+    for action in actions {
+        ret.extend(action_key(&keymap, action));
+    }
+    ret
 }
+
+/// Shorthand for `Action::SwitchToMode(InputMode::Normal)`.
+pub const TO_NORMAL: Action = Action::SwitchToMode(InputMode::Normal);
