@@ -262,13 +262,32 @@ pub trait Pane {
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
-    fn position_is_on_frame(&self, position_on_screen: &Position) -> bool {
-        // TODO: handle cases where we have no frame
-        position_on_screen.line() == self.y() as isize
-            || position_on_screen.line()
-                == (self.y() as isize + self.rows() as isize).saturating_sub(1)
-            || position_on_screen.column() == self.x()
-            || position_on_screen.column() == (self.x() + self.cols()).saturating_sub(1)
+    fn position_is_on_frame(&self, position: &Position) -> bool {
+        if !self.contains(position) {
+            return false;
+        }
+        if (self.x()..self.get_content_x()).contains(&position.column()) {
+            // position is on left border
+            return true;
+        }
+        if (self.get_content_x() + self.get_content_columns()..(self.x() + self.cols()))
+            .contains(&position.column())
+        {
+            // position is on right border
+            return true;
+        }
+        if (self.y() as isize..self.get_content_y() as isize).contains(&position.line()) {
+            // position is on top border
+            return true;
+        }
+        if ((self.get_content_y() + self.get_content_rows()) as isize
+            ..(self.y() + self.rows()) as isize)
+            .contains(&position.line())
+        {
+            // position is on bottom border
+            return true;
+        }
+        false
     }
     fn store_pane_name(&mut self);
     fn load_pane_name(&mut self);
@@ -1730,12 +1749,14 @@ impl Tab {
             let relative_position = pane.relative_position(position);
 
             if pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<0;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                if !pane.position_is_on_frame(position) {
+                    let mouse_event = format!(
+                        "\u{1b}[<0;{:?};{:?}M",
+                        relative_position.column() + 1,
+                        relative_position.line() + 1
+                    );
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                }
             } else {
                 // TODO: rename this method, it is used to forward click events to plugin panes
                 pane.start_selection(&relative_position, client_id);
@@ -1751,12 +1772,14 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             if pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<2;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                if !pane.position_is_on_frame(position) {
+                    let mouse_event = format!(
+                        "\u{1b}[<2;{:?};{:?}M",
+                        relative_position.column() + 1,
+                        relative_position.line() + 1
+                    );
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                }
             } else {
                 pane.handle_right_click(&relative_position, client_id);
             }
@@ -1798,11 +1821,11 @@ impl Tab {
             let relative_position = active_pane.relative_position(position);
             if active_pane.mouse_mode() {
                 // ensure that coordinates are valid
-                let col = (relative_position.column.0 + 1)
+                let col = (relative_position.column() + 1)
                     .max(1)
                     .min(active_pane.get_content_columns());
 
-                let line = (relative_position.line.0 + 1)
+                let line = (relative_position.line() + 1)
                     .max(1)
                     .min(active_pane.get_content_rows() as isize);
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
@@ -1861,11 +1884,11 @@ impl Tab {
             let relative_position = active_pane.relative_position(position_on_screen);
             if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
-                let col = (relative_position.column.0 + 1)
+                let col = (relative_position.column() + 1)
                     .max(1)
                     .min(active_pane.get_content_columns());
 
-                let line = (relative_position.line.0 + 1)
+                let line = (relative_position.line() + 1)
                     .max(1)
                     .min(active_pane.get_content_rows() as isize);
 
