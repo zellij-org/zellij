@@ -40,9 +40,9 @@ jobs:
       - name: Set release tag
         run: |
           if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
-            echo "RELEASE_TAG=main" >> $GITHUB_ENV
+            echo "RELEASE_TAG=main" >> "$GITHUB_ENV"
           else
-            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> $GITHUB_ENV
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> "$GITHUB_ENV"
           fi
 
       - name: Checkout repository
