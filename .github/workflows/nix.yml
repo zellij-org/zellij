@@ -47,4 +47,4 @@ jobs:
           nix build .#zellij-msrv || nix build .#zellij-msrv --substituters 'https://cache.nixos.org' --extra-substituters ''
       - if: ${{ failure() }}
         run: |
-          echo "::error :: If this is the only ci step failing, it is likely that the MSRV needs to be bumped.
+          echo "::error :: If this is the only ci step failing, it is likely that the MSRV needs to be bumped."
