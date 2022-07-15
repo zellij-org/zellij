@@ -82,7 +82,10 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     );
     let pane_frames = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
-        &[Action::TogglePaneFrames, Action::SwitchToMode(InputMode::Normal)],
+        &[
+            Action::TogglePaneFrames,
+            Action::SwitchToMode(InputMode::Normal),
+        ],
     );
 
     let mut bits = vec![];

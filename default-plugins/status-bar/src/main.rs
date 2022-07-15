@@ -328,11 +328,7 @@ pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) ->
     ret
 }
 
-pub fn style_key_with_modifier(
-    keyvec: &[Key],
-    palette: &Palette,
-) -> Vec<ANSIString<'static>> {
-
+pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIString<'static>> {
     // Nothing to do, quit...
     if keyvec.is_empty() {
         return vec![];

@@ -1,10 +1,7 @@
-use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
-    Style,
-};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::{LinePart, action_key, style_key_with_modifier};
-use zellij_tile::prelude::{*, actions::Action};
+use crate::{action_key, style_key_with_modifier, LinePart};
+use zellij_tile::prelude::{actions::Action, *};
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
@@ -54,7 +51,10 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     );
     let pane_frames = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
-        &[Action::ToggleFloatingPanes, Action::SwitchToMode(InputMode::Normal)],
+        &[
+            Action::ToggleFloatingPanes,
+            Action::SwitchToMode(InputMode::Normal),
+        ],
     );
 
     let mut bits = vec![];

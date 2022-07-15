@@ -102,10 +102,10 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let mut letters = vec![];
     for key in move_focus_keys.into_iter() {
         let key_str = key.to_string();
-        if key_str.contains("←")
-            || key_str.contains("↓")
-            || key_str.contains("↑")
-            || key_str.contains("→")
+        if key_str.contains('←')
+            || key_str.contains('↓')
+            || key_str.contains('↑')
+            || key_str.contains('→')
         {
             arrows.push(key);
         } else {
