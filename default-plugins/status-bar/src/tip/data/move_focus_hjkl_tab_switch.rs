@@ -65,5 +65,10 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(&pane_frames, &help.style.colors));
+
+    if bits.len() < 2 {
+        // No keybindings available
+        bits = vec![Style::new().bold().paint("UNBOUND")];
+    }
     bits
 }

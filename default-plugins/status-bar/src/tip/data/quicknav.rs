@@ -65,28 +65,70 @@ struct Keygroups<'a> {
 }
 
 fn add_keybinds(help: &ModeInfo) -> Keygroups {
-    let normal_keymap = help.get_keybinds_for_mode(InputMode::Normal);
-    let new_pane = action_key(&normal_keymap, &[Action::NewPane(None)]);
-    let move_focus = action_key_group(
-        &normal_keymap,
-        &[
-            &[Action::MoveFocus(Direction::Left)],
-            &[Action::MoveFocus(Direction::Down)],
-            &[Action::MoveFocus(Direction::Up)],
-            &[Action::MoveFocus(Direction::Right)],
-        ],
-    );
-    let resize = action_key_group(
+    let normal_keymap = help.get_mode_keybinds();
+    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None)]);
+    let new_pane = if new_pane_keys.is_empty() {
+        vec![Style::new().bold().paint("UNBOUND")]
+    } else {
+        style_key_with_modifier(&new_pane_keys, &help.style.colors)
+    };
+
+    let resize_keys = action_key_group(
         &normal_keymap,
         &[
             &[Action::Resize(ResizeDirection::Increase)],
             &[Action::Resize(ResizeDirection::Decrease)],
         ],
     );
+    let resize = if resize_keys.is_empty() {
+        vec![Style::new().bold().paint("UNBOUND")]
+    } else {
+        style_key_with_modifier(&resize_keys, &help.style.colors)
+    };
+
+    let move_focus_keys = action_key_group(
+        &normal_keymap,
+        &[
+            &[Action::MoveFocus(Direction::Left)],
+            &[Action::MoveFocusOrTab(Direction::Left)],
+            &[Action::MoveFocus(Direction::Down)],
+            &[Action::MoveFocus(Direction::Up)],
+            &[Action::MoveFocus(Direction::Right)],
+            &[Action::MoveFocusOrTab(Direction::Right)],
+        ],
+    );
+    // Let's see if we have some pretty groups in common here
+    let mut arrows = vec![];
+    let mut letters = vec![];
+    for key in move_focus_keys.into_iter() {
+        let key_str = key.to_string();
+        if key_str.contains("←")
+            || key_str.contains("↓")
+            || key_str.contains("↑")
+            || key_str.contains("→")
+        {
+            arrows.push(key);
+        } else {
+            letters.push(key);
+        }
+    }
+    let arrows = style_key_with_modifier(&arrows, &help.style.colors);
+    let letters = style_key_with_modifier(&letters, &help.style.colors);
+    let move_focus = if arrows.is_empty() && letters.is_empty() {
+        vec![Style::new().bold().paint("UNBOUND")]
+    } else if arrows.is_empty() || letters.is_empty() {
+        arrows.into_iter().chain(letters.into_iter()).collect()
+    } else {
+        arrows
+            .into_iter()
+            .chain(vec![Style::new().paint(" or ")].into_iter())
+            .chain(letters.into_iter())
+            .collect()
+    };
 
     Keygroups {
-        new_pane: style_key_with_modifier(&new_pane, &help.style.colors),
-        move_focus: style_key_with_modifier(&move_focus, &help.style.colors),
-        resize: style_key_with_modifier(&resize, &help.style.colors),
+        new_pane,
+        move_focus,
+        resize,
     }
 }

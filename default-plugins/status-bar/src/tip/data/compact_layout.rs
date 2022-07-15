@@ -82,12 +82,17 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     );
     let pane_frames = action_key(
         &help.get_keybinds_for_mode(InputMode::Pane),
-        &[Action::TogglePaneFrames],
+        &[Action::TogglePaneFrames, Action::SwitchToMode(InputMode::Normal)],
     );
 
     let mut bits = vec![];
     bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(&pane_frames, &help.style.colors));
+
+    if bits.len() < 2 {
+        // No keybindings available
+        bits = vec![Style::new().bold().paint("UNBOUND")];
+    }
     bits
 }
