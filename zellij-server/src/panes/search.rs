@@ -103,6 +103,7 @@ pub struct SearchResult {
 impl SearchResult {
     /// This is only used for Debug formatting Grid, which itself is only used
     /// for tests.
+    #[allow(clippy::ptr_arg)]
     pub(crate) fn mark_search_results_in_row(&self, row: &mut Cow<Row>, ridx: usize) {
         for s in &self.selections {
             if s.contains_row(ridx) {
