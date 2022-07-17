@@ -270,7 +270,7 @@ impl SearchResult {
         // so it could be that the end extends across more characters than the row is wide.
         // Therefore we need to reflow the end:
         for s in res.iter_mut() {
-            while s.end.column() >= row.width() {
+            while s.end.column() > row.width() {
                 s.end.column.0 -= row.width();
                 s.end.line.0 += 1;
             }
