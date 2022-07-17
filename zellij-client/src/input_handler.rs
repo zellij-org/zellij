@@ -189,6 +189,7 @@ impl InputHandler {
         }
     }
     fn handle_actions(&mut self, actions: Vec<Action>, session_name: &str, clients: Vec<ClientId>) {
+        let mut detached = false;
         for action in actions {
             match action {
                 Action::Quit => {
@@ -200,6 +201,7 @@ impl InputHandler {
                     let last = clients.last().unwrap();
                     self.os_input
                         .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
+                    detached = true;
                     break;
                 },
                 // Actions, that are independent from the specific client
@@ -238,7 +240,11 @@ impl InputHandler {
         self.dispatch_action(Action::Detach, None);
         self.should_exit = true;
         log::error!("Quitting Now. Dispatched the actions");
-        self.exit();
+        if detached {
+            self.exit(ExitReason::NormalDetached);
+        } else {
+            self.exit(ExitReason::Normal);
+        }
     }
 
     /// Dispatches an [`Action`].
@@ -257,10 +263,16 @@ impl InputHandler {
 
         match action {
             Action::NoOp => {},
-            Action::Quit | Action::Detach => {
+            Action::Quit => {
                 self.os_input
                     .send_to_server(ClientToServerMsg::Action(action, client_id));
-                self.exit();
+                self.exit(ExitReason::Normal);
+                should_break = true;
+            },
+            Action::Detach => {
+                self.os_input
+                    .send_to_server(ClientToServerMsg::Action(action, client_id));
+                self.exit(ExitReason::NormalDetached);
                 should_break = true;
             },
             Action::SwitchToMode(mode) => {
@@ -298,9 +310,9 @@ impl InputHandler {
 
     /// Routine to be called when the input handler exits (at the moment this is the
     /// same as quitting Zellij).
-    fn exit(&mut self) {
+    fn exit(&mut self, reason: ExitReason) {
         self.send_client_instructions
-            .send(ClientInstruction::Exit(ExitReason::Normal))
+            .send(ClientInstruction::Exit(reason))
             .unwrap();
     }
 }
