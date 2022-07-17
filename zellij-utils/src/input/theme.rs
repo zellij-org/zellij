@@ -35,7 +35,7 @@ struct ThemeFromYaml {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-struct Theme {
+pub struct Theme {
     #[serde(flatten)]
     palette: PaletteFromYaml,
 }
@@ -185,7 +185,6 @@ impl ThemesFromYaml {
     pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {
-            // TODO: if the theme does not exist in the config, check the `themes` dir.
             Some(theme) => from_yaml.from_default_theme(theme.to_owned()),
             None => from_yaml.from_default_theme("default".into()),
         }
