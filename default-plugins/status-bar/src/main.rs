@@ -301,10 +301,10 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
 
 /// Get key from action pattern(s).
 ///
-/// This macro takes as arguments a `keymap` that is a `Vec<(Key, Vec<Action>)>` and contains all
-/// keybindings for the current mode and one or more `p` patterns which match a sequence of actions
-/// to search for. If within the keymap a sequence of actions matching `p` is found, all keys that
-/// trigger the action pattern are returned as vector of `Vec<Key>`.
+/// This function takes as arguments a `keymap` that is a `Vec<(Key, Vec<Action>)>` and contains
+/// all keybindings for the current mode and one or more `p` patterns which match a sequence of
+/// actions to search for. If within the keymap a sequence of actions matching `p` is found, all
+/// keys that trigger the action pattern are returned as vector of `Vec<Key>`.
 // TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
 // into one group under 'text'.
 pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> {
@@ -320,6 +320,7 @@ pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> 
         .collect::<Vec<Key>>()
 }
 
+/// Get multiple keys for multiple actions.
 pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) -> Vec<Key> {
     let mut ret = vec![];
     for action in actions {
@@ -328,6 +329,26 @@ pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) ->
     ret
 }
 
+/// Style a vector of [`Key`]s with the given [`Palette`].
+///
+/// Creates a line segment of style `<KEYS>`, with correct theming applied: The brackets have the
+/// regular text color, the enclosed keys are painted green and bold. If the keys share a common
+/// modifier (See [`get_common_modifier`]), it is printed in front of the keys, painted green and
+/// bold, separated with a `+`: `MOD + <KEYS>`.
+///
+/// If multiple [`Key`]s are given, the individual keys are separated with a `|` char. This does
+/// not apply to the following groups of keys which are treated specially and don't have a
+/// separator between them:
+///
+/// - "hjkl"
+/// - "hl"
+/// - "jk"
+/// - "←↓↑→"
+/// - "←→"
+/// - "↓↑"
+///
+/// The returned Vector of [`ANSIString`] is suitable for transformation into an [`ANSIStrings`]
+/// type.
 pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIString<'static>> {
     // Nothing to do, quit...
     if keyvec.is_empty() {
@@ -379,6 +400,8 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
     let key_string = key.join("");
     let key_separator = match &key_string[..] {
         "hjkl" => "",
+        "hl" => "",
+        "jk" => "",
         "←↓↑→" => "",
         "←→" => "",
         "↓↑" => "",
