@@ -424,6 +424,7 @@ impl Grid {
         }
         // We still don't want to pre-select anything at this stage
         self.search_results.active = None;
+        self.is_scrolled = true;
     }
 
     pub fn search_viewport(&mut self) {
