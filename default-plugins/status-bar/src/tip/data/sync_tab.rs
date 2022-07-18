@@ -56,14 +56,13 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
         ],
     );
 
+    if sync_tabs.is_empty() {
+        return vec![Style::new().bold().paint("UNBOUND")];
+    }
+
     let mut bits = vec![];
     bits.extend(style_key_with_modifier(&to_tab, &help.style.colors));
     bits.push(Style::new().paint(", "));
     bits.extend(style_key_with_modifier(&sync_tabs, &help.style.colors));
-
-    if bits.len() < 2 {
-        // No keybindings available
-        bits = vec![Style::new().bold().paint("UNBOUND")];
-    }
     bits
 }

@@ -1,6 +1,6 @@
 use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::{action_key, action_key_group, style_key_with_modifier, LinePart};
+use crate::{action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{
     actions::{Action, Direction},
     *,
@@ -49,26 +49,41 @@ pub fn move_focus_hjkl_tab_switch_short(help: &ModeInfo) -> LinePart {
 }
 
 fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
-    let to_pane = action_key(
-        &help.get_mode_keybinds(),
-        &[Action::SwitchToMode(InputMode::Pane)],
-    );
-    let pane_frames = action_key_group(
-        &help.get_keybinds_for_mode(InputMode::Normal),
+    let pane_keymap = help.get_keybinds_for_mode(InputMode::Pane);
+    let move_focus_keys = action_key_group(
+        &pane_keymap,
         &[
-            &[Action::MoveFocus(Direction::Left)],
-            &[Action::MoveFocus(Direction::Down)],
+            &[Action::MoveFocusOrTab(Direction::Left)],
+            &[Action::MoveFocusOrTab(Direction::Right)],
         ],
     );
 
-    let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
-    bits.push(Style::new().paint(", "));
-    bits.extend(style_key_with_modifier(&pane_frames, &help.style.colors));
-
-    if bits.len() < 2 {
-        // No keybindings available
-        bits = vec![Style::new().bold().paint("UNBOUND")];
+    // Let's see if we have some pretty groups in common here
+    let mut arrows = vec![];
+    let mut letters = vec![];
+    for key in move_focus_keys.into_iter() {
+        let key_str = key.to_string();
+        if key_str.contains('←')
+            || key_str.contains('↓')
+            || key_str.contains('↑')
+            || key_str.contains('→')
+        {
+            arrows.push(key);
+        } else {
+            letters.push(key);
+        }
     }
-    bits
+    let arrows = style_key_with_modifier(&arrows, &help.style.colors);
+    let letters = style_key_with_modifier(&letters, &help.style.colors);
+    if arrows.is_empty() && letters.is_empty() {
+        vec![Style::new().bold().paint("UNBOUND")]
+    } else if arrows.is_empty() || letters.is_empty() {
+        arrows.into_iter().chain(letters.into_iter()).collect()
+    } else {
+        arrows
+            .into_iter()
+            .chain(vec![Style::new().paint(" or ")].into_iter())
+            .chain(letters.into_iter())
+            .collect()
+    }
 }

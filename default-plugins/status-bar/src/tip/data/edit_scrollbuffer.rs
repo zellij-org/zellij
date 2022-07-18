@@ -70,7 +70,7 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
         &help.get_mode_keybinds(),
         &[Action::SwitchToMode(InputMode::Scroll)],
     );
-    let pane_frames = action_key(
+    let edit_buffer = action_key(
         &help.get_keybinds_for_mode(InputMode::Scroll),
         &[
             Action::EditScrollback,
@@ -78,14 +78,13 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
         ],
     );
 
+    if edit_buffer.is_empty() {
+        return vec![Style::new().bold().paint("UNBOUND")];
+    }
+
     let mut bits = vec![];
     bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
     bits.push(Style::new().paint(", "));
-    bits.extend(style_key_with_modifier(&pane_frames, &help.style.colors));
-
-    if bits.len() < 2 {
-        // No keybindings available
-        bits = vec![Style::new().bold().paint("UNBOUND")];
-    }
+    bits.extend(style_key_with_modifier(&edit_buffer, &help.style.colors));
     bits
 }
