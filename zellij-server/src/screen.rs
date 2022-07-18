@@ -31,6 +31,29 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
+/// Get the active tab and call a closure on it
+///
+/// If no active tab can be found, an error is logged instead.
+///
+/// # Parameters
+///
+/// - screen: An instance of `Screen` to operate on
+/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
+/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
+macro_rules! active_tab {
+    ($screen:ident, $client_id:ident, $closure:expr) => {
+        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
+            // This could be made more ergonomic by declaring the type of 'active_tab' in the
+            // closure, known as "Type Ascription". Then we could hint the type here and forego the
+            // "&mut Tab" in all the closures below...
+            // See: https://github.com/rust-lang/rust/issues/23416
+            $closure(active_tab);
+        } else {
+            log::error!("Active tab not found for client id: {:?}", $client_id);
+        }
+    };
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -109,6 +132,12 @@ pub enum ScreenInstruction {
     RemoveOverlay(ClientId),
     ConfirmPrompt(ClientId),
     DenyPrompt(ClientId),
+    UpdateSearch(Vec<u8>, ClientId),
+    SearchDown(ClientId),
+    SearchUp(ClientId),
+    SearchToggleCaseSensitivity(ClientId),
+    SearchToggleWholeWord(ClientId),
+    SearchToggleWrap(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -203,6 +232,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
             ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
             ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
+            ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
+            ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
+            ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
+            ScreenInstruction::SearchToggleCaseSensitivity(..) => {
+                ScreenContext::SearchToggleCaseSensitivity
+            },
+            ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
+            ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
         }
     }
 }
@@ -777,6 +814,14 @@ impl Screen {
             .unwrap_or(&self.default_mode_info)
             .mode;
 
+        // If we leave the Search-related modes, we need to clear all previous searches
+        let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
+        if search_related_modes.contains(&previous_mode)
+            && !search_related_modes.contains(&mode_info.mode)
+        {
+            active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
+        }
+
         if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
@@ -843,29 +888,6 @@ impl Screen {
             .send_to_server(ServerInstruction::UnblockInputThread)
             .unwrap();
     }
-}
-
-/// Get the active tab and call a closure on it
-///
-/// If no active tab can be found, an error is logged instead.
-///
-/// # Parameters
-///
-/// - screen: An instance of `Screen` to operate on
-/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
-/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
-macro_rules! active_tab {
-    ($screen:ident, $client_id:ident, $closure:expr) => {
-        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
-            // This could be made more ergonomic by declaring the type of 'active_tab' in the
-            // closure, known as "Type Ascription". Then we could hint the type here and forego the
-            // "&mut Tab" in all the closures below...
-            // See: https://github.com/rust-lang/rust/issues/23416
-            $closure(active_tab);
-        } else {
-            log::error!("Active tab not found for client id: {:?}", $client_id);
-        }
-    };
 }
 
 // The box is here in order to make the
@@ -1333,6 +1355,35 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_overlays_mut().pop();
                 screen.render();
                 screen.unblock_input();
+            },
+            ScreenInstruction::UpdateSearch(c, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .update_search_term(c, client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchDown(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .search_down(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchUp(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab.search_up(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_case_sensitivity(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleWrap(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_wrap(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleWholeWord(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_whole_words(client_id));
+                screen.render();
             },
         }
     }

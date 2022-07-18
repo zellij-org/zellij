@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (W): m nunc faucibus a pellentesque. Mattis pellentesque id nibh ###### id aliquet le
+01 (W): ctus proin nibh. In aliquam sem fringilla ut. Urna et pharetra pharetra massa ma
+02 (W): ssa ultricies mi. Enim nulla aliquet porttitor lacus luctus accumsan ###### posu
+03 (W): ere. Malesuada fames ac turpis egestas integer. Venenatis tellus in metus vulput
+04 (W): ate eu scelerisque felis. Suspendisse faucibus interdum posuere lorem ipsum dolo
+05 (W): r sit amet.
+06 (C): 
+07 (C): Quam elementum pulvinar etiam non quam lacus suspendisse faucibus. Egestas sed s
+08 (W): ed risus pretium quam vulputate dignissim suspendisse. Risus nec feugiat in ferm
+09 (W): entum posuere urna. Vestibulum lorem sed risus ultricies. Egestas maecenas phare
+10 (W): tra convallis posuere morbi. Egestas tellus rutrum tellus pellentesque. Pulvinar
+11 (W):  etiam non quam lacus suspendisse faucibus. Lectus proin nibh nisl condimentum i
+12 (W): d venenatis a condimentum. Adipiscing elit pellentesque habitant morbi tristique
+13 (W):  senectus et netus. Nunc id cursus metus aliquam eleifend. Urna nec tincidunt pr
+14 (W): aesent semper feugiat nibh sed pulvinar. Donec ultrices tincidunt arcu non sodal
+15 (W): es neque sodales ut etiam. Suspendisse sed nisi lacus sed viverra tellus in hac 
+16 (W): habitasse. Nunc scelerisque viverra mauris in aliquam sem fringilla.
+17 (C): ⏎
+18 (C): zellij on  mouse-support [?] is 📦 v0.14.0 via 🦀 v1.53.0-beta.3
+19 (C): ❯
+

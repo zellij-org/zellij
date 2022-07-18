@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): Dignissim enim sit amet venenatis urna cursus.
+01 (C): Amet consectetur adipiscing elit ut aliquam purus.
+02 (C): Elementum pulvinar etiam non quam lacus suspendisse.
+03 (C): 
+04 (C): Quisque id diam vel quam. Id porta nibh venenatis cras sed felis eget velit aliquet. Sagittis aliquam malesuada bibendum arcu. Libero id faucibus nisl
+05 (W):  tincidunt eget nullam non. Sed elementum tempus egestas sed sed risus pretium quam vulputate. Turpis egestas maecenas pharetra convallis. Arcu cursus
+06 (W):  vitae congue mauris rhoncus aenean vel. Augue ut lectus arcu bibendum. Scelerisque varius morbi enim nunc faucibus a pellentesque. Mattis pellentesqu
+07 (W): e id nibh ###### id aliquet lectus proin nibh. In aliquam sem fringilla ut. Urna et pharetra pharetra massa massa ultricies mi. Enim nulla aliquet por
+08 (W): ttitor lacus luctus accumsan ###### posuere. Malesuada fames ac turpis egestas integer. Venenatis tellus in metus vulputate eu scelerisque felis. Susp
+09 (W): endisse faucibus interdum posuere lorem ipsum dolor sit amet.
+10 (C): 
+11 (C): Quam elementum pulvinar etiam non quam lacus suspendisse faucibus. Egestas sed sed risus pretium quam vulputate dignissim suspendisse. Risus nec feugi
+12 (W): at in fermentum posuere urna. Vestibulum lorem sed risus ultricies. Egestas maecenas pharetra convallis posuere morbi. Egestas tellus rutrum tellus pe
+13 (W): llentesque. Pulvinar etiam non quam lacus suspendisse faucibus. Lectus proin nibh nisl condimentum id venenatis a condimentum. Adipiscing elit pellent
+14 (W): esque habitant morbi tristique senectus et netus. Nunc id cursus metus aliquam eleifend. Urna nec tincidunt praesent semper feugiat nibh sed pulvinar.
+15 (W):  Donec ultrices tincidunt arcu non sodales neque sodales ut etiam. Suspendisse sed nisi lacus sed viverra tellus in hac habitasse. Nunc scelerisque vi
+16 (W): verra mauris in aliquam sem fringilla.
+17 (C): ⏎
+18 (C): zellij on  mouse-support [?] is 📦 v0.14.0 via 🦀 v1.53.0-beta.3
+19 (C): ❯
+

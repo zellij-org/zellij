@@ -11,7 +11,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::Event,
     input::{
-        actions::{Action, Direction, ResizeDirection},
+        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },
@@ -417,6 +417,29 @@ fn route_action(
             _ => {},
         },
         Action::NoOp => {},
+        Action::SearchInput(c) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateSearch(c, client_id))
+                .unwrap();
+        },
+        Action::Search(d) => {
+            let instruction = match d {
+                SearchDirection::Down => ScreenInstruction::SearchDown(client_id),
+                SearchDirection::Up => ScreenInstruction::SearchUp(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
+        },
+        Action::SearchToggleOption(o) => {
+            let instruction = match o {
+                SearchOption::CaseSensitivity => {
+                    ScreenInstruction::SearchToggleCaseSensitivity(client_id)
+                },
+                SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
+                SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
+        },
     }
     should_break
 }

@@ -27,6 +27,19 @@ pub enum ResizeDirection {
     Decrease,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+pub enum SearchDirection {
+    Down,
+    Up,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub enum SearchOption {
+    CaseSensitivity,
+    WholeWord,
+    Wrap,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -121,6 +134,12 @@ pub enum Action {
     Deny,
     /// Confirm an action that invokes a prompt automatically
     SkipConfirm(Box<Action>),
+    /// Search for String
+    SearchInput(Vec<u8>),
+    /// Search for something
+    Search(SearchDirection),
+    /// Toggle case sensitivity of search
+    SearchToggleOption(SearchOption),
 }
 
 impl From<OnForceClose> for Action {

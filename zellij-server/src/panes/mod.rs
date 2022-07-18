@@ -3,6 +3,7 @@ mod floating_panes;
 pub mod grid;
 pub mod link_handler;
 mod plugin_pane;
+mod search;
 pub mod selection;
 pub mod sixel;
 pub mod terminal_character;

@@ -196,6 +196,7 @@ fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
         InputMode::Locked => locked_interface_indication(help.style.colors),
         InputMode::Tmux => full_tmux_mode_indication(help),
         InputMode::RenamePane => full_shortcut_list_nonstandard_mode(select_pane_shortcut)(help),
+        InputMode::EnterSearch => full_shortcut_list_nonstandard_mode(select_pane_shortcut)(help),
         _ => full_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
     }
 }
@@ -223,6 +224,9 @@ fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
         InputMode::Locked => locked_interface_indication(help.style.colors),
         InputMode::Tmux => short_tmux_mode_indication(help),
         InputMode::RenamePane => {
+            shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
+        },
+        InputMode::EnterSearch => {
             shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
         },
         _ => shortened_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),

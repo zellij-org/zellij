@@ -298,6 +298,27 @@ pub trait Pane {
     fn get_line_number(&self) -> Option<usize> {
         None
     }
+    fn update_search_term(&mut self, _needle: &str) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_down(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_up(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_whole_words(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_wrap(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn clear_search(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
 }
 
 impl Tab {
@@ -946,6 +967,7 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
+        self.clear_search(client_id); // this is an inexpensive operation if empty, if we need more such cleanups we should consider moving this and the rest to some sort of cleanup method
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -2021,6 +2043,53 @@ impl Tab {
     }
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
+    }
+
+    pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_pane.update_search_term(s);
+            }
+        }
+    }
+
+    pub fn search_down(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_down();
+        }
+    }
+
+    pub fn search_up(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_up();
+        }
+    }
+
+    pub fn toggle_search_case_sensitivity(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_case_sensitivity();
+        }
+    }
+
+    pub fn toggle_search_wrap(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_wrap();
+        }
+    }
+
+    pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_whole_words();
+        }
+    }
+
+    pub fn clear_search(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_search();
+        }
     }
 }
 

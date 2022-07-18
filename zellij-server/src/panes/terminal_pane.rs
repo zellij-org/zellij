@@ -54,6 +54,7 @@ pub struct TerminalPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
+    search_term: String,
 }
 
 impl Pane for TerminalPane {
@@ -225,12 +226,39 @@ impl Pane for TerminalPane {
                         PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                         PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
                     };
-                    character_chunk.add_selection_and_background(
+                    character_chunk.add_selection_and_colors(
                         self.grid.selection,
                         background_color,
+                        None,
                         content_x,
                         content_y,
                     );
+                } else if !self.grid.search_results.selections.is_empty() {
+                    for res in self.grid.search_results.selections.iter() {
+                        if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                            let (select_background_palette, select_foreground_palette) =
+                                if Some(res) == self.grid.search_results.active.as_ref() {
+                                    (self.style.colors.orange, self.style.colors.black)
+                                } else {
+                                    (self.style.colors.green, self.style.colors.black)
+                                };
+                            let background_color = match select_background_palette {
+                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                            };
+                            let foreground_color = match select_foreground_palette {
+                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                            };
+                            character_chunk.add_selection_and_colors(
+                                *res,
+                                background_color,
+                                Some(foreground_color),
+                                content_x,
+                                content_y,
+                            );
+                        }
+                    }
                 }
             }
             if self.grid.ring_bell {
@@ -256,6 +284,31 @@ impl Pane for TerminalPane {
             && frame_params.is_main_client
         {
             String::from("Enter name...")
+        } else if input_mode == InputMode::EnterSearch
+            && frame_params.is_main_client
+            && self.search_term.is_empty()
+        {
+            String::from("Enter search...")
+        } else if (input_mode == InputMode::EnterSearch || input_mode == InputMode::Search)
+            && !self.search_term.is_empty()
+        {
+            let mut modifier_text = String::new();
+            if self.grid.search_results.has_modifiers_set() {
+                let mut modifiers = Vec::new();
+                modifier_text.push_str(" [");
+                if self.grid.search_results.case_insensitive {
+                    modifiers.push("c")
+                }
+                if self.grid.search_results.whole_word_only {
+                    modifiers.push("o")
+                }
+                if self.grid.search_results.wrap_search {
+                    modifiers.push("w")
+                }
+                modifier_text.push_str(&modifiers.join(", "));
+                modifier_text.push(']');
+            }
+            format!("SEARCHING: {}{}", self.search_term, modifier_text)
         } else if self.pane_name.is_empty() {
             self.grid
                 .title
@@ -264,6 +317,7 @@ impl Pane for TerminalPane {
         } else {
             self.pane_name.clone()
         };
+
         let frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
@@ -495,9 +549,59 @@ impl Pane for TerminalPane {
     fn mouse_mode(&self) -> bool {
         self.grid.mouse_mode
     }
+
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)
+    }
+
+    fn update_search_term(&mut self, needle: &str) {
+        match needle {
+            "\0" => {
+                self.search_term = String::new();
+            },
+            "\u{007F}" | "\u{0008}" => {
+                //delete and backspace keys
+                self.search_term.pop();
+            },
+            c => {
+                self.search_term.push_str(c);
+            },
+        }
+        self.grid.clear_search();
+        if !self.search_term.is_empty() {
+            self.grid.set_search_string(&self.search_term);
+        }
+        self.set_should_render(true);
+    }
+    fn search_down(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        self.grid.search_down();
+        self.set_should_render(true);
+    }
+    fn search_up(&mut self) {
+        if self.search_term.is_empty() {
+            return; // No-op
+        }
+        self.grid.search_up();
+        self.set_should_render(true);
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        self.grid.toggle_search_case_sensitivity();
+        self.set_should_render(true);
+    }
+    fn toggle_search_whole_words(&mut self) {
+        self.grid.toggle_search_whole_words();
+        self.set_should_render(true);
+    }
+    fn toggle_search_wrap(&mut self) {
+        self.grid.toggle_search_wrap();
+    }
+    fn clear_search(&mut self) {
+        self.grid.clear_search();
+        self.search_term.clear();
     }
 }
 
@@ -542,6 +646,7 @@ impl TerminalPane {
             prev_pane_name: pane_name,
             borderless: false,
             fake_cursor_locations: HashSet::new(),
+            search_term: String::new(),
         }
     }
     pub fn get_x(&self) -> usize {
@@ -586,3 +691,7 @@ impl TerminalPane {
 #[cfg(test)]
 #[path = "./unit/terminal_pane_tests.rs"]
 mod grid_tests;
+
+#[cfg(test)]
+#[path = "./unit/search_in_pane_tests.rs"]
+mod search_tests;
