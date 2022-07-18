@@ -77,12 +77,10 @@ fn long_tile(
     first_tile: bool,
 ) -> LinePart {
     let key_hint = key.full_text();
-    let key_binding = if let KeyMode::Disabled = key.mode {
-        "".to_string()
-    } else if key.key.is_none() {
-        return LinePart::default();
-    } else {
-        key.letter_shortcut(!shared_super)
+    let key_binding = match (&key.mode, &key.key) {
+        (KeyMode::Disabled, None) => "".to_string(),
+        (_, None) => return LinePart::default(),
+        (_, Some(_)) => key.letter_shortcut(!shared_super),
     };
 
     let colors = match key.mode {
@@ -129,11 +127,12 @@ fn short_tile(
     shared_super: bool,
     first_tile: bool,
 ) -> LinePart {
-    if key.key.is_none() {
-        return LinePart::default();
-    }
+    let key_binding = match (&key.mode, &key.key) {
+        (KeyMode::Disabled, None) => "".to_string(),
+        (_, None) => return LinePart::default(),
+        (_, Some(_)) => key.letter_shortcut(!shared_super),
+    };
 
-    let key_binding = key.letter_shortcut(!shared_super);
     let colors = match key.mode {
         KeyMode::Unselected => palette.unselected,
         KeyMode::UnselectedAlternate => palette.unselected_alternate,
