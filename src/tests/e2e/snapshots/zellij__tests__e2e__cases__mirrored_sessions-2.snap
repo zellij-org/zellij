@@ -26,4 +26,4 @@ expression: second_runner_snapshot
 │                                                          ││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT           
- <←↓> Move focus / <n> New / <x> Close / <r> Rename / <s> Sync / <TAB> Toggle / <ENTER> Select pane                     
+ <←→> Move focus / <n> New / <x> Close / <r> Rename / <s> Sync / <TAB> Toggle / <ENTER> Select pane                     

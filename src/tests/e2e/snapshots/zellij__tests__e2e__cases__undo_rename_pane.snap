@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT           
- Tip: Alt + <n> => new pane. Alt + <←↓↑→ or hjkl> => navigate. Alt + <+-> => resize pane.                               
+ Tip: Alt + <n> => new pane. Alt + <←↓↑→> or Alt + <hjkl> => navigate. Alt + <+|=|-> => resize pane.                    
