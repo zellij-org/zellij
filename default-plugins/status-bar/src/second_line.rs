@@ -111,6 +111,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     use InputMode as IM;
     use actions::Direction as Dir;
     use actions::ResizeDirection as RDir;
+    use actions::SearchDirection as SDir;
+    use actions::SearchOption as SOpt;
 
     let mut old_keymap = mi.get_mode_keybinds();
     let s = |string: &str| string.to_string();
@@ -180,7 +182,8 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Move focus"), s("Move"), focus_keys),
         (s("New"), s("New"), action_key(&km, &[A::NewTab(None), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
-        (s("Rename"), s("Rename"), action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+        (s("Rename"), s("Rename"), 
+            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
@@ -205,7 +208,30 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
         (s("Edit scrollback in default editor"), s("Edit"),
             action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
+        (s("Enter search term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
         (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::EnterSearch { vec![
+        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode(IM::Search)])),
+        (s("Cancel"), s("Cancel"),
+            action_key(&km, &[A::SearchInput(vec![27]), A::SwitchToMode(IM::Scroll)])),
+    ]} else if mi.mode == IM::Search { vec![
+        (s("Scroll"), s("Scroll"),
+            action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
+        (s("Scroll page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
+        (s("Scroll half page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
+        (s("Enter term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+        (s("Search down"), s("Down"), action_key(&km, &[A::Search(SDir::Down)])),
+        (s("Search up"), s("Up"), action_key(&km, &[A::Search(SDir::Up)])),
+        (s("Case sensitive"), s("Case"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::CaseSensitivity)])),
+        (s("Wrap"), s("Wrap"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::Wrap)])),
+        (s("Whole words"), s("Whole"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
     ]} else if mi.mode == IM::Session { vec![
         (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
         (s("Select pane"), s("Select"), to_normal_key),
