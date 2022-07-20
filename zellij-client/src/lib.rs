@@ -27,9 +27,8 @@ use zellij_utils::{
     data::{ClientId, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, options::Options, theme::Theme},
+    input::{actions::Action, config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
-    setup::{find_default_config_dir, get_theme_dir},
     termwiz::input::InputEvent,
 };
 use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
@@ -146,22 +145,7 @@ pub fn start_client(
     config.env.set_vars();
 
     let palette = config.themes.clone().map_or_else(
-        || match config_options.clone().theme {
-            Some(theme) => {
-                let theme_dir =
-                    match get_theme_dir(opts.config_dir.clone().or_else(find_default_config_dir)) {
-                        Some(dir) => dir,
-                        None => return os_input.load_palette(),
-                    };
-
-                let theme_path = theme_dir.as_path().join(theme.as_str());
-                match Theme::from_path(&theme_path) {
-                    Ok(t) => t.get_palette(),
-                    Err(_) => os_input.load_palette(),
-                }
-            },
-            None => os_input.load_palette(),
-        },
+        || os_input.load_palette(),
         |t| {
             t.theme_config(&config_options)
                 .unwrap_or_else(|| os_input.load_palette())

@@ -2,22 +2,26 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use thiserror::Error;
 
 use std::fs::File;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io::Read;
+use std::path::Path;
 use std::{collections::HashMap, fmt};
 
-use super::options::Options;
+use super::{config::ConfigError, options::Options};
 use crate::data::{Palette, PaletteColor};
 use crate::shared::detect_theme_hue;
 
-type ThemeResult = Result<Theme, ThemeError>;
-
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ThemesFromYaml(HashMap<String, Theme>);
+pub struct ThemesFromYamlIntermediate(HashMap<String, Theme>);
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ThemesFromYaml {
+    pub themes: ThemesFromYamlIntermediate,
+}
+
+type ThemesFromYamlResult = Result<ThemesFromYaml, ConfigError>;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct UiConfigFromYaml {
@@ -38,19 +42,6 @@ struct ThemeFromYaml {
 pub struct Theme {
     #[serde(flatten)]
     palette: PaletteFromYaml,
-}
-
-#[derive(Debug, Error)]
-pub enum ThemeError {
-    // Deserialization error
-    #[error("Deserialization error: {0}")]
-    Serde(#[from] serde_yaml::Error),
-    // Io error
-    #[error("IoError: {0}")]
-    Io(#[from] io::Error),
-    // Io error with path context
-    #[error("IoError: {0}, File: {1}")]
-    IoPath(io::Error, PathBuf),
 }
 
 /// Intermediate deserialization struct
@@ -149,39 +140,31 @@ impl Default for PaletteColorFromYaml {
     }
 }
 
-impl Theme {
-    pub fn from_path(theme_path: &Path) -> ThemeResult {
+impl ThemesFromYaml {
+    pub fn from_path(theme_path: &Path) -> ThemesFromYamlResult {
         let mut theme_file = File::open(&theme_path)
             .or_else(|_| File::open(&theme_path.with_extension("yaml")))
-            .map_err(|e| ThemeError::IoPath(e, theme_path.into()))?;
+            .map_err(|e| ConfigError::IoPath(e, theme_path.into()))?;
 
         let mut theme = String::new();
         theme_file.read_to_string(&mut theme)?;
 
-        let theme_from_yaml: ThemeFromYaml = match serde_yaml::from_str(&theme) {
-            Err(e) => return Err(ThemeError::Serde(e)),
-            Ok(config) => config,
+        let theme: ThemesFromYaml = match serde_yaml::from_str(&theme) {
+            Err(e) => return Err(ConfigError::Serde(e)),
+            Ok(theme) => theme,
         };
 
-        theme_from_yaml.try_into()
-    }
-
-    pub fn get_palette(self) -> Palette {
-        Palette::from(self.palette)
+        Ok(theme)
     }
 }
 
-impl TryFrom<ThemeFromYaml> for Theme {
-    type Error = ThemeError;
-
-    fn try_from(theme_from_yaml: ThemeFromYaml) -> ThemeResult {
-        Ok(Self {
-            palette: theme_from_yaml.palette,
-        })
+impl From<ThemesFromYaml> for ThemesFromYamlIntermediate {
+    fn from(yaml: ThemesFromYaml) -> Self {
+        yaml.themes
     }
 }
 
-impl ThemesFromYaml {
+impl ThemesFromYamlIntermediate {
     pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {

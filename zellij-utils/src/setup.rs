@@ -8,6 +8,7 @@ use crate::{
         config::{Config, ConfigError},
         layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
         options::Options,
+        theme::ThemesFromYaml,
     },
 };
 use clap::{Args, IntoApp};
@@ -217,7 +218,7 @@ impl Setup {
             );
         };
 
-        let config = if !clean {
+        let mut config = if !clean {
             match Config::try_from(opts) {
                 Ok(config) => config,
                 Err(e) => {
@@ -247,6 +248,20 @@ impl Setup {
                 return Err(e);
             },
         };
+
+        if let Some(theme_dir) =
+            get_theme_dir(opts.config_dir.clone().or_else(find_default_config_dir))
+        {
+            for entry in (theme_dir.read_dir()?).flatten() {
+                if let Some(extension) = entry.path().extension() {
+                    if extension == "yaml" || extension == "yml" {
+                        if let Ok(themes) = ThemesFromYaml::from_path(&entry.path()) {
+                            config.themes = config.themes.map(|t| t.merge(themes.into()));
+                        }
+                    }
+                }
+            }
+        }
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup
@@ -337,6 +352,7 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(config_dir.clone()));
+        let theme_dir = get_theme_dir(config_dir.clone());
         let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
         let config_file = opts
             .config
@@ -389,6 +405,11 @@ impl Setup {
             writeln!(&mut message, "[LAYOUT DIR]: {:?}", layout_dir).unwrap();
         } else {
             message.push_str("[LAYOUT DIR]: Not Found\n");
+        }
+        if let Some(theme_dir) = theme_dir {
+            writeln!(&mut message, "[THEME DIR]: {:?}", theme_dir).unwrap();
+        } else {
+            message.push_str("[THEME DIR]: Not Found\n");
         }
         writeln!(&mut message, "[SYSTEM DATA DIR]: {:?}", system_data_dir).unwrap();
 
