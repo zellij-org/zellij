@@ -59,6 +59,10 @@ pub struct Options {
     /// subdirectory of config dir
     #[clap(long, value_parser)]
     pub layout_dir: Option<PathBuf>,
+    /// Set the theme_dir, defaults to
+    /// subdirectory of config dir
+    #[clap(long, value_parser)]
+    pub theme_dir: Option<PathBuf>,
     #[clap(long, value_parser)]
     #[serde(default)]
     /// Set the handling of mouse events (true or false)
@@ -139,6 +143,7 @@ impl Options {
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
+        let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
@@ -156,6 +161,7 @@ impl Options {
             default_shell,
             default_layout,
             layout_dir,
+            theme_dir,
             mouse_mode,
             pane_frames,
             mirror_session,
@@ -192,6 +198,7 @@ impl Options {
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
+        let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
         let theme = other.theme.or_else(|| self.theme.clone());
         let on_force_close = other.on_force_close.or(self.on_force_close);
         let scroll_buffer_size = other.scroll_buffer_size.or(self.scroll_buffer_size);
@@ -209,6 +216,7 @@ impl Options {
             default_shell,
             default_layout,
             layout_dir,
+            theme_dir,
             mouse_mode,
             pane_frames,
             mirror_session,
@@ -262,6 +270,7 @@ impl From<CliOptions> for Options {
             default_shell: opts.default_shell,
             default_layout: opts.default_layout,
             layout_dir: opts.layout_dir,
+            theme_dir: opts.theme_dir,
             mouse_mode: opts.mouse_mode,
             pane_frames: opts.pane_frames,
             mirror_session: opts.mirror_session,

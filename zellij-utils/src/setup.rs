@@ -249,14 +249,18 @@ impl Setup {
             },
         };
 
-        if let Some(theme_dir) =
-            get_theme_dir(opts.config_dir.clone().or_else(find_default_config_dir))
+        if let Some(theme_dir) = config_options
+            .theme_dir
+            .clone()
+            .or_else(|| get_theme_dir(opts.config_dir.clone().or_else(find_default_config_dir)))
         {
-            for entry in (theme_dir.read_dir()?).flatten() {
-                if let Some(extension) = entry.path().extension() {
-                    if extension == "yaml" || extension == "yml" {
-                        if let Ok(themes) = ThemesFromYaml::from_path(&entry.path()) {
-                            config.themes = config.themes.map(|t| t.merge(themes.into()));
+            if theme_dir.is_dir() {
+                for entry in (theme_dir.read_dir()?).flatten() {
+                    if let Some(extension) = entry.path().extension() {
+                        if extension == "yaml" || extension == "yml" {
+                            if let Ok(themes) = ThemesFromYaml::from_path(&entry.path()) {
+                                config.themes = config.themes.map(|t| t.merge(themes.into()));
+                            }
                         }
                     }
                 }
@@ -352,7 +356,10 @@ impl Setup {
             .layout_dir
             .clone()
             .or_else(|| get_layout_dir(config_dir.clone()));
-        let theme_dir = get_theme_dir(config_dir.clone());
+        let theme_dir = config_options
+            .theme_dir
+            .clone()
+            .or_else(|| get_theme_dir(config_dir.clone()));
         let system_data_dir = PathBuf::from(SYSTEM_DEFAULT_DATA_DIR_PREFIX).join("share/zellij");
         let config_file = opts
             .config
