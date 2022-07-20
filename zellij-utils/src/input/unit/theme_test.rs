@@ -12,8 +12,6 @@ fn dracula_theme_is_ok() {
     let path = theme_test_dir("dracula.yaml".into());
     let theme = ThemesFromYaml::from_path(&path);
     assert!(theme.is_ok());
-
-    println!("{:?}", theme)
 }
 
 #[test]
