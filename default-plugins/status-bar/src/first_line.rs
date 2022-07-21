@@ -68,7 +68,7 @@ impl KeyShortcut {
     }
 }
 
-fn long_tile(
+fn mode_shortcut(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
@@ -168,7 +168,7 @@ fn key_indicators(
     let shared_super = line_part.len > 0;
     for ctrl_key in keys {
         let line_empty = line_part.len == 0;
-        let key = long_tile(ctrl_key, palette, separator, shared_super, line_empty);
+        let key = mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
