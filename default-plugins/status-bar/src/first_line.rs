@@ -12,6 +12,7 @@ struct KeyShortcut {
     key: Option<Key>,
 }
 
+#[derive(PartialEq)]
 enum KeyAction {
     Lock,
     Pane,
@@ -283,7 +284,37 @@ pub fn to_char(kv: Vec<Key>) -> Option<Key> {
     key.cloned()
 }
 
-pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
+/// Get the [`KeyShortcut`] for a specific [`InputMode`].
+///
+/// Iterates over the contents of `shortcuts` to find the [`KeyShortcut`] with the [`KeyAction`]
+/// matching the [`InputMode`]. Returns a mutable reference to the entry in `shortcuts` if a match
+/// is found or `None` otherwise.
+///
+/// In case multiple entries in `shortcuts` match `mode` (which shouldn't happen), the first match
+/// is returned.
+fn get_key_shortcut_for_mode<'a>(
+    shortcuts: &'a mut [KeyShortcut],
+    mode: &InputMode,
+) -> Option<&'a mut KeyShortcut> {
+    let key_action = match mode {
+        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => return None,
+        InputMode::Locked => KeyAction::Lock,
+        InputMode::Pane | InputMode::RenamePane => KeyAction::Pane,
+        InputMode::Tab | InputMode::RenameTab => KeyAction::Tab,
+        InputMode::Resize => KeyAction::Resize,
+        InputMode::Move => KeyAction::Move,
+        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => KeyAction::Search,
+        InputMode::Session => KeyAction::Session,
+    };
+    for shortcut in shortcuts.iter_mut() {
+        if shortcut.action == key_action {
+            return Some(shortcut);
+        }
+    }
+    None
+}
+
+pub fn first_line(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
@@ -343,24 +374,16 @@ pub fn ctrl_keys(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
         ),
     ];
 
-    let mode_index = match &help.mode {
-        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => None,
-        InputMode::Locked => {
-            for key in default_keys.iter_mut().skip(1) {
-                key.mode = KeyMode::Disabled;
-            }
-            Some(0)
-        },
-        InputMode::Pane | InputMode::RenamePane => Some(1),
-        InputMode::Tab | InputMode::RenameTab => Some(2),
-        InputMode::Resize => Some(3),
-        InputMode::Move => Some(4),
-        InputMode::Scroll | InputMode::Search | InputMode::EnterSearch => Some(5),
-        InputMode::Session => Some(6),
-    };
-    if let Some(index) = mode_index {
-        default_keys[index].mode = KeyMode::Selected;
-        default_keys[index].key = to_char(action_key(binds, &[TO_NORMAL]));
+    if let Some(key_shortcut) = get_key_shortcut_for_mode(&mut default_keys, &help.mode) {
+        key_shortcut.mode = KeyMode::Selected;
+        key_shortcut.key = to_char(action_key(binds, &[TO_NORMAL]));
+    }
+
+    // In locked mode we must disable all other mode keybindings
+    if help.mode == InputMode::Locked {
+        for key in default_keys.iter_mut().skip(1) {
+            key.mode = KeyMode::Disabled;
+        }
     }
 
     if help.mode == InputMode::Tmux {

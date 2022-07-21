@@ -13,7 +13,7 @@ use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::{palette_match, style};
 
-use first_line::ctrl_keys;
+use first_line::first_line;
 use second_line::{
     floating_panes_are_visible, fullscreen_panes_to_hide, keybinds,
     locked_floating_panes_are_visible, locked_fullscreen_panes_to_hide, system_clipboard_error,
@@ -212,8 +212,7 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let first_line = ctrl_keys(&self.mode_info, cols, separator);
-
+        let first_line = first_line(&self.mode_info, cols, separator);
         let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
