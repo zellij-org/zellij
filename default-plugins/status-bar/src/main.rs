@@ -274,8 +274,8 @@ impl State {
 
 /// Get a common modifier key from a key vector.
 ///
-/// Iterates over all keys, skipping keys mentioned in `to_ignore` and returns any found common
-/// modifier key.
+/// Iterates over all keys and returns any found common modifier key. Possible modifiers that will
+/// be detected are "Ctrl" and "Alt".
 pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
     let mut modifier = "";
     let mut new_modifier;
@@ -318,6 +318,8 @@ pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> 
 }
 
 /// Get multiple keys for multiple actions.
+///
+/// An extension of [`action_key`] that iterates over all action tuples and collects the results.
 pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) -> Vec<Key> {
     let mut ret = vec![];
     for action in actions {
@@ -383,7 +385,7 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
                 format!("{}", key)
             } else {
                 match key {
-                    Key::Ctrl(c) => format!("{}", c),
+                    Key::Ctrl(c) => format!("{}", Key::Char(*c)),
                     Key::Alt(c) => format!("{}", c),
                     _ => format!("{}", key),
                 }
@@ -412,4 +414,359 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
     ret.push(Style::new().fg(text_color).paint(group_end_str));
 
     ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ansi_term::unstyle;
+    use ansi_term::ANSIStrings;
+    use zellij_tile::prelude::CharOrArrow;
+    use zellij_tile::prelude::Direction;
+
+    // style_key_with_modifier
+    // action_key
+    // action_key_group
+    // get_common_modifier
+
+    #[test]
+    fn common_modifier_with_ctrl_keys() {
+        let keyvec = vec![Key::Ctrl('a'), Key::Ctrl('b'), Key::Ctrl('c')];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, Some("Ctrl".to_string()));
+    }
+
+    #[test]
+    fn common_modifier_with_alt_keys_chars() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Char('1')),
+            Key::Alt(CharOrArrow::Char('t')),
+            Key::Alt(CharOrArrow::Char('z')),
+        ];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, Some("Alt".to_string()));
+    }
+
+    #[test]
+    fn common_modifier_with_alt_keys_arrows() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Direction(Direction::Left)),
+            Key::Alt(CharOrArrow::Direction(Direction::Right)),
+        ];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, Some("Alt".to_string()));
+    }
+
+    #[test]
+    fn common_modifier_with_alt_keys_arrows_and_chars() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Direction(Direction::Left)),
+            Key::Alt(CharOrArrow::Direction(Direction::Right)),
+            Key::Alt(CharOrArrow::Char('t')),
+            Key::Alt(CharOrArrow::Char('z')),
+        ];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, Some("Alt".to_string()));
+    }
+
+    #[test]
+    fn common_modifier_with_mixed_alt_ctrl_keys() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Direction(Direction::Left)),
+            Key::Alt(CharOrArrow::Char('z')),
+            Key::Ctrl('a'),
+            Key::Ctrl('1'),
+        ];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, None);
+    }
+
+    #[test]
+    fn common_modifier_with_any_keys() {
+        let keyvec = vec![Key::Backspace, Key::Char('f'), Key::Down];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, None);
+    }
+
+    #[test]
+    fn common_modifier_with_ctrl_and_normal_keys() {
+        let keyvec = vec![Key::Ctrl('a'), Key::Char('f'), Key::Down];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, None);
+    }
+
+    #[test]
+    fn common_modifier_with_alt_and_normal_keys() {
+        let keyvec = vec![Key::Alt(CharOrArrow::Char('a')), Key::Char('f'), Key::Down];
+        let ret = get_common_modifier(keyvec.iter().collect());
+        assert_eq!(ret, None);
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_exact() {
+        let keymap = &[(Key::Char('f'), vec![Action::Quit])];
+        let ret = action_key(keymap, &[Action::Quit]);
+        assert_eq!(ret, vec![Key::Char('f')]);
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_pattern_too_long() {
+        let keymap = &[(Key::Char('f'), vec![Action::Quit])];
+        let ret = action_key(keymap, &[Action::Quit, Action::ScrollUp]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    #[test]
+    fn action_key_simple_pattern_match_pattern_empty() {
+        let keymap = &[(Key::Char('f'), vec![Action::Quit])];
+        let ret = action_key(keymap, &[]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    fn big_keymap() -> Vec<(Key, Vec<Action>)> {
+        vec![
+            (Key::Char('a'), vec![Action::Quit]),
+            (Key::Ctrl('b'), vec![Action::ScrollUp]),
+            (Key::Ctrl('d'), vec![Action::ScrollDown]),
+            (
+                Key::Alt(CharOrArrow::Char('c')),
+                vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
+            ),
+            (
+                Key::Char('1'),
+                vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
+            ),
+        ]
+    }
+
+    #[test]
+    fn action_key_long_pattern_match_exact() {
+        let keymap = big_keymap();
+        let ret = action_key(&keymap, &[Action::ScrollDown, TO_NORMAL]);
+        assert_eq!(ret, vec![Key::Alt(CharOrArrow::Char('c'))]);
+    }
+
+    #[test]
+    fn action_key_long_pattern_match_too_short() {
+        let keymap = big_keymap();
+        let ret = action_key(&keymap, &[TO_NORMAL]);
+        assert_eq!(ret, Vec::new());
+    }
+
+    #[test]
+    fn action_key_group_single_pattern() {
+        let keymap = big_keymap();
+        let ret = action_key_group(&keymap, &[&[Action::Quit]]);
+        assert_eq!(ret, vec![Key::Char('a')]);
+    }
+
+    #[test]
+    fn action_key_group_two_patterns() {
+        let keymap = big_keymap();
+        let ret = action_key_group(&keymap, &[&[Action::ScrollDown], &[Action::ScrollUp]]);
+        // Mind the order!
+        assert_eq!(ret, vec![Key::Ctrl('d'), Key::Ctrl('b')]);
+    }
+
+    fn get_palette() -> Palette {
+        Palette::default()
+    }
+
+    #[test]
+    fn style_key_with_modifier_only_chars() {
+        let keyvec = vec![Key::Char('a'), Key::Char('b'), Key::Char('c')];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<a|b|c>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_hjkl() {
+        let keyvec = vec![
+            Key::Char('h'),
+            Key::Char('j'),
+            Key::Char('k'),
+            Key::Char('l'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<hjkl>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_hjkl_broken() {
+        // Sorted the wrong way
+        let keyvec = vec![
+            Key::Char('h'),
+            Key::Char('k'),
+            Key::Char('j'),
+            Key::Char('l'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<h|k|j|l>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_all_arrows() {
+        let keyvec = vec![
+            Key::Char('←'),
+            Key::Char('↓'),
+            Key::Char('↑'),
+            Key::Char('→'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<←↓↑→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_left_right_arrows() {
+        let keyvec = vec![Key::Char('←'), Key::Char('→')];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<←→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_special_group_down_up_arrows() {
+        let keyvec = vec![Key::Char('↓'), Key::Char('↑')];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<↓↑>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_ctrl_modifier_chars() {
+        let keyvec = vec![
+            Key::Ctrl('a'),
+            Key::Ctrl('b'),
+            Key::Ctrl('c'),
+            Key::Ctrl('d'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Ctrl + <a|b|c|d>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_alt_modifier_chars() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Char('a')),
+            Key::Alt(CharOrArrow::Char('b')),
+            Key::Alt(CharOrArrow::Char('c')),
+            Key::Alt(CharOrArrow::Char('d')),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <a|b|c|d>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_common_alt_modifier_with_special_group_all_arrows() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Direction(Direction::Left)),
+            Key::Alt(CharOrArrow::Direction(Direction::Down)),
+            Key::Alt(CharOrArrow::Direction(Direction::Up)),
+            Key::Alt(CharOrArrow::Direction(Direction::Right)),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <←↓↑→>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_ctrl_alt_char_mixed() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Char('a')),
+            Key::Ctrl('b'),
+            Key::Char('c'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<Alt+a|Ctrl+b|c>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables() {
+        let keyvec = vec![
+            Key::Backspace,
+            Key::Char('\n'),
+            Key::Char(' '),
+            Key::Char('\t'),
+            Key::PageDown,
+            Key::Delete,
+            Key::Home,
+            Key::End,
+            Key::Insert,
+            Key::BackTab,
+            Key::Esc,
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "<BACKSPACE|ENTER|SPACE|TAB|PgDn|DEL|HOME|END|INS|TAB|ESC>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables_with_common_ctrl_modifier() {
+        let keyvec = vec![
+            Key::Ctrl('\n'),
+            Key::Ctrl(' '),
+            Key::Ctrl('\t'),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Ctrl + <ENTER|SPACE|TAB>".to_string())
+    }
+
+    #[test]
+    fn style_key_with_modifier_unprintables_with_common_alt_modifier() {
+        let keyvec = vec![
+            Key::Alt(CharOrArrow::Char('\n')),
+            Key::Alt(CharOrArrow::Char(' ')),
+            Key::Alt(CharOrArrow::Char('\t')),
+        ];
+        let palette = get_palette();
+
+        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = unstyle(&ANSIStrings(&ret));
+
+        assert_eq!(ret, "Alt + <ENTER|SPACE|TAB>".to_string())
+    }
 }
