@@ -32,9 +32,8 @@ enum KeyMode {
 }
 
 impl KeyShortcut {
-    //pub fn new(mode: KeyMode, action: KeyAction, bind: KeyBind) -> Self {
     pub fn new(mode: KeyMode, action: KeyAction, key: Option<Key>) -> Self {
-        KeyShortcut { mode, action, key } //, bind }
+        KeyShortcut { mode, action, key }
     }
 
     pub fn full_text(&self) -> String {

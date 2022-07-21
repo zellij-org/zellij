@@ -305,8 +305,6 @@ pub fn get_common_modifier(keyvec: Vec<&Key>) -> Option<String> {
 /// all keybindings for the current mode and one or more `p` patterns which match a sequence of
 /// actions to search for. If within the keymap a sequence of actions matching `p` is found, all
 /// keys that trigger the action pattern are returned as vector of `Vec<Key>`.
-// TODO: Accept multiple sequences of patterns, possible separated by '|', and bin them together
-// into one group under 'text'.
 pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> {
     keymap
         .iter()
