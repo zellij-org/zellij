@@ -247,7 +247,14 @@ pub fn mode_switch_keys(mode_info: &ModeInfo) -> Vec<Key> {
 pub fn superkey(palette: ColoredElements, separator: &str, mode_info: &ModeInfo) -> LinePart {
     // Find a common modifier if any
     let prefix_text = match get_common_modifier(mode_switch_keys(mode_info).iter().collect()) {
-        Some(text) => format!(" {} +", text),
+        Some(text) => {
+            if mode_info.capabilities.arrow_fonts {
+                // Add extra space in simplified ui
+                format!(" {} + ", text)
+            } else {
+                format!(" {} +", text)
+            }
+        },
         _ => return LinePart::default(),
     };
 
