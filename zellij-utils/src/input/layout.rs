@@ -60,28 +60,6 @@ pub enum SplitSize {
     Fixed(usize), // An absolute number of columns or rows
 }
 
-// FIXME: This is an ugly hack around the fact that f64 as type (which was previously what
-// `SplitSize::Percent(T)` used as inner type `T`) doesn't implement `Eq` and `Hash` traits. So we
-// make a custom type that encloses a u64 instead and add conversion methods to/from f64. Of course
-// that breaks the interface and all of the tests. This type is, through a long chain of structs,
-// part of the `zellij_utils::data::ModeInfo` struct that derives the `Eq` trait on itself, hence
-// this is needed here.
-//#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
-//pub struct Percent(pub u64);
-//
-//impl From<f64> for Percent {
-//    fn from(val: f64) -> Percent {
-//        Percent((val * 10000.0) as u64)
-//    }
-//}
-//
-//impl From<Percent> for f64 {
-//    fn from(val: Percent) -> f64 {
-//        let Percent(val) = val;
-//        (val as f64) / 10000.0
-//    }
-//}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
     #[serde(rename = "plugin")]
