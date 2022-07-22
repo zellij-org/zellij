@@ -69,7 +69,26 @@ impl KeyShortcut {
     }
 }
 
-fn mode_shortcut(
+/// Generate long mode shortcut tile.
+///
+/// A long mode shortcut tile consists of a leading and trailing `separator`, a keybinding enclosed
+/// in `<>` brackets and the name of the mode displayed in capitalized letters next to it. For
+/// example, the default long mode shortcut tile for "Locked" mode is: ` <g> LOCK `.
+///
+/// # Arguments
+///
+/// - `key`: A [`KeyShortcut`] that defines how the tile is displayed (active/disabled/...), what
+///   action it belongs to (roughly equivalent to [`InputMode`]s) and the keybinding to trigger
+///   this action.
+/// - `palette`: A structure holding styling information.
+/// - `separator`: The separator printed before and after the mode shortcut tile. The default is an
+///   arrow head-like separator.
+/// - `shared_super`: If set to true, all mode shortcut keybindings share a common modifier (see
+///   [`get_common_modifier`]) and the modifier belonging to the keybinding is **not** printed in
+///   the shortcut tile.
+/// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
+///   appears on the screen.
+fn long_mode_shortcut(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
@@ -120,7 +139,25 @@ fn mode_shortcut(
     }
 }
 
-fn short_tile(
+/// Generate short mode shortcut tile.
+///
+/// A short mode shortcut tile consists of a leading and trailing `separator` and a keybinding. For
+/// example, the default short mode shortcut tile for "Locked" mode is: ` g `.
+///
+/// # Arguments
+///
+/// - `key`: A [`KeyShortcut`] that defines how the tile is displayed (active/disabled/...), what
+///   action it belongs to (roughly equivalent to [`InputMode`]s) and the keybinding to trigger
+///   this action.
+/// - `palette`: A structure holding styling information.
+/// - `separator`: The separator printed before and after the mode shortcut tile. The default is an
+///   arrow head-like separator.
+/// - `shared_super`: If set to true, all mode shortcut keybindings share a common modifier (see
+///   [`get_common_modifier`]) and the modifier belonging to the keybinding is **not** printed in
+///   the shortcut tile.
+/// - `first_tile`: If set to true, the leading separator for this tile will be ommited so no gap
+///   appears on the screen.
+fn short_mode_shortcut(
     key: &KeyShortcut,
     palette: ColoredElements,
     separator: &str,
@@ -169,7 +206,7 @@ fn key_indicators(
     let shared_super = line_part.len > 0;
     for ctrl_key in keys {
         let line_empty = line_part.len == 0;
-        let key = mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
+        let key = long_mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
@@ -182,7 +219,7 @@ fn key_indicators(
     let shared_super = line_part.len > 0;
     for ctrl_key in keys {
         let line_empty = line_part.len == 0;
-        let key = short_tile(ctrl_key, palette, separator, shared_super, line_empty);
+        let key = short_mode_shortcut(ctrl_key, palette, separator, shared_super, line_empty);
         line_part.part = format!("{}{}", line_part.part, key.part);
         line_part.len += key.len;
     }
