@@ -54,7 +54,6 @@ pub fn quicknav_short(help: &ModeInfo) -> LinePart {
     bits.extend(groups.move_focus);
     bits.push(Style::new().paint(" / "));
     bits.extend(groups.resize);
-    bits.push(Style::new().paint(" / "));
     strings!(&bits)
 }
 
