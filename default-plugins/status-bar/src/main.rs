@@ -417,17 +417,28 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use ansi_term::unstyle;
     use ansi_term::ANSIStrings;
     use zellij_tile::prelude::CharOrArrow;
     use zellij_tile::prelude::Direction;
 
-    // style_key_with_modifier
-    // action_key
-    // action_key_group
-    // get_common_modifier
+    fn big_keymap() -> Vec<(Key, Vec<Action>)> {
+        vec![
+            (Key::Char('a'), vec![Action::Quit]),
+            (Key::Ctrl('b'), vec![Action::ScrollUp]),
+            (Key::Ctrl('d'), vec![Action::ScrollDown]),
+            (
+                Key::Alt(CharOrArrow::Char('c')),
+                vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
+            ),
+            (
+                Key::Char('1'),
+                vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
+            ),
+        ]
+    }
 
     #[test]
     fn common_modifier_with_ctrl_keys() {
@@ -521,22 +532,6 @@ mod tests {
         let keymap = &[(Key::Char('f'), vec![Action::Quit])];
         let ret = action_key(keymap, &[]);
         assert_eq!(ret, Vec::new());
-    }
-
-    fn big_keymap() -> Vec<(Key, Vec<Action>)> {
-        vec![
-            (Key::Char('a'), vec![Action::Quit]),
-            (Key::Ctrl('b'), vec![Action::ScrollUp]),
-            (Key::Ctrl('d'), vec![Action::ScrollDown]),
-            (
-                Key::Alt(CharOrArrow::Char('c')),
-                vec![Action::ScrollDown, Action::SwitchToMode(InputMode::Normal)],
-            ),
-            (
-                Key::Char('1'),
-                vec![TO_NORMAL, Action::SwitchToMode(InputMode::Locked)],
-            ),
-        ]
     }
 
     #[test]
@@ -737,16 +732,15 @@ mod tests {
         let ret = style_key_with_modifier(&keyvec, &palette);
         let ret = unstyle(&ANSIStrings(&ret));
 
-        assert_eq!(ret, "<BACKSPACE|ENTER|SPACE|TAB|PgDn|DEL|HOME|END|INS|TAB|ESC>".to_string())
+        assert_eq!(
+            ret,
+            "<BACKSPACE|ENTER|SPACE|TAB|PgDn|DEL|HOME|END|INS|TAB|ESC>".to_string()
+        )
     }
 
     #[test]
     fn style_key_with_modifier_unprintables_with_common_ctrl_modifier() {
-        let keyvec = vec![
-            Key::Ctrl('\n'),
-            Key::Ctrl(' '),
-            Key::Ctrl('\t'),
-        ];
+        let keyvec = vec![Key::Ctrl('\n'), Key::Ctrl(' '), Key::Ctrl('\t')];
         let palette = get_palette();
 
         let ret = style_key_with_modifier(&keyvec, &palette);

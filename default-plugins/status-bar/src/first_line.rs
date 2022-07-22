@@ -434,3 +434,408 @@ pub fn first_line(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart 
 
     key_indicators(max_len, &default_keys, colored_elements, separator, help)
 }
+
+#[cfg(test)]
+/// Unit tests.
+///
+/// Note that we cheat a little here, because the number of things one may want to test is endless,
+/// and creating a Mockup of [`ModeInfo`] by hand for all these testcases is nothing less than
+/// torture. Hence, we test the most atomic units thoroughly ([`long_mode_shortcut`] and
+/// [`short_mode_shortcut`]) and then test the public API ([`first_line`]) to ensure correct
+/// operation.
+mod tests {
+    use super::*;
+
+    fn colored_elements() -> ColoredElements {
+        let palette = Palette::default();
+        color_elements(palette, false)
+    }
+
+    // Strip style information from `LinePart` and return a raw String instead
+    fn unstyle(line_part: LinePart) -> String {
+        let string = line_part.to_string();
+
+        let re = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        let string = re.replace_all(&string, "".to_string());
+
+        string.to_string()
+    }
+
+    #[test]
+    fn long_mode_shortcut_selected_with_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Displayed like selected(alternate), but different styling
+    fn long_mode_shortcut_unselected_with_binding() {
+        let key = KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Session,
+            Some(Key::Char('0')),
+        );
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Treat exactly like "unselected" variant
+    fn long_mode_shortcut_unselected_alternate_with_binding() {
+        let key = KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Session,
+            Some(Key::Char('0')),
+        );
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // KeyShortcuts without binding are only displayed when "disabled" (for locked mode indications)
+    fn long_mode_shortcut_selected_without_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
+
+    #[test]
+    // First tile doesn't print a starting separator
+    fn long_mode_shortcut_selected_with_binding_first_tile() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, true);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Modifier is the superkey, mustn't appear in angled brackets
+    fn long_mode_shortcut_selected_with_ctrl_binding_shared_superkey() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", true, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Modifier must be in the angled brackets
+    fn long_mode_shortcut_selected_with_ctrl_binding_no_shared_superkey() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <Ctrl+0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Must be displayed as usual, but it is styled to be greyed out which we don't test here
+    fn long_mode_shortcut_disabled_with_binding() {
+        let key = KeyShortcut::new(KeyMode::Disabled, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    // Must be displayed but without keybinding
+    fn long_mode_shortcut_disabled_without_binding() {
+        let key = KeyShortcut::new(KeyMode::Disabled, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <> SESSION +".to_string());
+    }
+
+    #[test]
+    // Test all at once
+    // Note that when "shared_super" is true, the tile **cannot** be the first on the line, so we
+    // ignore **first** here.
+    fn long_mode_shortcut_selected_with_ctrl_binding_and_shared_super_and_first_tile() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let color = colored_elements();
+
+        let ret = long_mode_shortcut(&key, color, "+", true, true);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ <0> SESSION +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_selected_with_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_selected_with_ctrl_binding_no_shared_super() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ Ctrl+0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_selected_with_ctrl_binding_shared_super() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Ctrl('0')));
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", true, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_selected_with_binding_first_tile() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, true);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_unselected_with_binding() {
+        let key = KeyShortcut::new(
+            KeyMode::Unselected,
+            KeyAction::Session,
+            Some(Key::Char('0')),
+        );
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_unselected_alternate_with_binding() {
+        let key = KeyShortcut::new(
+            KeyMode::UnselectedAlternate,
+            KeyAction::Session,
+            Some(Key::Char('0')),
+        );
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_disabled_with_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, Some(Key::Char('0')));
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "+ 0 +".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_selected_without_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_unselected_without_binding() {
+        let key = KeyShortcut::new(KeyMode::Unselected, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_unselected_alternate_without_binding() {
+        let key = KeyShortcut::new(KeyMode::UnselectedAlternate, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
+
+    #[test]
+    fn short_mode_shortcut_disabled_without_binding() {
+        let key = KeyShortcut::new(KeyMode::Selected, KeyAction::Session, None);
+        let color = colored_elements();
+
+        let ret = short_mode_shortcut(&key, color, "+", false, false);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
+
+    #[test]
+    // Observe: Modes missing in between aren't displayed!
+    fn first_line_default_layout_shared_super() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Normal,
+            keybinds : vec![
+                (InputMode::Normal, vec![
+                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                ]),
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 500, ">");
+        let ret = unstyle(ret);
+
+        assert_eq!(
+            ret,
+            " Ctrl + >> <a> PANE >> <b> RESIZE >> <c> MOVE >".to_string()
+        );
+    }
+
+    #[test]
+    fn first_line_default_layout_no_shared_super() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Normal,
+            keybinds : vec![
+                (InputMode::Normal, vec![
+                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (Key::Char('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                ]),
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 500, ">");
+        let ret = unstyle(ret);
+
+        assert_eq!(
+            ret,
+            " <Ctrl+a> PANE >> <Ctrl+b> RESIZE >> <c> MOVE >".to_string()
+        );
+    }
+
+    #[test]
+    fn first_line_default_layout_unprintables() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Normal,
+            keybinds : vec![
+                (InputMode::Normal, vec![
+                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Locked)]),
+                    (Key::Backspace, vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (Key::Char('\n'), vec![Action::SwitchToMode(InputMode::Tab)]),
+                    (Key::Char('\t'), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (Key::Left, vec![Action::SwitchToMode(InputMode::Move)]),
+                ]),
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 500, ">");
+        let ret = unstyle(ret);
+
+        assert_eq!(
+            ret,
+            " <Ctrl+a> LOCK >> <BACKSPACE> PANE >> <ENTER> TAB >> <TAB> RESIZE >> <←> MOVE >"
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn first_line_short_layout_shared_super() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Normal,
+            keybinds : vec![
+                (InputMode::Normal, vec![
+                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Locked)]),
+                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Tab)]),
+                    (Key::Ctrl('d'), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (Key::Ctrl('e'), vec![Action::SwitchToMode(InputMode::Move)]),
+                ]),
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 50, ">");
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " Ctrl + >> a >> b >> c >> d >> e >".to_string());
+    }
+
+    #[test]
+    fn first_line_short_simplified_ui_shared_super() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Normal,
+            keybinds : vec![
+                (InputMode::Normal, vec![
+                    (Key::Ctrl('a'), vec![Action::SwitchToMode(InputMode::Pane)]),
+                    (Key::Ctrl('b'), vec![Action::SwitchToMode(InputMode::Resize)]),
+                    (Key::Ctrl('c'), vec![Action::SwitchToMode(InputMode::Move)]),
+                ]),
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 30, "");
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " Ctrl +  a  b  c ".to_string());
+    }
+}

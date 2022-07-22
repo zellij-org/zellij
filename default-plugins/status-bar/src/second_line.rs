@@ -521,3 +521,244 @@ pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
         len,
     }
 }
+
+#[cfg(test)]
+/// Unit tests.
+///
+/// Note that we cheat a little here, because the number of things one may want to test is endless,
+/// and creating a Mockup of [`ModeInfo`] by hand for all these testcases is nothing less than
+/// torture. Hence, we test the most atomic unit thoroughly ([`full_length_shortcut`] and then test
+/// the public API ([`keybinds`]) to ensure correct operation.
+mod tests {
+    use super::*;
+
+    // Strip style information from `LinePart` and return a raw String instead
+    fn unstyle(line_part: LinePart) -> String {
+        let string = line_part.to_string();
+
+        let re = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        let string = re.replace_all(&string, "".to_string());
+
+        string.to_string()
+    }
+
+    fn get_palette() -> Palette {
+        Palette::default()
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key() {
+        let keyvec = vec![Key::Char('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_first_element() {
+        let keyvec = vec![Key::Char('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(true, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " <a> Foobar");
+    }
+
+    #[test]
+    // When there is no binding, we print no shortcut either
+    fn full_length_shortcut_without_key() {
+        let keyvec = vec![];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_unprintable_1() {
+        let keyvec = vec![Key::Char('\n')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <ENTER> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_unprintable_2() {
+        let keyvec = vec![Key::Backspace];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <BACKSPACE> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_ctrl_key() {
+        let keyvec = vec![Key::Ctrl('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Ctrl + <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_alt_key() {
+        let keyvec = vec![Key::Alt(CharOrArrow::Char('a'))];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Alt + <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_homogenous_key_group() {
+        let keyvec = vec![Key::Char('a'), Key::Char('b'), Key::Char('c')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a|b|c> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_heterogenous_key_group() {
+        let keyvec = vec![Key::Char('a'), Key::Ctrl('b'), Key::Char('\n')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a|Ctrl+b|ENTER> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_group_shared_ctrl_modifier() {
+        let keyvec = vec![Key::Ctrl('a'), Key::Ctrl('b'), Key::Ctrl('c')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Ctrl + <a|b|c> Foobar");
+    }
+    //pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
+
+    #[test]
+    // Note how it leaves out elements that don't exist!
+    fn keybinds_wide() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
+                    (
+                        Key::Right,
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Char('n'), vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        Key::Char('f'),
+                        vec![Action::ToggleFocusFullscreen, TO_NORMAL],
+                    ),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 500);
+        let ret = unstyle(ret);
+
+        assert_eq!(
+            ret,
+            " <←↓↑→> Move focus / <n> New / <x> Close / <f> Fullscreen"
+        );
+    }
+
+    #[test]
+    // Note how "Move focus" becomes "Move"
+    fn keybinds_tight_width() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
+                    (
+                        Key::Right,
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Char('n'), vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        Key::Char('f'),
+                        vec![Action::ToggleFocusFullscreen, TO_NORMAL],
+                    ),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 35);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " <←↓↑→> Move / <n> New ... ");
+    }
+
+    #[test]
+    fn keybinds_wide_weird_keys() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (
+                        Key::Ctrl('a'),
+                        vec![Action::MoveFocus(actions::Direction::Left)],
+                    ),
+                    (
+                        Key::Ctrl('\n'),
+                        vec![Action::MoveFocus(actions::Direction::Down)],
+                    ),
+                    (
+                        Key::Ctrl('1'),
+                        vec![Action::MoveFocus(actions::Direction::Up)],
+                    ),
+                    (
+                        Key::Ctrl(' '),
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Backspace, vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
+                    (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 500);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " Ctrl + <a|ENTER|1|SPACE> Move focus / <BACKSPACE> New / <ESC> Close / <END> Fullscreen");
+    }
+}
