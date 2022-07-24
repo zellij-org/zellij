@@ -11,7 +11,7 @@ use std::convert::{TryFrom, TryInto};
 use super::keybinds::{Keybinds, KeybindsFromYaml};
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml};
-use super::theme::{ThemesFromYaml, UiConfigFromYaml};
+use super::theme::{ThemesFromYamlIntermediate, UiConfigFromYaml};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariablesFromYaml;
 use crate::setup;
@@ -26,7 +26,7 @@ pub struct ConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<Options>,
     pub keybinds: Option<KeybindsFromYaml>,
-    pub themes: Option<ThemesFromYaml>,
+    pub themes: Option<ThemesFromYamlIntermediate>,
     #[serde(flatten)]
     pub env: Option<EnvironmentVariablesFromYaml>,
     #[serde(default)]
@@ -39,7 +39,7 @@ pub struct ConfigFromYaml {
 pub struct Config {
     pub keybinds: Keybinds,
     pub options: Options,
-    pub themes: Option<ThemesFromYaml>,
+    pub themes: Option<ThemesFromYamlIntermediate>,
     pub plugins: PluginsConfig,
     pub ui: Option<UiConfigFromYaml>,
     pub env: EnvironmentVariablesFromYaml,

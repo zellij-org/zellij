@@ -2,15 +2,26 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
+
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 use std::{collections::HashMap, fmt};
 
-use super::options::Options;
+use super::{config::ConfigError, options::Options};
 use crate::data::{Palette, PaletteColor};
 use crate::shared::detect_theme_hue;
 
 /// Intermediate deserialization of themes
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-pub struct ThemesFromYaml(HashMap<String, Theme>);
+pub struct ThemesFromYamlIntermediate(HashMap<String, Theme>);
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ThemesFromYaml {
+    pub themes: ThemesFromYamlIntermediate,
+}
+
+type ThemesFromYamlResult = Result<ThemesFromYaml, ConfigError>;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct UiConfigFromYaml {
@@ -23,7 +34,12 @@ pub struct FrameConfigFromYaml {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-struct Theme {
+struct ThemeFromYaml {
+    palette: PaletteFromYaml,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct Theme {
     #[serde(flatten)]
     palette: PaletteFromYaml,
 }
@@ -125,6 +141,30 @@ impl Default for PaletteColorFromYaml {
 }
 
 impl ThemesFromYaml {
+    pub fn from_path(theme_path: &Path) -> ThemesFromYamlResult {
+        let mut theme_file = File::open(&theme_path)
+            .or_else(|_| File::open(&theme_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, theme_path.into()))?;
+
+        let mut theme = String::new();
+        theme_file.read_to_string(&mut theme)?;
+
+        let theme: ThemesFromYaml = match serde_yaml::from_str(&theme) {
+            Err(e) => return Err(ConfigError::Serde(e)),
+            Ok(theme) => theme,
+        };
+
+        Ok(theme)
+    }
+}
+
+impl From<ThemesFromYaml> for ThemesFromYamlIntermediate {
+    fn from(yaml: ThemesFromYaml) -> Self {
+        yaml.themes
+    }
+}
+
+impl ThemesFromYamlIntermediate {
     pub fn theme_config(self, opts: &Options) -> Option<Palette> {
         let mut from_yaml = self;
         match &opts.theme {
@@ -182,3 +222,8 @@ impl From<PaletteColorFromYaml> for PaletteColor {
         }
     }
 }
+
+// The unit test location.
+#[cfg(test)]
+#[path = "./unit/theme_test.rs"]
+mod theme_test;
