@@ -7,7 +7,6 @@ mod sessions;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
-use log::error;
 use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
@@ -210,7 +209,6 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            error!("Panic occurred in client:\n{:?}", info);
             if let Ok(()) = os_input.unset_raw_mode(0) {
                 handle_panic(info, &send_client_instructions);
             }
