@@ -3,6 +3,7 @@
 
 use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
 use colored::*;
+use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::panic::PanicInfo;
@@ -70,13 +71,15 @@ where
 
     let mut report: Report = Panic(format!("\u{1b}[0;31m{}\u{1b}[0;0m", msg)).into();
 
+    let mut location_string = String::new();
     if let Some(location) = info.location() {
-        report = report.wrap_err(format!(
+        location_string = format!(
             "At {}:{}:{}",
             location.file(),
             location.line(),
             location.column()
-        ));
+        );
+        report = report.wrap_err(location_string.clone());
     }
 
     if !err_ctx.is_empty() {
@@ -87,6 +90,17 @@ where
         "Thread '\u{1b}[0;31m{}\u{1b}[0;0m' panicked.",
         thread
     ));
+
+    error!(
+        "{}",
+        format!(
+            "Panic occured:
+             thread: {}
+             location: {}
+             message: {}",
+            thread, location_string, msg
+        )
+    );
 
     if thread == "main" {
         // here we only show the first line because the backtrace is not readable otherwise
