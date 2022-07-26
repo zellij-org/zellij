@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: avoid sending mouse click events on pane frames to applications (https://github.com/zellij-org/zellij/pull/1584)
 * feat: search through terminal scrollback (https://github.com/zellij-org/zellij/pull/1521)
 * feat: support themes directory (https://github.com/zellij-org/zellij/pull/1577)
+* feat: Improve logging by writing server panics into the logfile (https://github.com/zellij-org/zellij/pull/1602)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)
