@@ -18,18 +18,9 @@ dependencies = [
     "clippy",
 ]
 
-# Patching the default flows to skip testing of wasm32-wasi targets
-[tasks.pre-test]
-condition = { env = { "CARGO_MAKE_CRATE_TARGET_TRIPLE" = "wasm32-wasi" } }
-env = { "SKIP_TEST" = true }
-
 [tasks.test]
-condition = { env_false = ["SKIP_TEST"] }
-dependencies = ["pre-test"]
-args = ["test", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
-
-[tasks.post-test]
-env = { "SKIP_TEST" = false }
+dependencies = ["get-host-triple"]
+args = ["test", "--target", "${CARGO_HOST_TRIPLE}", "--", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Running Zellij using the development data directory
 [tasks.run]
@@ -124,6 +115,25 @@ env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = [
     "default-plugins/tab-bar",
 ] }
 run_task = { name = "build", fork = true }
+
+[tasks.get-host-triple]
+script_runner = "@duckscript"
+script = '''
+output = exec rustc -v -V
+lines = split ${output.stdout} \n
+triple = set ""
+for line in ${lines}
+    if starts_with ${line} "host:" && not is_empty ${line}
+        bits = split ${line} " "
+        triple = array_get ${bits} 1
+        triple = set ${triple}
+    end
+end
+
+if not is_empty ${triple}
+    set_env CARGO_HOST_TRIPLE "${triple}"
+end
+'''
 
 [tasks.wasm-opt-plugins]
 dependencies = ["build-plugins-release"]
