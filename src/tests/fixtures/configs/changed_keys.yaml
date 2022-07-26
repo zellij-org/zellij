@@ -1,0 +1,26 @@
+---
+# Configuration for zellij.
+
+# In order to troubleshoot your configuration try using the following command:
+# `zellij setup --check`
+# It should show current config locations and features that are enabled.
+
+keybinds:
+    unbind: true
+    normal:
+        - action: [SwitchToMode: Locked,]
+          key: [F: 1]
+        - action: [SwitchToMode: Pane,]
+          key: [F: 2]
+        - action: [SwitchToMode: Tab,]
+          key: [F: 3]
+        - action: [SwitchToMode: Resize,]
+          key: [F: 4]
+        - action: [SwitchToMode: Move,]
+          key: [F: 5]
+        - action: [SwitchToMode: Scroll,]
+          key: [F: 6]
+        - action: [SwitchToMode: Session,]
+          key: [F: 7]
+        - action: [Quit,]
+          key: [F: 8]
