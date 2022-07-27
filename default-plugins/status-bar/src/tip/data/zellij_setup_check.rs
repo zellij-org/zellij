@@ -10,7 +10,7 @@ use zellij_tile_utils::palette_match;
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,9 +21,9 @@ macro_rules! strings {
     }};
 }
 
-pub fn zellij_setup_check_full(palette: Palette) -> LinePart {
+pub fn zellij_setup_check_full(help: &ModeInfo) -> LinePart {
     // Tip: Having issues with Zellij? Try running "zellij setup --check"
-    let orange_color = palette_match!(palette.orange);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -35,9 +35,9 @@ pub fn zellij_setup_check_full(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn zellij_setup_check_medium(palette: Palette) -> LinePart {
+pub fn zellij_setup_check_medium(help: &ModeInfo) -> LinePart {
     // Tip: Run "zellij setup --check" to find issues
-    let orange_color = palette_match!(palette.orange);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Tip: "),
@@ -50,9 +50,9 @@ pub fn zellij_setup_check_medium(palette: Palette) -> LinePart {
     ])
 }
 
-pub fn zellij_setup_check_short(palette: Palette) -> LinePart {
+pub fn zellij_setup_check_short(help: &ModeInfo) -> LinePart {
     // Run "zellij setup --check" to find issues
-    let orange_color = palette_match!(palette.orange);
+    let orange_color = palette_match!(help.style.colors.orange);
 
     strings!(&[
         Style::new().paint(" Run "),

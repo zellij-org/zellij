@@ -4,13 +4,13 @@ use ansi_term::{
     Style,
 };
 
-use crate::LinePart;
-use zellij_tile::prelude::*;
+use crate::{action_key, style_key_with_modifier, LinePart};
+use zellij_tile::prelude::{actions::Action, *};
 use zellij_tile_utils::palette_match;
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,58 +21,70 @@ macro_rules! strings {
     }};
 }
 
-pub fn edit_scrollbuffer_full(palette: Palette) -> LinePart {
+pub fn edit_scrollbuffer_full(help: &ModeInfo) -> LinePart {
     // Tip: Search through the scrollbuffer using your default $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
 
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Search through the scrollbuffer using your default "),
         Style::new().fg(green_color).bold().paint("$EDITOR"),
         Style::new().paint(" with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<e>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
 }
 
-pub fn edit_scrollbuffer_medium(palette: Palette) -> LinePart {
+pub fn edit_scrollbuffer_medium(help: &ModeInfo) -> LinePart {
     // Tip: Search the scrollbuffer using your $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
 
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Search the scrollbuffer using your "),
         Style::new().fg(green_color).bold().paint("$EDITOR"),
         Style::new().paint(" with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<e>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
 }
 
-pub fn edit_scrollbuffer_short(palette: Palette) -> LinePart {
+pub fn edit_scrollbuffer_short(help: &ModeInfo) -> LinePart {
     // Search using $EDITOR with
     // Ctrl + <s> + <e>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let green_color = palette_match!(help.style.colors.green);
 
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Search using "),
         Style::new().fg(green_color).bold().paint("$EDITOR"),
         Style::new().paint(" with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<e>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
+}
+
+fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
+    let to_pane = action_key(
+        &help.get_mode_keybinds(),
+        &[Action::SwitchToMode(InputMode::Scroll)],
+    );
+    let edit_buffer = action_key(
+        &help.get_keybinds_for_mode(InputMode::Scroll),
+        &[
+            Action::EditScrollback,
+            Action::SwitchToMode(InputMode::Normal),
+        ],
+    );
+
+    if edit_buffer.is_empty() {
+        return vec![Style::new().bold().paint("UNBOUND")];
+    }
+
+    let mut bits = vec![];
+    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
+    bits.push(Style::new().paint(", "));
+    bits.extend(style_key_with_modifier(&edit_buffer, &help.style.colors));
+    bits
 }

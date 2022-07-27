@@ -1,16 +1,11 @@
-use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
-    Color::{Fixed, RGB},
-    Style,
-};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::LinePart;
-use zellij_tile::prelude::*;
-use zellij_tile_utils::palette_match;
+use crate::{action_key, style_key_with_modifier, LinePart};
+use zellij_tile::prelude::{actions::Action, *};
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,49 +16,53 @@ macro_rules! strings {
     }};
 }
 
-pub fn sync_tab_full(palette: Palette) -> LinePart {
+pub fn sync_tab_full(help: &ModeInfo) -> LinePart {
     // Tip: Sync a tab and write keyboard input to all panes with Ctrl + <t> + <s>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
-
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Sync a tab and write keyboard input to all its panes with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<t>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
 }
 
-pub fn sync_tab_medium(palette: Palette) -> LinePart {
+pub fn sync_tab_medium(help: &ModeInfo) -> LinePart {
     // Tip: Sync input to panes in a tab with Ctrl + <t> + <s>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
-
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Sync input to panes in a tab with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<t>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
 }
 
-pub fn sync_tab_short(palette: Palette) -> LinePart {
+pub fn sync_tab_short(help: &ModeInfo) -> LinePart {
     // Sync input in a tab with Ctrl + <t> + <s>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let mut bits = vec![Style::new().paint(" Sync input in a tab with ")];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
+}
 
-    strings!(&[
-        Style::new().paint(" Sync input in a tab with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<t>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<s>"),
-    ])
+fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
+    let to_tab = action_key(
+        &help.get_mode_keybinds(),
+        &[Action::SwitchToMode(InputMode::Tab)],
+    );
+    let sync_tabs = action_key(
+        &help.get_keybinds_for_mode(InputMode::Tab),
+        &[
+            Action::ToggleActiveSyncTab,
+            Action::SwitchToMode(InputMode::Normal),
+        ],
+    );
+
+    if sync_tabs.is_empty() {
+        return vec![Style::new().bold().paint("UNBOUND")];
+    }
+
+    let mut bits = vec![];
+    bits.extend(style_key_with_modifier(&to_tab, &help.style.colors));
+    bits.push(Style::new().paint(", "));
+    bits.extend(style_key_with_modifier(&sync_tabs, &help.style.colors));
+    bits
 }

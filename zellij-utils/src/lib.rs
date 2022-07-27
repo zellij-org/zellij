@@ -1,29 +1,22 @@
-pub mod data;
-
-#[cfg(not(target_family = "wasm"))]
-pub mod channels;
-#[cfg(not(target_family = "wasm"))]
 pub mod cli;
-#[cfg(not(target_family = "wasm"))]
 pub mod consts;
-#[cfg(not(target_family = "wasm"))]
+pub mod data;
 pub mod envs;
-#[cfg(not(target_family = "wasm"))]
-pub mod errors;
-#[cfg(not(target_family = "wasm"))]
 pub mod input;
-#[cfg(not(target_family = "wasm"))]
-pub mod ipc;
-#[cfg(not(target_family = "wasm"))]
-pub mod logging;
-#[cfg(not(target_family = "wasm"))]
 pub mod pane_size;
-#[cfg(not(target_family = "wasm"))]
 pub mod position;
-#[cfg(not(target_family = "wasm"))]
 pub mod setup;
-#[cfg(not(target_family = "wasm"))]
 pub mod shared;
+
+// The following modules can't be used when targeting wasm
+#[cfg(not(target_family = "wasm"))]
+pub mod channels; // Requires async_std
+#[cfg(not(target_family = "wasm"))]
+pub mod errors; // Requires async_std (via channels)
+#[cfg(not(target_family = "wasm"))]
+pub mod ipc; // Requires interprocess
+#[cfg(not(target_family = "wasm"))]
+pub mod logging; // Requires log4rs
 
 #[cfg(not(target_family = "wasm"))]
 pub use ::{

@@ -1,16 +1,11 @@
-use ansi_term::{
-    unstyled_len, ANSIString, ANSIStrings,
-    Color::{Fixed, RGB},
-    Style,
-};
+use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
-use crate::LinePart;
-use zellij_tile::prelude::*;
-use zellij_tile_utils::palette_match;
+use crate::{action_key, style_key_with_modifier, LinePart};
+use zellij_tile::prelude::{actions::Action, *};
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
-        let strings: &[ANSIString<'static>] = $ANSIStrings;
+        let strings: &[ANSIString] = $ANSIStrings;
 
         let ansi_strings = ANSIStrings(strings);
 
@@ -21,49 +16,57 @@ macro_rules! strings {
     }};
 }
 
-pub fn floating_panes_mouse_full(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_full(help: &ModeInfo) -> LinePart {
     // Tip: Toggle floating panes with Ctrl + <p> + <w> and move them with keyboard or mouse
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
-
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Toggle floating panes with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<p>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<w>"),
-        Style::new().paint(" and move them with keyboard or mouse"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    bits.push(Style::new().paint(" and move them with keyboard or mouse"));
+    strings!(&bits)
 }
 
-pub fn floating_panes_mouse_medium(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_medium(help: &ModeInfo) -> LinePart {
     // Tip: Toggle floating panes with Ctrl + <p> + <w>
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
-    strings!(&[
+    let mut bits = vec![
         Style::new().paint(" Tip: "),
         Style::new().paint("Toggle floating panes with "),
-        Style::new().fg(orange_color).bold().paint("Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<p>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<w>"),
-    ])
+    ];
+    bits.extend(add_keybinds(help));
+    strings!(&bits)
 }
 
-pub fn floating_panes_mouse_short(palette: Palette) -> LinePart {
+pub fn floating_panes_mouse_short(help: &ModeInfo) -> LinePart {
     // Ctrl + <p> + <w> => floating panes
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
+    let mut bits = add_keybinds(help);
+    bits.push(Style::new().paint(" => floating panes"));
+    strings!(&bits)
+}
 
-    strings!(&[
-        Style::new().fg(orange_color).bold().paint(" Ctrl"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<p>"),
-        Style::new().paint(" + "),
-        Style::new().fg(green_color).bold().paint("<w>"),
-        Style::new().paint(" => floating panes"),
-    ])
+fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
+    let to_pane = action_key(
+        &help.get_mode_keybinds(),
+        &[Action::SwitchToMode(InputMode::Pane)],
+    );
+    let floating_toggle = action_key(
+        &help.get_keybinds_for_mode(InputMode::Pane),
+        &[
+            Action::ToggleFloatingPanes,
+            Action::SwitchToMode(InputMode::Normal),
+        ],
+    );
+
+    if floating_toggle.is_empty() {
+        return vec![Style::new().bold().paint("UNBOUND")];
+    }
+
+    let mut bits = vec![];
+    bits.extend(style_key_with_modifier(&to_pane, &help.style.colors));
+    bits.push(Style::new().paint(", "));
+    bits.extend(style_key_with_modifier(
+        &floating_toggle,
+        &help.style.colors,
+    ));
+    bits
 }

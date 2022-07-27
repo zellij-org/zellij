@@ -39,7 +39,7 @@ use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
-    data::{Event, PluginCapabilities, Style},
+    data::{Event, PluginCapabilities},
     errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
@@ -104,7 +104,7 @@ impl ErrorInstruction for ServerInstruction {
 pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
-    pub style: Style,
+    pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
@@ -285,7 +285,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let session = init_session(
                     os_input.clone(),
                     to_server.clone(),
-                    client_attributes,
+                    client_attributes.clone(),
                     SessionOptions {
                         opts,
                         layout: layout.clone(),
@@ -378,7 +378,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .send_to_plugin(PluginInstruction::AddClient(client_id))
                     .unwrap();
                 let default_mode = options.default_mode.unwrap_or_default();
-                let mode_info = get_mode_info(default_mode, attrs.style, session_data.capabilities);
+                let mode_info = get_mode_info(default_mode, &attrs, session_data.capabilities);
                 let mode = mode_info.mode;
                 session_data
                     .senders
@@ -654,8 +654,14 @@ fn init_session(
             );
             let max_panes = opts.max_panes;
 
+            let client_attributes_clone = client_attributes.clone();
             move || {
-                screen_thread_main(screen_bus, max_panes, client_attributes, config_options);
+                screen_thread_main(
+                    screen_bus,
+                    max_panes,
+                    client_attributes_clone,
+                    config_options,
+                );
             }
         })
         .unwrap();
@@ -705,7 +711,7 @@ fn init_session(
         },
         capabilities,
         default_shell,
-        style: client_attributes.style,
+        client_attributes,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         wasm_thread: Some(wasm_thread),

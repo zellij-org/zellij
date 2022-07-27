@@ -158,6 +158,7 @@ pub fn start_client(
             colors: palette,
             rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
         },
+        keybinds: config.keybinds.clone(),
     };
 
     let first_msg = match info {

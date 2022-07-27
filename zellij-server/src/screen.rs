@@ -915,7 +915,7 @@ pub(crate) fn screen_thread_main(
         max_panes,
         get_mode_info(
             config_options.default_mode.unwrap_or_default(),
-            client_attributes.style,
+            &client_attributes,
             PluginCapabilities {
                 arrow_fonts: capabilities.unwrap_or_default(),
             },

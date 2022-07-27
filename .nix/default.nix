@@ -68,6 +68,8 @@ flake-utils.lib.eachSystem [
   };
   cargo = rustToolchainToml;
   rustc = rustToolchainToml;
+  cargoMSRV = msrvToolchain;
+  rustcMSRV = msrvToolchain;
 
   buildInputs = [
     # in order to run tests
@@ -163,6 +165,7 @@ flake-utils.lib.eachSystem [
     license = [licenses.mit];
   };
 in rec {
+  packages.default = packages.zellij-native;
   # crate2nix - better incremental builds, but uses ifd
   packages.zellij = crate2nixPkgs.callPackage ./crate2nix.nix {
     inherit
@@ -177,7 +180,7 @@ in rec {
     nativeBuildInputs = nativeBuildInputs ++ defaultPlugins;
   };
 
-  packages.zellij-msrv = crate2nixMsrvPkgs.callPackage ./crate2nix.nix {
+  packages.zellij-crate-msrv = crate2nixMsrvPkgs.callPackage ./crate2nix.nix {
     inherit
       name
       src
@@ -204,7 +207,25 @@ in rec {
       ;
     nativeBuildInputs = nativeBuildInputs ++ defaultPlugins;
   };
-  packages.default = packages.zellij;
+  # native nixpkgs support - msrv
+  packages.zellij-msrv =
+    (pkgs.makeRustPlatform {
+      cargo = cargoMSRV;
+      rustc = rustcMSRV;
+    })
+    .buildRustPackage {
+      inherit
+        src
+        name
+        cargoLock
+        buildInputs
+        postInstall
+        patchPhase
+        desktopItems
+        meta
+        ;
+      nativeBuildInputs = nativeBuildInputs ++ defaultPlugins;
+    };
 
   packages.plugins-compact = plugins.compact-bar;
   packages.plugins-status-bar = plugins.status-bar;

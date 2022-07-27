@@ -26,4 +26,4 @@ expression: last_snapshot
 │                                                          ││li█e21                                                    │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
  Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT           
- <↓↑> Scroll / <PgDn/PgUp> Scroll / <d/u> Scroll / <e> Edit / <s> Enter / <ENTER> Select pane                           
+ <↓↑> Scroll / <PgDn|PgUp> Scroll / <d|u> Scroll / <e> Edit / <s> Search / <ENTER> Select                                            

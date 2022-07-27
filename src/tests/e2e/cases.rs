@@ -985,6 +985,41 @@ pub fn accepts_basic_layout() {
 
 #[test]
 #[ignore]
+pub fn status_bar_loads_custom_keybindings() {
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let config_file_name = "changed_keys.yaml";
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new_with_config(fake_win_size, config_file_name);
+        runner.run_all_steps();
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for app to load",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.cursor_position_is(3, 1)
+                    && remote_terminal.snapshot_contains("$ █                   ││$")
+                    && remote_terminal.snapshot_contains("$                                                                                                                     ") {
+                    step_is_complete = true;
+                }
+                step_is_complete
+            },
+        });
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
 fn focus_pane_with_mouse() {
     let fake_win_size = Size {
         cols: 120,

@@ -1,3 +1,4 @@
+use crate::input::actions::Action;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -30,42 +31,97 @@ pub fn single_client_color(colors: Palette) -> (PaletteColor, PaletteColor) {
     (colors.green, colors.black)
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+// TODO: Add a shortened string representation (beyond `Display::fmt` below) that can be used when
+// screen space is scarce. Useful for e.g. "ENTER", "SPACE", "TAB" to display as Unicode
+// representations instead.
+// NOTE: Do not reorder the key variants since that influences what the `status_bar` plugin
+// displays!
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 pub enum Key {
-    Backspace,
+    PageDown,
+    PageUp,
     Left,
-    Right,
-    Up,
     Down,
+    Up,
+    Right,
     Home,
     End,
-    PageUp,
-    PageDown,
-    BackTab,
+    Backspace,
     Delete,
     Insert,
     F(u8),
     Char(char),
     Alt(CharOrArrow),
     Ctrl(char),
+    BackTab,
     Null,
     Esc,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl fmt::Display for Key {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Key::Backspace => write!(f, "BACKSPACE"),
+            Key::Left => write!(f, "{}", Direction::Left),
+            Key::Right => write!(f, "{}", Direction::Right),
+            Key::Up => write!(f, "{}", Direction::Up),
+            Key::Down => write!(f, "{}", Direction::Down),
+            Key::Home => write!(f, "HOME"),
+            Key::End => write!(f, "END"),
+            Key::PageUp => write!(f, "PgUp"),
+            Key::PageDown => write!(f, "PgDn"),
+            Key::BackTab => write!(f, "TAB"),
+            Key::Delete => write!(f, "DEL"),
+            Key::Insert => write!(f, "INS"),
+            Key::F(n) => write!(f, "F{}", n),
+            Key::Char(c) => match c {
+                '\n' => write!(f, "ENTER"),
+                '\t' => write!(f, "TAB"),
+                ' ' => write!(f, "SPACE"),
+                _ => write!(f, "{}", c),
+            },
+            Key::Alt(c) => write!(f, "Alt+{}", c),
+            Key::Ctrl(c) => write!(f, "Ctrl+{}", Key::Char(*c)),
+            Key::Null => write!(f, "NULL"),
+            Key::Esc => write!(f, "ESC"),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[serde(untagged)]
 pub enum CharOrArrow {
     Char(char),
     Direction(Direction),
 }
 
+impl fmt::Display for CharOrArrow {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CharOrArrow::Char(c) => write!(f, "{}", Key::Char(*c)),
+            CharOrArrow::Direction(d) => write!(f, "{}", d),
+        }
+    }
+}
+
 /// The four directions (left, right, up, down).
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub enum Direction {
     Left,
     Right,
     Up,
     Down,
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Left => write!(f, "←"),
+            Direction::Right => write!(f, "→"),
+            Direction::Up => write!(f, "↑"),
+            Direction::Down => write!(f, "↓"),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -237,17 +293,34 @@ pub struct Style {
     pub rounded_corners: bool,
 }
 
+// FIXME: Poor devs hashtable since HashTable can't derive `Default`...
+pub type KeybindsVec = Vec<(InputMode, Vec<(Key, Vec<Action>)>)>;
+
 /// Represents the contents of the help message that is printed in the status bar,
 /// which indicates the current [`InputMode`] and what the keybinds for that mode
 /// are. Related to the default `status-bar` plugin.
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModeInfo {
     pub mode: InputMode,
-    // FIXME: This should probably return Keys and Actions, then sort out strings plugin-side
-    pub keybinds: Vec<(String, String)>, // <shortcut> => <shortcut description>
+    pub keybinds: KeybindsVec,
     pub style: Style,
     pub capabilities: PluginCapabilities,
     pub session_name: Option<String>,
+}
+
+impl ModeInfo {
+    pub fn get_mode_keybinds(&self) -> Vec<(Key, Vec<Action>)> {
+        self.get_keybinds_for_mode(self.mode)
+    }
+
+    pub fn get_keybinds_for_mode(&self, mode: InputMode) -> Vec<(Key, Vec<Action>)> {
+        for (vec_mode, map) in &self.keybinds {
+            if mode == *vec_mode {
+                return map.to_vec();
+            }
+        }
+        vec![]
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
