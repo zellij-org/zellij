@@ -85,6 +85,7 @@ jobs:
 
       - name: Create checksum
         id: make-checksum
+        if: runner.os != 'macos'
         working-directory: ./target/${{ matrix.target }}/release
         run: |
           name="zellij-${{ matrix.target }}.sha256sum"
@@ -111,6 +112,7 @@ jobs:
 
       - name: Upload checksum
         uses: actions/upload-release-asset@v1.0.2
+        if: runner.os != 'macos'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
