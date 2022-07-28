@@ -102,6 +102,7 @@ impl TerminalBytes {
                         let time_to_send_render =
                             self.async_send_to_screen(ScreenInstruction::Render).await;
                         self.update_render_send_time(time_to_send_render);
+                        self.last_render = Instant::now();
                     }
                     // if we already have a render_deadline we keep it, otherwise we set it
                     // to buffering_pause since the last time we rendered.
