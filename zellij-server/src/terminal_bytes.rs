@@ -145,7 +145,9 @@ impl TerminalBytes {
         }
     }
     async fn deadline_read(&mut self, buf: &mut [u8]) -> ReadResult {
-        if let Some(deadline) = self.render_deadline {
+        if !self.backed_up {
+            self.async_reader.read(buf).await.into()
+        } else if let Some(deadline) = self.render_deadline {
             let timeout = deadline.checked_duration_since(Instant::now());
             if let Some(timeout) = timeout {
                 match async_timeout(timeout, self.async_reader.read(buf)).await {
