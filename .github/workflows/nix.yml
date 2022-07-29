@@ -12,7 +12,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     name: "nix build"
-    environment: cachix
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v3
@@ -30,7 +29,6 @@ jobs:
   build-msrv:
     runs-on: ubuntu-latest
     name: "build msrv"
-    environment: cachix
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v3
