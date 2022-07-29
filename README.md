@@ -42,7 +42,7 @@ Zellij was initially called "Mosaic".
 You can install with `cargo`:
 
 ```
-cargo install zellij
+cargo install --locked zellij
 ```
 
 Or if want to a prebuilt binary, you can download it from our [Releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
@@ -78,7 +78,7 @@ To get started, you can:
 ## How do I start a development environment?
 
 * Clone the project
-* Install cargo-make with `cargo install --force cargo-make`
+* Install cargo-make with `cargo install --locked --force cargo-make`
 * In the project folder, for debug builds run: `cargo make run`
 * To run all tests: `cargo make test`
 

@@ -12,9 +12,9 @@ all contributors are expected to adhere to.
 
 ## Building
 To build Zellij, we're using cargo-make – you can install it by running `cargo
-install --force cargo-make`.
+install --locked --force cargo-make`.
 
-To edit our manpage, the mandown crate (`cargo install
+To edit our manpage, the mandown crate (`cargo install --locked
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
 Here are some of the commands currently supported by the build system:
