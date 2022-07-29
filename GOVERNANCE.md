@@ -45,3 +45,4 @@ For the removal of doubt: changing this rule itself requires a two thirds majori
 * Thomas Linford <linford.t@gmail.com>
 * Jaeheon Ji <atx6419@gmail.com>
 * Raph <zellij@raphtec.net>
+* Andreas Hartmann <hartan@7x.de>
