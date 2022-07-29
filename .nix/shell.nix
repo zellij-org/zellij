@@ -1,7 +1,7 @@
 (import
   (
     let
-      lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+      lock = builtins.fromJSON (builtins.readFile ../flake.lock);
     in
       fetchTarball {
         url = "https://github.com/edolstra/flake-compat/archive/${lock.nodes.flake-compat.locked.rev}.tar.gz";
@@ -9,6 +9,6 @@
       }
   )
   {
-    src = ./.;
+    src = ../.;
   })
-.defaultNix
+.shellNix

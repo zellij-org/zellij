@@ -13,5 +13,5 @@
     crate2nix.flake = false;
   };
 
-  outputs = {...} @ args: import ./.nix args;
+  outputs = {...} @ args: import .nix/zellij.nix args;
 }
