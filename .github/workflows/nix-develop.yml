@@ -22,7 +22,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     name: "nix check"
-    environment: cachix
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v3
@@ -41,7 +40,6 @@ jobs:
   develop:
     runs-on: ubuntu-latest
     name: "nix develop"
-    environment: cachix
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
