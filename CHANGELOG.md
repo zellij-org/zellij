@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * add: `solarized-light` theme to the example theme directory (https://github.com/zellij-org/zellij/pull/1608)
+* add(readme): more links to the documentation (https://github.com/zellij-org/zellij/pull/1621)
 
 ## [0.31.0] - 2022-07-28
 * feat: Log errors causing "empty message received from client" (https://github.com/zellij-org/zellij/pull/1459)
