@@ -33,6 +33,8 @@ At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/
 
 Zellij includes a [layout system](https://zellij.dev/documentation/layouts.html), and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
+You can get started by [installing](https://zellij.dev/documentation/installation.html) Zellij and reading the [overview](https://zellij.dev/documentation/overview.html).
+
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
 Zellij was initially called "Mosaic".
