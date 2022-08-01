@@ -86,6 +86,12 @@ To re-run the tests after you've changed something in the code base, be sure to 
 ## Debugging / Troubleshooting while developing
 Zellij uses the excellent [`log`](https://crates.io/crates/log) crate to handle its internal logging. The output of these logs will go to `/tmp/zellij-<UID>/zellij-log/zellij.log`.
 
+Example:
+```rust
+let my_variable = some_function();
+log::info!("my variable is: {:?}", my_variable);
+```
+
 Note that the output is truncated at 100KB. This can be adjusted for the purposes of debugging through the `LOG_MAX_BYTES` constant, at the time of writing here: https://github.com/zellij-org/zellij/blob/main/zellij-utils/src/logging.rs#L24
 
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/tmp/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
