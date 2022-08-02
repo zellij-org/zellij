@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.31.1] - 2022-08-02
 * add: `solarized-light` theme to the example theme directory (https://github.com/zellij-org/zellij/pull/1608)
 * add(readme): more links to the documentation (https://github.com/zellij-org/zellij/pull/1621)
 * fix theme not loading without config (https://github.com/zellij-org/zellij/pull/1631)
