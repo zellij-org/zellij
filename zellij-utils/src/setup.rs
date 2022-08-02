@@ -270,7 +270,10 @@ mod not_wasm {
                         if let Some(extension) = entry.path().extension() {
                             if extension == "yaml" || extension == "yml" {
                                 if let Ok(themes) = ThemesFromYaml::from_path(&entry.path()) {
-                                    config.themes = config.themes.map(|t| t.merge(themes.into()));
+                                    match config.themes {
+                                        Some(t) => config.themes = Some(t.merge(themes.into())),
+                                        None => config.themes = Some(themes.into()),
+                                    }
                                 }
                             }
                         }
