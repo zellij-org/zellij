@@ -1,4 +1,5 @@
 //! CLI flags for `cargo xtask`
+use std::path::PathBuf;
 
 xflags::xflags! {
     src "./src/flags.rs"
@@ -10,10 +11,31 @@ xflags::xflags! {
             optional -h, --help
         }
 
+        /// Run `cargo clippy` on all crates
+        cmd clippy {}
+
+        /// Run `cargo fmt` on all crates
+        cmd format {}
+
+        /// Sequentially call: format, build, test, clippy
+        cmd make {
+            /// Build in release mode without debug symbols
+            optional -r, --release
+        }
+
+        /// Generate a runnable `zellij` executable with plugins bundled
+        cmd install
+            required destination: PathBuf
+        {}
+
         /// Build the application and all plugins
         cmd build {
             /// Build in release mode without debug symbols
             optional -r, --release
+            /// Build only the plugins
+            optional --plugins-only
+            /// Build everything except the plugins
+            optional --no-plugins
         }
 
         /// Package zellij for distribution (result found in ./target/dist)
@@ -34,6 +56,10 @@ pub struct Xtask {
 #[derive(Debug)]
 pub enum XtaskCmd {
     Help(Help),
+    Clippy(Clippy),
+    Format(Format),
+    Make(Make),
+    Install(Install),
     Build(Build),
     Dist(Dist),
     Test(Test),
@@ -45,8 +71,26 @@ pub struct Help {
 }
 
 #[derive(Debug)]
+pub struct Clippy;
+
+#[derive(Debug)]
+pub struct Format;
+
+#[derive(Debug)]
+pub struct Make {
+    pub release: bool,
+}
+
+#[derive(Debug)]
+pub struct Install {
+    pub destination: PathBuf,
+}
+
+#[derive(Debug)]
 pub struct Build {
     pub release: bool,
+    pub plugins_only: bool,
+    pub no_plugins: bool,
 }
 
 #[derive(Debug)]
