@@ -60,6 +60,8 @@ fn project_root() -> PathBuf {
     .to_path_buf()
 }
 
-pub fn cargo() -> String {
-    std::env::var_os("CARGO").unwrap().to_str().unwrap_or("cargo").to_string()
+pub fn cargo() -> anyhow::Result<PathBuf> {
+    std::env::var_os("CARGO")
+        .map_or_else(|| which::which("cargo"), |exe| Ok(PathBuf::from(exe)))
+        .context("Couldn't find 'cargo' executable")
 }
