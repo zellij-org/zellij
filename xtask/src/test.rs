@@ -4,7 +4,7 @@ use std::path::Path;
 use xshell::{cmd, Shell};
 
 pub fn test(sh: &Shell, _flags: flags::Test) -> anyhow::Result<()> {
-    let cargo = crate::cargo();
+    let cargo = crate::cargo()?;
     let host_triple = host_target_triple(sh)?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
