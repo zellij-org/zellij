@@ -1717,7 +1717,9 @@ impl Perform for Grid {
             15 => {
                 self.set_active_charset(CharsetIndex::G0);
             },
-            _ => {},
+            _ => {
+                log::warn!("Unhandled execute: {:?}", byte);
+            },
         }
     }
 
@@ -1940,7 +1942,9 @@ impl Perform for Grid {
                 // TBD - reset text cursor color - currently unimplemented
             },
 
-            _ => {},
+            _ => {
+                log::warn!("Unhandled osc: {:?}", params);
+            },
         }
     }
 
@@ -2444,7 +2448,9 @@ impl Perform for Grid {
                 fill_character.character = 'E';
                 self.fill_viewport(fill_character);
             },
-            _ => {},
+            _ => {
+                log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+            },
         }
     }
 }
