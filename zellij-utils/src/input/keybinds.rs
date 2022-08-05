@@ -65,78 +65,78 @@ enum Unbind {
     All(bool),
 }
 
-impl Default for Keybinds {
-    // Use once per codepath
-    // TODO investigate why
-    fn default() -> Keybinds {
-        Self::from_default_assets()
-    }
-}
+// impl Default for Keybinds {
+//     // Use once per codepath
+//     // TODO investigate why
+//     fn default() -> HashMap<InputMode, HashMap<Key, Vec<Action>>> {
+//         Self::from_default_assets()
+//     }
+// }
 
 impl Keybinds {
     pub fn new() -> Keybinds {
         Keybinds(HashMap::<InputMode, ModeKeybinds>::new())
     }
 
-    fn from_default_assets() -> Keybinds {
+    fn from_default_assets() -> HashMap<InputMode, HashMap<Key, Vec<Action>>> {
         config::Config::from_default_assets()
             .expect("Keybinds from default assets Error!")
             .keybinds
     }
 
-    /// Entrypoint from the config module
-    pub fn get_default_keybinds_with_config(from_yaml: Option<KeybindsFromYaml>) -> Keybinds {
-        let default_keybinds = match from_yaml.clone() {
-            Some(keybinds) => match keybinds.unbind {
-                Unbind::All(true) => Keybinds::new(),
-                Unbind::All(false) | Unbind::Keys(_) => Keybinds::unbind(keybinds),
-            },
-            None => Keybinds::default(),
-        };
-
-        if let Some(keybinds) = from_yaml {
-            default_keybinds.merge_keybinds(Keybinds::from(keybinds))
-        } else {
-            default_keybinds
-        }
-    }
+//     /// Entrypoint from the config module
+//     pub fn get_default_keybinds_with_config(from_yaml: Option<KeybindsFromYaml>) -> Keybinds {
+//         let default_keybinds = match from_yaml.clone() {
+//             Some(keybinds) => match keybinds.unbind {
+//                 Unbind::All(true) => Keybinds::new(),
+//                 Unbind::All(false) | Unbind::Keys(_) => Keybinds::unbind(keybinds),
+//             },
+//             None => Keybinds::default(),
+//         };
+//
+//         if let Some(keybinds) = from_yaml {
+//             default_keybinds.merge_keybinds(Keybinds::from(keybinds))
+//         } else {
+//             default_keybinds
+//         }
+//     }
 
     /// Unbinds the default keybindings in relation to their mode
-    fn unbind(from_yaml: KeybindsFromYaml) -> Keybinds {
-        let mut keybind_config = Self::new();
-        let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
-        let keybinds_from_yaml = from_yaml.keybinds;
-
-        for mode in InputMode::iter() {
-            if let Some(keybinds) = keybinds_from_yaml.get(&mode) {
-                for keybind in keybinds {
-                    match keybind {
-                        KeyActionUnbind::Unbind(unbind) => {
-                            unbind_config.insert(mode, unbind.unbind.clone());
-                        },
-                        KeyActionUnbind::KeyAction(key_action_from_yaml) => {
-                            keybind_config
-                                .0
-                                .insert(mode, ModeKeybinds::from(key_action_from_yaml.clone()));
-                        },
-                    }
-                }
-            }
-        }
-
-        let mut default = Self::default().unbind_mode(unbind_config);
-
-        // Toplevel Unbinds
-        if let Unbind::Keys(_) = from_yaml.unbind {
-            let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
-            for mode in InputMode::iter() {
-                unbind_config.insert(mode, from_yaml.unbind.clone());
-            }
-            default = default.unbind_mode(unbind_config);
-        };
-
-        default.merge_keybinds(keybind_config)
-    }
+//     fn unbind(from_yaml: KeybindsFromYaml) -> Keybinds {
+//         let mut keybind_config = Self::new();
+//         let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
+//         let keybinds_from_yaml = from_yaml.keybinds;
+//
+//         for mode in InputMode::iter() {
+//             if let Some(keybinds) = keybinds_from_yaml.get(&mode) {
+//                 for keybind in keybinds {
+//                     match keybind {
+//                         KeyActionUnbind::Unbind(unbind) => {
+//                             unbind_config.insert(mode, unbind.unbind.clone());
+//                         },
+//                         KeyActionUnbind::KeyAction(key_action_from_yaml) => {
+//                             keybind_config
+//                                 .0
+//                                 .insert(mode, ModeKeybinds::from(key_action_from_yaml.clone()));
+//                         },
+//                     }
+//                 }
+//             }
+//         }
+//
+//         let mut default = Self::default().unbind_mode(unbind_config);
+//
+//         // Toplevel Unbinds
+//         if let Unbind::Keys(_) = from_yaml.unbind {
+//             let mut unbind_config: HashMap<InputMode, Unbind> = HashMap::new();
+//             for mode in InputMode::iter() {
+//                 unbind_config.insert(mode, from_yaml.unbind.clone());
+//             }
+//             default = default.unbind_mode(unbind_config);
+//         };
+//
+//         default.merge_keybinds(keybind_config)
+//     }
 
     /// Unbind [`Key`] bindings respective to their mode
     fn unbind_mode(&self, unbind: HashMap<InputMode, Unbind>) -> Keybinds {
@@ -192,20 +192,25 @@ impl Keybinds {
         key: &Key,
         raw_bytes: Vec<u8>,
         mode: &InputMode,
-        keybinds: &Keybinds,
+        keybinds: &HashMap<InputMode, HashMap<Key, Vec<Action>>>, // TODO: make this a type
     ) -> Vec<Action> {
         let mode_keybind_or_action = |action: Action| {
-            keybinds
-                .0
-                .get(mode)
-                .unwrap_or({
-                    // create a dummy mode to recover from
-                    &ModeKeybinds::new()
-                })
-                .0
-                .get(key)
-                .cloned()
-                .unwrap_or_else(|| vec![action])
+            if let Some(mode) = keybinds.get(mode) {
+                if let Some(actions) = mode.get(key).cloned() {
+                    return actions;
+                }
+            }
+            return vec![action];
+//             keybinds
+//                 .get(mode)
+//                 .unwrap_or({
+//                     // create a dummy mode to recover from
+//                     &ModeKeybinds::new()
+//                 })
+//                 .0
+//                 .get(key)
+//                 .cloned()
+//                 .unwrap_or_else(|| vec![action])
         };
         match *mode {
             InputMode::Normal | InputMode::Locked => {

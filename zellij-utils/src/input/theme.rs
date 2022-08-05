@@ -13,19 +13,20 @@ use crate::shared::detect_theme_hue;
 pub struct ThemesFromYaml(HashMap<String, Theme>);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct UiConfigFromYaml {
-    pub pane_frames: FrameConfigFromYaml,
+pub struct UiConfig {
+    pub pane_frames: FrameConfig,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct FrameConfigFromYaml {
+pub struct FrameConfig {
     pub rounded_corners: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-struct Theme {
+pub struct Theme {
     #[serde(flatten)]
-    palette: PaletteFromYaml,
+    // palette: PaletteFromYaml,
+    pub palette: Palette,
 }
 
 /// Intermediate deserialization struct
@@ -141,7 +142,7 @@ impl ThemesFromYaml {
     fn from_default_theme(&mut self, theme: String) -> Option<Palette> {
         self.clone()
             .get_theme(theme)
-            .map(|t| Palette::from(t.palette))
+            .map(|t| t.palette)
     }
 
     /// Merges two Theme structs into one Theme struct

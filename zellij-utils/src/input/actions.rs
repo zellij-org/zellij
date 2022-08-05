@@ -6,6 +6,8 @@ use crate::data::InputMode;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
 
+use std::str::FromStr;
+
 use crate::position::Position;
 
 /// The four directions (left, right, up, down).
@@ -16,6 +18,18 @@ pub enum Direction {
     Up,
     Down,
 }
+impl FromStr for Direction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Left" => Ok(Direction::Left),
+            "Right" => Ok(Direction::Right),
+            "Up" => Ok(Direction::Up),
+            "Down" => Ok(Direction::Down),
+            _ => Err(format!("Failed to parse Direction. Unknown Direction: {}", s)),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub enum ResizeDirection {
@@ -25,6 +39,20 @@ pub enum ResizeDirection {
     Down,
     Increase,
     Decrease,
+}
+impl FromStr for ResizeDirection {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Left" => Ok(ResizeDirection::Left),
+            "Right" => Ok(ResizeDirection::Right),
+            "Up" => Ok(ResizeDirection::Up),
+            "Down" => Ok(ResizeDirection::Down),
+            "Increase" => Ok(ResizeDirection::Increase),
+            "Decrease" => Ok(ResizeDirection::Decrease),
+            _ => Err(format!("Failed to parse ResizeDirection. Unknown ResizeDirection: {}", s)),
+        }
+    }
 }
 
 // As these actions are bound to the default config, please

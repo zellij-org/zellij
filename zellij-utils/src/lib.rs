@@ -1,6 +1,8 @@
 pub mod data;
 
 #[cfg(not(target_family = "wasm"))]
+pub mod kdl;
+#[cfg(not(target_family = "wasm"))]
 pub mod channels;
 #[cfg(not(target_family = "wasm"))]
 pub mod cli;

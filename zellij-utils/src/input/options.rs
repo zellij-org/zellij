@@ -118,6 +118,17 @@ impl Default for Clipboard {
     }
 }
 
+impl FromStr for Clipboard {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "System" | "system" => Ok(Self::System),
+            "Primary" | "primary" => Ok(Self::Primary),
+            _ => Err(format!("No such clipboard: {}", s)),
+        }
+    }
+}
+
 impl Options {
     pub fn from_yaml(from_yaml: Option<Options>) -> Options {
         if let Some(opts) = from_yaml {

@@ -360,6 +360,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "chumsky"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d02796e4586c6c41aeb68eae9bfb4558a522c35f1430c14b40136c3706e09e4"
+
+[[package]]
 name = "clap"
 version = "3.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1226,6 +1232,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "kdl"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0170e808d03465c564754ac497fe718aae33146b135a0f882a7ca4066257e0b"
+dependencies = [
+ "miette 4.7.1",
+ "nom 7.1.1",
+ "thiserror",
+]
+
+[[package]]
+name = "knuffel"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f9f7a07459e9dc5d07f5dabfc2c2a965bf39195451eb785b61460c65f386eef"
+dependencies = [
+ "base64",
+ "chumsky",
+ "knuffel-derive",
+ "miette 4.7.1",
+ "thiserror",
+ "unicode-width",
+]
+
+[[package]]
+name = "knuffel-derive"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbcbdb0b6f26a4e5ecb0dd9074a430398a41b2c1624c205bcc202541ddc15488"
+dependencies = [
+ "heck 0.4.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1412,7 +1456,7 @@ checksum = "cd2adcfcced5d625bf90a958a82ae5b93231f57f3df1383fee28c9b5096d35ed"
 dependencies = [
  "atty",
  "backtrace",
- "miette-derive",
+ "miette-derive 3.3.0",
  "once_cell",
  "owo-colors",
  "supports-color",
@@ -1421,6 +1465,18 @@ dependencies = [
  "terminal_size",
  "textwrap 0.14.2",
  "thiserror",
+]
+
+[[package]]
+name = "miette"
+version = "4.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c90329e44f9208b55f45711f9558cec15d7ef8295cc65ecd6d4188ae8edc58c"
+dependencies = [
+ "miette-derive 4.7.1",
+ "once_cell",
+ "thiserror",
+ "unicode-width",
 ]
 
 [[package]]
@@ -1433,6 +1489,23 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "miette-derive"
+version = "4.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b5bc45b761bcf1b5e6e6c4128cd93b84c218721a8d9b894aa0aff4ed180174c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
@@ -1501,6 +1574,16 @@ checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
 dependencies = [
  "memchr",
  "version_check",
+]
+
+[[package]]
+name = "nom"
+version = "7.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
 ]
 
 [[package]]
@@ -2472,7 +2555,7 @@ checksum = "76971977e6121664ec1b960d1313aacfa75642adc93b9d4d53b247bd4cb1747e"
 dependencies = [
  "dirs",
  "fnv",
- "nom",
+ "nom 5.1.2",
  "phf",
  "phf_codegen",
 ]
@@ -3273,7 +3356,7 @@ dependencies = [
  "dialoguer",
  "insta",
  "log",
- "miette",
+ "miette 3.3.0",
  "names",
  "rand 0.8.5",
  "ssh2",
@@ -3356,11 +3439,13 @@ dependencies = [
  "crossbeam",
  "directories-next",
  "interprocess",
+ "kdl",
+ "knuffel",
  "lazy_static",
  "libc",
  "log",
  "log4rs",
- "miette",
+ "miette 3.3.0",
  "nix",
  "once_cell",
  "regex",

@@ -140,6 +140,27 @@ pub enum InputMode {
     Tmux,
 }
 
+impl TryFrom<&str> for InputMode {
+    type Error = String;
+    fn try_from(mode: &str) -> Result<Self, String> {
+        match mode {
+            "normal" | "Normal" => Ok(InputMode::Normal),
+            "locked" | "Locked" => Ok(InputMode::Locked),
+            "resize" | "Resize" => Ok(InputMode::Resize),
+            "pane" | "Pane" => Ok(InputMode::Pane),
+            "tab" | "Tab" => Ok(InputMode::Tab),
+            "scroll" | "Scroll" => Ok(InputMode::Scroll),
+            "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
+            "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+            "session" | "Session" => Ok(InputMode::Session),
+            "move" | "Move" => Ok(InputMode::Move),
+            "prompt" | "Prompt" => Ok(InputMode::Prompt),
+            "tmux" | "Tmux" => Ok(InputMode::Tmux),
+            _ => Err(format!("Unrecognized mode: {}", mode)),
+        }
+    }
+}
+
 impl Default for InputMode {
     fn default() -> InputMode {
         InputMode::Normal
