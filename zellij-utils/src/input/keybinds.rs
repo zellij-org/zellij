@@ -189,6 +189,9 @@ impl Keybinds {
     /// Converts a [`Key`] terminal event to a sequence of [`Action`]s according to the current
     /// [`InputMode`] and [`Keybinds`].
     pub fn key_to_actions(
+        // TODO CONTINUE HERE (06/08): remove everything except this function and see if it still compiles,
+        // if so, convert this into the new way and add a fn from_kdl to it that will be the
+        // parse_keybindings function that's in the config object now
         key: &Key,
         raw_bytes: Vec<u8>,
         mode: &InputMode,

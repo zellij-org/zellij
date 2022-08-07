@@ -18,7 +18,7 @@ use kdl::{KdlDocument, KdlValue, KdlNode};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 
-use super::keybinds::{Keybinds, KeybindsFromYaml};
+use super::keybinds::{KeybindsFromYaml};
 use super::options::{Options, OnForceClose, Clipboard};
 use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml, PluginConfig, PluginType};
 use super::theme::{ThemesFromYaml, UiConfig, Theme, FrameConfig};
@@ -185,9 +185,9 @@ impl Config {
 //         }
 //     }
     /// Uses defaults, but lets config override them.
-    pub fn parse_keybindings(kdl_keybinds: &KdlNode, keybindings_to_override: Option<HashMap<InputMode, HashMap<Key, Vec<Action>>>>) -> Result<HashMap<InputMode, HashMap<Key, Vec<Action>>>, String> {
+    pub fn parse_keybindings(kdl_keybinds: &KdlNode, keybindings_to_override: HashMap<InputMode, HashMap<Key, Vec<Action>>>) -> Result<HashMap<InputMode, HashMap<Key, Vec<Action>>>, String> {
         let clear_defaults = kdl_keybinds.get("clear-defaults").and_then(|c| c.value().as_bool()).unwrap_or(false) == true;
-        let mut keybinds_from_config: HashMap<InputMode, HashMap<Key, Vec<Action>>> = if clear_defaults {HashMap::new()} else {keybindings_to_override.unwrap_or_else(|| HashMap::new())};
+        let mut keybinds_from_config: HashMap<InputMode, HashMap<Key, Vec<Action>>> = if clear_defaults {HashMap::new()} else {keybindings_to_override};
         for mode in kdl_keybinds.children().unwrap().nodes() {
             let mode_name = mode.name().value();
             if mode_name == "unbind" {
@@ -230,7 +230,6 @@ impl Config {
                     }
                 }
             }
-            // keybinds_from_config.insert(input_mode, input_mode_keybinds);
         }
         if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
             let keys: Vec<Key> = global_unbind.entries().iter().map(|key_shortcut| {
@@ -403,40 +402,39 @@ impl Config {
         Ok(env)
     }
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> ConfigResult {
-        // TODO: CONTINUE HERE
-        // - adapt the existing tests to work with the new way
-        // - then write new tests
-        // - then refactor
-        // - then move on to layouts and everything else (what?)
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
 
         if let Some(keybinds) = kdl_config.get("keybinds") {
-            let keybinds_from_config = Config::parse_keybindings(&keybinds, Some(config.keybinds)).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse keybindings: {:?}", e)))?;
-            config.keybinds = keybinds_from_config;
+            config.keybinds = Config::parse_keybindings(&keybinds, config.keybinds)
+                .map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse keybindings: {:?}", e)))?;
         }
 
-        let options = Config::parse_options(&kdl_config);
-        config.options = options;
+        config.options = Config::parse_options(&kdl_config);
 
         if let Some(kdl_themes) = kdl_config.get("themes") {
-            let themes = Config::parse_themes(&kdl_themes).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse themes: {:?}", e)))?;
-            config.themes = Some(themes);
+            config.themes = Some(Config::parse_themes(&kdl_themes).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse themes: {:?}", e)))?);
         }
 
         if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
-            let plugins = Config::parse_plugins(&kdl_plugin_config).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse plugins: {:?}", e)))?;
-            config.plugins = PluginsConfig::from_data(plugins);
+            config.plugins = PluginsConfig::from_data(
+                Config::parse_plugins(&kdl_plugin_config)
+                    .map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse plugins: {:?}", e)))?
+            );
         }
 
         if let Some(kdl_ui_config) = kdl_config.get("ui") {
-            let ui_config = Config::parse_ui_config(&kdl_ui_config).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse ui config: {:?}", e)))?;
-            config.ui = Some(ui_config);
+            config.ui = Some(
+                Config::parse_ui_config(&kdl_ui_config)
+                    .map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse ui config: {:?}", e)))?
+            );
         }
 
         if let Some(env_config) = kdl_config.get("env") {
-            let env = Config::parse_env_variables_config(&env_config).map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse env variable config: {:?}", e)))?;
-            config.env = EnvironmentVariables::from_data(env);
+            config.env = EnvironmentVariables::from_data(
+                Config::parse_env_variables_config(&env_config)
+                    .map_err(|e| ConfigError::KdlParsingError(format!("Failed to parse env variable config: {:?}", e)))?
+            );
         }
 
         Ok(config)
