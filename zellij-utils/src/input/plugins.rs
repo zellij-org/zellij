@@ -6,11 +6,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use kdl::KdlNode;
+use crate::{kdl_children_nodes_or_error, kdl_name, kdl_property_first_arg_as_string, kdl_children_property_first_arg_as_string, kdl_children_property_first_arg_as_bool};
+
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::config::ConfigFromYaml;
+use super::config::{ConfigError, ConfigFromYaml};
 use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
 use crate::setup;
@@ -36,6 +39,26 @@ impl PluginsConfig {
     }
     pub fn from_data(data: HashMap<PluginTag, PluginConfig>) -> Self {
         PluginsConfig(data)
+    }
+    pub fn from_kdl(kdl_plugin_config: &KdlNode) -> Result<Self, ConfigError> {
+        let mut plugins: HashMap<PluginTag, PluginConfig> = HashMap::new();
+        for plugin_config in kdl_children_nodes_or_error!(kdl_plugin_config, "no plugin config found") {
+            let plugin_name = kdl_name!(plugin_config);
+            let plugin_tag = PluginTag::new(plugin_name);
+            let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
+                .map(|path| PathBuf::from(path))
+                .ok_or::<Box<dyn std::error::Error>>("Plugin path not found".into())?;
+            let allow_exec_host_cmd = kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
+                .unwrap_or(false);
+            let plugin_config = PluginConfig {
+                path,
+                run: PluginType::Pane(None),
+                location: RunPluginLocation::Zellij(plugin_tag.clone()),
+                _allow_exec_host_cmd: allow_exec_host_cmd,
+            };
+            plugins.insert(plugin_tag, plugin_config);
+        }
+        Ok(PluginsConfig(plugins))
     }
 
     /// Entrypoint from the config module

@@ -1,6 +1,9 @@
 /// Uniformly operates ZELLIJ* environment variables
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use crate::input::config::ConfigError;
+use kdl::KdlNode;
+use crate::{kdl_children_or_error, kdl_children_nodes_or_error, kdl_name, kdl_first_entry_as_string, kdl_first_entry_as_i64};
 use std::{
     collections::HashMap,
     env::{set_var, var},
@@ -50,6 +53,19 @@ impl EnvironmentVariables {
         EnvironmentVariables {
             env: data
         }
+    }
+    pub fn from_kdl(kdl_env_variables: &KdlNode) -> Result<Self, ConfigError> {
+        let mut env: HashMap<String, String> = HashMap::new();
+        for env_var in kdl_children_nodes_or_error!(kdl_env_variables, "empty env variable block") {
+            let env_var_name = kdl_name!(env_var);
+            let env_var_str_value = kdl_first_entry_as_string!(env_var).map(|s| format!("{}", s.to_string()));
+            let env_var_int_value = kdl_first_entry_as_i64!(env_var).map(|s| format!("{}", s.to_string()));
+            let env_var_value = env_var_str_value
+                .or(env_var_int_value)
+                .ok_or::<Box<dyn std::error::Error>>(format!("Failed to parse env var: {:?}", env_var_name).into())?;
+            env.insert(env_var_name.into(), env_var_value);
+        }
+        Ok(EnvironmentVariables::from_data(env))
     }
 
     /// Set all the ENVIRONMENT VARIABLES, that are configured

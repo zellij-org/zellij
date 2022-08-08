@@ -160,7 +160,7 @@ pub fn start_client(
         size: full_screen_ws,
         style: Style {
             colors: palette,
-            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+            rounded_corners: config.ui.pane_frames.rounded_corners,
         },
     };
 

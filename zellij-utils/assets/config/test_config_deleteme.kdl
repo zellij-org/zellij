@@ -1,7 +1,7 @@
 keybinds {
     unbind "Ctrl g";
     normal clear-defaults=true {
-        // unbind "Alt ="; // TODO: removeme
+        unbind "Alt ="; // TODO: removeme
         bind "Ctrl g" { SwitchToMode "Locked"; }
         bind "Ctrl p" { SwitchToMode "Pane"; }
         bind "Ctrl n" { SwitchToMode "Resize"; }

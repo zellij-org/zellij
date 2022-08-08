@@ -52,6 +52,96 @@ pub enum Key {
     Esc,
 }
 
+impl FromStr for Key {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        let mut modifier: Option<&str> = None;
+        let mut main_key: Option<&str> = None;
+        for (index, part) in key_str.split_ascii_whitespace().enumerate() {
+            // TODO: handle F(u8)
+            if index == 0 && (part == "Ctrl" || part == "Alt") {
+                modifier = Some(part);
+            } else if main_key.is_none() {
+                main_key = Some(part)
+            }
+        }
+        match (modifier, main_key) {
+            (Some("Ctrl"), Some(main_key)) => {
+                let mut key_chars = main_key.chars();
+                let key_count = main_key.chars().count();
+                if key_count == 1 {
+                    let key_char = key_chars.next().unwrap();
+                    Ok(Key::Ctrl(key_char))
+                } else {
+                    Err(format!("Failed to parse key: {}", key_str).into())
+                }
+            },
+            (Some("Alt"), Some(main_key)) => {
+                match main_key {
+                    // why crate::data::Direction and not just Direction?
+                    // Because it's a different type that we export in this wasm mandated soup - we
+                    // don't like it either! This will be solved as we chip away at our tech-debt
+                    "Left" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Left))),
+                    "Right" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Right))),
+                    "Up" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Up))),
+                    "Down" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Down))),
+                    _ => {
+                        let mut key_chars = main_key.chars();
+                        let key_count = main_key.chars().count();
+                        if key_count == 1 {
+                            let key_char = key_chars.next().unwrap();
+                            Ok(Key::Alt(CharOrArrow::Char(key_char)))
+                        } else {
+                            Err(format!("Failed to parse key: {}", key_str).into())
+                        }
+                    }
+                }
+            },
+            (None, Some(main_key)) => {
+                match main_key {
+                    "Backspace" => Ok(Key::Backspace),
+                    "Left" => Ok(Key::Left),
+                    "Right" => Ok(Key::Right),
+                    "Up" => Ok(Key::Up),
+                    "Down" => Ok(Key::Down),
+                    "Home" => Ok(Key::Home),
+                    "End" => Ok(Key::End),
+                    "PageUp" => Ok(Key::PageUp),
+                    "PageDown" => Ok(Key::PageDown),
+                    "Tab" => Ok(Key::BackTab),
+                    "Delete" => Ok(Key::Delete),
+                    "Insert" => Ok(Key::Insert),
+                    "Space" => Ok(Key::Char(' ')),
+                    "Enter" => Ok(Key::Char('\n')),
+                    "Esc" => Ok(Key::Esc),
+                    _ => {
+                        let mut key_chars = main_key.chars();
+                        let key_count = main_key.chars().count();
+                        if key_count == 1 {
+                            let key_char = key_chars.next().unwrap();
+                            Ok(Key::Char(key_char))
+                        } else if key_count > 1 {
+                            if let Some(first_char) = key_chars.next() {
+                                if first_char == 'F' {
+                                    let f_index: String = key_chars.collect();
+                                    let f_index: u8 = f_index.parse().map_err(|e| format!("Failed to parse F index: {}", e))?;
+                                    if f_index >= 1 && f_index <= 12 {
+                                        return Ok(Key::F(f_index));
+                                    }
+                                }
+                            }
+                            Err(format!("Failed to parse key: {}", key_str).into())
+                        } else {
+                            Err(format!("Failed to parse key: {}", key_str).into())
+                        }
+                    }
+                }
+            }
+            _ => Err(format!("Failed to parse key: {}", key_str).into())
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CharOrArrow {
@@ -194,19 +284,19 @@ impl FromStr for InputMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "normal" => Ok(InputMode::Normal),
-            "resize" => Ok(InputMode::Resize),
-            "locked" => Ok(InputMode::Locked),
-            "pane" => Ok(InputMode::Pane),
-            "tab" => Ok(InputMode::Tab),
-            "scroll" => Ok(InputMode::Scroll),
-            "renametab" => Ok(InputMode::RenameTab),
-            "session" => Ok(InputMode::Session),
-            "move" => Ok(InputMode::Move),
-            "tmux" => Ok(InputMode::Tmux),
-            "prompt" => Ok(InputMode::Prompt),
-            "renamepane" => Ok(InputMode::RenamePane),
-            e => Err(e.to_string().into()),
+            "normal" | "Normal" => Ok(InputMode::Normal),
+            "locked" | "Locked" => Ok(InputMode::Locked),
+            "resize" | "Resize" => Ok(InputMode::Resize),
+            "pane" | "Pane" => Ok(InputMode::Pane),
+            "tab" | "Tab" => Ok(InputMode::Tab),
+            "scroll" | "Scroll" => Ok(InputMode::Scroll),
+            "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
+            "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+            "session" | "Session" => Ok(InputMode::Session),
+            "move" | "Move" => Ok(InputMode::Move),
+            "prompt" | "Prompt" => Ok(InputMode::Prompt),
+            "tmux" | "Tmux" => Ok(InputMode::Tmux),
+            e => Err(format!("unknown mode \"{}\"", e).into()),
         }
     }
 }

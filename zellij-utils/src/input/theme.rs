@@ -4,7 +4,11 @@ use serde::{
 };
 use std::{collections::HashMap, fmt};
 
+use kdl::KdlNode;
+use crate::{entry_count, kdl_entries_as_i64, kdl_first_entry_as_string, kdl_first_entry_as_i64, kdl_children_or_error, kdl_name, kdl_children_nodes_or_error, kdl_get_child, kdl_children_property_first_arg_as_bool};
+
 use super::options::Options;
+use super::config::ConfigError;
 use crate::data::{Palette, PaletteColor};
 use crate::shared::detect_theme_hue;
 
@@ -17,15 +21,64 @@ pub struct UiConfig {
     pub pane_frames: FrameConfig,
 }
 
+impl UiConfig {
+    pub fn from_kdl(kdl_ui_config: &KdlNode) -> Result<UiConfig, ConfigError> {
+        let mut ui_config = UiConfig::default();
+        if let Some(pane_frames) = kdl_get_child!(kdl_ui_config, "pane_frames") {
+            let rounded_corners = kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners").unwrap_or(false);
+            let frame_config = FrameConfig { rounded_corners };
+            ui_config.pane_frames = frame_config;
+        }
+        Ok(ui_config)
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct FrameConfig {
     pub rounded_corners: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Themes(HashMap<String, Theme>);
+
+impl Themes {
+    pub fn from_data(theme_data: HashMap<String, Theme>) -> Self {
+        Themes(theme_data)
+    }
+    pub fn from_kdl(themes_from_kdl: &KdlNode) -> Result<Self, ConfigError> {
+        let mut themes: HashMap<String, Theme> = HashMap::new();
+        for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
+            let theme_name = kdl_name!(theme_config);
+            let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
+            let theme = Theme {
+                palette: Palette {
+                    fg: PaletteColor::try_from(("fg", theme_colors))?,
+                    bg: PaletteColor::try_from(("bg", theme_colors))?,
+                    red: PaletteColor::try_from(("red", theme_colors))?,
+                    green: PaletteColor::try_from(("green", theme_colors))?,
+                    yellow: PaletteColor::try_from(("yellow", theme_colors))?,
+                    blue: PaletteColor::try_from(("blue", theme_colors))?,
+                    magenta: PaletteColor::try_from(("magenta", theme_colors))?,
+                    orange: PaletteColor::try_from(("orange", theme_colors))?,
+                    cyan: PaletteColor::try_from(("cyan", theme_colors))?,
+                    black: PaletteColor::try_from(("black", theme_colors))?,
+                    white: PaletteColor::try_from(("white", theme_colors))?,
+                    ..Default::default()
+                }
+            };
+            themes.insert(theme_name.into(), theme);
+        }
+        let themes = Themes::from_data(themes);
+        Ok(themes)
+    }
+    pub fn get_theme(&self, theme_name: &str) -> Option<&Theme> {
+        self.0.get(theme_name)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
     #[serde(flatten)]
-    // palette: PaletteFromYaml,
     pub palette: Palette,
 }
 
