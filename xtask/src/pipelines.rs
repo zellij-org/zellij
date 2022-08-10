@@ -76,3 +76,35 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
         .with_context(|| format!("Failed to copy executable to '{}", destination.display()))?;
     Ok(())
 }
+
+/// Bundle all distributable content to `target/dist`.
+///
+/// This includes the optimized zellij executable from the [`install`] pipeline, the man page, the
+/// `.desktop` file and the application logo.
+pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
+    sh.change_dir(crate::project_root());
+    if sh.path_exists("target/dist") {
+        sh.remove_path("target/dist")
+            .context("Failed to clean up dist directory")?;
+    }
+    sh.create_dir("target/dist")
+        .context("Failed to create dist directory")?;
+
+    install(
+        sh,
+        flags::Install {
+            destination: crate::project_root().join("./target/dist/zellij"),
+        },
+    )
+    .context("Failed to build zellij for distributing")?;
+
+    sh.create_dir("target/dist/man")
+        .context("Failed to create directory for man pages in dist folder")?;
+    sh.copy_file("assets/man/zellij.1", "target/dist/man/zellij.1")
+        .context("Failed to copy generated manpage to dist folder")?;
+    sh.copy_file("assets/zellij.desktop", "target/dist/zellij.desktop")
+        .context("Failed to copy zellij desktop file to dist folder")?;
+    sh.copy_file("assets/logo.png", "target/dist/logo.png")
+        .context("Failed to copy zellij logo to dist folder")?;
+    Ok(())
+}

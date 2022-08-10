@@ -76,6 +76,7 @@ fn main() -> anyhow::Result<()> {
             println!("{}", flags::Xtask::HELP);
             Ok(())
         },
+        flags::XtaskCmd::Dist(flags) => pipelines::dist(shell, flags),
         flags::XtaskCmd::Build(flags) => build::build(shell, flags),
         flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
         flags::XtaskCmd::Format(flags) => format::format(shell, flags),
