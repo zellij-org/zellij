@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::TabLayout;
+use super::layout::{Layout, TabLayout};
 use crate::data::InputMode;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
@@ -121,7 +121,7 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<TabLayout>),
+    NewTab(Option<Layout>, Option<String>), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.

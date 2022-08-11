@@ -132,6 +132,8 @@ impl Config {
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> ConfigResult {
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
+        // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
+        // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
             config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds)?;
         }

@@ -33,7 +33,8 @@ pub(crate) enum PtyInstruction {
     SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
-    NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
+    // NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
+    NewTab(Option<TerminalAction>, Option<Layout>, Option<String>, ClientId), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -67,7 +68,8 @@ pub(crate) struct Pty {
 
 use std::convert::TryFrom;
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
+// pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -136,16 +138,17 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<LayoutFromYaml>) {
                     .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
                     .unwrap();
             },
-            PtyInstruction::NewTab(terminal_action, tab_layout, client_id) => {
-                let tab_name = tab_layout.as_ref().and_then(|layout| {
-                    if layout.name.is_empty() {
-                        None
-                    } else {
-                        Some(layout.name.clone())
-                    }
-                });
+            PtyInstruction::NewTab(terminal_action, tab_layout, tab_name, client_id) => {
+//                 let tab_name = tab_layout.as_ref().and_then(|layout| {
+//                     if layout.name.is_empty() {
+//                         None
+//                     } else {
+//                         Some(layout.name.clone())
+//                     }
+//                 });
 
-                let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
+                // let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
+                let merged_layout = tab_layout.map(|t| layout.insert_tab_layout(t)).unwrap_or_else(|| *layout.clone());
                 let layout: Layout =
                     Layout::try_from(merged_layout).unwrap_or_else(|err| panic!("{}", err));
 

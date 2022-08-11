@@ -132,6 +132,13 @@ macro_rules! kdl_children_nodes_or_error {
 }
 
 #[macro_export]
+macro_rules! kdl_children_nodes {
+    ( $kdl_node:expr ) => {
+        $kdl_node.children().map(|c| c.nodes())
+    }
+}
+
+#[macro_export]
 macro_rules! kdl_children_or_error {
     ( $kdl_node:expr, $error:expr ) => {
         $kdl_node.children().ok_or(ConfigError::KdlParsingError($error.into()))?
@@ -164,6 +171,13 @@ macro_rules! kdl_argument_values {
 macro_rules! kdl_name {
     ( $kdl_node:expr ) => {
         $kdl_node.name().value()
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_document_name {
+    ( $kdl_node:expr ) => {
+        $kdl_node.node().name().value()
     }
 }
 
@@ -381,7 +395,7 @@ impl TryFrom<&KdlNode> for Action {
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
             "NewPane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
             "PaneNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "NewTab" => Ok(Action::NewTab(None)), // TODO: consider the Some(TabLayout) case...
+            "NewTab" => Ok(Action::NewTab(None, None)), // TODO: consider the Some(TabLayout, "tab_name") case...
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "TabNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "Run" => {
@@ -518,6 +532,13 @@ macro_rules! kdl_property_first_arg_as_string {
 }
 
 #[macro_export]
+macro_rules! kdl_has_string_argument {
+    ( $kdl_node:expr, $string_argument:expr ) => {
+        $kdl_node.entries().iter().find(|e| e.value().as_string() == Some($string_argument)).is_some()
+    }
+}
+
+#[macro_export]
 macro_rules! kdl_children_property_first_arg_as_string {
     ( $kdl_node:expr, $property_name:expr ) => {
         $kdl_node.children()
@@ -562,6 +583,43 @@ macro_rules! kdl_get_child {
             .and_then(|c| c.get($child_name))
     }
 }
+
+#[macro_export]
+macro_rules! kdl_get_child_entry_bool_value {
+    ( $kdl_node:expr, $child_name:expr ) => {
+        $kdl_node.children()
+            .and_then(|c| c.get($child_name))
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.value().as_bool())
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_child_entry_string_value {
+    ( $kdl_node:expr, $child_name:expr ) => {
+        $kdl_node.children()
+            .and_then(|c| c.get($child_name))
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.value().as_string())
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_string_entry {
+    ( $kdl_node:expr, $entry_name:expr ) => {
+        $kdl_node.get($entry_name)
+            .and_then(|e| e.value().as_string())
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_int_entry {
+    ( $kdl_node:expr, $entry_name:expr ) => {
+        $kdl_node.get($entry_name)
+            .and_then(|e| e.value().as_i64())
+    }
+}
+
 
 impl Options {
     pub fn from_kdl(kdl_options: &KdlDocument) -> Self {

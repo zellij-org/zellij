@@ -1,0 +1,18 @@
+layout {
+    parts direction="Horizontal" {
+        layout size=1 {
+            borderless true
+            plugin {
+                location "zellij:tab-bar"
+            }
+        }
+        tabs;
+        layout size=2 {
+            borderless true
+            plugin {
+                location "zellij:status-bar"
+            }
+        }
+    }
+}
+

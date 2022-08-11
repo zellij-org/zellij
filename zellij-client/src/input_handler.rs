@@ -206,7 +206,7 @@ impl InputHandler {
                 },
                 // Actions, that are independent from the specific client
                 // and not session idempotent should be specified here
-                Action::NewTab(_)
+                Action::NewTab(..)
                 | Action::Run(_)
                 | Action::NewPane(_)
                 | Action::WriteChars(_)
@@ -287,7 +287,7 @@ impl InputHandler {
             | Action::Run(_)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
-            | Action::NewTab(_)
+            | Action::NewTab(..)
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab

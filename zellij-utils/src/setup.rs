@@ -6,7 +6,7 @@ use crate::{
     },
     input::{
         config::{Config, ConfigError},
-        layout::{LayoutFromYaml, LayoutFromYamlIntermediate},
+        layout::{Layout, LayoutFromYaml, LayoutFromYamlIntermediate},
         options::Options,
     },
 };
@@ -19,7 +19,7 @@ use std::{
 };
 
 const CONFIG_LOCATION: &str = ".config/zellij";
-const CONFIG_NAME: &str = "config.yaml";
+const CONFIG_NAME: &str = "config.kdl";
 static ARROW_SEPARATOR: &str = "";
 
 #[cfg(not(test))]
@@ -94,25 +94,25 @@ pub const DEFAULT_CONFIG: &[u8] = include_bytes!(concat!(
 pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/default.yaml"
+    "assets/layouts/default.kdl"
 ));
 
 pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/strider.yaml"
+    "assets/layouts/strider.kdl"
 ));
 
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/disable-status-bar.yaml"
+    "assets/layouts/disable-status-bar.kdl"
 ));
 
 pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
-    "assets/layouts/compact.yaml"
+    "assets/layouts/compact.kdl"
 ));
 
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
@@ -196,7 +196,8 @@ impl Setup {
     /// 3. config options (`config.yaml`)
     pub fn from_options(
         opts: &CliArgs,
-    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+    // ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+    ) -> Result<(Config, Layout, Options), ConfigError> {
         let clean = match &opts.command {
             Some(Command::Setup(ref setup)) => setup.clean,
             _ => false,
@@ -234,15 +235,19 @@ impl Setup {
             .layout
             .clone()
             .or_else(|| config_options.default_layout.clone());
-        let layout_result =
-            LayoutFromYamlIntermediate::from_path_or_default(chosen_layout.as_ref(), layout_dir);
-        let layout = match layout_result {
-            None => None,
-            Some(Ok(layout)) => Some(layout),
-            Some(Err(e)) => {
-                return Err(e);
-            },
-        };
+
+//         // TODO: CONTINUE HERE - change this to Layout::from_kdl and have this function return a
+//         // Layout instead of a LayoutFromYaml
+//         let layout_result =
+//             LayoutFromYamlIntermediate::from_path_or_default(chosen_layout.as_ref(), layout_dir);
+//         let layout = match layout_result {
+//             None => None,
+//             Some(Ok(layout)) => Some(layout),
+//             Some(Err(e)) => {
+//                 return Err(e);
+//             },
+//         };
+        let layout = Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir)?;
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup
@@ -305,26 +310,29 @@ impl Setup {
 
     fn merge_config_with_layout(
         config: Config,
-        layout: Option<LayoutFromYamlIntermediate>,
+        // layout: Option<LayoutFromYamlIntermediate>,
+        layout: Layout,
         config_options: Options,
-    ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
-        let (layout, layout_config) = match layout.map(|l| l.to_layout_and_config()) {
-            None => (None, None),
-            Some((layout, layout_config)) => (Some(layout), layout_config),
-        };
-
-        let (config, config_options) = if let Some(layout_config) = layout_config {
-            let config_options = if let Some(options) = layout_config.options.clone() {
-                config_options.merge(options)
-            } else {
-                config_options
-            };
-            // let config = config.merge(layout_config.try_into()?); // TODO: NO! handle this!
-            (config, config_options)
-        } else {
-            (config, config_options)
-        };
-        Ok((config, layout, config_options))
+    // ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+    ) -> Result<(Config, Layout, Options), ConfigError> {
+        unimplemented!()
+//         let (layout, layout_config) = match layout.map(|l| l.to_layout_and_config()) {
+//             None => (None, None),
+//             Some((layout, layout_config)) => (Some(layout), layout_config),
+//         };
+//
+//         let (config, config_options) = if let Some(layout_config) = layout_config {
+//             let config_options = if let Some(options) = layout_config.options.clone() {
+//                 config_options.merge(options)
+//             } else {
+//                 config_options
+//             };
+//             // let config = config.merge(layout_config.try_into()?); // TODO: NO! handle this!
+//             (config, config_options)
+//         } else {
+//             (config, config_options)
+//         };
+//         Ok((config, layout, config_options))
     }
 
     pub fn check_defaults_config(opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {

@@ -302,11 +302,11 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .unwrap();
         },
-        Action::NewTab(tab_layout) => {
+        Action::NewTab(tab_layout, tab_name) => {
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, client_id))
+                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, tab_name, client_id))
                 .unwrap();
         },
         Action::GoToNextTab => {
