@@ -641,11 +641,6 @@ impl Screen {
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
-        let client_mode_info = self
-            .mode_info
-            .get(&client_id)
-            .unwrap_or(&self.default_mode_info)
-            .clone();
         let mut tab = Tab::new(
             tab_index,
             position,
@@ -657,7 +652,7 @@ impl Screen {
             self.bus.senders.clone(),
             self.max_panes,
             self.style,
-            client_mode_info,
+            self.default_mode_info.clone(),
             self.draw_pane_frames,
             self.connected_clients.clone(),
             self.session_is_mirrored,
@@ -702,21 +697,29 @@ impl Screen {
     }
 
     pub fn add_client(&mut self, client_id: ClientId) {
-        let mut tab_index = 0;
         let mut tab_history = vec![];
-        if let Some((_first_client, first_active_tab_index)) = self.active_tab_indices.iter().next()
-        {
-            tab_index = *first_active_tab_index;
-        }
         if let Some((_first_client, first_tab_history)) = self.tab_history.iter().next() {
             tab_history = first_tab_history.clone();
         }
+
+        let tab_index = if let Some((_first_client, first_active_tab_index)) =
+            self.active_tab_indices.iter().next()
+        {
+            *first_active_tab_index
+        } else if self.tabs.contains_key(&0) {
+            0
+        } else if let Some(tab_index) = self.tabs.keys().next() {
+            tab_index.to_owned()
+        } else {
+            panic!("Can't find a valid tab to attach client to!");
+        };
+
         self.active_tab_indices.insert(client_id, tab_index);
         self.connected_clients.borrow_mut().insert(client_id);
         self.tab_history.insert(client_id, tab_history);
         self.tabs
             .get_mut(&tab_index)
-            .unwrap()
+            .unwrap_or_else(|| panic!("Failed to attach client to tab with index {tab_index}"))
             .add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {

@@ -544,3 +544,25 @@ fn update_screen_pixel_dimensions() {
         "empty update does not delete existing data",
     );
 }
+
+#[test]
+fn attach_after_first_tab_closed() {
+    // ensure https://github.com/zellij-org/zellij/issues/1645 is fixed
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab.new_pane(PaneId::Terminal(2), Some(1));
+        active_tab.toggle_active_pane_fullscreen(1);
+    }
+    new_tab(&mut screen, 2);
+
+    screen.close_tab_at_index(0);
+    screen.remove_client(1);
+    screen.add_client(1);
+}
