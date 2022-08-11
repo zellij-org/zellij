@@ -641,11 +641,6 @@ impl Screen {
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
-        let client_mode_info = self
-            .mode_info
-            .get(&client_id)
-            .unwrap_or(&self.default_mode_info)
-            .clone();
         let mut tab = Tab::new(
             tab_index,
             position,
@@ -657,7 +652,7 @@ impl Screen {
             self.bus.senders.clone(),
             self.max_panes,
             self.style,
-            client_mode_info,
+            self.default_mode_info.clone(),
             self.draw_pane_frames,
             self.connected_clients.clone(),
             self.session_is_mirrored,
