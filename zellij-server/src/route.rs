@@ -449,19 +449,16 @@ macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
             Some(session_metadata) => {
-                session_metadata
-                    .senders
-                    .send_to_screen($message)
-                    .unwrap();
+                session_metadata.senders.send_to_screen($message).unwrap();
             },
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
                     retry_queue.push($instruction);
                 }
-            }
+            },
         }
-    }}
+    }};
 }
 
 pub(crate) fn route_thread_main(
@@ -478,7 +475,9 @@ pub(crate) fn route_thread_main(
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().unwrap();
-                let handle_instruction = |instruction: ClientToServerMsg, mut retry_queue: Option<&mut Vec<ClientToServerMsg>>| -> bool {
+                let handle_instruction = |instruction: ClientToServerMsg,
+                                          mut retry_queue: Option<&mut Vec<ClientToServerMsg>>|
+                 -> bool {
                     let mut should_break = false;
                     match instruction {
                         ClientToServerMsg::Action(action, maybe_client_id) => {
