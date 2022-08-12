@@ -33,7 +33,7 @@ fn route_action(
     // this is a bit of a hack around the unfortunate architecture we use with plugins
     // this will change as soon as we refactor
     match action {
-        Action::MouseHold(_) => {},
+        Action::MouseHoldLeft(..) | Action::MouseHoldRight(..) => {},
         _ => {
             session
                 .senders
@@ -377,16 +377,28 @@ fn route_action(
                 .unwrap();
         },
 
-        Action::MouseRelease(point) => {
+        Action::LeftMouseRelease(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::MouseRelease(point, client_id))
+                .send_to_screen(ScreenInstruction::LeftMouseRelease(point, client_id))
                 .unwrap();
         },
-        Action::MouseHold(point) => {
+        Action::RightMouseRelease(point) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::MouseHold(point, client_id))
+                .send_to_screen(ScreenInstruction::RightMouseRelease(point, client_id))
+                .unwrap();
+        },
+        Action::MouseHoldLeft(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseHoldLeft(point, client_id))
+                .unwrap();
+        },
+        Action::MouseHoldRight(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseHoldRight(point, client_id))
                 .unwrap();
         },
         Action::Copy => {

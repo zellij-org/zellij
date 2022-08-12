@@ -105,6 +105,11 @@ impl ThreadSenders {
         self.should_silently_fail = true;
         self
     }
+    #[allow(unused)]
+    pub fn replace_to_pty_writer(&mut self, new_pty_writer: SenderWithContext<PtyWriteInstruction>) {
+        // this is mostly used for the tests, see struct
+        self.to_pty_writer.replace(new_pty_writer);
+    }
 }
 
 /// A container for a receiver, OS input and the senders to a given thread

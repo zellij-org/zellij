@@ -1,7 +1,7 @@
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
-    grid::Grid,
+    grid::{Grid, MouseMode, MouseTracking},
     terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
@@ -27,6 +27,29 @@ use zellij_utils::{
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
+
+// TODO: move elsewhere
+fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
+    let mut coordinates = vec![];
+    let mouse_pos_encode = |pos: usize| -> Vec<u8> {
+        let pos = 32 + 1 + pos;
+        let first = 0xC0 + pos / 64;
+        let second = 0x80 + (pos & 63);
+        vec![first as u8, second as u8]
+    };
+
+    if column > 95 {
+        coordinates.append(&mut mouse_pos_encode(column));
+    } else {
+        coordinates.push(32 + 1 + column as u8);
+    }
+    if line > 95 {
+        coordinates.append(&mut mouse_pos_encode(line as usize));
+    } else {
+        coordinates.push(32 + 1 + line as u8);
+    }
+    coordinates
+}
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -546,10 +569,144 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
-    fn mouse_mode(&self) -> bool {
-        self.grid.mouse_mode
-    }
+//     fn mouse_mode(&self) -> bool {
+//         self.grid.mouse_mode
+//     }
 
+    fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => {
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}M",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            }
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => {
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}M",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            }
+            _ => None
+        }
+    }
+    fn mouse_left_click_release(&self, position: &Position) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, _) => {
+                // TODO: these don't add a +1 because it's done outside, we should change it to
+                // happen here for consistency
+                let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", position.column(), position.line());
+                Some(mouse_event)
+            }
+        }
+    }
+    fn mouse_right_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => {
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}M",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            }
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => {
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}M",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            },
+            _ => None
+        }
+    }
+    fn mouse_right_click_release(&self, position: &Position) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, _) => {
+                // TODO: these don't add a +1 because it's done outside, we should change it to
+                // happen here for consistency
+                let mouse_event = format!("\u{1b}[<2;{:?};{:?}m", position.column(), position.line());
+                Some(mouse_event)
+            }
+        }
+    }
+    fn mouse_scroll_up(&self, position: &Position) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`'];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<64;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            }
+        }
+    }
+    fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
+        match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a'];
+                msg.append(
+                    &mut utf8_mouse_coordinates(position.column(), position.line())
+                );
+                Some(String::from_utf8_lossy(&msg).into())
+            }
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<65;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            }
+        }
+    }
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)

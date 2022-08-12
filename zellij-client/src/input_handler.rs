@@ -19,6 +19,18 @@ use zellij_utils::{
     termwiz::input::InputEvent,
 };
 
+#[derive(Debug, Clone, Copy)]
+enum HeldMouseButton {
+    Left,
+    Right,
+}
+
+impl Default for HeldMouseButton {
+    fn default() -> Self {
+        HeldMouseButton::Left
+    }
+}
+
 /// Handles the dispatching of [`Action`]s according to the current
 /// [`InputMode`], and keep tracks of the current [`InputMode`].
 struct InputHandler {
@@ -31,7 +43,7 @@ struct InputHandler {
     send_client_instructions: SenderWithContext<ClientInstruction>,
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
-    holding_mouse: bool,
+    holding_mouse: Option<HeldMouseButton>,
 }
 
 impl InputHandler {
@@ -54,7 +66,7 @@ impl InputHandler {
             send_client_instructions,
             should_exit: false,
             receive_input_instructions,
-            holding_mouse: false,
+            holding_mouse: None,
         }
     }
 
@@ -161,30 +173,39 @@ impl InputHandler {
                     self.dispatch_action(Action::ScrollDownAt(point), None);
                 },
                 MouseButton::Left => {
-                    if self.holding_mouse {
-                        self.dispatch_action(Action::MouseHold(point), None);
+                    if self.holding_mouse.is_some() {
+                        self.dispatch_action(Action::MouseHoldLeft(point), None);
                     } else {
                         self.dispatch_action(Action::LeftClick(point), None);
                     }
-                    self.holding_mouse = true;
+                    self.holding_mouse = Some(HeldMouseButton::Left);
                 },
                 MouseButton::Right => {
-                    if self.holding_mouse {
-                        self.dispatch_action(Action::MouseHold(point), None);
+                    if self.holding_mouse.is_some() {
+                        self.dispatch_action(Action::MouseHoldRight(point), None);
                     } else {
                         self.dispatch_action(Action::RightClick(point), None);
                     }
-                    self.holding_mouse = true;
+                    self.holding_mouse = Some(HeldMouseButton::Right);
                 },
                 _ => {},
             },
             MouseEvent::Release(point) => {
-                self.dispatch_action(Action::MouseRelease(point), None);
-                self.holding_mouse = false;
+                let button_released = self.holding_mouse.unwrap_or_default();
+                match button_released {
+                    HeldMouseButton::Left => self.dispatch_action(Action::LeftMouseRelease(point), None),
+                    HeldMouseButton::Right => self.dispatch_action(Action::RightMouseRelease(point), None),
+                };
+                self.holding_mouse = None;
             },
             MouseEvent::Hold(point) => {
-                self.dispatch_action(Action::MouseHold(point), None);
-                self.holding_mouse = true;
+                let button_held = self.holding_mouse.unwrap_or_default();
+                match button_held {
+                    HeldMouseButton::Left => self.dispatch_action(Action::MouseHoldLeft(point), None),
+                    HeldMouseButton::Right => self.dispatch_action(Action::MouseHoldRight(point), None),
+                };
+                // self.holding_mouse = true;
+                self.holding_mouse = Some(button_held);
             },
         }
     }

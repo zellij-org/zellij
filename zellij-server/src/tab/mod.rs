@@ -294,7 +294,13 @@ pub trait Pane {
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
-    fn mouse_mode(&self) -> bool;
+    // fn mouse_mode(&self) -> bool;
+    fn mouse_left_click(&self, _position: &Position, _is_held: bool) -> Option<String> {None}
+    fn mouse_left_click_release(&self, _position: &Position) -> Option<String> {None}
+    fn mouse_right_click(&self, _position: &Position, _is_held: bool) -> Option<String> {None}
+    fn mouse_right_click_release(&self, _position: &Position) -> Option<String> {None}
+    fn mouse_scroll_up(&self, _position: &Position) -> Option<String> {None}
+    fn mouse_scroll_down(&self, _position: &Position) -> Option<String> {None}
     fn get_line_number(&self) -> Option<usize> {
         None
     }
@@ -1661,13 +1667,16 @@ impl Tab {
     }
     pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            if pane.mouse_mode() {
-                let relative_position = pane.relative_position(point);
-                let mouse_event = format!(
-                    "\u{1b}[<64;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
+            // if pane.mouse_mode() {
+            let relative_position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
+
+//                 let relative_position = pane.relative_position(point);
+//                 let mouse_event = format!(
+//                     "\u{1b}[<64;{:?};{:?}M",
+//                     relative_position.column.0 + 1,
+//                     relative_position.line.0 + 1
+//                 );
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
             } else {
                 pane.scroll_up(lines, client_id);
@@ -1676,13 +1685,15 @@ impl Tab {
     }
     pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
-            if pane.mouse_mode() {
-                let relative_position = pane.relative_position(point);
-                let mouse_event = format!(
-                    "\u{1b}[<65;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
+            // if pane.mouse_mode() {
+            let relative_position = pane.relative_position(point);
+            if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
+//                 let relative_position = pane.relative_position(point);
+//                 let mouse_event = format!(
+//                     "\u{1b}[<65;{:?};{:?}M",
+//                     relative_position.column.0 + 1,
+//                     relative_position.line.0 + 1
+//                 );
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
             } else {
                 pane.scroll_down(lines, client_id);
@@ -1749,13 +1760,14 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
 
-            if pane.mouse_mode() {
+            // if pane.mouse_mode() {
+            if let Some(mouse_event) = pane.mouse_left_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    let mouse_event = format!(
-                        "\u{1b}[<0;{:?};{:?}M",
-                        relative_position.column() + 1,
-                        relative_position.line() + 1
-                    );
+//                     let mouse_event = format!(
+//                         "\u{1b}[<0;{:?};{:?}M",
+//                         relative_position.column() + 1,
+//                         relative_position.line() + 1
+//                     );
                     self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
                 }
             } else {
@@ -1772,13 +1784,14 @@ impl Tab {
 
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
-            if pane.mouse_mode() {
+            if let Some(mouse_event) = pane.mouse_right_click(&relative_position, false) {
+            // if pane.mouse_mode() {
                 if !pane.position_is_on_frame(position) {
-                    let mouse_event = format!(
-                        "\u{1b}[<2;{:?};{:?}M",
-                        relative_position.column() + 1,
-                        relative_position.line() + 1
-                    );
+//                     let mouse_event = format!(
+//                         "\u{1b}[<2;{:?};{:?}M",
+//                         relative_position.column() + 1,
+//                         relative_position.line() + 1
+//                     );
                     self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
                 }
             } else {
@@ -1803,7 +1816,28 @@ impl Tab {
             }
         }
     }
-    pub fn handle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+    pub fn handle_right_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let mut relative_position = active_pane.relative_position(position);
+            relative_position.change_column(
+                (relative_position.column() + 1)
+                    .max(1)
+                    .min(active_pane.get_content_columns())
+            );
+
+            relative_position.change_line(
+                (relative_position.line() + 1)
+                    .max(1)
+                    .min(active_pane.get_content_rows() as isize)
+            );
+
+            if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            }
+        }
+    }
+    pub fn handle_left_mouse_release(&mut self, position: &Position, client_id: ClientId) {
         self.last_mouse_hold_position = None;
 
         if self.floating_panes.panes_are_visible()
@@ -1819,17 +1853,30 @@ impl Tab {
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(position);
-            if active_pane.mouse_mode() {
-                // ensure that coordinates are valid
-                let col = (relative_position.column() + 1)
+            let mut relative_position = active_pane.relative_position(position);
+            relative_position.change_column(
+                (relative_position.column() + 1)
                     .max(1)
-                    .min(active_pane.get_content_columns());
+                    .min(active_pane.get_content_columns())
+            );
 
-                let line = (relative_position.line() + 1)
+            relative_position.change_line(
+                (relative_position.line() + 1)
                     .max(1)
-                    .min(active_pane.get_content_rows() as isize);
-                let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
+                    .min(active_pane.get_content_rows() as isize)
+            );
+
+            if let Some(mouse_event) = active_pane.mouse_left_click_release(&relative_position) {
+            // if active_pane.mouse_mode() {
+                // ensure that coordinates are valid
+//                 let col = (relative_position.column() + 1)
+//                     .max(1)
+//                     .min(active_pane.get_content_columns());
+//
+//                 let line = (relative_position.line() + 1)
+//                     .max(1)
+//                     .min(active_pane.get_content_rows() as isize);
+//                let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else {
                 // TODO: rename this method, it is used to forward release events to plugin panes
@@ -1851,7 +1898,7 @@ impl Tab {
             }
         }
     }
-    pub fn handle_mouse_hold(
+    pub fn handle_mouse_hold_left(
         &mut self,
         position_on_screen: &Position,
         client_id: ClientId,
@@ -1882,23 +1929,72 @@ impl Tab {
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
-            let relative_position = active_pane.relative_position(position_on_screen);
-            if active_pane.mouse_mode() && !is_repeated {
+            let mut relative_position = active_pane.relative_position(position_on_screen);
+            // if active_pane.mouse_mode() && !is_repeated {
+            if !is_repeated {
                 // ensure that coordinates are valid
-                let col = (relative_position.column() + 1)
-                    .max(1)
-                    .min(active_pane.get_content_columns());
+                relative_position.change_column(
+                    (relative_position.column() + 1)
+                        .max(1)
+                        .min(active_pane.get_content_columns())
+                );
 
-                let line = (relative_position.line() + 1)
-                    .max(1)
-                    .min(active_pane.get_content_rows() as isize);
+                relative_position.change_line(
+                    (relative_position.line() + 1)
+                        .max(1)
+                        .min(active_pane.get_content_rows() as isize)
+                );
+                if let Some(mouse_event) = active_pane.mouse_left_click(&relative_position, true) {
 
-                let mouse_event = format!("\u{1b}[<32;{:?};{:?}M", col, line);
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-                return true; // we need to re-render in this case so the selection disappears
+                    // let mouse_event = format!("\u{1b}[<32;{:?};{:?}M", col, line);
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    return true; // we need to re-render in this case so the selection disappears
+                }
             } else if selecting {
                 active_pane.update_selection(&relative_position, client_id);
                 return true; // we need to re-render in this case so the selection is updated
+            }
+        }
+        false // we shouldn't even get here, but might as well not needlessly render if we do
+    }
+    pub fn handle_mouse_hold_right(
+        &mut self,
+        position_on_screen: &Position,
+        client_id: ClientId,
+    ) -> bool {
+        // return value indicates whether we should trigger a render
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+
+        if let Some(active_pane) = active_pane {
+            let mut relative_position = active_pane.relative_position(position_on_screen);
+            // if active_pane.mouse_mode() && !is_repeated {
+            if !is_repeated {
+                // ensure that coordinates are valid
+                relative_position.change_column(
+                    (relative_position.column() + 1)
+                        .max(1)
+                        .min(active_pane.get_content_columns())
+                );
+
+                relative_position.change_line(
+                    (relative_position.line() + 1)
+                        .max(1)
+                        .min(active_pane.get_content_rows() as isize)
+                );
+                if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
+
+                    // let mouse_event = format!("\u{1b}[<32;{:?};{:?}M", col, line);
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    return true; // we need to re-render in this case so the selection disappears
+                }
             }
         }
         false // we shouldn't even get here, but might as well not needlessly render if we do

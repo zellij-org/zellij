@@ -17,6 +17,9 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
 
+use crate::pty_writer::PtyWriteInstruction;
+use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
+
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
@@ -107,6 +110,59 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         file_dumps: Arc::new(Mutex::new(HashMap::new())),
     });
     let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
+        client_id,
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    );
+    tab.apply_layout(
+        LayoutTemplate::default().try_into().unwrap(),
+        vec![1],
+        index,
+        client_id,
+    );
+    tab
+}
+
+fn create_new_tab_with_mock_pty_writer(size: Size, default_mode: ModeInfo, mock_pty_writer: SenderWithContext<PtyWriteInstruction>) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput {
+        file_dumps: Arc::new(Mutex::new(HashMap::new())),
+    });
+    let mut senders = ThreadSenders::default().silently_fail_on_send();
+    senders.replace_to_pty_writer(mock_pty_writer);
     let max_panes = None;
     let mode_info = default_mode;
     let style = Style::default();
@@ -846,7 +902,7 @@ fn move_floating_pane_focus_with_mouse() {
     tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_left_click(&Position::new(9, 71), client_id);
-    tab.handle_mouse_release(&Position::new(9, 71), client_id);
+    tab.handle_left_mouse_release(&Position::new(9, 71), client_id);
     tab.render(&mut output, None);
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().get(&client_id).unwrap(),
@@ -892,7 +948,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
     tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_left_click(&Position::new(4, 71), client_id);
-    tab.handle_mouse_release(&Position::new(4, 71), client_id);
+    tab.handle_left_mouse_release(&Position::new(4, 71), client_id);
     tab.render(&mut output, None);
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().get(&client_id).unwrap(),
@@ -938,7 +994,7 @@ fn drag_pane_with_mouse() {
     tab.handle_pty_bytes(5, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()));
     tab.handle_left_click(&Position::new(5, 71), client_id);
-    tab.handle_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
     tab.render(&mut output, None);
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().get(&client_id).unwrap(),
@@ -988,7 +1044,7 @@ fn mark_text_inside_floating_pane() {
         tab.selecting_with_mouse,
         "started selecting with mouse on click"
     );
-    tab.handle_mouse_release(&Position::new(8, 50), client_id);
+    tab.handle_left_mouse_release(&Position::new(8, 50), client_id);
     assert!(
         !tab.selecting_with_mouse,
         "stopped selecting with mouse on release"
@@ -1357,7 +1413,7 @@ fn move_floating_pane_with_sixel_image() {
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(2, fixture);
     tab.handle_left_click(&Position::new(5, 71), client_id);
-    tab.handle_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
 
     tab.render(&mut output, None);
     let snapshot = take_snapshot_with_sixel(
@@ -1392,7 +1448,7 @@ fn floating_pane_above_sixel_image() {
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(1, fixture);
     tab.handle_left_click(&Position::new(5, 71), client_id);
-    tab.handle_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
 
     tab.render(&mut output, None);
     let snapshot = take_snapshot_with_sixel(
@@ -1719,4 +1775,46 @@ fn enter_search_floating_pane() {
         Palette::default(),
     );
     assert_snapshot!("search_floating_tab_highlight_fring", snapshot);
+}
+
+#[test]
+fn mouse_left_click_to_terminal_in_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+
+    // TODO: note that this thread does not die when the test dies
+    // it only dies once all the test process exits... not a biggy if we have only a handful of
+    // these, but otherwise we might want to think of a better way to handle this
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            // TODO: kill this thread
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || {
+                loop {
+                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => {
+                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        });
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h");
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(*messages_to_pty_writer.lock().unwrap(), vec!["\u{1b}[<0;71;5M".to_string(), "\u{1b}[<0;75;7m".to_string()]);
 }

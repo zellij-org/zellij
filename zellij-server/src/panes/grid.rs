@@ -340,8 +340,35 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_buffer_lines: usize,
-    pub mouse_mode: bool,
+    pub mouse_mode: MouseMode,
+    pub mouse_tracking: MouseTracking,
     pub search_results: SearchResult,
+}
+
+#[derive(Clone, Debug)]
+pub enum MouseMode {
+    NoEncoding,
+    Utf8,
+    Sgr
+}
+
+impl Default for MouseMode {
+    fn default() -> Self {
+        MouseMode::NoEncoding
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MouseTracking {
+    Off,
+    Normal,
+    ButtonEventTracking,
+}
+
+impl Default for MouseTracking {
+    fn default() -> Self {
+        MouseTracking::Off
+    }
 }
 
 impl Debug for Grid {
@@ -443,7 +470,8 @@ impl Grid {
             link_handler,
             ring_bell: false,
             scrollback_buffer_lines: 0,
-            mouse_mode: false,
+            mouse_mode: MouseMode::default(),
+            mouse_tracking: MouseTracking::default(),
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
@@ -2021,126 +2049,153 @@ impl Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params_iter.next().map(|param| param[0]) {
-                    Some(2004) => {
-                        self.bracketed_paste_mode = false;
-                    },
-                    Some(1049) => {
-                        if let Some(mut alternate_screen_state) = self.alternate_screen_state.take()
-                        {
-                            if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
-                                // reap images before dropping the alternate_screen_state contents
-                                // - we can't implement a drop method for this because the store is
-                                // outside of the alternate_screen_state struct
-                                self.sixel_grid.reap_images(image_ids_to_reap);
+                // match params_iter.next().map(|param| param[0]) {
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        2004 => {
+                            self.bracketed_paste_mode = false;
+                        },
+                        1049 => {
+                            if let Some(mut alternate_screen_state) = self.alternate_screen_state.take()
+                            {
+                                if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
+                                    // reap images before dropping the alternate_screen_state contents
+                                    // - we can't implement a drop method for this because the store is
+                                    // outside of the alternate_screen_state struct
+                                    self.sixel_grid.reap_images(image_ids_to_reap);
+                                }
+                                alternate_screen_state.apply_contents_to(
+                                    &mut self.lines_above,
+                                    &mut self.viewport,
+                                    &mut self.cursor,
+                                    &mut self.sixel_grid,
+                                );
                             }
-                            alternate_screen_state.apply_contents_to(
-                                &mut self.lines_above,
-                                &mut self.viewport,
-                                &mut self.cursor,
-                                &mut self.sixel_grid,
-                            );
+                            self.alternate_screen_state = None;
+                            self.clear_viewport_before_rendering = true;
+                            self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                            self.mark_for_rerender();
+                        },
+                        25 => {
+                            self.hide_cursor();
+                            self.mark_for_rerender();
+                        },
+                        1 => {
+                            self.cursor_key_mode = false;
+                        },
+                        3 => {
+                            // DECCOLM - only side effects
+                            self.scroll_region = None;
+                            self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                            self.cursor.x = 0;
+                            self.cursor.y = 0;
+                        },
+                        6 => {
+                            self.erasure_mode = false;
+                        },
+                        7 => {
+                            self.disable_linewrap = true;
+                        },
+                        80 => {
+                            self.sixel_scrolling = false;
+                        },
+                        1005 => {
+                            self.mouse_mode = MouseMode::NoEncoding;
                         }
-                        self.alternate_screen_state = None;
-                        self.clear_viewport_before_rendering = true;
-                        self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
-                        self.mark_for_rerender();
-                    },
-                    Some(25) => {
-                        self.hide_cursor();
-                        self.mark_for_rerender();
-                    },
-                    Some(1) => {
-                        self.cursor_key_mode = false;
-                    },
-                    Some(3) => {
-                        // DECCOLM - only side effects
-                        self.scroll_region = None;
-                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
-                        self.cursor.x = 0;
-                        self.cursor.y = 0;
-                    },
-                    Some(6) => {
-                        self.erasure_mode = false;
-                    },
-                    Some(7) => {
-                        self.disable_linewrap = true;
-                    },
-                    Some(80) => {
-                        self.sixel_scrolling = false;
-                    },
-                    Some(1006) => {
-                        self.mouse_mode = false;
-                    },
-                    _ => {},
-                };
+                        1006 => {
+                            // TODO: CONTINUE HERE - change mouse mode to be an enum according to
+                            // the github issue:
+                            self.mouse_mode = MouseMode::NoEncoding;
+                        },
+                        _ => {},
+                    };
+                }
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = false;
             }
         } else if c == 'h' {
+            log::info!("got h, intermediates: {:?}, params: {:?}", intermediates, params);
             let first_intermediate_is_questionmark = match intermediates.get(0) {
                 Some(b'?') => true,
                 None => false,
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params_iter.next().map(|param| param[0]) {
-                    Some(25) => {
-                        self.show_cursor();
-                        self.mark_for_rerender();
-                    },
-                    Some(2004) => {
-                        self.bracketed_paste_mode = true;
-                    },
-                    Some(1049) => {
-                        // enter alternate buffer
-                        let current_lines_above = std::mem::replace(
-                            &mut self.lines_above,
-                            VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
-                        );
-                        let current_viewport = std::mem::replace(
-                            &mut self.viewport,
-                            vec![Row::new(self.width).canonical()],
-                        );
-                        let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
-                        let alternate_sixelgrid = std::mem::replace(
-                            &mut self.sixel_grid,
-                            SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
-                        );
-                        self.alternate_screen_state = Some(AlternateScreenState::new(
-                            current_lines_above,
-                            current_viewport,
-                            current_cursor,
-                            alternate_sixelgrid,
-                        ));
-                        self.clear_viewport_before_rendering = true;
-                        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
-                        self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
-                    },
-                    Some(1) => {
-                        self.cursor_key_mode = true;
-                    },
-                    Some(3) => {
-                        // DECCOLM - only side effects
-                        self.scroll_region = None;
-                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
-                        self.cursor.x = 0;
-                        self.cursor.y = 0;
-                    },
-                    Some(6) => {
-                        self.erasure_mode = true;
-                    },
-                    Some(7) => {
-                        self.disable_linewrap = false;
-                    },
-                    Some(80) => {
-                        self.sixel_scrolling = true;
-                    },
-                    Some(1006) => {
-                        self.mouse_mode = true;
-                    },
-                    _ => {},
+                log::info!("first_intermediate_is_questionmark");
+                // match params_iter.next().map(|param| param[0]) {
+                // for param in params_iter.next().map(|param| param[0]) {
+                for param in params_iter.map(|param| param[0]) {
+                    log::info!("in loop param is: {:?}", param);
+                    match param {
+                        25 => {
+                            self.show_cursor();
+                            self.mark_for_rerender();
+                        },
+                        2004 => {
+                            self.bracketed_paste_mode = true;
+                        },
+                        1049 => {
+                            // enter alternate buffer
+                            let current_lines_above = std::mem::replace(
+                                &mut self.lines_above,
+                                VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
+                            );
+                            let current_viewport = std::mem::replace(
+                                &mut self.viewport,
+                                vec![Row::new(self.width).canonical()],
+                            );
+                            let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
+                            let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
+                            let alternate_sixelgrid = std::mem::replace(
+                                &mut self.sixel_grid,
+                                SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
+                            );
+                            self.alternate_screen_state = Some(AlternateScreenState::new(
+                                current_lines_above,
+                                current_viewport,
+                                current_cursor,
+                                alternate_sixelgrid,
+                            ));
+                            self.clear_viewport_before_rendering = true;
+                            self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+                            self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
+                        },
+                        1 => {
+                            self.cursor_key_mode = true;
+                        },
+                        3 => {
+                            // DECCOLM - only side effects
+                            self.scroll_region = None;
+                            self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                            self.cursor.x = 0;
+                            self.cursor.y = 0;
+                        },
+                        6 => {
+                            self.erasure_mode = true;
+                        },
+                        7 => {
+                            self.disable_linewrap = false;
+                        },
+                        80 => {
+                            self.sixel_scrolling = true;
+                        },
+                        1000 => {
+                            self.mouse_tracking = MouseTracking::Normal;
+                        }
+                        1002 => {
+                            self.mouse_tracking = MouseTracking::ButtonEventTracking;
+                        }
+                        1003 => {
+                            // TBD: any-even mouse tracking
+                        }
+                        1005 => {
+                            self.mouse_mode = MouseMode::Utf8;
+                        }
+                        1006 => {
+                            self.mouse_mode = MouseMode::Sgr;
+                        },
+                        _ => {},
+                    }
                 };
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = true;
