@@ -258,6 +258,9 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn drain_clipboard_update(&mut self) -> Option<String> {
+        None
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
@@ -955,8 +958,12 @@ impl Tab {
         {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
+            let clipboard_update = terminal_output.drain_clipboard_update();
             for message in messages_to_pty {
                 self.write_to_pane_id(message, PaneId::Terminal(pid));
+            }
+            if let Some(string) = clipboard_update {
+                self.write_selection_to_clipboard(&string);
             }
         }
     }

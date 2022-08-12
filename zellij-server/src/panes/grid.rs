@@ -342,6 +342,7 @@ pub struct Grid {
     scrollback_buffer_lines: usize,
     pub mouse_mode: bool,
     pub search_results: SearchResult,
+    pub pending_clipboard_update: Option<String>,
 }
 
 impl Debug for Grid {
@@ -447,6 +448,7 @@ impl Grid {
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
+            pending_clipboard_update: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -1890,8 +1892,12 @@ impl Perform for Grid {
                     b"?" => {
                         // TBD: paste from own clipboard - currently unsupported
                     },
-                    _base64 => {
-                        // TBD: copy to own clipboard - currently unsupported
+                    base64 => {
+                        if let Ok(bytes) = base64::decode(base64) {
+                            if let Ok(string) = String::from_utf8(bytes) {
+                                self.pending_clipboard_update = Some(string);
+                            }
+                        };
                     },
                 }
             },
