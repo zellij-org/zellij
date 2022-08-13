@@ -24,6 +24,7 @@ pub fn render_tab(
     focused_clients: &[ClientId],
     active: bool,
     is_alternate_tab: bool,
+    tab_index: usize,
 ) -> LinePart {
     let separator_width = separator.width();
     let alternate_tab_color = match palette.theme_hue {
@@ -77,6 +78,7 @@ pub fn render_tab(
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,
+        tab_index: Some(tab_index),
     }
 }
 
@@ -88,6 +90,7 @@ pub fn tab_style(
     palette: Palette,
     capabilities: PluginCapabilities,
     focused_clients: &[ClientId],
+    tab_index: usize,
 ) -> LinePart {
     let separator = tab_separator(capabilities);
     let mut tab_text = text;
@@ -107,5 +110,6 @@ pub fn tab_style(
         focused_clients,
         is_active_tab,
         is_alternate_tab,
+        tab_index,
     )
 }
