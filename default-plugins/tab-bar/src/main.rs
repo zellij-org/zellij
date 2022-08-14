@@ -89,13 +89,10 @@ impl ZellijPlugin for State {
             }
             let tab = tab_style(
                 tabname,
-                t.active,
+                t,
                 is_alternate_tab,
-                t.is_sync_panes_active,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
-                t.other_focused_clients.as_slice(),
-                t.position,
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
