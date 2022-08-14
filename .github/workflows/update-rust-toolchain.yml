@@ -2,7 +2,7 @@ name: update-rust-toolchain
 on:
   workflow_dispatch: # allows manual triggering
   schedule:
-    - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
+    - cron: '0 0 1 * *' # runs on the first of every month at 00:00
 
 jobs:
   update-rust-toolchain:
