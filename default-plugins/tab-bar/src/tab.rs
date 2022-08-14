@@ -44,8 +44,7 @@ pub fn render_tab(
         ThemeHue::Light => palette.white,
     };
     let left_separator = style!(foreground_color, background_color).paint(separator);
-    let mut tab_text_len =
-        text.width() + (separator_width * 2) + separator_width * (separator_width * 2); // 2 for left and right separators, 2 for the text padding
+    let mut tab_text_len = text.width() + (separator_width * 2) + 2; // +2 for padding
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
         .paint(format!(" {} ", text));
