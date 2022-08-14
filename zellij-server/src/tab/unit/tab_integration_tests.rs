@@ -1807,14 +1807,11 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
                 let (event, _err_ctx) = pty_writer_receiver
                     .recv()
                     .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => {
-                        messages_to_pty_writer
-                            .lock()
-                            .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string());
-                    },
-                    _ => {},
+                if let PtyWriteInstruction::Write(msg, _) = event {
+                    messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string());
                 }
             }
         });
@@ -1870,14 +1867,11 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
                 let (event, _err_ctx) = pty_writer_receiver
                     .recv()
                     .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => {
-                        messages_to_pty_writer
-                            .lock()
-                            .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string());
-                    },
-                    _ => {},
+                if let PtyWriteInstruction::Write(msg, _) = event {
+                    messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string());
                 }
             }
         });
@@ -1933,14 +1927,11 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
                 let (event, _err_ctx) = pty_writer_receiver
                     .recv()
                     .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => {
-                        messages_to_pty_writer
-                            .lock()
-                            .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string());
-                    },
-                    _ => {},
+                if let PtyWriteInstruction::Write(msg, _) = event {
+                    messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string());
                 }
             }
         });
@@ -1996,14 +1987,11 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
                 let (event, _err_ctx) = pty_writer_receiver
                     .recv()
                     .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => {
-                        messages_to_pty_writer
-                            .lock()
-                            .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string());
-                    },
-                    _ => {},
+                if let PtyWriteInstruction::Write(msg, _) = event {
+                    messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string());
                 }
             }
         });
