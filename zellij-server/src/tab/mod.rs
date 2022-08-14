@@ -1,10 +1,6 @@
 //! `Tab`s holds multiple panes. It tracks their coordinates (x/y) and size,
 //! as well as how they should be resized
 
-// TODO: move these to grid - DONE
-// - then clean up tab/mod.rs
-// - then clean up tab_integration_tests.rs
-
 mod clipboard;
 mod copy_command;
 

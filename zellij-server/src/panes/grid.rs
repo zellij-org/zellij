@@ -2217,7 +2217,6 @@ impl Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                // match params_iter.next().map(|param| param[0]) {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         2004 => {
@@ -2287,8 +2286,6 @@ impl Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                // match params_iter.next().map(|param| param[0]) {
-                // for param in params_iter.next().map(|param| param[0]) {
                 for param in params_iter.map(|param| param[0]) {
                     match param {
                         25 => {
