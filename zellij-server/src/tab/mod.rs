@@ -1951,6 +1951,7 @@ impl Tab {
                     return true; // we need to re-render in this case so the selection disappears
                 }
             } else if selecting {
+                log::info!("updating selection on hold... {:?}", relative_position);
                 active_pane.update_selection(&relative_position, client_id);
                 return true; // we need to re-render in this case so the selection is updated
             }

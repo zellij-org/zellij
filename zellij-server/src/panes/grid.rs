@@ -2103,8 +2103,6 @@ impl Perform for Grid {
                             self.mouse_mode = MouseMode::NoEncoding;
                         }
                         1006 => {
-                            // TODO: CONTINUE HERE - change mouse mode to be an enum according to
-                            // the github issue:
                             self.mouse_mode = MouseMode::NoEncoding;
                         },
                         _ => {},

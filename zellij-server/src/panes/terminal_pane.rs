@@ -569,36 +569,27 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
-//     fn mouse_mode(&self) -> bool {
-//         self.grid.mouse_mode
-//     }
-
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
+            msg.append(
+                &mut utf8_mouse_coordinates(position.column(), position.line())
+            );
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            Some(format!(
+                "\u{1b}[<0;{:?};{:?}M",
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
         match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
             (_, MouseTracking::Off) => None,
-            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
-                let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
-                msg.append(
-                    &mut utf8_mouse_coordinates(position.column(), position.line())
-                );
-                Some(String::from_utf8_lossy(&msg).into())
-            }
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => {
-                let mouse_event = format!(
-                    "\u{1b}[<0;{:?};{:?}M",
-                    position.column() + 1,
-                    position.line() + 1
-                );
-                Some(mouse_event)
-            }
-            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => {
-                let mouse_event = format!(
-                    "\u{1b}[<0;{:?};{:?}M",
-                    position.column() + 1,
-                    position.line() + 1
-                );
-                Some(mouse_event)
-            }
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => utf8_event(),
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => utf8_event(),
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None
         }
     }
@@ -621,31 +612,26 @@ impl Pane for TerminalPane {
         }
     }
     fn mouse_right_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
+            msg.append(
+                &mut utf8_mouse_coordinates(position.column(), position.line())
+            );
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            Some(format!(
+                "\u{1b}[<2;{:?};{:?}M",
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
         match (&self.grid.mouse_mode, &self.grid.mouse_tracking) {
             (_, MouseTracking::Off) => None,
-            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
-                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
-                msg.append(
-                    &mut utf8_mouse_coordinates(position.column(), position.line())
-                );
-                Some(String::from_utf8_lossy(&msg).into())
-            }
-            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => {
-                let mouse_event = format!(
-                    "\u{1b}[<2;{:?};{:?}M",
-                    position.column() + 1,
-                    position.line() + 1
-                );
-                Some(mouse_event)
-            }
-            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => {
-                let mouse_event = format!(
-                    "\u{1b}[<2;{:?};{:?}M",
-                    position.column() + 1,
-                    position.line() + 1
-                );
-                Some(mouse_event)
-            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => utf8_event(),
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => utf8_event(),
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
             _ => None
         }
     }

@@ -1778,7 +1778,7 @@ fn enter_search_floating_pane() {
 }
 
 #[test]
-fn mouse_left_click_to_terminal_in_mouse_mode() {
+fn pane_in_sgr_button_event_tracking_mouse_mode() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -1811,10 +1811,208 @@ fn mouse_left_click_to_terminal_in_mouse_mode() {
                 }
             }
         });
-    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h");
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h"); // button event tracking (1002) with SGR encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
     tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id);
     tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_right_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
+    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
-    assert_eq!(*messages_to_pty_writer.lock().unwrap(), vec!["\u{1b}[<0;71;5M".to_string(), "\u{1b}[<0;75;7m".to_string()]);
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec![
+            "\u{1b}[<0;71;5M".to_string(), // SGR left click
+            "\u{1b}[<0;73;10M".to_string(), // SGR left click (hold)
+            "\u{1b}[<0;75;7m".to_string(), // SGR left button release
+            "\u{1b}[<2;71;5M".to_string(), // SGR right click
+            "\u{1b}[<2;73;10M".to_string(), // SGR right click (hold)
+            "\u{1b}[<2;75;7m".to_string(), // SGR right button release
+            "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
+            "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
+        ]
+    );
+}
+
+#[test]
+fn pane_in_sgr_normal_event_tracking_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+
+    // TODO: note that this thread does not die when the test dies
+    // it only dies once all the test process exits... not a biggy if we have only a handful of
+    // these, but otherwise we might want to think of a better way to handle this
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            // TODO: kill this thread
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || {
+                loop {
+                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => {
+                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        });
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1006h"); // normal event tracking (1000) with sgr encoding (1006)
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_right_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
+    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec![
+            "\u{1b}[<0;71;5M".to_string(), // SGR left click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[<0;75;7m".to_string(), // SGR left button release
+            "\u{1b}[<2;71;5M".to_string(), // SGR right click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[<2;75;7m".to_string(), // SGR right button release
+            "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
+            "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
+        ]
+    );
+}
+
+#[test]
+fn pane_in_utf8_button_event_tracking_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+
+    // TODO: note that this thread does not die when the test dies
+    // it only dies once all the test process exits... not a biggy if we have only a handful of
+    // these, but otherwise we might want to think of a better way to handle this
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            // TODO: kill this thread
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || {
+                loop {
+                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => {
+                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        });
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1005h"); // button event tracking (1002) with utf8 encoding (1005)
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_right_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
+    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec![
+            "\u{1b}[M g%".to_string(), // utf8 left click
+            "\u{1b}[M i*".to_string(), // utf8 left click (hold)
+            "\u{1b}[M#l(".to_string(), // utf8 left button release
+            "\u{1b}[M\"g%".to_string(), // utf8 right click
+            "\u{1b}[M\"i*".to_string(), // utf8 right click (hold)
+            "\u{1b}[M#l(".to_string(), // utf8 right button release
+            "\u{1b}[M`g%".to_string(), // utf8 scroll up
+            "\u{1b}[Mag%".to_string(), // utf8 scroll down
+        ]
+    );
+}
+
+#[test]
+fn pane_in_utf8_normal_event_tracking_mouse_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+
+    // TODO: note that this thread does not die when the test dies
+    // it only dies once all the test process exits... not a biggy if we have only a handful of
+    // these, but otherwise we might want to think of a better way to handle this
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            // TODO: kill this thread
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || {
+                loop {
+                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => {
+                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
+                        },
+                        _ => {}
+                    }
+                }
+            }
+        });
+    let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1005h"); // normal event tracking (1000) with sgr encoding (1006)
+    tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
+    tab.handle_left_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_left(&Position::new(9, 72), client_id);
+    tab.handle_left_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_right_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
+    tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
+    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec![
+            "\u{1b}[M g%".to_string(), // utf8 left click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[M#l(".to_string(), // utf8 left button release
+            "\u{1b}[M\"g%".to_string(), // utf8 right click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[M#l(".to_string(), // utf8 right button release
+            "\u{1b}[M`g%".to_string(), // utf8 scroll up
+            "\u{1b}[Mag%".to_string(), // utf8 scroll down
+        ]
+    );
 }
