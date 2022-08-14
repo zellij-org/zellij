@@ -21,7 +21,6 @@ pub enum MouseEvent {
 
 impl From<termwiz::input::MouseEvent> for MouseEvent {
     fn from(event: termwiz::input::MouseEvent) -> Self {
-        log::info!("termwiz mouse event: {:?}", event);
         #[allow(clippy::if_same_then_else)]
         if event
             .mouse_buttons

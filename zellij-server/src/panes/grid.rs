@@ -2112,18 +2112,15 @@ impl Perform for Grid {
                 self.insert_mode = false;
             }
         } else if c == 'h' {
-            log::info!("got h, intermediates: {:?}, params: {:?}", intermediates, params);
             let first_intermediate_is_questionmark = match intermediates.get(0) {
                 Some(b'?') => true,
                 None => false,
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                log::info!("first_intermediate_is_questionmark");
                 // match params_iter.next().map(|param| param[0]) {
                 // for param in params_iter.next().map(|param| param[0]) {
                 for param in params_iter.map(|param| param[0]) {
-                    log::info!("in loop param is: {:?}", param);
                     match param {
                         25 => {
                             self.show_cursor();

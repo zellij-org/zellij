@@ -1880,6 +1880,7 @@ impl Tab {
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             } else {
                 // TODO: rename this method, it is used to forward release events to plugin panes
+                let relative_position = active_pane.relative_position(position);
                 if let PaneId::Terminal(_) = active_pane.pid() {
                     if selecting && copy_on_release {
                         active_pane.end_selection(&relative_position, client_id);
@@ -1951,7 +1952,6 @@ impl Tab {
                     return true; // we need to re-render in this case so the selection disappears
                 }
             } else if selecting {
-                log::info!("updating selection on hold... {:?}", relative_position);
                 active_pane.update_selection(&relative_position, client_id);
                 return true; // we need to re-render in this case so the selection is updated
             }
