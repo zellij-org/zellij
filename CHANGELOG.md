@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * fix: crash when attaching to a session without the first tab (https://github.com/zellij-org/zellij/pull/1648)
 * fix: race crash on startup when server is not ready (https://github.com/zellij-org/zellij/pull/1651)
+* Terminal compatibility: forward OSC52 clipboard copy events from terminals (https://github.com/zellij-org/zellij/pull/1644)
 
 ## [0.31.1] - 2022-08-02
 * add: `solarized-light` theme to the example theme directory (https://github.com/zellij-org/zellij/pull/1608)
@@ -24,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
 * fix: send `WriteChars:` once per action (https://github.com/zellij-org/zellij/pull/1516)
 * feat: allow swapping tabs, in a fullscreen pane (https://github.com/zellij-org/zellij/pull/1515)
-* feat: add action of undo renmae (https://github.com/zellij-org/zellij/pull/1513)
+* feat: add action of undo rename (https://github.com/zellij-org/zellij/pull/1513)
 * fix(docs): fix macport installation instructions (https://github.com/zellij-org/zellij/pull/1529)
 * feat: allow hex colors for themes (https://github.com/zellij-org/zellij/pull/1536)
 * fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)

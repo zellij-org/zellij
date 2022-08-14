@@ -507,6 +507,10 @@ impl Pane for TerminalPane {
         self.grid.pending_messages_to_pty.drain(..).collect()
     }
 
+    fn drain_clipboard_update(&mut self) -> Option<String> {
+        self.grid.pending_clipboard_update.take()
+    }
+
     fn start_selection(&mut self, start: &Position, _client_id: ClientId) {
         self.grid.start_selection(start);
         self.set_should_render(true);
