@@ -153,7 +153,11 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     tab
 }
 
-fn create_new_tab_with_mock_pty_writer(size: Size, default_mode: ModeInfo, mock_pty_writer: SenderWithContext<PtyWriteInstruction>) -> Tab {
+fn create_new_tab_with_mock_pty_writer(
+    size: Size,
+    default_mode: ModeInfo,
+    mock_pty_writer: SenderWithContext<PtyWriteInstruction>,
+) -> Tab {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
@@ -1799,15 +1803,18 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
         .spawn({
             // TODO: kill this thread
             let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || {
-                loop {
-                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
-                    match event {
-                        PtyWriteInstruction::Write(msg, _) => {
-                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
-                        },
-                        _ => {}
-                    }
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => {
+                        messages_to_pty_writer
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string());
+                    },
+                    _ => {},
                 }
             }
         });
@@ -1825,12 +1832,12 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
         vec![
-            "\u{1b}[<0;71;5M".to_string(), // SGR left click
+            "\u{1b}[<0;71;5M".to_string(),  // SGR left click
             "\u{1b}[<0;73;10M".to_string(), // SGR left click (hold)
-            "\u{1b}[<0;75;7m".to_string(), // SGR left button release
-            "\u{1b}[<2;71;5M".to_string(), // SGR right click
+            "\u{1b}[<0;75;7m".to_string(),  // SGR left button release
+            "\u{1b}[<2;71;5M".to_string(),  // SGR right click
             "\u{1b}[<2;73;10M".to_string(), // SGR right click (hold)
-            "\u{1b}[<2;75;7m".to_string(), // SGR right button release
+            "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
             "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
             "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
         ]
@@ -1859,15 +1866,18 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
         .spawn({
             // TODO: kill this thread
             let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || {
-                loop {
-                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
-                    match event {
-                        PtyWriteInstruction::Write(msg, _) => {
-                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
-                        },
-                        _ => {}
-                    }
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => {
+                        messages_to_pty_writer
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string());
+                    },
+                    _ => {},
                 }
             }
         });
@@ -1890,7 +1900,7 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
             "\u{1b}[<0;75;7m".to_string(), // SGR left button release
             "\u{1b}[<2;71;5M".to_string(), // SGR right click
             // no hold event here, as hold events are not reported in normal mode
-            "\u{1b}[<2;75;7m".to_string(), // SGR right button release
+            "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
             "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
             "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
         ]
@@ -1919,15 +1929,18 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
         .spawn({
             // TODO: kill this thread
             let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || {
-                loop {
-                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
-                    match event {
-                        PtyWriteInstruction::Write(msg, _) => {
-                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
-                        },
-                        _ => {}
-                    }
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => {
+                        messages_to_pty_writer
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string());
+                    },
+                    _ => {},
                 }
             }
         });
@@ -1945,14 +1958,14 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
         vec![
-            "\u{1b}[M g%".to_string(), // utf8 left click
-            "\u{1b}[M i*".to_string(), // utf8 left click (hold)
-            "\u{1b}[M#l(".to_string(), // utf8 left button release
+            "\u{1b}[M g%".to_string(),  // utf8 left click
+            "\u{1b}[M i*".to_string(),  // utf8 left click (hold)
+            "\u{1b}[M#l(".to_string(),  // utf8 left button release
             "\u{1b}[M\"g%".to_string(), // utf8 right click
             "\u{1b}[M\"i*".to_string(), // utf8 right click (hold)
-            "\u{1b}[M#l(".to_string(), // utf8 right button release
-            "\u{1b}[M`g%".to_string(), // utf8 scroll up
-            "\u{1b}[Mag%".to_string(), // utf8 scroll down
+            "\u{1b}[M#l(".to_string(),  // utf8 right button release
+            "\u{1b}[M`g%".to_string(),  // utf8 scroll up
+            "\u{1b}[Mag%".to_string(),  // utf8 scroll down
         ]
     );
 }
@@ -1979,15 +1992,18 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
         .spawn({
             // TODO: kill this thread
             let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || {
-                loop {
-                    let (event, _err_ctx) = pty_writer_receiver.recv().expect("failed to receive event on channel");
-                    match event {
-                        PtyWriteInstruction::Write(msg, _) => {
-                            messages_to_pty_writer.lock().unwrap().push(String::from_utf8_lossy(&msg).to_string());
-                        },
-                        _ => {}
-                    }
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => {
+                        messages_to_pty_writer
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string());
+                    },
+                    _ => {},
                 }
             }
         });
@@ -2007,7 +2023,7 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
         vec![
             "\u{1b}[M g%".to_string(), // utf8 left click
             // no hold event here, as hold events are not reported in normal mode
-            "\u{1b}[M#l(".to_string(), // utf8 left button release
+            "\u{1b}[M#l(".to_string(),  // utf8 left button release
             "\u{1b}[M\"g%".to_string(), // utf8 right click
             // no hold event here, as hold events are not reported in normal mode
             "\u{1b}[M#l(".to_string(), // utf8 right button release

@@ -299,6 +299,28 @@ macro_rules! dump_screen {
     }};
 }
 
+fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
+    let mut coordinates = vec![];
+    let mouse_pos_encode = |pos: usize| -> Vec<u8> {
+        let pos = 32 + 1 + pos;
+        let first = 0xC0 + pos / 64;
+        let second = 0x80 + (pos & 63);
+        vec![first as u8, second as u8]
+    };
+
+    if column > 95 {
+        coordinates.append(&mut mouse_pos_encode(column));
+    } else {
+        coordinates.push(32 + 1 + column as u8);
+    }
+    if line > 95 {
+        coordinates.append(&mut mouse_pos_encode(line as usize));
+    } else {
+        coordinates.push(32 + 1 + line as u8);
+    }
+    coordinates
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -350,7 +372,7 @@ pub struct Grid {
 pub enum MouseMode {
     NoEncoding,
     Utf8,
-    Sgr
+    Sgr,
 }
 
 impl Default for MouseMode {
@@ -1701,6 +1723,146 @@ impl Grid {
             }
         }
     }
+    pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column(),
+                position.line(),
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            Some(format!(
+                "\u{1b}[<0;{:?};{:?}M",
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_left_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column(),
+                    position.line(),
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                // TODO: these don't add a +1 because it's done outside, we should change it to
+                // happen here for consistency
+                let mouse_event =
+                    format!("\u{1b}[<0;{:?};{:?}m", position.column(), position.line());
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_right_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column(),
+                position.line(),
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            Some(format!(
+                "\u{1b}[<2;{:?};{:?}M",
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_right_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column(),
+                    position.line(),
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                // TODO: these don't add a +1 because it's done outside, we should change it to
+                // happen here for consistency
+                let mouse_event =
+                    format!("\u{1b}[<2;{:?};{:?}m", position.column(), position.line());
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_up_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column(),
+                    position.line(),
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<64;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_down_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column(),
+                    position.line(),
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<65;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
 }
 
 impl Perform for Grid {
@@ -2062,7 +2224,8 @@ impl Perform for Grid {
                             self.bracketed_paste_mode = false;
                         },
                         1049 => {
-                            if let Some(mut alternate_screen_state) = self.alternate_screen_state.take()
+                            if let Some(mut alternate_screen_state) =
+                                self.alternate_screen_state.take()
                             {
                                 if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
                                     // reap images before dropping the alternate_screen_state contents
@@ -2107,7 +2270,7 @@ impl Perform for Grid {
                         },
                         1005 => {
                             self.mouse_mode = MouseMode::NoEncoding;
-                        }
+                        },
                         1006 => {
                             self.mouse_mode = MouseMode::NoEncoding;
                         },
@@ -2145,7 +2308,8 @@ impl Perform for Grid {
                                 &mut self.viewport,
                                 vec![Row::new(self.width).canonical()],
                             );
-                            let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
+                            let current_cursor =
+                                std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
                             let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
                             let alternate_sixelgrid = std::mem::replace(
                                 &mut self.sixel_grid,
@@ -2158,7 +2322,8 @@ impl Perform for Grid {
                                 alternate_sixelgrid,
                             ));
                             self.clear_viewport_before_rendering = true;
-                            self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+                            self.scrollback_buffer_lines =
+                                self.recalculate_scrollback_buffer_count();
                             self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
                         },
                         1 => {
@@ -2182,22 +2347,22 @@ impl Perform for Grid {
                         },
                         1000 => {
                             self.mouse_tracking = MouseTracking::Normal;
-                        }
+                        },
                         1002 => {
                             self.mouse_tracking = MouseTracking::ButtonEventTracking;
-                        }
+                        },
                         1003 => {
                             // TBD: any-even mouse tracking
-                        }
+                        },
                         1005 => {
                             self.mouse_mode = MouseMode::Utf8;
-                        }
+                        },
                         1006 => {
                             self.mouse_mode = MouseMode::Sgr;
                         },
                         _ => {},
                     }
-                };
+                }
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = true;
             }

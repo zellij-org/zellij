@@ -193,18 +193,25 @@ impl InputHandler {
             MouseEvent::Release(point) => {
                 let button_released = self.holding_mouse.unwrap_or_default();
                 match button_released {
-                    HeldMouseButton::Left => self.dispatch_action(Action::LeftMouseRelease(point), None),
-                    HeldMouseButton::Right => self.dispatch_action(Action::RightMouseRelease(point), None),
+                    HeldMouseButton::Left => {
+                        self.dispatch_action(Action::LeftMouseRelease(point), None)
+                    },
+                    HeldMouseButton::Right => {
+                        self.dispatch_action(Action::RightMouseRelease(point), None)
+                    },
                 };
                 self.holding_mouse = None;
             },
             MouseEvent::Hold(point) => {
                 let button_held = self.holding_mouse.unwrap_or_default();
                 match button_held {
-                    HeldMouseButton::Left => self.dispatch_action(Action::MouseHoldLeft(point), None),
-                    HeldMouseButton::Right => self.dispatch_action(Action::MouseHoldRight(point), None),
+                    HeldMouseButton::Left => {
+                        self.dispatch_action(Action::MouseHoldLeft(point), None)
+                    },
+                    HeldMouseButton::Right => {
+                        self.dispatch_action(Action::MouseHoldRight(point), None)
+                    },
                 };
-                // self.holding_mouse = true;
                 self.holding_mouse = Some(button_held);
             },
         }
