@@ -1,14 +1,16 @@
 pub mod alacritty_functions;
-mod floating_panes;
 pub mod grid;
 pub mod link_handler;
-mod plugin_pane;
-mod search;
 pub mod selection;
 pub mod sixel;
 pub mod terminal_character;
+pub mod csi;
+
 mod terminal_pane;
 mod tiled_panes;
+mod plugin_pane;
+mod search;
+mod floating_panes;
 
 pub use alacritty_functions::*;
 pub use floating_panes::*;
