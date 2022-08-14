@@ -39,7 +39,7 @@ const HOME_KEY: &[u8] = &[27, 91, 72];
 const END_KEY: &[u8] = &[27, 91, 70];
 const TERMINATING_STRING: &str = "\0";
 const DELETE_KEY: &str = "\u{007F}";
-const BACKSPACE_KEY: &str = "\u{0008}" ;
+const BACKSPACE_KEY: &str = "\u{0008}";
 
 /// The ansi encoding of some keys
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -490,9 +490,7 @@ impl Pane for TerminalPane {
         self.active_at = time;
     }
     fn cursor_shape_csi(&self) -> String {
-        self.grid.cursor_shape()
-            .get_csi_str()
-            .to_string()
+        self.grid.cursor_shape().get_csi_str().to_string()
     }
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         self.grid.pending_messages_to_pty.drain(..).collect()
