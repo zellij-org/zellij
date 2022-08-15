@@ -5,7 +5,7 @@ use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
 use zellij_utils::{
-    input::layout::Direction,
+    input::layout::SplitDirection,
     pane_size::{Dimension, PaneGeom, Size, Viewport},
 };
 
@@ -42,7 +42,7 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
 
-    pub fn layout(&mut self, direction: Direction, space: usize) -> Result<(), String> {
+    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<(), String> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
@@ -187,7 +187,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let ids_left = self.pane_ids_directly_left_of(pane_id);
-        let flexible_left = self.ids_are_flexible(Direction::Horizontal, ids_left);
+        let flexible_left = self.ids_are_flexible(SplitDirection::Horizontal, ids_left);
         if flexible_left {
             self.can_reduce_pane_width(pane_id, reduce_by)
         } else {
@@ -196,7 +196,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let ids_right = self.pane_ids_directly_right_of(pane_id);
-        let flexible_right = self.ids_are_flexible(Direction::Horizontal, ids_right);
+        let flexible_right = self.ids_are_flexible(SplitDirection::Horizontal, ids_right);
         if flexible_right {
             self.can_reduce_pane_width(pane_id, reduce_by)
         } else {
@@ -205,7 +205,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let ids_above = self.pane_ids_directly_above(pane_id);
-        let flexible_above = self.ids_are_flexible(Direction::Vertical, ids_above);
+        let flexible_above = self.ids_are_flexible(SplitDirection::Vertical, ids_above);
         if flexible_above {
             self.can_reduce_pane_height(pane_id, reduce_by)
         } else {
@@ -214,7 +214,7 @@ impl<'a> TiledPaneGrid<'a> {
     }
     fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
         let ids_below = self.pane_ids_directly_below(pane_id);
-        let flexible_below = self.ids_are_flexible(Direction::Vertical, ids_below);
+        let flexible_below = self.ids_are_flexible(SplitDirection::Vertical, ids_below);
         if flexible_below {
             self.can_reduce_pane_height(pane_id, reduce_by)
         } else {
@@ -926,15 +926,15 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
         (right_resize_border, pane_ids)
     }
-    fn ids_are_flexible(&self, direction: Direction, pane_ids: Option<Vec<PaneId>>) -> bool {
+    fn ids_are_flexible(&self, direction: SplitDirection, pane_ids: Option<Vec<PaneId>>) -> bool {
         let panes = self.panes.borrow();
         pane_ids.is_some()
             && pane_ids.unwrap().iter().all(|id| {
                 let pane_to_check = panes.get(id).unwrap();
                 let geom = pane_to_check.current_geom();
                 let dimension = match direction {
-                    Direction::Vertical => geom.rows,
-                    Direction::Horizontal => geom.cols,
+                    SplitDirection::Vertical => geom.rows,
+                    SplitDirection::Horizontal => geom.cols,
                 };
                 !dimension.is_fixed()
             })
@@ -967,7 +967,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_increase_pane_and_surroundings_right(pane_id, reduce_by) {
             self.increase_pane_and_surroundings_right(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
             return true;
         }
         false
@@ -980,7 +980,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_increase_pane_and_surroundings_left(pane_id, reduce_by) {
             self.increase_pane_and_surroundings_left(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
             return true;
         }
         false
@@ -989,7 +989,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_increase_pane_and_surroundings_up(pane_id, reduce_by) {
             self.increase_pane_and_surroundings_up(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
             return true;
         }
         false
@@ -1002,7 +1002,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_increase_pane_and_surroundings_down(pane_id, reduce_by) {
             self.increase_pane_and_surroundings_down(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
             return true;
         }
         false
@@ -1245,7 +1245,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_reduce_pane_and_surroundings_right(pane_id, reduce_by) {
             self.reduce_pane_and_surroundings_right(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
             return true;
         }
         false
@@ -1254,7 +1254,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_reduce_pane_and_surroundings_left(pane_id, reduce_by) {
             self.reduce_pane_and_surroundings_left(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Horizontal, self.display_area.cols);
+            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
             return true;
         }
         false
@@ -1263,7 +1263,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_reduce_pane_and_surroundings_up(pane_id, reduce_by) {
             self.reduce_pane_and_surroundings_up(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
             return true;
         }
         false
@@ -1272,7 +1272,7 @@ impl<'a> TiledPaneGrid<'a> {
         if self.can_reduce_pane_and_surroundings_down(pane_id, reduce_by) {
             self.reduce_pane_and_surroundings_down(pane_id, reduce_by);
             let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(Direction::Vertical, self.display_area.rows);
+            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
             return true;
         }
         false
@@ -1551,31 +1551,31 @@ impl<'a> TiledPaneGrid<'a> {
         }
         None
     }
-    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, Direction)> {
+    fn find_panes_to_grow(&self, id: PaneId) -> Option<(Vec<PaneId>, SplitDirection)> {
         if let Some(panes) = self
             .panes_to_the_left_between_aligning_borders(id)
             .or_else(|| self.panes_to_the_right_between_aligning_borders(id))
         {
-            return Some((panes, Direction::Horizontal));
+            return Some((panes, SplitDirection::Horizontal));
         }
 
         if let Some(panes) = self
             .panes_above_between_aligning_borders(id)
             .or_else(|| self.panes_below_between_aligning_borders(id))
         {
-            return Some((panes, Direction::Vertical));
+            return Some((panes, SplitDirection::Vertical));
         }
 
         None
     }
-    fn grow_panes(&mut self, panes: &[PaneId], direction: Direction, (width, height): (f64, f64)) {
+    fn grow_panes(&mut self, panes: &[PaneId], direction: SplitDirection, (width, height): (f64, f64)) {
         match direction {
-            Direction::Horizontal => {
+            SplitDirection::Horizontal => {
                 for pane_id in panes {
                     self.increase_pane_width(pane_id, width);
                 }
             },
-            Direction::Vertical => {
+            SplitDirection::Vertical => {
                 for pane_id in panes {
                     self.increase_pane_height(pane_id, height);
                 }
@@ -1597,8 +1597,8 @@ impl<'a> TiledPaneGrid<'a> {
             if let Some((panes_to_grow, direction)) = self.find_panes_to_grow(id) {
                 self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
                 let side_length = match direction {
-                    Direction::Vertical => self.display_area.rows,
-                    Direction::Horizontal => self.display_area.cols,
+                    SplitDirection::Vertical => self.display_area.rows,
+                    SplitDirection::Horizontal => self.display_area.cols,
                 };
                 {
                     let mut panes = self.panes.borrow_mut();
@@ -1614,7 +1614,7 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn find_room_for_new_pane(
         &self,
         cursor_height_width_ratio: Option<usize>,
-    ) -> Option<(PaneId, Direction)> {
+    ) -> Option<(PaneId, SplitDirection)> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
             panes.iter().filter(|(_, p)| p.selectable()).collect();
@@ -1643,9 +1643,9 @@ impl<'a> TiledPaneGrid<'a> {
                 > pane_to_split.cols()
                 && pane_to_split.rows() > pane_to_split.min_height() * 2
             {
-                Some(Direction::Horizontal)
+                Some(SplitDirection::Horizontal)
             } else if pane_to_split.cols() > pane_to_split.min_width() * 2 {
-                Some(Direction::Vertical)
+                Some(SplitDirection::Vertical)
             } else {
                 None
             };
@@ -1655,29 +1655,29 @@ impl<'a> TiledPaneGrid<'a> {
     }
 }
 
-pub fn split(direction: Direction, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
+pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {
     let space = match direction {
-        Direction::Vertical => rect.cols,
-        Direction::Horizontal => rect.rows,
+        SplitDirection::Vertical => rect.cols,
+        SplitDirection::Horizontal => rect.rows,
     };
     if let Some(p) = space.as_percent() {
         let first_rect = match direction {
-            Direction::Vertical => PaneGeom {
+            SplitDirection::Vertical => PaneGeom {
                 cols: Dimension::percent(p / 2.0),
                 ..*rect
             },
-            Direction::Horizontal => PaneGeom {
+            SplitDirection::Horizontal => PaneGeom {
                 rows: Dimension::percent(p / 2.0),
                 ..*rect
             },
         };
         let second_rect = match direction {
-            Direction::Vertical => PaneGeom {
+            SplitDirection::Vertical => PaneGeom {
                 x: first_rect.x + 1,
                 cols: first_rect.cols,
                 ..*rect
             },
-            Direction::Horizontal => PaneGeom {
+            SplitDirection::Horizontal => PaneGeom {
                 y: first_rect.y + 1,
                 rows: first_rect.rows,
                 ..*rect

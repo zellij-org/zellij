@@ -148,11 +148,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
 //                 });
 
                 // let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
-                let merged_layout = tab_layout.map(|t| layout.insert_tab_layout(t)).unwrap_or_else(|| *layout.clone());
-                let layout: Layout =
-                    Layout::try_from(merged_layout).unwrap_or_else(|err| panic!("{}", err));
+                let mut layout = layout.clone();
+                if let Some(tab_layout) = tab_layout {
+                    layout.insert_tab_layout(&tab_layout).expect("corrupted tab layout");
+                }
 
-                pty.spawn_terminals_for_layout(layout, terminal_action.clone(), client_id);
+                pty.spawn_terminals_for_layout(*layout, terminal_action.clone(), client_id);
 
                 if let Some(tab_name) = tab_name {
                     // clear current name at first

@@ -247,7 +247,9 @@ impl Setup {
 //                 return Err(e);
 //             },
 //         };
+        log::info!("building layout");
         let layout = Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir)?;
+        log::info!("built layout: {:?}", layout);
 
         if let Some(Command::Setup(ref setup)) = &opts.command {
             setup
@@ -262,8 +264,8 @@ impl Setup {
         };
 
         // unimplemented!()
-        // Ok((config, None, config_options)) // TODO: no!!!!!111oneoneone
-        Setup::merge_config_with_layout(config, layout, config_options)
+        Ok((config, layout, config_options)) // TODO: no!!!!!111oneoneone
+        // Setup::merge_config_with_layout(config, layout, config_options)
     }
 
     /// General setup helpers

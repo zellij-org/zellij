@@ -374,6 +374,7 @@ impl ServerOsApi for ServerOsInputOutput {
         Ok(())
     }
     fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
+        log::info!("sending message to client: {:?}", msg);
         if let Some(sender) = self.client_senders.lock().unwrap().get_mut(&client_id) {
             sender.send(msg);
         }
