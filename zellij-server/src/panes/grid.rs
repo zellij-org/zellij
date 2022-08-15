@@ -1766,8 +1766,11 @@ impl Grid {
                 Some(String::from_utf8_lossy(&msg).into())
             },
             (MouseMode::Sgr, _) => {
-                let mouse_event =
-                    format!("\u{1b}[<0;{:?};{:?}m", position.column() + 1, position.line() + 1);
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
                 Some(mouse_event)
             },
         }
@@ -1815,8 +1818,11 @@ impl Grid {
             (MouseMode::Sgr, _) => {
                 // TODO: these don't add a +1 because it's done outside, we should change it to
                 // happen here for consistency
-                let mouse_event =
-                    format!("\u{1b}[<2;{:?};{:?}m", position.column() + 1, position.line() + 1);
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
                 Some(mouse_event)
             },
         }
