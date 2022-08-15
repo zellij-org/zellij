@@ -1,12 +1,12 @@
 //! Mapping of inputs to sequences of actions.
-use std::collections::HashMap;
 use std::str::FromStr;
 use kdl::{KdlDocument, KdlValue, KdlNode};
+use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
-use super::config:: ConfigError;
-use crate::input::{InputMode, Key};
+use super::config:: {self, ConfigError};
 use crate::{kdl_arg_is_truthy, kdl_children_or_error, kdl_string_arguments, kdl_argument_values, kdl_children, kdl_name, keys_from_kdl, actions_from_kdl, kdl_children_nodes_or_error};
+use crate::data::{InputMode, Key, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -16,7 +16,7 @@ use strum::IntoEnumIterator;
 pub struct Keybinds(pub HashMap<InputMode, HashMap<Key, Vec<Action>>>);
 // pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct ModeKeybinds(HashMap<Key, Vec<Action>>);
+pub struct ModeKeybinds(BTreeMap<Key, Vec<Action>>);
 
 /// Intermediate struct used for deserialisation
 /// Used in the config file.
@@ -147,14 +147,26 @@ impl Keybinds {
             InputMode::Normal | InputMode::Locked => Action::Write(raw_bytes),
             InputMode::RenameTab => Action::TabNameInput(raw_bytes),
             InputMode::RenamePane => Action::PaneNameInput(raw_bytes),
+            InputMode::EnterSearch => Action::SearchInput(raw_bytes),
             _ => Action::NoOp,
         }
+    }
+    pub fn to_keybinds_vec(&self) -> KeybindsVec {
+        let mut ret = vec![];
+        for (mode, mode_binds) in &self.0 {
+            let mut mode_binds_vec: Vec<(Key, Vec<Action>)> = vec![];
+            for (key, actions) in mode_binds {
+                mode_binds_vec.push((key.clone(), actions.clone()));
+            }
+            ret.push((*mode, mode_binds_vec))
+        }
+        ret
     }
 }
 
 impl ModeKeybinds {
     fn new() -> ModeKeybinds {
-        ModeKeybinds(HashMap::<Key, Vec<Action>>::new())
+        ModeKeybinds(BTreeMap::<Key, Vec<Action>>::new())
     }
 
     /// Merges `self` with `other`, if keys are the same, `other` overwrites.
@@ -171,6 +183,13 @@ impl ModeKeybinds {
             keymap.0.remove(&key);
         }
         keymap
+    }
+
+    pub fn to_cloned_vec(&self) -> Vec<(Key, Vec<Action>)> {
+        self.0
+            .iter()
+            .map(|(key, vac)| (*key, vac.clone()))
+            .collect()
     }
 }
 
@@ -202,7 +221,7 @@ impl From<KeyActionFromYaml> for ModeKeybinds {
                 .key
                 .into_iter()
                 .map(|k| (k, actions.clone()))
-                .collect::<HashMap<Key, Vec<Action>>>(),
+                .collect::<BTreeMap<Key, Vec<Action>>>(),
         )
     }
 }

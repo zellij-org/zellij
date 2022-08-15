@@ -5,10 +5,9 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use thiserror::Error;
-use crate::data::{self, Palette, PaletteColor, PluginTag, CharOrArrow};
+use crate::data::{self, Palette, PaletteColor, PluginTag, CharOrArrow, Key, InputMode};
 use super::layout::RunPluginLocation;
 
-use crate::input::{InputMode, Key};
 use super::actions::{Action, Direction};
 
 use std::collections::{HashMap, HashSet};
@@ -18,10 +17,10 @@ use kdl::{KdlDocument, KdlValue, KdlNode};
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 
-use super::keybinds::{Keybinds, KeybindsFromYaml};
+use super::keybinds::Keybinds;
 use super::options::{Options, OnForceClose, Clipboard};
-use super::plugins::{PluginsConfig, PluginsConfigError, PluginsConfigFromYaml, PluginConfig, PluginType};
-use super::theme::{ThemesFromYaml, UiConfig, Theme, Themes, FrameConfig};
+use super::plugins::{PluginsConfig, PluginsConfigError, PluginConfig, PluginType};
+use super::theme::{UiConfig, Theme, Themes, FrameConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::setup;
@@ -32,19 +31,19 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
 
-/// Intermediate deserialization config struct
-#[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
-pub struct ConfigFromYaml {
-    #[serde(flatten)]
-    pub options: Option<Options>,
-    pub keybinds: Option<KeybindsFromYaml>,
-    pub themes: Option<ThemesFromYaml>,
-    #[serde(flatten)]
-    pub env: Option<EnvironmentVariables>,
-    #[serde(default)]
-    pub plugins: PluginsConfigFromYaml,
-    pub ui: Option<UiConfig>,
-}
+// /// Intermediate deserialization config struct
+// #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
+// pub struct ConfigFromYaml {
+//     #[serde(flatten)]
+//     pub options: Option<Options>,
+//     pub keybinds: Option<KeybindsFromYaml>,
+//     pub themes: Option<ThemesFromYamlIntermediate>,
+//     #[serde(flatten)]
+//     pub env: Option<EnvironmentVariables>,
+//     #[serde(default)]
+//     pub plugins: PluginsConfigFromYaml,
+//     pub ui: Option<UiConfig>,
+// }
 
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Default)]

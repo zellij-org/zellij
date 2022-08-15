@@ -11,7 +11,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Layout, LayoutFromYaml, Run, TabLayout},
+        layout::{Layout, Run},
     },
 };
 

@@ -102,6 +102,7 @@ impl TerminalBytes {
                         let time_to_send_render =
                             self.async_send_to_screen(ScreenInstruction::Render).await;
                         self.update_render_send_time(time_to_send_render);
+                        self.last_render = Instant::now();
                     }
                     // if we already have a render_deadline we keep it, otherwise we set it
                     // to buffering_pause since the last time we rendered.
@@ -144,7 +145,9 @@ impl TerminalBytes {
         }
     }
     async fn deadline_read(&mut self, buf: &mut [u8]) -> ReadResult {
-        if let Some(deadline) = self.render_deadline {
+        if !self.backed_up {
+            self.async_reader.read(buf).await.into()
+        } else if let Some(deadline) = self.render_deadline {
             let timeout = deadline.checked_duration_since(Instant::now());
             if let Some(timeout) = timeout {
                 match async_timeout(timeout, self.async_reader.read(buf)).await {

@@ -8,7 +8,7 @@ use crate::{
 use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
-use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::input::layout::Layout;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -111,7 +111,7 @@ fn create_new_screen(size: Size) -> Screen {
 fn new_tab(screen: &mut Screen, pid: i32) {
     let client_id = 1;
     screen.new_tab(
-        LayoutTemplate::default().try_into().unwrap(),
+        Layout::with_one_pane(),
         vec![pid],
         client_id,
     );
@@ -543,4 +543,26 @@ fn update_screen_pixel_dimensions() {
         },
         "empty update does not delete existing data",
     );
+}
+
+#[test]
+fn attach_after_first_tab_closed() {
+    // ensure https://github.com/zellij-org/zellij/issues/1645 is fixed
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1);
+    {
+        let active_tab = screen.get_active_tab_mut(1).unwrap();
+        active_tab.new_pane(PaneId::Terminal(2), Some(1));
+        active_tab.toggle_active_pane_fullscreen(1);
+    }
+    new_tab(&mut screen, 2);
+
+    screen.close_tab_at_index(0);
+    screen.remove_client(1);
+    screen.add_client(1);
 }

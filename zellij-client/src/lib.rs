@@ -7,7 +7,6 @@ mod sessions;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
-use log::error;
 use log::info;
 use std::env::current_exe;
 use std::io::{self, Write};
@@ -31,7 +30,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
-use zellij_utils::{cli::CliArgs, input::layout::{Layout, LayoutFromYaml}};
+use zellij_utils::{cli::CliArgs, input::layout::Layout};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -125,7 +124,6 @@ pub fn start_client(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    // layout: Option<LayoutFromYaml>,
     layout: Option<Layout>,
 ) {
     info!("Starting Zellij client!");
@@ -163,6 +161,7 @@ pub fn start_client(
             colors: palette,
             rounded_corners: config.ui.pane_frames.rounded_corners,
         },
+        keybinds: config.keybinds.clone(),
     };
 
     let first_msg = match info {
@@ -214,7 +213,6 @@ pub fn start_client(
         let send_client_instructions = send_client_instructions.clone();
         let os_input = os_input.clone();
         Box::new(move |info| {
-            error!("Panic occurred in client:\n{:?}", info);
             if let Ok(()) = os_input.unset_raw_mode(0) {
                 handle_panic(info, &send_client_instructions);
             }

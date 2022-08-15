@@ -12,9 +12,9 @@ all contributors are expected to adhere to.
 
 ## Building
 To build Zellij, we're using cargo-make – you can install it by running `cargo
-install --force cargo-make`.
+install --locked --force cargo-make`.
 
-To edit our manpage, the mandown crate (`cargo install
+To edit our manpage, the mandown crate (`cargo install --locked
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
 
 Here are some of the commands currently supported by the build system:
@@ -82,6 +82,19 @@ Once you do, in the repository root:
 3. `cargo make e2e-test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
+
+## Debugging / Troubleshooting while developing
+Zellij uses the excellent [`log`](https://crates.io/crates/log) crate to handle its internal logging. The output of these logs will go to `/tmp/zellij-<UID>/zellij-log/zellij.log`.
+
+Example:
+```rust
+let my_variable = some_function();
+log::info!("my variable is: {:?}", my_variable);
+```
+
+Note that the output is truncated at 100KB. This can be adjusted for the purposes of debugging through the `LOG_MAX_BYTES` constant, at the time of writing here: https://github.com/zellij-org/zellij/blob/main/zellij-utils/src/logging.rs#L24
+
+When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/tmp/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
 
 ## How we treat clippy lints
 

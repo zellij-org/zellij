@@ -1,0 +1,29 @@
+---
+source: src/tests/e2e/cases.rs
+assertion_line: 398
+expression: last_snapshot
+---
+ Zellij (e2e-test)  Tab #1                                                                                            
+┌ Pane #1 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│$ █                                                                                                                   │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+│                                                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ <F1> LOCK  <F2> PANE  <F3> TAB  <F4> RESIZE  <F5> MOVE  <F6> SEARCH  <F7> SESSION  <F8> QUIT            
+ Tip: UNBOUND => open new pane. UNBOUND => navigate between panes. UNBOUND => increase/decrease pane size.              

@@ -8,7 +8,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    pane_size::{PaneGeom, SizeInPixels},
+    pane_size::{Offset, PaneGeom, SizeInPixels},
+    position::Position,
 };
 
 use std::fmt::Write;
@@ -390,4 +391,256 @@ pub fn keep_working_after_corrupted_sixel_image() {
     }
     terminal_pane.handle_pty_bytes(text_to_fill_pane.into_bytes());
     assert_snapshot!(format!("{:?}", terminal_pane.grid));
+}
+
+#[test]
+pub fn pane_with_frame_position_is_on_frame() {
+    let mut fake_win_size = PaneGeom {
+        x: 10,
+        y: 10,
+        ..PaneGeom::default()
+    };
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+
+    let pid = 1;
+    let style = Style::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    let mut terminal_pane = TerminalPane::new(
+        pid,
+        fake_win_size,
+        style,
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    ); // 0 is the pane index
+
+    terminal_pane.set_content_offset(Offset::frame(1));
+
+    // row above pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 129)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 131)));
+
+    // first row:  border for 10 <= col <= 130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 9)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 10)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 11)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 129)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 131)));
+
+    // second row: border only at col=10,130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 9)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(11, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(11, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 131)));
+
+    // row in the middle: border only at col=10,130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 9)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(15, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(15, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 131)));
+
+    // last row: border for 10 <= col <= 130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 9)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 10)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 11)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 131)));
+
+    // row below pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
+}
+
+#[test]
+pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
+    let mut fake_win_size = PaneGeom {
+        x: 10,
+        y: 10,
+        ..PaneGeom::default()
+    };
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+
+    let pid = 1;
+    let style = Style::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    let mut terminal_pane = TerminalPane::new(
+        pid,
+        fake_win_size,
+        style,
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    ); // 0 is the pane index
+
+    terminal_pane.set_content_offset(Offset::shift(1, 1));
+
+    // row above pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 129)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 131)));
+
+    // first row: border only at col=130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 129)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(10, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 131)));
+
+    // second row: border only at col=130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(11, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 131)));
+
+    // row in the middle: border only at col=130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(15, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 131)));
+
+    // last row: border for 10 <= col <= 130
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 9)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 10)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 11)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 70)));
+    assert!(terminal_pane.position_is_on_frame(&Position::new(29, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 131)));
+
+    // row below pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
+}
+
+#[test]
+pub fn frameless_pane_position_is_on_frame() {
+    let mut fake_win_size = PaneGeom {
+        x: 10,
+        y: 10,
+        ..PaneGeom::default()
+    };
+    fake_win_size.cols.set_inner(121);
+    fake_win_size.rows.set_inner(20);
+
+    let pid = 1;
+    let style = Style::default();
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    let mut terminal_pane = TerminalPane::new(
+        pid,
+        fake_win_size,
+        style,
+        0,
+        String::new(),
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    ); // 0 is the pane index
+
+    terminal_pane.set_content_offset(Offset::default());
+
+    // row above pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 129)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(9, 131)));
+
+    // first row: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 129)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(10, 131)));
+
+    // second row: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(11, 131)));
+
+    // random row in the middle: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(15, 131)));
+
+    // last row: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 9)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(29, 131)));
+
+    // row below pane: no border
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 10)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 11)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 70)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 130)));
+    assert!(!terminal_pane.position_is_on_frame(&Position::new(30, 131)));
 }

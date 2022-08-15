@@ -3,14 +3,12 @@
 // use super::layout::TabLayout;
 use crate::data::{InputMode, Key, CharOrArrow, PaletteColor};
 use crate::input::options::{Options, OnForceClose, Clipboard};
-use serde::{Deserialize, Serialize};
 
 use kdl::{KdlDocument, KdlValue, KdlNode};
 
 use std::str::FromStr;
 use std::path::PathBuf;
 
-use crate::position::Position;
 use crate::input::actions::{Action, ResizeDirection, Direction};
 use crate::input::command::RunCommandAction;
 
@@ -651,6 +649,7 @@ impl Options {
             default_shell,
             default_layout: Some(PathBuf::from("default")), // TODO
             layout_dir: None, // TODO
+            theme_dir: None, // TODO
             mouse_mode,
             pane_frames,
             mirror_session,

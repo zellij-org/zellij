@@ -1,96 +1,47 @@
 use ansi_term::{
-    ANSIStrings,
+    unstyled_len, ANSIString, ANSIStrings,
     Color::{Fixed, RGB},
     Style,
 };
+use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 use zellij_tile_utils::palette_match;
 
 use crate::{
+    action_key, action_key_group, style_key_with_modifier,
     tip::{data::TIPS, TipFn},
-    LinePart, MORE_MSG,
+    LinePart, MORE_MSG, TO_NORMAL,
 };
-
-#[derive(Clone, Copy)]
-enum StatusBarTextColor {
-    White,
-    Green,
-    Orange,
-}
-
-#[derive(Clone, Copy)]
-enum StatusBarTextBoldness {
-    Bold,
-    NotBold,
-}
 
 fn full_length_shortcut(
     is_first_shortcut: bool,
-    letter: &str,
-    description: &str,
+    key: Vec<Key>,
+    action: &str,
     palette: Palette,
 ) -> LinePart {
-    let text_color = palette_match!(match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
-    });
-    let green_color = palette_match!(palette.green);
-    let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(text_color).paint(separator);
-    let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
-    let description_len = description.chars().count();
-    let description = Style::new().fg(text_color).bold().paint(description);
-    let len = shortcut_len + description_len + separator.chars().count();
-    LinePart {
-        part: ANSIStrings(&[
-            separator,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            description,
-        ])
-        .to_string(),
-        len,
+    if key.is_empty() {
+        return LinePart::default();
     }
-}
 
-fn first_word_shortcut(
-    is_first_shortcut: bool,
-    letter: &str,
-    description: &str,
-    palette: Palette,
-) -> LinePart {
     let text_color = palette_match!(match palette.theme_hue {
         ThemeHue::Dark => palette.white,
         ThemeHue::Light => palette.black,
     });
-    let green_color = palette_match!(palette.green);
+
     let separator = if is_first_shortcut { " " } else { " / " };
-    let separator = Style::new().fg(text_color).paint(separator);
-    let shortcut_len = letter.chars().count() + 3; // 2 for <>'s around shortcut, 1 for the space
-    let shortcut_left_separator = Style::new().fg(text_color).paint("<");
-    let shortcut = Style::new().fg(green_color).bold().paint(letter);
-    let shortcut_right_separator = Style::new().fg(text_color).paint("> ");
-    let description_first_word = description.split(' ').next().unwrap_or("");
-    let description_first_word_length = description_first_word.chars().count();
-    let description_first_word = Style::new()
-        .fg(text_color)
-        .bold()
-        .paint(description_first_word);
-    let len = shortcut_len + description_first_word_length + separator.chars().count();
+    let mut bits: Vec<ANSIString> = vec![Style::new().fg(text_color).paint(separator)];
+    bits.extend(style_key_with_modifier(&key, &palette));
+    bits.push(
+        Style::new()
+            .fg(text_color)
+            .bold()
+            .paint(format!(" {}", action)),
+    );
+    let part = ANSIStrings(&bits);
+
     LinePart {
-        part: ANSIStrings(&[
-            separator,
-            shortcut_left_separator,
-            shortcut,
-            shortcut_right_separator,
-            description_first_word,
-        ])
-        .to_string(),
-        len,
+        part: part.to_string(),
+        len: unstyled_len(&part),
     }
 }
 
@@ -108,164 +59,241 @@ fn locked_interface_indication(palette: Palette) -> LinePart {
     }
 }
 
-fn show_extra_hints(
-    palette: Palette,
-    text_with_style: Vec<(&str, StatusBarTextColor, StatusBarTextBoldness)>,
-) -> LinePart {
-    use StatusBarTextBoldness::*;
-    use StatusBarTextColor::*;
-    // get the colors
-    let white_color = palette_match!(palette.white);
-    let green_color = palette_match!(palette.green);
-    let orange_color = palette_match!(palette.orange);
-    // calculate length of tipp
-    let len = text_with_style
-        .iter()
-        .fold(0, |len_sum, (text, _, _)| len_sum + text.chars().count());
-    // apply the styles defined above
-    let styled_text = text_with_style
-        .into_iter()
-        .map(|(text, color, is_bold)| {
-            let color = match color {
-                White => white_color,
-                Green => green_color,
-                Orange => orange_color,
-            };
-            match is_bold {
-                Bold => Style::new().fg(color).bold().paint(text),
-                NotBold => Style::new().fg(color).paint(text),
-            }
-        })
-        .collect::<Vec<_>>();
-    LinePart {
-        part: ANSIStrings(&styled_text[..]).to_string(),
-        len,
+fn add_shortcut(help: &ModeInfo, linepart: &LinePart, text: &str, keys: Vec<Key>) -> LinePart {
+    let shortcut = if linepart.len == 0 {
+        full_length_shortcut(true, keys, text, help.style.colors)
+    } else {
+        full_length_shortcut(false, keys, text, help.style.colors)
+    };
+
+    let mut new_linepart = LinePart::default();
+    new_linepart.len += linepart.len + shortcut.len;
+    new_linepart.part = format!("{}{}", linepart.part, shortcut);
+    new_linepart
+}
+
+fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
+
+    for (long, _short, keys) in keys_and_hints.into_iter() {
+        line_part = add_shortcut(help, &line_part, &long, keys.to_vec());
     }
+    line_part
 }
 
-/// Creates hints for usage of Pane Mode
-fn confirm_pane_selection(palette: Palette) -> LinePart {
-    use StatusBarTextBoldness::*;
-    use StatusBarTextColor::*;
-    let text_with_style = [
-        (" / ", White, NotBold),
-        ("<ENTER>", Green, Bold),
-        (" Select pane", White, Bold),
-    ];
-    show_extra_hints(palette, text_with_style.to_vec())
-}
+/// Collect all relevant keybindings and hints to display.
+///
+/// Creates a vector with tuples containing the following entries:
+///
+/// - A String to display for this keybinding when there are no size restrictions,
+/// - A shortened String (where sensible) to display if the whole second line becomes too long,
+/// - A `Vec<Key>` of the keys that map to this keyhint
+///
+/// This vector is created by iterating over the keybindings for the current [`InputMode`] and
+/// storing all Keybindings that match pre-defined patterns of `Action`s. For example, the
+/// `InputMode::Pane` input mode determines which keys to display for the "Move focus" hint by
+/// searching the keybindings for anything that matches the `Action::MoveFocus(_)` action. Since by
+/// default multiple keybindings map to some action patterns (e.g. `Action::MoveFocus(_)` is bound
+/// to "hjkl", the arrow keys and "Alt + <hjkl>"), we deduplicate the vector of all keybindings
+/// before processing it.
+///
+/// Therefore we sort it by the [`Key`]s of the current keymap and deduplicate the resulting sorted
+/// vector by the `Vec<Action>` action vectors bound to the keys. As such, when multiple keys map
+/// to the same sequence of actions, the keys that appear first in the [`Key`] structure will be
+/// displayed.
+// Please don't let rustfmt play with the formatting. It will stretch out the function to about
+// three times the length and all the keybinding vectors we generate become virtually unreadable
+// for humans.
+#[rustfmt::skip]
+fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
+    use Action as A;
+    use InputMode as IM;
+    use actions::Direction as Dir;
+    use actions::ResizeDirection as RDir;
+    use actions::SearchDirection as SDir;
+    use actions::SearchOption as SOpt;
 
-/// Creates hints for usage of Rename Mode in Pane Mode
-fn select_pane_shortcut(palette: Palette) -> LinePart {
-    use StatusBarTextBoldness::*;
-    use StatusBarTextColor::*;
-    let text_with_style = [
-        (" / ", White, NotBold),
-        ("Alt", Orange, Bold),
-        (" + ", White, NotBold),
-        ("<", Green, Bold),
-        ("[]", Green, Bold),
-        (" or ", White, NotBold),
-        ("hjkl", Green, Bold),
-        (">", Green, Bold),
-        (" Select pane", White, Bold),
-    ];
-    show_extra_hints(palette, text_with_style.to_vec())
-}
+    let mut old_keymap = mi.get_mode_keybinds();
+    let s = |string: &str| string.to_string();
 
-fn full_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo) -> LinePart {
-    move |help| {
-        let mut line_part = LinePart::default();
-        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
-            line_part.len += shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, shortcut,);
+    // Find a keybinding to get back to "Normal" input mode. In this case we prefer '\n' over other
+    // choices. Do it here before we dedupe the keymap below!
+    let to_normal_keys = action_key(&old_keymap, &[TO_NORMAL]);
+    let to_normal_key = if to_normal_keys.contains(&Key::Char('\n')) {
+        vec![Key::Char('\n')]
+    } else {
+        // Yield `vec![key]` if `to_normal_keys` has at least one key, or an empty vec otherwise.
+        to_normal_keys.into_iter().take(1).collect()
+    };
+
+    // Sort and deduplicate the keybindings first. We sort after the `Key`s, and deduplicate by
+    // their `Action` vectors. An unstable sort is fine here because if the user maps anything to
+    // the same key again, anything will happen...
+    old_keymap.sort_unstable_by(|(keya, _), (keyb, _)| keya.partial_cmp(keyb).unwrap());
+
+    let mut known_actions: Vec<Vec<Action>> = vec![];
+    let mut km = vec![];
+    for (key, acvec) in old_keymap {
+        if known_actions.contains(&acvec) {
+            // This action is known already
+            continue;
+        } else {
+            known_actions.push(acvec.to_vec());
+            km.push((key, acvec));
         }
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        line_part.len += select_pane_shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-        line_part
     }
+
+    if mi.mode == IM::Pane { vec![
+        (s("Move focus"), s("Move"),
+            action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+                &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane(None), TO_NORMAL])),
+        (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
+        (s("Rename"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down)), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right)), TO_NORMAL])),
+        (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
+        (s("Frames"), s("Frames"), action_key(&km, &[A::TogglePaneFrames, TO_NORMAL])),
+        (s("Floating toggle"), s("Floating"),
+            action_key(&km, &[A::ToggleFloatingPanes, TO_NORMAL])),
+        (s("Embed pane"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
+        (s("Next"), s("Next"), action_key(&km, &[A::SwitchFocus])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::Tab {
+        // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
+        // to moving tabs focus (left/up go left, right/down go right). Since we sort the keys
+        // above and then dedpulicate based on the actions, we will end up with LeftArrow for
+        // "left" and DownArrow for "right". What we really expect is to see LeftArrow and
+        // RightArrow.
+        // FIXME: So for lack of a better idea we just check this case manually here.
+        let old_keymap = mi.get_mode_keybinds();
+        let focus_keys_full: Vec<Key> = action_key_group(&old_keymap,
+            &[&[A::GoToPreviousTab], &[A::GoToNextTab]]);
+        let focus_keys = if focus_keys_full.contains(&Key::Left)
+            && focus_keys_full.contains(&Key::Right) {
+            vec![Key::Left, Key::Right]
+        } else {
+            action_key_group(&km, &[&[A::GoToPreviousTab], &[A::GoToNextTab]])
+        };
+
+        vec![
+        (s("Move focus"), s("Move"), focus_keys),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
+        (s("Rename"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+        (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
+        (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::Resize { vec![
+        (s("Resize"), s("Resize"), action_key_group(&km, &[
+            &[A::Resize(RDir::Left)], &[A::Resize(RDir::Down)],
+            &[A::Resize(RDir::Up)], &[A::Resize(RDir::Right)]])),
+        (s("Increase/Decrease size"), s("Increase/Decrease"),
+            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::Move { vec![
+        (s("Move"), s("Move"), action_key_group(&km, &[
+            &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
+            &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
+        (s("Next pane"), s("Next"), action_key(&km, &[Action::MovePane(None)])),
+    ]} else if mi.mode == IM::Scroll { vec![
+        (s("Scroll"), s("Scroll"),
+            action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
+        (s("Scroll page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
+        (s("Scroll half page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
+        (s("Edit scrollback in default editor"), s("Edit"),
+            action_key(&km, &[Action::EditScrollback, TO_NORMAL])),
+        (s("Enter search term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::EnterSearch { vec![
+        (s("When done"), s("Done"), action_key(&km, &[A::SwitchToMode(IM::Search)])),
+        (s("Cancel"), s("Cancel"),
+            action_key(&km, &[A::SearchInput(vec![27]), A::SwitchToMode(IM::Scroll)])),
+    ]} else if mi.mode == IM::Search { vec![
+        (s("Scroll"), s("Scroll"),
+            action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
+        (s("Scroll page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::PageScrollDown], &[Action::PageScrollUp]])),
+        (s("Scroll half page"), s("Scroll"),
+            action_key_group(&km, &[&[Action::HalfPageScrollDown], &[Action::HalfPageScrollUp]])),
+        (s("Enter term"), s("Search"),
+            action_key(&km, &[A::SwitchToMode(IM::EnterSearch), A::SearchInput(vec![0])])),
+        (s("Search down"), s("Down"), action_key(&km, &[A::Search(SDir::Down)])),
+        (s("Search up"), s("Up"), action_key(&km, &[A::Search(SDir::Up)])),
+        (s("Case sensitive"), s("Case"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::CaseSensitivity)])),
+        (s("Wrap"), s("Wrap"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::Wrap)])),
+        (s("Whole words"), s("Whole"),
+            action_key(&km, &[A::SearchToggleOption(SOpt::WholeWord)])),
+    ]} else if mi.mode == IM::Session { vec![
+        (s("Detach"), s("Detach"), action_key(&km, &[Action::Detach])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if mi.mode == IM::Tmux { vec![
+        (s("Move focus"), s("Move"), action_key_group(&km, &[
+            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down)), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right)), TO_NORMAL])),
+        (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("Rename tab"), s("Rename"),
+            action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
+        (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
+        (s("Next Tab"), s("Next"), action_key(&km, &[A::GoToNextTab, TO_NORMAL])),
+        (s("Select pane"), s("Select"), to_normal_key),
+    ]} else if matches!(mi.mode, IM::RenamePane | IM::RenameTab) { vec![
+        (s("When done"), s("Done"), to_normal_key),
+        (s("Select pane"), s("Select"), action_key_group(&km, &[
+            &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
+            &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
+    ]} else { vec![] }
 }
 
 fn full_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.style.colors),
+        InputMode::Normal => tip(help),
         InputMode::Locked => locked_interface_indication(help.style.colors),
-        InputMode::Tmux => full_tmux_mode_indication(help),
-        InputMode::RenamePane => full_shortcut_list_nonstandard_mode(select_pane_shortcut)(help),
-        _ => full_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+        _ => full_shortcut_list_nonstandard_mode(help),
     }
 }
 
-fn shortened_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo) -> LinePart {
-    move |help| {
-        let mut line_part = LinePart::default();
-        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-            line_part.len += shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, shortcut,);
-        }
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        line_part.len += select_pane_shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-        line_part
+fn shortened_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
+
+    for (_, short, keys) in keys_and_hints.into_iter() {
+        line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
     }
+    line_part
 }
 
 fn shortened_shortcut_list(help: &ModeInfo, tip: TipFn) -> LinePart {
     match help.mode {
-        InputMode::Normal => tip(help.style.colors),
+        InputMode::Normal => tip(help),
         InputMode::Locked => locked_interface_indication(help.style.colors),
-        InputMode::Tmux => short_tmux_mode_indication(help),
-        InputMode::RenamePane => {
-            shortened_shortcut_list_nonstandard_mode(select_pane_shortcut)(help)
-        },
-        _ => shortened_shortcut_list_nonstandard_mode(confirm_pane_selection)(help),
+        _ => shortened_shortcut_list_nonstandard_mode(help),
     }
 }
 
-fn best_effort_shortcut_list_nonstandard_mode(
-    extra_hint_producing_function: fn(Palette) -> LinePart,
-) -> impl FnOnce(&ModeInfo, usize) -> LinePart {
-    move |help, max_len| {
-        let mut line_part = LinePart::default();
-        for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-            let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-            if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
-                // TODO: better
-                line_part.part = format!("{}{}", line_part.part, MORE_MSG);
-                line_part.len += MORE_MSG.chars().count();
-                break;
-            }
-            line_part.len += shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, shortcut);
-        }
-        let select_pane_shortcut = extra_hint_producing_function(help.style.colors);
-        if line_part.len + select_pane_shortcut.len <= max_len {
-            line_part.len += select_pane_shortcut.len;
-            line_part.part = format!("{}{}", line_part.part, select_pane_shortcut,);
-        }
-        line_part
-    }
-}
+fn best_effort_shortcut_list_nonstandard_mode(help: &ModeInfo, max_len: usize) -> LinePart {
+    let mut line_part = LinePart::default();
+    let keys_and_hints = get_keys_and_hints(help);
 
-fn best_effort_tmux_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
-    let mut line_part = tmux_mode_indication(help);
-    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-        if line_part.len + shortcut.len + MORE_MSG.chars().count() > max_len {
-            // TODO: better
+    for (_, short, keys) in keys_and_hints.into_iter() {
+        let new_line_part = add_shortcut(help, &line_part, &short, keys.to_vec());
+        if new_line_part.len + MORE_MSG.chars().count() > max_len {
             line_part.part = format!("{}{}", line_part.part, MORE_MSG);
             line_part.len += MORE_MSG.chars().count();
             break;
         }
-        line_part.len += shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, shortcut);
+        line_part = new_line_part;
     }
     line_part
 }
@@ -273,7 +301,7 @@ fn best_effort_tmux_shortcut_list(help: &ModeInfo, max_len: usize) -> LinePart {
 fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> LinePart {
     match help.mode {
         InputMode::Normal => {
-            let line_part = tip(help.style.colors);
+            let line_part = tip(help);
             if line_part.len <= max_len {
                 line_part
             } else {
@@ -288,11 +316,7 @@ fn best_effort_shortcut_list(help: &ModeInfo, tip: TipFn, max_len: usize) -> Lin
                 LinePart::default()
             }
         },
-        InputMode::Tmux => best_effort_tmux_shortcut_list(help, max_len),
-        InputMode::RenamePane => {
-            best_effort_shortcut_list_nonstandard_mode(select_pane_shortcut)(help, max_len)
-        },
-        _ => best_effort_shortcut_list_nonstandard_mode(confirm_pane_selection)(help, max_len),
+        _ => best_effort_shortcut_list_nonstandard_mode(help, max_len),
     }
 }
 
@@ -370,7 +394,9 @@ pub fn fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> Line
     }
 }
 
-pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
+pub fn floating_panes_are_visible(mode_info: &ModeInfo) -> LinePart {
+    let palette = mode_info.style.colors;
+    let km = &mode_info.get_mode_keybinds();
     let white_color = match palette.white {
         PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
         PaletteColor::EightBit(color) => Fixed(color),
@@ -387,16 +413,29 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
     let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
     let floating_panes = "FLOATING PANES VISIBLE";
     let press = "Press ";
-    let ctrl = "Ctrl-p ";
-    let plus = "+ ";
+    let pane_mode = format!(
+        "{}",
+        action_key(km, &[Action::SwitchToMode(InputMode::Pane)])
+            .first()
+            .unwrap_or(&Key::Char('?'))
+    );
+    let plus = ", ";
     let p_left_separator = "<";
-    let p = "w";
+    let p = format!(
+        "{}",
+        action_key(
+            &mode_info.get_keybinds_for_mode(InputMode::Pane),
+            &[Action::ToggleFloatingPanes, TO_NORMAL]
+        )
+        .first()
+        .unwrap_or(&Key::Char('?'))
+    );
     let p_right_separator = "> ";
     let to_hide = "to hide.";
 
     let len = floating_panes.chars().count()
         + press.chars().count()
-        + ctrl.chars().count()
+        + pane_mode.chars().count()
         + plus.chars().count()
         + p_left_separator.chars().count()
         + p.chars().count()
@@ -410,7 +449,7 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
             Style::new().fg(orange_color).bold().paint(floating_panes),
             shortcut_right_separator,
             Style::new().fg(white_color).bold().paint(press),
-            Style::new().fg(green_color).bold().paint(ctrl),
+            Style::new().fg(green_color).bold().paint(pane_mode),
             Style::new().fg(white_color).bold().paint(plus),
             Style::new().fg(white_color).bold().paint(p_left_separator),
             Style::new().fg(green_color).bold().paint(p),
@@ -419,90 +458,6 @@ pub fn floating_panes_are_visible(palette: &Palette) -> LinePart {
         ),
         len,
     }
-}
-
-pub fn tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.style.colors.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match help.style.colors.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-
-    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
-    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
-    let tmux_mode_text = "TMUX MODE";
-    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
-    let line_part = LinePart {
-        part: format!(
-            "{}{}{}",
-            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
-        ),
-        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
-    };
-    line_part
-}
-
-pub fn full_tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.style.colors.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match help.style.colors.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-
-    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
-    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
-    let tmux_mode_text = "TMUX MODE";
-    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
-    let mut line_part = LinePart {
-        part: format!(
-            "{}{}{}",
-            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
-        ),
-        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
-    };
-
-    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = full_length_shortcut(i == 0, letter, description, help.style.colors);
-        line_part.len += shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, shortcut,);
-    }
-    line_part
-}
-
-pub fn short_tmux_mode_indication(help: &ModeInfo) -> LinePart {
-    let white_color = match help.style.colors.white {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-    let orange_color = match help.style.colors.orange {
-        PaletteColor::Rgb((r, g, b)) => RGB(r, g, b),
-        PaletteColor::EightBit(color) => Fixed(color),
-    };
-
-    let shortcut_left_separator = Style::new().fg(white_color).bold().paint(" (");
-    let shortcut_right_separator = Style::new().fg(white_color).bold().paint("): ");
-    let tmux_mode_text = "TMUX MODE";
-    let tmux_mode_indicator = Style::new().fg(orange_color).bold().paint(tmux_mode_text);
-    let mut line_part = LinePart {
-        part: format!(
-            "{}{}{}",
-            shortcut_left_separator, tmux_mode_indicator, shortcut_right_separator
-        ),
-        len: tmux_mode_text.chars().count() + 5, // 2 for the separators, 3 for the colon and following space
-    };
-
-    for (i, (letter, description)) in help.keybinds.iter().enumerate() {
-        let shortcut = first_word_shortcut(i == 0, letter, description, help.style.colors);
-        line_part.len += shortcut.len;
-        line_part.part = format!("{}{}", line_part.part, shortcut);
-    }
-    line_part
 }
 
 pub fn locked_fullscreen_panes_to_hide(palette: &Palette, panes_to_hide: usize) -> LinePart {
@@ -564,5 +519,246 @@ pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
             shortcut_right_separator,
         ),
         len,
+    }
+}
+
+#[cfg(test)]
+/// Unit tests.
+///
+/// Note that we cheat a little here, because the number of things one may want to test is endless,
+/// and creating a Mockup of [`ModeInfo`] by hand for all these testcases is nothing less than
+/// torture. Hence, we test the most atomic unit thoroughly ([`full_length_shortcut`] and then test
+/// the public API ([`keybinds`]) to ensure correct operation.
+mod tests {
+    use super::*;
+
+    // Strip style information from `LinePart` and return a raw String instead
+    fn unstyle(line_part: LinePart) -> String {
+        let string = line_part.to_string();
+
+        let re = regex::Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+        let string = re.replace_all(&string, "".to_string());
+
+        string.to_string()
+    }
+
+    fn get_palette() -> Palette {
+        Palette::default()
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key() {
+        let keyvec = vec![Key::Char('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_first_element() {
+        let keyvec = vec![Key::Char('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(true, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " <a> Foobar");
+    }
+
+    #[test]
+    // When there is no binding, we print no shortcut either
+    fn full_length_shortcut_without_key() {
+        let keyvec = vec![];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_unprintable_1() {
+        let keyvec = vec![Key::Char('\n')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <ENTER> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_unprintable_2() {
+        let keyvec = vec![Key::Backspace];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <BACKSPACE> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_ctrl_key() {
+        let keyvec = vec![Key::Ctrl('a')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Ctrl + <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_alt_key() {
+        let keyvec = vec![Key::Alt(CharOrArrow::Char('a'))];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Alt + <a> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_homogenous_key_group() {
+        let keyvec = vec![Key::Char('a'), Key::Char('b'), Key::Char('c')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a|b|c> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_heterogenous_key_group() {
+        let keyvec = vec![Key::Char('a'), Key::Ctrl('b'), Key::Char('\n')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / <a|Ctrl+b|ENTER> Foobar");
+    }
+
+    #[test]
+    fn full_length_shortcut_with_key_group_shared_ctrl_modifier() {
+        let keyvec = vec![Key::Ctrl('a'), Key::Ctrl('b'), Key::Ctrl('c')];
+        let palette = get_palette();
+
+        let ret = full_length_shortcut(false, keyvec, "Foobar", palette);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " / Ctrl + <a|b|c> Foobar");
+    }
+    //pub fn keybinds(help: &ModeInfo, tip_name: &str, max_width: usize) -> LinePart {
+
+    #[test]
+    // Note how it leaves out elements that don't exist!
+    fn keybinds_wide() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
+                    (
+                        Key::Right,
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Char('n'), vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        Key::Char('f'),
+                        vec![Action::ToggleFocusFullscreen, TO_NORMAL],
+                    ),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 500);
+        let ret = unstyle(ret);
+
+        assert_eq!(
+            ret,
+            " <←↓↑→> Move focus / <n> New / <x> Close / <f> Fullscreen"
+        );
+    }
+
+    #[test]
+    // Note how "Move focus" becomes "Move"
+    fn keybinds_tight_width() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
+                    (
+                        Key::Right,
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Char('n'), vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
+                    (
+                        Key::Char('f'),
+                        vec![Action::ToggleFocusFullscreen, TO_NORMAL],
+                    ),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 35);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " <←↓↑→> Move / <n> New ... ");
+    }
+
+    #[test]
+    fn keybinds_wide_weird_keys() {
+        let mode_info = ModeInfo {
+            mode: InputMode::Pane,
+            keybinds: vec![(
+                InputMode::Pane,
+                vec![
+                    (
+                        Key::Ctrl('a'),
+                        vec![Action::MoveFocus(actions::Direction::Left)],
+                    ),
+                    (
+                        Key::Ctrl('\n'),
+                        vec![Action::MoveFocus(actions::Direction::Down)],
+                    ),
+                    (
+                        Key::Ctrl('1'),
+                        vec![Action::MoveFocus(actions::Direction::Up)],
+                    ),
+                    (
+                        Key::Ctrl(' '),
+                        vec![Action::MoveFocus(actions::Direction::Right)],
+                    ),
+                    (Key::Backspace, vec![Action::NewPane(None), TO_NORMAL]),
+                    (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
+                    (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
+                ],
+            )],
+            ..ModeInfo::default()
+        };
+
+        let ret = keybinds(&mode_info, "quicknav", 500);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " Ctrl + <a|ENTER|1|SPACE> Move focus / <BACKSPACE> New / <ESC> Close / <END> Fullscreen");
     }
 }

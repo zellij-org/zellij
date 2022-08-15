@@ -33,6 +33,8 @@ At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/
 
 Zellij includes a [layout system](https://zellij.dev/documentation/layouts.html), and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
+You can get started by [installing](https://zellij.dev/documentation/installation.html) Zellij and reading the [overview](https://zellij.dev/documentation/overview.html).
+
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
 Zellij was initially called "Mosaic".
@@ -42,7 +44,7 @@ Zellij was initially called "Mosaic".
 You can install with `cargo`:
 
 ```
-cargo install zellij
+cargo install --locked zellij
 ```
 
 Or if want to a prebuilt binary, you can download it from our [Releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
@@ -78,7 +80,7 @@ To get started, you can:
 ## How do I start a development environment?
 
 * Clone the project
-* Install cargo-make with `cargo install --force cargo-make`
+* Install cargo-make with `cargo install --locked --force cargo-make`
 * In the project folder, for debug builds run: `cargo make run`
 * To run all tests: `cargo make test`
 

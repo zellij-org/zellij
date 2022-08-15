@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (C): Rutrum tellus pellentesque eu tincidunt ______ aliquam nulla.
+01 (C): 
+02 (C): Nascetur ridiculus mus mauris vitae ultricies leo integer malesuada.
+03 (C): Interdum posuere lorem ipsum dolor sit amet consectetur.
+04 (C): Porta non pulvinar neque laoreet suspendisse interdum.
+05 (C): Fames ac turpis egestas integer eget aliquet nibh praesent.
+06 (C): Congue nisi vitae suscipit tellus mauris a diam maecenas sed.
+07 (C): Nec ultrices dui sapien eget mi proin sed libero enim.
+08 (C): Tellus rutrum tellus pellentesque eu tincidunt. 
+09 (C): Ultrices eros in cursus turpis massa tincidunt dui ut ornare.
+10 (C): Arcu cursus vitae congue mauris rhoncus aenean vel elit scelerisque.
+11 (C): Viverra mauris in aliquam sem fringilla ut.
+12 (C): Vulputate eu scelerisque felis imperdiet proin fermentum leo.
+13 (C): Cursus risus at ultrices mi tempus.
+14 (C): Laoreet id donec ultrices tincidunt arcu non sodales.
+15 (C): Amet dictum sit amet justo donec enim.
+16 (C): Hac habitasse platea dictumst vestibulum rhoncus est pellentesque.
+17 (C): Facilisi cras fermentum odio eu feugiat.
+18 (C): Elit ut aliquam purus sit amet luctus venenatis lectus.
+19 (C): Dignissim enim sit amet venenatis urna cursus.
+

@@ -1,7 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::Key;
-use crate::input::CharOrArrow;
+use crate::data::{CharOrArrow, Key};
 
 // TODO: make sure these are all covered
 

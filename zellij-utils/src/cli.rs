@@ -91,7 +91,7 @@ pub enum Sessions {
 
         /// Change the behaviour of zellij
         #[clap(subcommand, name = "options")]
-        options: Option<SessionCommand>,
+        options: Option<Box<SessionCommand>>,
     },
 
     /// Kill the specific session

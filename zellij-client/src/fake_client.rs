@@ -15,7 +15,7 @@ use zellij_utils::{
     cli::CliArgs,
     data::{ClientId, Style},
     errors::ContextType,
-    input::{actions::Action, config::Config, layout::LayoutFromYaml, options::Options},
+    input::{actions::Action, config::Config, layout::Layout, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
 
@@ -25,7 +25,7 @@ pub fn start_fake_client(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    _layout: Option<LayoutFromYaml>,
+    _layout: Option<Layout>,
     actions: Vec<Action>,
 ) {
     unimplemented!()

@@ -11,7 +11,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::Event,
     input::{
-        actions::{Action, Direction, ResizeDirection},
+        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },
@@ -75,22 +75,23 @@ fn route_action(
                 .unwrap();
         },
         Action::SwitchToMode(mode) => {
-            let style = session.style;
+            let attrs = &session.client_attributes;
             // TODO: use the palette from the client and remove it from the server os api
             // this is left here as a stop gap measure until we shift some code around
             // to allow for this
+            // TODO: Need access to `ClientAttributes` here
             session
                 .senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
                     Some(client_id),
-                    Event::ModeUpdate(get_mode_info(mode, style, session.capabilities)),
+                    Event::ModeUpdate(get_mode_info(mode, attrs, session.capabilities)),
                 ))
                 .unwrap();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::ChangeMode(
-                    get_mode_info(mode, style, session.capabilities),
+                    get_mode_info(mode, attrs, session.capabilities),
                     client_id,
                 ))
                 .unwrap();
@@ -417,8 +418,47 @@ fn route_action(
             _ => {},
         },
         Action::NoOp => {},
+        Action::SearchInput(c) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::UpdateSearch(c, client_id))
+                .unwrap();
+        },
+        Action::Search(d) => {
+            let instruction = match d {
+                SearchDirection::Down => ScreenInstruction::SearchDown(client_id),
+                SearchDirection::Up => ScreenInstruction::SearchUp(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
+        },
+        Action::SearchToggleOption(o) => {
+            let instruction = match o {
+                SearchOption::CaseSensitivity => {
+                    ScreenInstruction::SearchToggleCaseSensitivity(client_id)
+                },
+                SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
+                SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
+            };
+            session.senders.send_to_screen(instruction).unwrap();
+        },
     }
     should_break
+}
+
+macro_rules! send_to_screen_or_retry_queue {
+    ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
+        match $rlocked_sessions.as_ref() {
+            Some(session_metadata) => {
+                session_metadata.senders.send_to_screen($message).unwrap();
+            },
+            None => {
+                log::warn!("Server not ready, trying to place instruction in retry queue...");
+                if let Some(retry_queue) = $retry_queue.as_mut() {
+                    retry_queue.push($instruction);
+                }
+            },
+        }
+    }};
 }
 
 pub(crate) fn route_thread_main(
@@ -429,132 +469,148 @@ pub(crate) fn route_thread_main(
     mut receiver: IpcReceiverWithContext<ClientToServerMsg>,
     client_id: ClientId,
 ) {
-    loop {
+    let mut retry_queue = vec![];
+    'route_loop: loop {
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().unwrap();
-
-                match instruction {
-                    ClientToServerMsg::Action(action, maybe_client_id) => {
-                        let client_id = maybe_client_id.unwrap_or(client_id);
-                        if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
-                            if let Action::SwitchToMode(input_mode) = action {
-                                os_input.send_to_client(
+                let handle_instruction = |instruction: ClientToServerMsg,
+                                          mut retry_queue: Option<&mut Vec<ClientToServerMsg>>|
+                 -> bool {
+                    let mut should_break = false;
+                    match instruction {
+                        ClientToServerMsg::Action(action, maybe_client_id) => {
+                            let client_id = maybe_client_id.unwrap_or(client_id);
+                            if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
+                                if let Action::SwitchToMode(input_mode) = action {
+                                    os_input.send_to_client(
+                                        client_id,
+                                        ServerToClientMsg::SwitchToMode(input_mode),
+                                    );
+                                }
+                                if route_action(
+                                    action,
+                                    rlocked_sessions,
+                                    &*os_input,
+                                    &to_server,
                                     client_id,
-                                    ServerToClientMsg::SwitchToMode(input_mode),
-                                );
+                                ) {
+                                    should_break = true;
+                                }
                             }
-                            if route_action(
-                                action,
+                        },
+                        ClientToServerMsg::TerminalResize(new_size) => {
+                            session_state
+                                .write()
+                                .unwrap()
+                                .set_client_size(client_id, new_size);
+                            let min_size = session_state
+                                .read()
+                                .unwrap()
+                                .min_client_terminal_size()
+                                .unwrap();
+                            rlocked_sessions
+                                .as_ref()
+                                .unwrap()
+                                .senders
+                                .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                .unwrap();
+                        },
+                        ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
+                            // this is experimental, please be cautious implementing this elsewhere
+                            send_to_screen_or_retry_queue!(
                                 rlocked_sessions,
-                                &*os_input,
-                                &to_server,
-                                client_id,
-                            ) {
-                                break;
-                            }
-                        }
-                    },
-                    ClientToServerMsg::TerminalResize(new_size) => {
-                        session_state
-                            .write()
-                            .unwrap()
-                            .set_client_size(client_id, new_size);
-                        let min_size = session_state
-                            .read()
-                            .unwrap()
-                            .min_client_terminal_size()
-                            .unwrap();
-                        rlocked_sessions
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                            .unwrap();
-                    },
-                    ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
-                        rlocked_sessions
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalPixelDimensions(
-                                pixel_dimensions,
-                            ))
-                            .unwrap();
-                    },
-                    ClientToServerMsg::BackgroundColor(background_color_instruction) => {
-                        rlocked_sessions
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
-                                background_color_instruction,
-                            ))
-                            .unwrap();
-                    },
-                    ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
-                        rlocked_sessions
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalForegroundColor(
-                                foreground_color_instruction,
-                            ))
-                            .unwrap();
-                    },
-                    ClientToServerMsg::ColorRegisters(color_registers) => {
-                        rlocked_sessions
-                            .as_ref()
-                            .unwrap()
-                            .senders
-                            .send_to_screen(ScreenInstruction::TerminalColorRegisters(
-                                color_registers,
-                            ))
-                            .unwrap();
-                    },
-                    ClientToServerMsg::NewClient(
-                        client_attributes,
-                        cli_args,
-                        opts,
-                        layout,
-                        plugin_config,
-                    ) => {
-                        let new_client_instruction = ServerInstruction::NewClient(
+                                ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
+                                instruction,
+                                retry_queue
+                            );
+                        },
+                        ClientToServerMsg::BackgroundColor(background_color_instruction) => {
+                            rlocked_sessions
+                                .as_ref()
+                                .unwrap()
+                                .senders
+                                .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
+                                    background_color_instruction,
+                                ))
+                                .unwrap();
+                        },
+                        ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
+                            rlocked_sessions
+                                .as_ref()
+                                .unwrap()
+                                .senders
+                                .send_to_screen(ScreenInstruction::TerminalForegroundColor(
+                                    foreground_color_instruction,
+                                ))
+                                .unwrap();
+                        },
+                        ClientToServerMsg::ColorRegisters(color_registers) => {
+                            rlocked_sessions
+                                .as_ref()
+                                .unwrap()
+                                .senders
+                                .send_to_screen(ScreenInstruction::TerminalColorRegisters(
+                                    color_registers,
+                                ))
+                                .unwrap();
+                        },
+                        ClientToServerMsg::NewClient(
                             client_attributes,
                             cli_args,
                             opts,
                             layout,
-                            client_id,
                             plugin_config,
-                        );
-                        to_server.send(new_client_instruction).unwrap();
-                    },
-                    ClientToServerMsg::AttachClient(client_attributes, opts) => {
-                        let attach_client_instruction =
-                            ServerInstruction::AttachClient(client_attributes, opts, client_id);
-                        to_server.send(attach_client_instruction).unwrap();
-                    },
-                    ClientToServerMsg::ClientExited => {
-                        // we don't unwrap this because we don't really care if there's an error here (eg.
-                        // if the main server thread exited before this router thread did)
-                        let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
-                        break;
-                    },
-                    ClientToServerMsg::KillSession => {
-                        to_server.send(ServerInstruction::KillSession).unwrap();
-                    },
-                    ClientToServerMsg::ConnStatus => {
-                        let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
-                        break;
-                    },
-                    ClientToServerMsg::DetachSession(client_id) => {
-                        let _ = to_server.send(ServerInstruction::DetachSession(client_id));
-                        break;
-                    },
-                    ClientToServerMsg::ListClients => {
-                        let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
-                    },
+                        ) => {
+                            let new_client_instruction = ServerInstruction::NewClient(
+                                client_attributes,
+                                cli_args,
+                                opts,
+                                layout,
+                                client_id,
+                                plugin_config,
+                            );
+                            to_server.send(new_client_instruction).unwrap();
+                        },
+                        ClientToServerMsg::AttachClient(client_attributes, opts) => {
+                            let attach_client_instruction =
+                                ServerInstruction::AttachClient(client_attributes, opts, client_id);
+                            to_server.send(attach_client_instruction).unwrap();
+                        },
+                        ClientToServerMsg::ClientExited => {
+                            // we don't unwrap this because we don't really care if there's an error here (eg.
+                            // if the main server thread exited before this router thread did)
+                            let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
+                            return true;
+                        },
+                        ClientToServerMsg::KillSession => {
+                            to_server.send(ServerInstruction::KillSession).unwrap();
+                        },
+                        ClientToServerMsg::ConnStatus => {
+                            let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
+                            should_break = true;
+                        },
+                        ClientToServerMsg::DetachSession(client_id) => {
+                            let _ = to_server.send(ServerInstruction::DetachSession(client_id));
+                            should_break = true;
+                        },
+                        ClientToServerMsg::ListClients => {
+                            let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
+                        },
+                    }
+                    should_break
+                };
+                for instruction_to_retry in retry_queue.drain(..) {
+                    log::warn!("Server ready, retrying sending instruction.");
+                    let should_break = handle_instruction(instruction_to_retry, None);
+                    if should_break {
+                        break 'route_loop;
+                    }
+                }
+                let should_break = handle_instruction(instruction, Some(&mut retry_queue));
+                if should_break {
+                    break 'route_loop;
                 }
             },
             None => {

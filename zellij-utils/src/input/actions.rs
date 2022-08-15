@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{Layout, TabLayout};
+use super::layout::Layout;
 use crate::data::InputMode;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};
@@ -31,7 +31,7 @@ impl FromStr for Direction {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ResizeDirection {
     Left,
     Right,
@@ -55,12 +55,25 @@ impl FromStr for ResizeDirection {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum SearchDirection {
+    Down,
+    Up,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum SearchOption {
+    CaseSensitivity,
+    WholeWord,
+    Wrap,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
 // as well `../../assets/config/default.yaml`
 /// Actions that can be bound to keys.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Action {
     /// Quit Zellij.
     Quit,
@@ -149,6 +162,12 @@ pub enum Action {
     Deny,
     /// Confirm an action that invokes a prompt automatically
     SkipConfirm(Box<Action>),
+    /// Search for String
+    SearchInput(Vec<u8>),
+    /// Search for something
+    Search(SearchDirection),
+    /// Toggle case sensitivity of search
+    SearchToggleOption(SearchOption),
 }
 
 impl From<OnForceClose> for Action {
@@ -160,12 +179,12 @@ impl From<OnForceClose> for Action {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct ActionsFromYaml(Vec<Action>);
+// #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+// pub struct ActionsFromYaml(Vec<Action>);
 
-impl ActionsFromYaml {
-    /// Get a reference to the actions from yaml's actions.
-    pub fn actions(&self) -> &[Action] {
-        self.0.as_ref()
-    }
-}
+// impl ActionsFromYaml {
+//     /// Get a reference to the actions from yaml's actions.
+//     pub fn actions(&self) -> &[Action] {
+//         self.0.as_ref()
+//     }
+// }

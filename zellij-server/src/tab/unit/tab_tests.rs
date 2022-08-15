@@ -7,9 +7,8 @@ use crate::{
     thread_bus::ThreadSenders,
     ClientId,
 };
-use std::convert::TryInto;
 use std::path::PathBuf;
-use zellij_utils::input::layout::LayoutTemplate;
+use zellij_utils::input::layout::Layout;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -129,7 +128,7 @@ fn create_new_tab(size: Size) -> Tab {
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        LayoutTemplate::default().try_into().unwrap(),
+        Layout::with_one_pane(),
         vec![1],
         index,
         client_id,
@@ -180,7 +179,7 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        LayoutTemplate::default().try_into().unwrap(),
+        Layout::with_one_pane(),
         vec![1],
         index,
         client_id,

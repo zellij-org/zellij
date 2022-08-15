@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+expression: snapshot
+---
+00 (C): ┌ fish /home/thomas/Projects/zellij ───────────────────────────────────────────────────────────────────── SCROLL:  0/58 ┐
+01 (C): │m arcu. Libero id faucibus nisl tincidunt eget nullam non. Sed elementum tempus egestas sed sed risus pretium quam vulp│
+02 (C): │utate. Turpis egestas maecenas pharetra convallis. Arcu cursus vitae congue mauris rhoncus aenean vel. Augue ut lectus │
+03 (C): │arcu bibendum. Scelerisque varius morbi enim nunc faucibus a pellentesque. Mattis pellentesque id nibh tortor id alique│
+04 (C): │t lectus proin nibh. In aliquam sem fringilla ut. Urna et pharetra pharetra massa massa ultricies mi. Enim nulla alique│
+05 (C): │t porttitor lacus luctus accumsan tortor posuere. Malesuada fames ac turpis egestas integer. Venenatis tellus in metus │
+06 (C): │vulputate eu scelerisque felis. Suspendisse faucibus interdum posuere lorem ipsum dolor sit amet.                      │
+07 (C): │                                                                                                                       │
+08 (C): │Quam elementum pulvinar etiam non quam lacus suspendisse faucibus. Egestas sed sed risus pretium quam vulputate digniss│
+09 (C): │im suspendisse. Risus nec feugiat in fermentum posuere urna. Vestibulum lorem sed risus ultricies. Egestas maecenas pha│
+10 (C): │retra convallis posuere morbi. Egestas tellus rutrum tellus pellentesque. Pulvinar etiam non quam lacus suspendisse fau│
+11 (C): │cibus. Lectus proin nibh nisl condimentum id venenatis a condimentum. Adipiscing elit pellentesque habitant morbi trist│
+12 (C): │ique senectus et netus. Nunc id cursus metus aliquam eleifend. Urna nec tincidunt praesent semper feugiat nibh sed pulv│
+13 (C): │inar. Donec ultrices tincidunt arcu non sodales neque sodales ut etiam. Suspendisse sed nisi lacus sed viverra tellus i│
+14 (C): │n hac habitasse. Nunc scelerisque viverra mauris in aliquam sem fringilla.                                             │
+15 (C): │⏎                                                                                                                      │
+16 (C): │                                                                                                                       │
+17 (C): │zellij on  mouse-support [?] is 📦 v0.14.0 via 🦀 v1.53.0-beta.3                                                      │
+18 (C): │❯                                                                                                                      │
+19 (C): └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+

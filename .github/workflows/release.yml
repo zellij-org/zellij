@@ -40,9 +40,9 @@ jobs:
       - name: Set release tag
         run: |
           if [ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]; then
-            echo "RELEASE_TAG=main" >> $GITHUB_ENV
+            echo "RELEASE_TAG=main" >> "$GITHUB_ENV"
           else
-            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> $GITHUB_ENV
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}"  >> "$GITHUB_ENV"
           fi
 
       - name: Checkout repository
@@ -88,9 +88,13 @@ jobs:
         working-directory: ./target/${{ matrix.target }}/release
         run: |
           name="zellij-${{ matrix.target }}.sha256sum"
-          sha256sum "zellij" > "${name}"
+          if [[ "$RUNNER_OS" != "macOS" ]]; then
+            sha256sum "zellij" > "${name}"
+          else
+            shasum -a 256 "zellij" > "${name}"
+          fi
           echo "::set-output name=name::${name}"
-        
+
       - name: Tar release
         id: make-artifact
         working-directory: ./target/${{ matrix.target }}/release

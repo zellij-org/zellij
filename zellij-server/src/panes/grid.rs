@@ -1,4 +1,5 @@
 use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -29,6 +30,7 @@ use zellij_utils::{consts::VERSION, shared::version_number};
 use crate::output::{CharacterChunk, OutputBuffer, SixelImageChunk};
 use crate::panes::alacritty_functions::{parse_number, xparse_color};
 use crate::panes::link_handler::LinkHandler;
+use crate::panes::search::SearchResult;
 use crate::panes::selection::Selection;
 use crate::panes::terminal_character::{
     AnsiCode, CharacterStyles, CharsetIndex, Cursor, CursorShape, StandardCharset,
@@ -299,9 +301,9 @@ macro_rules! dump_screen {
 
 #[derive(Clone)]
 pub struct Grid {
-    lines_above: VecDeque<Row>,
-    viewport: Vec<Row>,
-    lines_below: Vec<Row>,
+    pub(crate) lines_above: VecDeque<Row>,
+    pub(crate) viewport: Vec<Row>,
+    pub(crate) lines_below: Vec<Row>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -316,7 +318,7 @@ pub struct Grid {
     preceding_char: Option<TerminalCharacter>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
-    output_buffer: OutputBuffer,
+    pub(crate) output_buffer: OutputBuffer,
     title_stack: Vec<String>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     sixel_grid: SixelGrid,
@@ -339,6 +341,8 @@ pub struct Grid {
     pub ring_bell: bool,
     scrollback_buffer_lines: usize,
     pub mouse_mode: bool,
+    pub search_results: SearchResult,
+    pub pending_clipboard_update: Option<String>,
 }
 
 impl Debug for Grid {
@@ -378,10 +382,13 @@ impl Debug for Grid {
 
         // display terminal characters with stripped styles
         for (i, row) in buffer.iter().enumerate() {
+            let mut cow_row = Cow::Borrowed(row);
+            self.search_results
+                .mark_search_results_in_row(&mut cow_row, i);
             if row.is_canonical {
-                writeln!(f, "{:02?} (C): {:?}", i, row)?;
+                writeln!(f, "{:02?} (C): {:?}", i, cow_row)?;
             } else {
-                writeln!(f, "{:02?} (W): {:?}", i, row)?;
+                writeln!(f, "{:02?} (W): {:?}", i, cow_row)?;
             }
         }
         Ok(())
@@ -439,7 +446,9 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: false,
             character_cell_size,
+            search_results: Default::default(),
             sixel_grid,
+            pending_clipboard_update: None,
         }
     }
     pub fn render_full_viewport(&mut self) {
@@ -575,7 +584,9 @@ impl Grid {
         }
         y_coordinates
     }
-    pub fn scroll_up_one_line(&mut self) {
+
+    pub fn scroll_up_one_line(&mut self) -> bool {
+        let mut found_something = false;
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop().unwrap();
@@ -593,10 +604,16 @@ impl Grid {
                 .saturating_sub(transferred_rows_height);
 
             self.selection.move_down(1);
+            // Move all search-selections down one line as well
+            found_something = self
+                .search_results
+                .move_down(1, &self.viewport, self.height);
         }
         self.output_buffer.update_all_lines();
+        found_something
     }
-    pub fn scroll_down_one_line(&mut self) {
+    pub fn scroll_down_one_line(&mut self) -> bool {
+        let mut found_something = false;
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
 
@@ -629,11 +646,16 @@ impl Grid {
             );
 
             self.selection.move_up(1);
+            // Move all search-selections up one line as well
+            found_something =
+                self.search_results
+                    .move_up(1, &self.viewport, &self.lines_below, self.height);
             self.output_buffer.update_all_lines();
         }
         if self.lines_below.is_empty() {
             self.is_scrolled = false;
         }
+        found_something
     }
     fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         // this is an ugly hack - it's here because sometimes we need to change_size to the
@@ -844,6 +866,10 @@ impl Grid {
             self.set_scroll_region_to_viewport_size();
         }
         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
+        self.search_results.selections.clear();
+        self.search_viewport();
+        // If we have thrown out the active element, set it to None
+        self.search_results.unset_active_selection_if_nonexistent();
         self.output_buffer.update_all_lines();
     }
     pub fn as_character_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -1443,6 +1469,7 @@ impl Grid {
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
         self.scrollback_buffer_lines = 0;
+        self.search_results = Default::default();
         self.sixel_scrolling = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
@@ -1692,7 +1719,9 @@ impl Perform for Grid {
             15 => {
                 self.set_active_charset(CharsetIndex::G0);
             },
-            _ => {},
+            _ => {
+                log::warn!("Unhandled execute: {:?}", byte);
+            },
         }
     }
 
@@ -1863,8 +1892,12 @@ impl Perform for Grid {
                     b"?" => {
                         // TBD: paste from own clipboard - currently unsupported
                     },
-                    _base64 => {
-                        // TBD: copy to own clipboard - currently unsupported
+                    base64 => {
+                        if let Ok(bytes) = base64::decode(base64) {
+                            if let Ok(string) = String::from_utf8(bytes) {
+                                self.pending_clipboard_update = Some(string);
+                            }
+                        };
                     },
                 }
             },
@@ -1915,7 +1948,9 @@ impl Perform for Grid {
                 // TBD - reset text cursor color - currently unimplemented
             },
 
-            _ => {},
+            _ => {
+                log::warn!("Unhandled osc: {:?}", params);
+            },
         }
     }
 
@@ -2419,7 +2454,9 @@ impl Perform for Grid {
                 fill_character.character = 'E';
                 self.fill_viewport(fill_character);
             },
-            _ => {},
+            _ => {
+                log::warn!("Unhandled esc_dispatch: {}->{:?}", byte, intermediates);
+            },
         }
     }
 }

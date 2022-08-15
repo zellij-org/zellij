@@ -6,9 +6,8 @@ pub mod utils;
 use crate::LinePart;
 use zellij_tile::prelude::*;
 
-pub type TipFn = fn(Palette) -> LinePart;
+pub type TipFn = fn(&ModeInfo) -> LinePart;
 
-#[derive(Debug)]
 pub struct TipBody {
     pub short: TipFn,
     pub medium: TipFn,

@@ -6,7 +6,7 @@ use crate::{
     },
     input::{
         config::{Config, ConfigError},
-        layout::{Layout, LayoutFromYaml, LayoutFromYamlIntermediate},
+        layout::Layout,
         options::Options,
     },
 };

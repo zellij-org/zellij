@@ -13,7 +13,7 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::config::{ConfigError, ConfigFromYaml};
+use super::config::ConfigError;
 use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
 use crate::setup;
@@ -26,8 +26,8 @@ use crate::setup;
 //     };
 // }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct PluginsConfigFromYaml(Vec<PluginConfigFromYaml>);
+// #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+// pub struct PluginsConfigFromYaml(Vec<PluginConfigFromYaml>);
 
 /// Used in the config struct for plugin metadata
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -104,35 +104,35 @@ impl Default for PluginsConfig {
     }
 }
 
-impl TryFrom<PluginsConfigFromYaml> for PluginsConfig {
-    type Error = PluginsConfigError;
+// impl TryFrom<PluginsConfigFromYaml> for PluginsConfig {
+//     type Error = PluginsConfigError;
+//
+//     fn try_from(yaml: PluginsConfigFromYaml) -> Result<Self, PluginsConfigError> {
+//         let mut plugins = HashMap::new();
+//         for plugin in yaml.0 {
+//             if plugins.contains_key(&plugin.tag) {
+//                 return Err(PluginsConfigError::DuplicatePlugins(plugin.tag));
+//             }
+//             plugins.insert(plugin.tag.clone(), plugin.into());
+//         }
+//
+//         Ok(PluginsConfig(plugins))
+//     }
+// }
 
-    fn try_from(yaml: PluginsConfigFromYaml) -> Result<Self, PluginsConfigError> {
-        let mut plugins = HashMap::new();
-        for plugin in yaml.0 {
-            if plugins.contains_key(&plugin.tag) {
-                return Err(PluginsConfigError::DuplicatePlugins(plugin.tag));
-            }
-            plugins.insert(plugin.tag.clone(), plugin.into());
-        }
-
-        Ok(PluginsConfig(plugins))
-    }
-}
-
-impl From<PluginConfigFromYaml> for PluginConfig {
-    fn from(plugin: PluginConfigFromYaml) -> Self {
-        PluginConfig {
-            path: plugin.path,
-            run: match plugin.run {
-                PluginTypeFromYaml::Pane => PluginType::Pane(None),
-                PluginTypeFromYaml::Headless => PluginType::Headless,
-            },
-            _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
-            location: RunPluginLocation::Zellij(plugin.tag),
-        }
-    }
-}
+// impl From<PluginConfigFromYaml> for PluginConfig {
+//     fn from(plugin: PluginConfigFromYaml) -> Self {
+//         PluginConfig {
+//             path: plugin.path,
+//             run: match plugin.run {
+//                 PluginTypeFromYaml::Pane => PluginType::Pane(None),
+//                 PluginTypeFromYaml::Headless => PluginType::Headless,
+//             },
+//             _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
+//             location: RunPluginLocation::Zellij(plugin.tag),
+//         }
+//     }
+// }
 
 /// Plugin metadata
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -198,30 +198,30 @@ impl Default for PluginType {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-pub struct PluginConfigFromYaml {
-    pub path: PathBuf,
-    pub tag: PluginTag,
-    #[serde(default)]
-    pub run: PluginTypeFromYaml,
-    #[serde(default)]
-    pub config: serde_yaml::Value,
-    #[serde(default)]
-    pub _allow_exec_host_cmd: bool,
-}
+// #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+// pub struct PluginConfigFromYaml {
+//     pub path: PathBuf,
+//     pub tag: PluginTag,
+//     #[serde(default)]
+//     pub run: PluginTypeFromYaml,
+//     #[serde(default)]
+//     pub config: serde_yaml::Value,
+//     #[serde(default)]
+//     pub _allow_exec_host_cmd: bool,
+// }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PluginTypeFromYaml {
-    Headless,
-    Pane,
-}
+// #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+// #[serde(rename_all = "kebab-case")]
+// pub enum PluginTypeFromYaml {
+//     Headless,
+//     Pane,
+// }
 
-impl Default for PluginTypeFromYaml {
-    fn default() -> Self {
-        Self::Pane
-    }
-}
+// impl Default for PluginTypeFromYaml {
+//     fn default() -> Self {
+//         Self::Pane
+//     }
+// }
 
 #[derive(Error, Debug, PartialEq)]
 pub enum PluginsConfigError {

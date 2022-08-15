@@ -258,17 +258,39 @@ pub trait Pane {
         // we should probably refactor away from this trait at some point
         vec![]
     }
+    fn drain_clipboard_update(&mut self) -> Option<String> {
+        None
+    }
     fn render_full_viewport(&mut self) {}
     fn relative_position(&self, position_on_screen: &Position) -> Position {
         position_on_screen.relative_to(self.get_content_y(), self.get_content_x())
     }
-    fn position_is_on_frame(&self, position_on_screen: &Position) -> bool {
-        // TODO: handle cases where we have no frame
-        position_on_screen.line() == self.y() as isize
-            || position_on_screen.line()
-                == (self.y() as isize + self.rows() as isize).saturating_sub(1)
-            || position_on_screen.column() == self.x()
-            || position_on_screen.column() == (self.x() + self.cols()).saturating_sub(1)
+    fn position_is_on_frame(&self, position: &Position) -> bool {
+        if !self.contains(position) {
+            return false;
+        }
+        if (self.x()..self.get_content_x()).contains(&position.column()) {
+            // position is on left border
+            return true;
+        }
+        if (self.get_content_x() + self.get_content_columns()..(self.x() + self.cols()))
+            .contains(&position.column())
+        {
+            // position is on right border
+            return true;
+        }
+        if (self.y() as isize..self.get_content_y() as isize).contains(&position.line()) {
+            // position is on top border
+            return true;
+        }
+        if ((self.get_content_y() + self.get_content_rows()) as isize
+            ..(self.y() + self.rows()) as isize)
+            .contains(&position.line())
+        {
+            // position is on bottom border
+            return true;
+        }
+        false
     }
     fn store_pane_name(&mut self);
     fn load_pane_name(&mut self);
@@ -278,6 +300,27 @@ pub trait Pane {
     fn mouse_mode(&self) -> bool;
     fn get_line_number(&self) -> Option<usize> {
         None
+    }
+    fn update_search_term(&mut self, _needle: &str) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_down(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn search_up(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_case_sensitivity(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_whole_words(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn toggle_search_wrap(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
+    }
+    fn clear_search(&mut self) {
+        // No-op by default (only terminal-panes currently have search capability)
     }
 }
 
@@ -915,8 +958,12 @@ impl Tab {
         {
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
+            let clipboard_update = terminal_output.drain_clipboard_update();
             for message in messages_to_pty {
                 self.write_to_pane_id(message, PaneId::Terminal(pid));
+            }
+            if let Some(string) = clipboard_update {
+                self.write_selection_to_clipboard(&string);
             }
         }
     }
@@ -927,6 +974,7 @@ impl Tab {
         });
     }
     pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
+        self.clear_search(client_id); // this is an inexpensive operation if empty, if we need more such cleanups we should consider moving this and the rest to some sort of cleanup method
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
@@ -1709,12 +1757,14 @@ impl Tab {
             let relative_position = pane.relative_position(position);
 
             if pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<0;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                if !pane.position_is_on_frame(position) {
+                    let mouse_event = format!(
+                        "\u{1b}[<0;{:?};{:?}M",
+                        relative_position.column() + 1,
+                        relative_position.line() + 1
+                    );
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                }
             } else {
                 // TODO: rename this method, it is used to forward click events to plugin panes
                 pane.start_selection(&relative_position, client_id);
@@ -1730,12 +1780,14 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(position, false) {
             let relative_position = pane.relative_position(position);
             if pane.mouse_mode() {
-                let mouse_event = format!(
-                    "\u{1b}[<2;{:?};{:?}M",
-                    relative_position.column.0 + 1,
-                    relative_position.line.0 + 1
-                );
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                if !pane.position_is_on_frame(position) {
+                    let mouse_event = format!(
+                        "\u{1b}[<2;{:?};{:?}M",
+                        relative_position.column() + 1,
+                        relative_position.line() + 1
+                    );
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                }
             } else {
                 pane.handle_right_click(&relative_position, client_id);
             }
@@ -1777,11 +1829,11 @@ impl Tab {
             let relative_position = active_pane.relative_position(position);
             if active_pane.mouse_mode() {
                 // ensure that coordinates are valid
-                let col = (relative_position.column.0 + 1)
+                let col = (relative_position.column() + 1)
                     .max(1)
                     .min(active_pane.get_content_columns());
 
-                let line = (relative_position.line.0 + 1)
+                let line = (relative_position.line() + 1)
                     .max(1)
                     .min(active_pane.get_content_rows() as isize);
                 let mouse_event = format!("\u{1b}[<0;{:?};{:?}m", col, line);
@@ -1840,11 +1892,11 @@ impl Tab {
             let relative_position = active_pane.relative_position(position_on_screen);
             if active_pane.mouse_mode() && !is_repeated {
                 // ensure that coordinates are valid
-                let col = (relative_position.column.0 + 1)
+                let col = (relative_position.column() + 1)
                     .max(1)
                     .min(active_pane.get_content_columns());
 
-                let line = (relative_position.line.0 + 1)
+                let line = (relative_position.line() + 1)
                     .max(1)
                     .min(active_pane.get_content_rows() as isize);
 
@@ -1998,6 +2050,53 @@ impl Tab {
     }
     pub fn panes_to_hide_count(&self) -> usize {
         self.tiled_panes.panes_to_hide_count()
+    }
+
+    pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            // It only allows printable unicode, delete and backspace keys.
+            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            if is_updatable {
+                let s = str::from_utf8(&buf).unwrap();
+                active_pane.update_search_term(s);
+            }
+        }
+    }
+
+    pub fn search_down(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_down();
+        }
+    }
+
+    pub fn search_up(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.search_up();
+        }
+    }
+
+    pub fn toggle_search_case_sensitivity(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_case_sensitivity();
+        }
+    }
+
+    pub fn toggle_search_wrap(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_wrap();
+        }
+    }
+
+    pub fn toggle_search_whole_words(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.toggle_search_whole_words();
+        }
+    }
+
+    pub fn clear_search(&mut self, client_id: ClientId) {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_search();
+        }
     }
 }
 

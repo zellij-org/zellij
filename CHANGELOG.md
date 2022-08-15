@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: crash when attaching to a session without the first tab (https://github.com/zellij-org/zellij/pull/1648)
+* fix: race crash on startup when server is not ready (https://github.com/zellij-org/zellij/pull/1651)
+* Terminal compatibility: forward OSC52 clipboard copy events from terminals (https://github.com/zellij-org/zellij/pull/1644)
+
+## [0.31.1] - 2022-08-02
+* add: `solarized-light` theme to the example theme directory (https://github.com/zellij-org/zellij/pull/1608)
+* add(readme): more links to the documentation (https://github.com/zellij-org/zellij/pull/1621)
+* fix theme not loading without config (https://github.com/zellij-org/zellij/pull/1631)
+
+## [0.31.0] - 2022-07-28
 * feat: Log errors causing "empty message received from client" (https://github.com/zellij-org/zellij/pull/1459)
 * chore(dependencies): update `crossbeam` `0.8.0` -> `0.8.1` (https://github.com/zellij-org/zellij/pull/1463)
 * add(option): `default-layout` setting for changing the default layout upon start, example: `default_layout: compact` (https://github.com/zellij-org/zellij/pull/1467)
@@ -13,6 +23,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: update cli tooltips (https://github.com/zellij-org/zellij/pull/1488)
 * refactor: deduplicate code in `screen.rs` (https://github.com/zellij-org/zellij/pull/1453)
 * chore(dependencies): update  `clap`: `3.1.18` -> `3.2.2` (https://github.com/zellij-org/zellij/pull/1496)
+* fix: send `WriteChars:` once per action (https://github.com/zellij-org/zellij/pull/1516)
+* feat: allow swapping tabs, in a fullscreen pane (https://github.com/zellij-org/zellij/pull/1515)
+* feat: add action of undo rename (https://github.com/zellij-org/zellij/pull/1513)
+* fix(docs): fix macport installation instructions (https://github.com/zellij-org/zellij/pull/1529)
+* feat: allow hex colors for themes (https://github.com/zellij-org/zellij/pull/1536)
+* fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)
+* fix: properly handle in-place editor in full-screen (https://github.com/zellij-org/zellij/pull/1544)
+* Terminal compatibility: properly trim whitespace in lines with wide-characters when resizing panes (https://github.com/zellij-org/zellij/pull/1545)
+* fix: reset scroll properly when typing in certain edge cases (https://github.com/zellij-org/zellij/pull/1547)
+* fix: logging may fill up /tmp, now logs are capped at 100 kB (https://github.com/zellij-org/zellij/pull/1548)
+* fix: crash when terminal rows or columns are 0 (https://github.com/zellij-org/zellij/pull/1552)
+* refactor: moved shared data structures to zellij-utils (https://github.com/zellij-org/zellij/pull/1541)
+* feat: support displaying images/video in the terminal with sixel graphics (https://github.com/zellij-org/zellij/pull/1557)
+* fix: add usage comment to fish `auto-start` script (https://github.com/zellij-org/zellij/pull/1583)
+* fix: refactor match session name (https://github.com/zellij-org/zellij/pull/1582)
+* fix: print "Session detached" rather than "Bye from Zellij!" when detaching from a session (https://github.com/zellij-org/zellij/pull/1573#issuecomment-1181562138)
+* performance: improve terminal responsiveness (https://github.com/zellij-org/zellij/pull/1585 and https://github.com/zellij-org/zellij/pull/1610)
+* Terminal compatibility: persist cursor show/hide across alternate screen (https://github.com/zellij-org/zellij/pull/1586)
+* fix: support multi-argument EDITOR/VISUAL/scrollback-editor commands (https://github.com/zellij-org/zellij/pull/1587)
+* fix: avoid sending mouse click events on pane frames to applications (https://github.com/zellij-org/zellij/pull/1584)
+* feat: search through terminal scrollback (https://github.com/zellij-org/zellij/pull/1521)
+* feat: support themes directory (https://github.com/zellij-org/zellij/pull/1577)
+* feat: Improve logging by writing server panics into the logfile (https://github.com/zellij-org/zellij/pull/1602)
+* fix: reflect configured keybindings in the status bar (https://github.com/zellij-org/zellij/pull/1242)
 * add: capability to dispatch actions from the cli (https://github.com/zellij-org/zellij/pull/1265)
 
   This feature is gated behind the `unstable` feature flag.
@@ -42,26 +76,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
   ```
   zj action "NewTab: {run: {command: {cmd: htop}}}"
   ```
-
-* fix: send `WriteChars:` once per action (https://github.com/zellij-org/zellij/pull/1516)
-* feat: allow swapping tabs, in a fullscreen pane (https://github.com/zellij-org/zellij/pull/1515)
-* feat: add action of undo renmae (https://github.com/zellij-org/zellij/pull/1513)
-* fix(docs): fix macport installation instructions (https://github.com/zellij-org/zellij/pull/1529)
-* feat: allow hex colors for themes (https://github.com/zellij-org/zellij/pull/1536)
-* fix: client hang when server is killed / shutdown delay (https://github.com/zellij-org/zellij/pull/1535)
-* fix: properly handle in-place editor in full-screen (https://github.com/zellij-org/zellij/pull/1544)
-* Terminal compatibility: properly trim whitespace in lines with wide-characters when resizing panes (https://github.com/zellij-org/zellij/pull/1545)
-* fix: reset scroll properly when typing in certain edge cases (https://github.com/zellij-org/zellij/pull/1547)
-* fix: logging may fill up /tmp, now logs are capped at 100 kB (https://github.com/zellij-org/zellij/pull/1548)
-* fix: crash when terminal rows or columns are 0 (https://github.com/zellij-org/zellij/pull/1552)
-* refactor: moved shared data structures to zellij-utils (https://github.com/zellij-org/zellij/pull/1541)
-* feat: support displaying images/video in the terminal with sixel graphics (https://github.com/zellij-org/zellij/pull/1557)
-* fix: add usage comment to fish `auto-start` script (https://github.com/zellij-org/zellij/pull/1583)
-* fix: refactor match session name (https://github.com/zellij-org/zellij/pull/1582)
-* fix: print "Session detached" rather than "Bye from Zellij!" when detaching from a session (https://github.com/zellij-org/zellij/pull/1573#issuecomment-1181562138)
-* performance: improve terminal responsiveness (https://github.com/zellij-org/zellij/pull/1585)
-* Terminal compatibility: persist cursor show/hide across alternate screen (https://github.com/zellij-org/zellij/pull/1586)
-* fix: support multi-argument EDITOR/VISUAL/scrollback-editor commands (https://github.com/zellij-org/zellij/pull/1587)
 
 ## [0.30.0] - 2022-06-07
 * fix: right and middle clicks creating selection (https://github.com/zellij-org/zellij/pull/1372)

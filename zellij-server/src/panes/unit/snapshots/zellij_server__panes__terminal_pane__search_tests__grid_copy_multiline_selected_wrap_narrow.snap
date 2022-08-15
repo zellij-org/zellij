@@ -1,0 +1,45 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (W): n __
+01 (W): ____
+02 (W): ____
+03 (W): ____
+04 (W): ____
+05 (W): ___ 
+06 (W): ut.
+07 (C): Vulp
+08 (W): utat
+09 (W): e eu
+10 (W):  sce
+11 (W): leri
+12 (W): sque
+13 (W):  fel
+14 (W): is i
+15 (W): mper
+16 (W): diet
+17 (W):  pro
+18 (W): in f
+19 (W): erme
+20 (W): ntum
+21 (W):  leo
+22 (W): .
+23 (C): Curs
+24 (W): us r
+25 (W): isus
+26 (W):  at 
+27 (W): ultr
+28 (W): ices
+29 (W):  mi 
+30 (W): temp
+31 (W): us.
+32 (C): Laor
+33 (W): eet 
+34 (W): id d
+35 (W): onec
+36 (W):  ult
+37 (W): rice
+38 (W): s ti
+39 (W): ncid
+

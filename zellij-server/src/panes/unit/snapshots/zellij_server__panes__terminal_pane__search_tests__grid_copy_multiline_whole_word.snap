@@ -1,0 +1,25 @@
+---
+source: zellij-server/src/panes/./unit/search_in_pane_tests.rs
+expression: "format!(\"{:?}\", terminal_pane.grid)"
+---
+00 (W):  v0.1
+01 (W): 4.0 v
+02 (W): ia 🦀
+03 (W):  v1.5
+04 (W): 3.0-b
+05 (W): eta.3
+06 (C): ❯ a:-
+07 (W): -:aaa
+08 (W): aaaaa
+09 (W): a:--#
+10 (W): ###--
+11 (W): :aaaa
+12 (W): aaaaa
+13 (W): aa:--
+14 (W): : ###
+15 (W): # ###
+16 (W): # aaa
+17 (W):  ####
+18 (W): #### 
+19 (W): aaa
+

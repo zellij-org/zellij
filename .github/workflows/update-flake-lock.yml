@@ -2,7 +2,7 @@ name: update-flake-lock
 on:
   workflow_dispatch: # allows manual triggering
   schedule:
-    - cron: '0 0 * * 0' # runs weekly on Sunday at 00:00
+    - cron: '0 0 1 * *' # runs on the first of every month at 00:00
 
 jobs:
   lockfile:
@@ -16,7 +16,7 @@ jobs:
           extra_nix_config: |
             access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
       - name: Update flake.lock
-        uses: DeterminateSystems/update-flake-lock@v10
+        uses: DeterminateSystems/update-flake-lock@v12
         with:
           token: ${{ secrets.GH_TOKEN_FOR_UPDATES }}
           pr-labels: |

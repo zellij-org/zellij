@@ -10,7 +10,6 @@
   ignoreSource = [
     ".git"
     ".github"
-    "assets"
     "docs"
     "example"
     "target"

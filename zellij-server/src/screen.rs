@@ -31,6 +31,29 @@ use zellij_utils::{
     ipc::{ClientAttributes, PixelDimensions},
 };
 
+/// Get the active tab and call a closure on it
+///
+/// If no active tab can be found, an error is logged instead.
+///
+/// # Parameters
+///
+/// - screen: An instance of `Screen` to operate on
+/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
+/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
+macro_rules! active_tab {
+    ($screen:ident, $client_id:ident, $closure:expr) => {
+        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
+            // This could be made more ergonomic by declaring the type of 'active_tab' in the
+            // closure, known as "Type Ascription". Then we could hint the type here and forego the
+            // "&mut Tab" in all the closures below...
+            // See: https://github.com/rust-lang/rust/issues/23416
+            $closure(active_tab);
+        } else {
+            log::error!("Active tab not found for client id: {:?}", $client_id);
+        }
+    };
+}
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
@@ -109,6 +132,12 @@ pub enum ScreenInstruction {
     RemoveOverlay(ClientId),
     ConfirmPrompt(ClientId),
     DenyPrompt(ClientId),
+    UpdateSearch(Vec<u8>, ClientId),
+    SearchDown(ClientId),
+    SearchUp(ClientId),
+    SearchToggleCaseSensitivity(ClientId),
+    SearchToggleWholeWord(ClientId),
+    SearchToggleWrap(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -203,6 +232,14 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::RemoveOverlay(..) => ScreenContext::RemoveOverlay,
             ScreenInstruction::ConfirmPrompt(..) => ScreenContext::ConfirmPrompt,
             ScreenInstruction::DenyPrompt(..) => ScreenContext::DenyPrompt,
+            ScreenInstruction::UpdateSearch(..) => ScreenContext::UpdateSearch,
+            ScreenInstruction::SearchDown(..) => ScreenContext::SearchDown,
+            ScreenInstruction::SearchUp(..) => ScreenContext::SearchUp,
+            ScreenInstruction::SearchToggleCaseSensitivity(..) => {
+                ScreenContext::SearchToggleCaseSensitivity
+            },
+            ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
+            ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
         }
     }
 }
@@ -602,13 +639,10 @@ impl Screen {
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
+        println!("screen.new_tab() 1");
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
-        let client_mode_info = self
-            .mode_info
-            .get(&client_id)
-            .unwrap_or(&self.default_mode_info)
-            .clone();
+        println!("screen.new_tab() 2");
         let mut tab = Tab::new(
             tab_index,
             position,
@@ -620,7 +654,7 @@ impl Screen {
             self.bus.senders.clone(),
             self.max_panes,
             self.style,
-            client_mode_info,
+            self.default_mode_info.clone(),
             self.draw_pane_frames,
             self.connected_clients.clone(),
             self.session_is_mirrored,
@@ -629,7 +663,9 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
+        println!("screen.new_tab() 3");
         tab.apply_layout(layout, new_pids, tab_index, client_id);
+        println!("screen.new_tab() 4");
         if self.session_is_mirrored {
             if let Some(active_tab) = self.get_active_tab_mut(client_id) {
                 let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
@@ -652,34 +688,48 @@ impl Screen {
             }
             self.update_client_tab_focus(client_id, tab_index);
         }
+        println!("screen.new_tab() 5");
         tab.update_input_modes();
         tab.visible(true);
+        println!("screen.new_tab() 6");
         self.tabs.insert(tab_index, tab);
+        println!("tabs after inserting: {:?}", self.tabs.len());
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id);
         }
+        println!("screen.new_tab() 7: {:?}", self.tabs.len());
         self.update_tabs();
 
+        println!("screen.new_tab() 8: {:?}", self.tabs.len());
         self.render();
+        println!("screen.new_tab() 9: {:?}", self.tabs.len());
     }
 
     pub fn add_client(&mut self, client_id: ClientId) {
-        let mut tab_index = 0;
         let mut tab_history = vec![];
-        if let Some((_first_client, first_active_tab_index)) = self.active_tab_indices.iter().next()
-        {
-            tab_index = *first_active_tab_index;
-        }
         if let Some((_first_client, first_tab_history)) = self.tab_history.iter().next() {
             tab_history = first_tab_history.clone();
         }
+
+        let tab_index = if let Some((_first_client, first_active_tab_index)) =
+            self.active_tab_indices.iter().next()
+        {
+            *first_active_tab_index
+        } else if self.tabs.contains_key(&0) {
+            0
+        } else if let Some(tab_index) = self.tabs.keys().next() {
+            tab_index.to_owned()
+        } else {
+            panic!("Can't find a valid tab to attach client to!");
+        };
+
         self.active_tab_indices.insert(client_id, tab_index);
         self.connected_clients.borrow_mut().insert(client_id);
         self.tab_history.insert(client_id, tab_history);
         self.tabs
             .get_mut(&tab_index)
-            .unwrap()
+            .unwrap_or_else(|| panic!("Failed to attach client to tab with index {tab_index}"))
             .add_client(client_id, None);
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
@@ -777,6 +827,14 @@ impl Screen {
             .unwrap_or(&self.default_mode_info)
             .mode;
 
+        // If we leave the Search-related modes, we need to clear all previous searches
+        let search_related_modes = [InputMode::EnterSearch, InputMode::Search, InputMode::Scroll];
+        if search_related_modes.contains(&previous_mode)
+            && !search_related_modes.contains(&mode_info.mode)
+        {
+            active_tab!(self, client_id, |tab: &mut Tab| tab.clear_search(client_id));
+        }
+
         if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
@@ -845,29 +903,6 @@ impl Screen {
     }
 }
 
-/// Get the active tab and call a closure on it
-///
-/// If no active tab can be found, an error is logged instead.
-///
-/// # Parameters
-///
-/// - screen: An instance of `Screen` to operate on
-/// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
-/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
-macro_rules! active_tab {
-    ($screen:ident, $client_id:ident, $closure:expr) => {
-        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
-            // This could be made more ergonomic by declaring the type of 'active_tab' in the
-            // closure, known as "Type Ascription". Then we could hint the type here and forego the
-            // "&mut Tab" in all the closures below...
-            // See: https://github.com/rust-lang/rust/issues/23416
-            $closure(active_tab);
-        } else {
-            log::error!("Active tab not found for client id: {:?}", $client_id);
-        }
-    };
-}
-
 // The box is here in order to make the
 // NewClient enum smaller
 #[allow(clippy::boxed_local)]
@@ -893,7 +928,7 @@ pub(crate) fn screen_thread_main(
         max_panes,
         get_mode_info(
             config_options.default_mode.unwrap_or_default(),
-            client_attributes.style,
+            &client_attributes,
             PluginCapabilities {
                 arrow_fonts: capabilities.unwrap_or_default(),
             },
@@ -1333,6 +1368,35 @@ pub(crate) fn screen_thread_main(
                 screen.get_active_overlays_mut().pop();
                 screen.render();
                 screen.unblock_input();
+            },
+            ScreenInstruction::UpdateSearch(c, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .update_search_term(c, client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchDown(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .search_down(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchUp(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab.search_up(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleCaseSensitivity(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_case_sensitivity(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleWrap(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_wrap(client_id));
+                screen.render();
+            },
+            ScreenInstruction::SearchToggleWholeWord(client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .toggle_search_whole_words(client_id));
+                screen.render();
             },
         }
     }
