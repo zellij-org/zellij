@@ -302,7 +302,7 @@ macro_rules! dump_screen {
 fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     let mut coordinates = vec![];
     let mouse_pos_encode = |pos: usize| -> Vec<u8> {
-        let pos = 32 + 1 + pos;
+        let pos = 32 + pos;
         let first = 0xC0 + pos / 64;
         let second = 0x80 + (pos & 63);
         vec![first as u8, second as u8]
@@ -311,12 +311,12 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
     if column > 95 {
         coordinates.append(&mut mouse_pos_encode(column));
     } else {
-        coordinates.push(32 + 1 + column as u8);
+        coordinates.push(32 + column as u8);
     }
     if line > 95 {
         coordinates.append(&mut mouse_pos_encode(line as usize));
     } else {
-        coordinates.push(32 + 1 + line as u8);
+        coordinates.push(32 + line as u8);
     }
     coordinates
 }
@@ -1521,6 +1521,8 @@ impl Grid {
         self.scrollback_buffer_lines = 0;
         self.search_results = Default::default();
         self.sixel_scrolling = false;
+        self.mouse_mode = MouseMode::NoEncoding;
+        self.mouse_tracking = MouseTracking::Off;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -1727,8 +1729,8 @@ impl Grid {
         let utf8_event = || -> Option<String> {
             let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
             msg.append(&mut utf8_mouse_coordinates(
-                position.column(),
-                position.line(),
+                position.column() + 1,
+                position.line() + 1,
             ));
             Some(String::from_utf8_lossy(&msg).into())
         };
@@ -1758,16 +1760,14 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
                 let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
                 msg.append(&mut utf8_mouse_coordinates(
-                    position.column(),
-                    position.line(),
+                    position.column() + 1,
+                    position.line() + 1,
                 ));
                 Some(String::from_utf8_lossy(&msg).into())
             },
             (MouseMode::Sgr, _) => {
-                // TODO: these don't add a +1 because it's done outside, we should change it to
-                // happen here for consistency
                 let mouse_event =
-                    format!("\u{1b}[<0;{:?};{:?}m", position.column(), position.line());
+                    format!("\u{1b}[<0;{:?};{:?}m", position.column() + 1, position.line() + 1);
                 Some(mouse_event)
             },
         }
@@ -1776,8 +1776,8 @@ impl Grid {
         let utf8_event = || -> Option<String> {
             let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
             msg.append(&mut utf8_mouse_coordinates(
-                position.column(),
-                position.line(),
+                position.column() + 1,
+                position.line() + 1,
             ));
             Some(String::from_utf8_lossy(&msg).into())
         };
@@ -1807,8 +1807,8 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
                 let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
                 msg.append(&mut utf8_mouse_coordinates(
-                    position.column(),
-                    position.line(),
+                    position.column() + 1,
+                    position.line() + 1,
                 ));
                 Some(String::from_utf8_lossy(&msg).into())
             },
@@ -1816,7 +1816,7 @@ impl Grid {
                 // TODO: these don't add a +1 because it's done outside, we should change it to
                 // happen here for consistency
                 let mouse_event =
-                    format!("\u{1b}[<2;{:?};{:?}m", position.column(), position.line());
+                    format!("\u{1b}[<2;{:?};{:?}m", position.column() + 1, position.line() + 1);
                 Some(mouse_event)
             },
         }
@@ -1827,8 +1827,8 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
                 let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`'];
                 msg.append(&mut utf8_mouse_coordinates(
-                    position.column(),
-                    position.line(),
+                    position.column() + 1,
+                    position.line() + 1,
                 ));
                 Some(String::from_utf8_lossy(&msg).into())
             },
@@ -1848,8 +1848,8 @@ impl Grid {
             (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
                 let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a'];
                 msg.append(&mut utf8_mouse_coordinates(
-                    position.column(),
-                    position.line(),
+                    position.column() + 1,
+                    position.line() + 1,
                 ));
                 Some(String::from_utf8_lossy(&msg).into())
             },
@@ -2266,6 +2266,15 @@ impl Perform for Grid {
                         },
                         80 => {
                             self.sixel_scrolling = false;
+                        },
+                        1000 => {
+                            self.mouse_tracking = MouseTracking::Off;
+                        },
+                        1002 => {
+                            self.mouse_tracking = MouseTracking::Off;
+                        },
+                        1003 => {
+                            // TBD: any-even mouse tracking
                         },
                         1005 => {
                             self.mouse_mode = MouseMode::NoEncoding;

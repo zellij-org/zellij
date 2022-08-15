@@ -1810,14 +1810,14 @@ impl Tab {
         if let Some(active_pane) = active_pane {
             let mut relative_position = active_pane.relative_position(position);
             relative_position.change_column(
-                (relative_position.column() + 1)
-                    .max(1)
+                (relative_position.column())
+                    .max(0)
                     .min(active_pane.get_content_columns()),
             );
 
             relative_position.change_line(
-                (relative_position.line() + 1)
-                    .max(1)
+                (relative_position.line())
+                    .max(0)
                     .min(active_pane.get_content_rows() as isize),
             );
 
@@ -1844,14 +1844,14 @@ impl Tab {
         if let Some(active_pane) = active_pane {
             let mut relative_position = active_pane.relative_position(position);
             relative_position.change_column(
-                (relative_position.column() + 1)
-                    .max(1)
+                (relative_position.column())
+                    .max(0)
                     .min(active_pane.get_content_columns()),
             );
 
             relative_position.change_line(
-                (relative_position.line() + 1)
-                    .max(1)
+                (relative_position.line())
+                    .max(0)
                     .min(active_pane.get_content_rows() as isize),
             );
 
@@ -1912,14 +1912,14 @@ impl Tab {
             if !is_repeated {
                 // ensure that coordinates are valid
                 relative_position.change_column(
-                    (relative_position.column() + 1)
-                        .max(1)
+                    (relative_position.column())
+                        .max(0)
                         .min(active_pane.get_content_columns()),
                 );
 
                 relative_position.change_line(
-                    (relative_position.line() + 1)
-                        .max(1)
+                    (relative_position.line())
+                        .max(0)
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_left_click(&relative_position, true) {
@@ -1953,14 +1953,14 @@ impl Tab {
             let mut relative_position = active_pane.relative_position(position_on_screen);
             if !is_repeated {
                 relative_position.change_column(
-                    (relative_position.column() + 1)
-                        .max(1)
+                    (relative_position.column())
+                        .max(0)
                         .min(active_pane.get_content_columns()),
                 );
 
                 relative_position.change_line(
-                    (relative_position.line() + 1)
-                        .max(1)
+                    (relative_position.line())
+                        .max(0)
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
