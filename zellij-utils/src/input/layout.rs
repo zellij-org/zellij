@@ -887,6 +887,8 @@ impl Layout {
     }
 
     pub fn has_tabs(&self) -> bool {
+        // TODO: CONTINUE HERE (15/08) - implement these, then test with:
+        // - cargo make build && target/debug/zellij
         unimplemented!()
     }
 
