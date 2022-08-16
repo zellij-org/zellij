@@ -37,6 +37,8 @@ const UP_ARROW: &[u8] = &[27, 91, 65];
 const DOWN_ARROW: &[u8] = &[27, 91, 66];
 const HOME_KEY: &[u8] = &[27, 91, 72];
 const END_KEY: &[u8] = &[27, 91, 70];
+const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
+const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
 const TERMINATING_STRING: &str = "\0";
 const DELETE_KEY: &str = "\u{007F}";
 const BACKSPACE_KEY: &str = "\u{0008}";
@@ -183,7 +185,7 @@ impl Pane for TerminalPane {
                 END_KEY => {
                     return AnsiEncoding::End.as_vec_bytes();
                 },
-                [27, 91, 50, 48, 48, 126] | [27, 91, 50, 48, 49, 126] => {
+                BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => {
                     if !self.grid.bracketed_paste_mode {
                         // Zellij itself operates in bracketed paste mode, so the terminal sends these
                         // instructions (bracketed paste start and bracketed paste end respectively)
