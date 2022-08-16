@@ -467,6 +467,8 @@ keybinds:
           key: [Ctrl: 'o', Char: "\n", Char: ' ', Esc]
         - action: [SwitchToMode: Scroll,]
           key: [Ctrl: 's']
+        - action: [Write: [7,], SwitchToMode: Normal]
+          key: [Ctrl: 'g']
         - action: [Quit,]
           key: [Ctrl: 'q',]
         - action: [Detach,]
