@@ -1830,10 +1830,10 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
         *messages_to_pty_writer.lock().unwrap(),
         vec![
             "\u{1b}[<0;71;5M".to_string(),  // SGR left click
-            "\u{1b}[<0;72;9M".to_string(),  // SGR left click (hold)
+            "\u{1b}[<32;72;9M".to_string(),  // SGR left click (hold)
             "\u{1b}[<0;75;7m".to_string(),  // SGR left button release
             "\u{1b}[<2;71;5M".to_string(),  // SGR right click
-            "\u{1b}[<2;72;9M".to_string(),  // SGR right click (hold)
+            "\u{1b}[<34;72;9M".to_string(),  // SGR right click (hold)
             "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
             "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
             "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
@@ -1950,10 +1950,10 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
         *messages_to_pty_writer.lock().unwrap(),
         vec![
             "\u{1b}[M g%".to_string(),  // utf8 left click
-            "\u{1b}[M h)".to_string(),  // utf8 left click (hold)
+            "\u{1b}[M@h)".to_string(),  // utf8 left click (hold)
             "\u{1b}[M#k'".to_string(),  // utf8 left button release
             "\u{1b}[M\"g%".to_string(), // utf8 right click
-            "\u{1b}[M\"h)".to_string(), // utf8 right click (hold)
+            "\u{1b}[MBh)".to_string(), // utf8 right click (hold)
             "\u{1b}[M#k'".to_string(),  // utf8 right button release
             "\u{1b}[M`g%".to_string(),  // utf8 scroll up
             "\u{1b}[Mag%".to_string(),  // utf8 scroll down

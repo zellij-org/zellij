@@ -1727,7 +1727,8 @@ impl Grid {
     }
     pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
         let utf8_event = || -> Option<String> {
-            let mut msg: Vec<u8> = vec![27, b'[', b'M', b' '];
+            let button_code = if is_held { b'@' } else { b' ' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
             msg.append(&mut utf8_mouse_coordinates(
                 position.column() + 1,
                 position.line() + 1,
@@ -1735,8 +1736,10 @@ impl Grid {
             Some(String::from_utf8_lossy(&msg).into())
         };
         let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 32 } else { 0 };
             Some(format!(
-                "\u{1b}[<0;{:?};{:?}M",
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
                 position.column() + 1,
                 position.line() + 1
             ))
@@ -1777,7 +1780,8 @@ impl Grid {
     }
     pub fn mouse_right_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
         let utf8_event = || -> Option<String> {
-            let mut msg: Vec<u8> = vec![27, b'[', b'M', b'"'];
+            let button_code = if is_held { b'B' } else { b'"' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
             msg.append(&mut utf8_mouse_coordinates(
                 position.column() + 1,
                 position.line() + 1,
@@ -1785,8 +1789,10 @@ impl Grid {
             Some(String::from_utf8_lossy(&msg).into())
         };
         let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 34 } else { 2 };
             Some(format!(
-                "\u{1b}[<2;{:?};{:?}M",
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
                 position.column() + 1,
                 position.line() + 1
             ))
