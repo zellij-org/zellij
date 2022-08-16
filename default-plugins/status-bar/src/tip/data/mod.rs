@@ -7,6 +7,7 @@ use crate::tip::TipBody;
 mod compact_layout;
 mod edit_scrollbuffer;
 mod floating_panes_mouse;
+mod key_passthrough;
 mod move_focus_hjkl_tab_switch;
 mod quicknav;
 mod send_mouse_click_to_terminal;
@@ -86,6 +87,14 @@ lazy_static! {
                 short: compact_layout::compact_layout_short,
                 medium: compact_layout::compact_layout_medium,
                 full: compact_layout::compact_layout_full,
+            }
+        ),
+        (
+            "key_passthrough",
+            TipBody {
+                short: key_passthrough::key_passthrough_short,
+                medium: key_passthrough::key_passthrough_medium,
+                full: key_passthrough::key_passthrough_full,
             }
         ),
     ]);
