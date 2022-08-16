@@ -7,8 +7,6 @@ use zellij_utils::{data::PaletteColor, vte::ParamsIter};
 
 use crate::panes::alacritty_functions::parse_sgr_color;
 
-use super::csi::Csi;
-
 pub const EMPTY_TERMINAL_CHARACTER: TerminalCharacter = TerminalCharacter {
     character: ' ',
     width: 1,
@@ -670,8 +668,8 @@ pub enum CursorShape {
     BlinkingBeam,
 }
 
-impl Csi for CursorShape {
-    fn get_csi_str(&self) -> &str {
+impl CursorShape {
+    pub fn get_csi_str(&self) -> &str {
         match self {
             CursorShape::Initial => "\u{1b}[0 q",
             CursorShape::Block => "\u{1b}[2 q",

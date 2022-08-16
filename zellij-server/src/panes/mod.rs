@@ -1,5 +1,4 @@
 pub mod alacritty_functions;
-pub mod csi;
 pub mod grid;
 pub mod link_handler;
 pub mod selection;

@@ -26,8 +26,6 @@ use zellij_utils::{
 
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 
-use super::csi::Csi;
-
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
 // Some keys in different formats but are used in the code
