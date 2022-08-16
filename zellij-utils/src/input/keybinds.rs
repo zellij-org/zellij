@@ -225,6 +225,10 @@ impl Keybinds {
             InputMode::Normal | InputMode::Locked => {
                 mode_keybind_or_action(Action::Write(raw_bytes))
             },
+            InputMode::Passthrough => vec![
+                Action::Write(raw_bytes),
+                Action::SwitchToMode(InputMode::Normal),
+            ],
             InputMode::RenameTab => mode_keybind_or_action(Action::TabNameInput(raw_bytes)),
             InputMode::RenamePane => mode_keybind_or_action(Action::PaneNameInput(raw_bytes)),
             InputMode::EnterSearch => mode_keybind_or_action(Action::SearchInput(raw_bytes)),

@@ -200,6 +200,9 @@ pub enum InputMode {
     /// `Tmux` mode allows for basic tmux keybindings functionality
     #[serde(alias = "tmux")]
     Tmux,
+    /// `Passthrough` mode passes the next key-sequence to the pane as raw bytes
+    #[serde(alias = "passthrough")]
+    Passthrough,
 }
 
 impl Default for InputMode {
