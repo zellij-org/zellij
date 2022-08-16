@@ -522,6 +522,43 @@ pub fn locked_floating_panes_are_visible(palette: &Palette) -> LinePart {
     }
 }
 
+pub fn passthrough(palette: &Palette, cols: usize) -> LinePart {
+    let text_color = palette_match!(match palette.theme_hue {
+        ThemeHue::Dark => palette.white,
+        ThemeHue::Light => palette.black,
+    });
+
+    let long_text = " Next key-combination is passed directly to the application";
+    let line_part = LinePart {
+        part: Style::new()
+            .fg(text_color)
+            .bold()
+            .paint(long_text)
+            .to_string(),
+        len: long_text.chars().count(),
+    };
+
+    let line_part = if line_part.len > cols {
+        let short_text = " Next key is passed through";
+        LinePart {
+            part: Style::new()
+                .fg(text_color)
+                .bold()
+                .paint(short_text)
+                .to_string(),
+            len: short_text.chars().count(),
+        }
+    } else {
+        line_part
+    };
+
+    if line_part.len > cols {
+        LinePart::default()
+    } else {
+        line_part
+    }
+}
+
 #[cfg(test)]
 /// Unit tests.
 ///

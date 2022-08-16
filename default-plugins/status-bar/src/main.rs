@@ -242,6 +242,8 @@ impl State {
             text_copied_hint(&self.mode_info.style.colors, copy_destination)
         } else if self.display_system_clipboard_failure {
             system_clipboard_error(&self.mode_info.style.colors)
+        } else if self.mode_info.mode == InputMode::Passthrough {
+            second_line::passthrough(&self.mode_info.style.colors, cols)
         } else if let Some(active_tab) = active_tab {
             if active_tab.is_fullscreen_active {
                 match self.mode_info.mode {
