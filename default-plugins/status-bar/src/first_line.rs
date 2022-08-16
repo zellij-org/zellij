@@ -864,4 +864,36 @@ mod tests {
 
         assert_eq!(ret, " Ctrl +  a  b  c ".to_string());
     }
+
+    #[test]
+    fn first_line_passthrough_wide() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Passthrough,
+            keybinds : vec![
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 30, "");
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, " PASSTHROUGH ".to_string());
+    }
+
+    #[test]
+    fn first_line_passthrough_narrow() {
+        #[rustfmt::skip]
+        let mode_info = ModeInfo{
+            mode: InputMode::Passthrough,
+            keybinds : vec![
+            ],
+            ..ModeInfo::default()
+        };
+
+        let ret = first_line(&mode_info, 10, "");
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "".to_string());
+    }
 }

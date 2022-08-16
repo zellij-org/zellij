@@ -798,4 +798,24 @@ mod tests {
 
         assert_eq!(ret, " Ctrl + <a|ENTER|1|SPACE> Move focus / <BACKSPACE> New / <ESC> Close / <END> Fullscreen");
     }
+
+    #[test]
+    fn passthrough_hint_short() {
+        let palette = get_palette();
+
+        let ret = passthrough(&palette, 35);
+        let ret = unstyle(ret);
+
+        assert!(ret.len() <= 35);
+    }
+
+    #[test]
+    fn passthrough_hint_no_space() {
+        let palette = get_palette();
+
+        let ret = passthrough(&palette, 10);
+        let ret = unstyle(ret);
+
+        assert_eq!(ret, "");
+    }
 }
