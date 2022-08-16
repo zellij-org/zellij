@@ -334,7 +334,9 @@ fn get_key_shortcut_for_mode<'a>(
     mode: &InputMode,
 ) -> Option<&'a mut KeyShortcut> {
     let key_action = match mode {
-        InputMode::Normal | InputMode::Prompt | InputMode::Tmux => return None,
+        InputMode::Normal | InputMode::Prompt | InputMode::Tmux | InputMode::Passthrough => {
+            return None
+        },
         InputMode::Locked => KeyAction::Lock,
         InputMode::Pane | InputMode::RenamePane => KeyAction::Pane,
         InputMode::Tab | InputMode::RenameTab => KeyAction::Tab,
@@ -351,10 +353,34 @@ fn get_key_shortcut_for_mode<'a>(
     None
 }
 
+fn passthrough_mode(palette: &ColoredElements, max_len: usize, separator: &str) -> LinePart {
+    let colors = palette.selected;
+    let text = " PASSTHROUGH ";
+    let line_part = LinePart {
+        part: ANSIStrings(&[
+            colors.styled_text.paint(text),
+            colors.suffix_separator.paint(separator),
+        ])
+        .to_string(),
+        len: text.chars().count() + separator.chars().count(),
+    };
+
+    if line_part.len > max_len {
+        LinePart::default()
+    } else {
+        line_part
+    }
+}
+
 pub fn first_line(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
+
+    if help.mode == InputMode::Passthrough {
+        return passthrough_mode(&colored_elements, max_len, separator);
+    }
+
     // Unselect all by default
     let mut default_keys = vec![
         KeyShortcut::new(
