@@ -296,6 +296,7 @@ pub trait Pane {
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
     fn mouse_left_click(&self, _position: &Position, _is_held: bool) -> Option<String> {
         None
@@ -307,6 +308,12 @@ pub trait Pane {
         None
     }
     fn mouse_right_click_release(&self, _position: &Position) -> Option<String> {
+        None
+    }
+    fn mouse_middle_click(&self, _position: &Position, _is_held: bool) -> Option<String> {
+        None
+    }
+    fn mouse_middle_click_release(&self, _position: &Position) -> Option<String> {
         None
     }
     fn mouse_scroll_up(&self, _position: &Position) -> Option<String> {
@@ -1788,6 +1795,18 @@ impl Tab {
             }
         };
     }
+    pub fn handle_middle_click(&mut self, position: &Position, client_id: ClientId) {
+        self.focus_pane_at(position, client_id);
+
+        if let Some(pane) = self.get_pane_at(position, false) {
+            let relative_position = pane.relative_position(position);
+            if let Some(mouse_event) = pane.mouse_middle_click(&relative_position, false) {
+                if !pane.position_is_on_frame(position) {
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                }
+            }
+        };
+    }
     fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true) {
@@ -1806,6 +1825,7 @@ impl Tab {
         }
     }
     pub fn handle_right_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         if let Some(active_pane) = active_pane {
             let mut relative_position = active_pane.relative_position(position);
@@ -1822,6 +1842,28 @@ impl Tab {
             );
 
             if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+            }
+        }
+    }
+    pub fn handle_middle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+        self.last_mouse_hold_position = None;
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+        if let Some(active_pane) = active_pane {
+            let mut relative_position = active_pane.relative_position(position);
+            relative_position.change_column(
+                (relative_position.column())
+                    .max(0)
+                    .min(active_pane.get_content_columns()),
+            );
+
+            relative_position.change_line(
+                (relative_position.line())
+                    .max(0)
+                    .min(active_pane.get_content_rows() as isize),
+            );
+
+            if let Some(mouse_event) = active_pane.mouse_middle_click_release(&relative_position) {
                 self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
             }
         }
@@ -1964,6 +2006,48 @@ impl Tab {
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    return true; // we need to re-render in this case so the selection disappears
+                }
+            }
+        }
+        false // we shouldn't even get here, but might as well not needlessly render if we do
+    }
+    pub fn handle_mouse_hold_middle(
+        &mut self,
+        position_on_screen: &Position,
+        client_id: ClientId,
+    ) -> bool {
+        println!("mouse hold middle");
+        // return value indicates whether we should trigger a render
+        // determine if event is repeated to enable smooth scrolling
+        let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
+            position_on_screen == &last_position
+        } else {
+            false
+        };
+        println!("is repeated: {:?}", is_repeated);
+        self.last_mouse_hold_position = Some(*position_on_screen);
+
+        let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
+
+        if let Some(active_pane) = active_pane {
+            println!("can have active pane");
+            let mut relative_position = active_pane.relative_position(position_on_screen);
+            if !is_repeated {
+                relative_position.change_column(
+                    (relative_position.column())
+                        .max(0)
+                        .min(active_pane.get_content_columns()),
+                );
+
+                relative_position.change_line(
+                    (relative_position.line())
+                        .max(0)
+                        .min(active_pane.get_content_rows() as isize),
+                );
+                if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true) {
+                    log::info!("can have mouse event: {:?}", mouse_event);
                     self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
                     return true; // we need to re-render in this case so the selection disappears
                 }

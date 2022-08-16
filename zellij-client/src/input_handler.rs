@@ -23,6 +23,7 @@ use zellij_utils::{
 enum HeldMouseButton {
     Left,
     Right,
+    Middle,
 }
 
 impl Default for HeldMouseButton {
@@ -188,7 +189,14 @@ impl InputHandler {
                     }
                     self.holding_mouse = Some(HeldMouseButton::Right);
                 },
-                _ => {},
+                MouseButton::Middle => {
+                    if self.holding_mouse.is_some() {
+                        self.dispatch_action(Action::MouseHoldMiddle(point), None);
+                    } else {
+                        self.dispatch_action(Action::MiddleClick(point), None);
+                    }
+                    self.holding_mouse = Some(HeldMouseButton::Middle);
+                },
             },
             MouseEvent::Release(point) => {
                 let button_released = self.holding_mouse.unwrap_or_default();
@@ -198,6 +206,9 @@ impl InputHandler {
                     },
                     HeldMouseButton::Right => {
                         self.dispatch_action(Action::RightMouseRelease(point), None)
+                    },
+                    HeldMouseButton::Middle => {
+                        self.dispatch_action(Action::MiddleMouseRelease(point), None)
                     },
                 };
                 self.holding_mouse = None;
@@ -210,6 +221,9 @@ impl InputHandler {
                     },
                     HeldMouseButton::Right => {
                         self.dispatch_action(Action::MouseHoldRight(point), None)
+                    },
+                    HeldMouseButton::Middle => {
+                        self.dispatch_action(Action::MouseHoldMiddle(point), None)
                     },
                 };
                 self.holding_mouse = Some(button_held);

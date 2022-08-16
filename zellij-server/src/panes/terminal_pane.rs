@@ -562,6 +562,12 @@ impl Pane for TerminalPane {
     fn mouse_right_click_release(&self, position: &Position) -> Option<String> {
         self.grid.mouse_right_click_release_signal(position)
     }
+    fn mouse_middle_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_middle_click_signal(position, is_held)
+    }
+    fn mouse_middle_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_middle_click_release_signal(position)
+    }
     fn mouse_scroll_up(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_up_signal(position)
     }

@@ -376,7 +376,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::RightClick(point, client_id))
                 .unwrap();
         },
-
+        Action::MiddleClick(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MiddleClick(point, client_id))
+                .unwrap();
+        },
         Action::LeftMouseRelease(point) => {
             session
                 .senders
@@ -389,6 +394,12 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::RightMouseRelease(point, client_id))
                 .unwrap();
         },
+        Action::MiddleMouseRelease(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MiddleMouseRelease(point, client_id))
+                .unwrap();
+        },
         Action::MouseHoldLeft(point) => {
             session
                 .senders
@@ -399,6 +410,12 @@ fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::MouseHoldRight(point, client_id))
+                .unwrap();
+        },
+        Action::MouseHoldMiddle(point) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MouseHoldMiddle(point, client_id))
                 .unwrap();
         },
         Action::Copy => {

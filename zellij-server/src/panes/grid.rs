@@ -1822,10 +1822,63 @@ impl Grid {
                 Some(String::from_utf8_lossy(&msg).into())
             },
             (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_middle_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let button_code = if is_held { b'A' } else { b'!' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column() + 1,
+                position.line() + 1,
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 33 } else { 1 };
+            Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_middle_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
                 // TODO: these don't add a +1 because it's done outside, we should change it to
                 // happen here for consistency
                 let mouse_event = format!(
-                    "\u{1b}[<2;{:?};{:?}m",
+                    "\u{1b}[<1;{:?};{:?}m",
                     position.column() + 1,
                     position.line() + 1
                 );

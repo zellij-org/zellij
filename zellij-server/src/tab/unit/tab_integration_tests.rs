@@ -1823,6 +1823,9 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     tab.handle_right_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_middle_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
     tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
@@ -1835,6 +1838,9 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
             "\u{1b}[<2;71;5M".to_string(),  // SGR right click
             "\u{1b}[<34;72;9M".to_string(),  // SGR right click (hold)
             "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
+            "\u{1b}[<1;71;5M".to_string(),  // SGR middle click
+            "\u{1b}[<33;72;9M".to_string(),  // SGR middle click (hold)
+            "\u{1b}[<1;75;7m".to_string(),  // SGR middle button release
             "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
             "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
         ]
@@ -1883,6 +1889,9 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     tab.handle_right_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_middle_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
     tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
@@ -1895,6 +1904,9 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
             "\u{1b}[<2;71;5M".to_string(), // SGR right click
             // no hold event here, as hold events are not reported in normal mode
             "\u{1b}[<2;75;7m".to_string(),  // SGR right button release
+            "\u{1b}[<1;71;5M".to_string(),  // SGR middle click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[<1;75;7m".to_string(),  // SGR middle button release
             "\u{1b}[<64;71;5M".to_string(), // SGR scroll up
             "\u{1b}[<65;71;5M".to_string(), // SGR scroll down
         ]
@@ -1943,20 +1955,26 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     tab.handle_right_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_middle_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
     tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
         vec![
-            "\u{1b}[M g%".to_string(),  // utf8 left click
-            "\u{1b}[M@h)".to_string(),  // utf8 left click (hold)
-            "\u{1b}[M#k'".to_string(),  // utf8 left button release
+            "\u{1b}[M g%".to_string(), // utf8 left click
+            "\u{1b}[M@h)".to_string(), // utf8 left click (hold)
+            "\u{1b}[M#k'".to_string(), // utf8 left button release
             "\u{1b}[M\"g%".to_string(), // utf8 right click
             "\u{1b}[MBh)".to_string(), // utf8 right click (hold)
-            "\u{1b}[M#k'".to_string(),  // utf8 right button release
-            "\u{1b}[M`g%".to_string(),  // utf8 scroll up
-            "\u{1b}[Mag%".to_string(),  // utf8 scroll down
+            "\u{1b}[M#k'".to_string(), // utf8 right button release
+            "\u{1b}[M!g%".to_string(), // utf8 middle click
+            "\u{1b}[MAh)".to_string(), // utf8 middle click (hold)
+            "\u{1b}[M#k'".to_string(), // utf8 middle click release
+            "\u{1b}[M`g%".to_string(), // utf8 scroll up
+            "\u{1b}[Mag%".to_string(), // utf8 scroll down
         ]
     );
 }
@@ -2003,6 +2021,9 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     tab.handle_right_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_right(&Position::new(9, 72), client_id);
     tab.handle_right_mouse_release(&Position::new(7, 75), client_id);
+    tab.handle_middle_click(&Position::new(5, 71), client_id);
+    tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
+    tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
     tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
@@ -2015,6 +2036,9 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
             "\u{1b}[M\"g%".to_string(), // utf8 right click
             // no hold event here, as hold events are not reported in normal mode
             "\u{1b}[M#k'".to_string(), // utf8 right button release
+            "\u{1b}[M!g%".to_string(), // utf8 middle click
+            // no hold event here, as hold events are not reported in normal mode
+            "\u{1b}[M#k'".to_string(), // utf8 middle click release
             "\u{1b}[M`g%".to_string(), // utf8 scroll up
             "\u{1b}[Mag%".to_string(), // utf8 scroll down
         ]

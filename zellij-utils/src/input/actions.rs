@@ -125,10 +125,13 @@ pub enum Action {
     Detach,
     LeftClick(Position),
     RightClick(Position),
+    MiddleClick(Position),
     LeftMouseRelease(Position),
     RightMouseRelease(Position),
+    MiddleMouseRelease(Position),
     MouseHoldLeft(Position),
     MouseHoldRight(Position),
+    MouseHoldMiddle(Position),
     Copy,
     /// Confirm a prompt
     Confirm,

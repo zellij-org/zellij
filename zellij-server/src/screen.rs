@@ -123,10 +123,13 @@ pub enum ScreenInstruction {
     ChangeMode(ModeInfo, ClientId),
     LeftClick(Position, ClientId),
     RightClick(Position, ClientId),
+    MiddleClick(Position, ClientId),
     LeftMouseRelease(Position, ClientId),
     RightMouseRelease(Position, ClientId),
+    MiddleMouseRelease(Position, ClientId),
     MouseHoldLeft(Position, ClientId),
     MouseHoldRight(Position, ClientId),
+    MouseHoldMiddle(Position, ClientId),
     Copy(ClientId),
     AddClient(ClientId),
     RemoveClient(ClientId),
@@ -224,10 +227,13 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollDownAt(..) => ScreenContext::ScrollDownAt,
             ScreenInstruction::LeftClick(..) => ScreenContext::LeftClick,
             ScreenInstruction::RightClick(..) => ScreenContext::RightClick,
+            ScreenInstruction::MiddleClick(..) => ScreenContext::MiddleClick,
             ScreenInstruction::LeftMouseRelease(..) => ScreenContext::LeftMouseRelease,
             ScreenInstruction::RightMouseRelease(..) => ScreenContext::RightMouseRelease,
+            ScreenInstruction::MiddleMouseRelease(..) => ScreenContext::MiddleMouseRelease,
             ScreenInstruction::MouseHoldLeft(..) => ScreenContext::MouseHoldLeft,
             ScreenInstruction::MouseHoldRight(..) => ScreenContext::MouseHoldRight,
+            ScreenInstruction::MouseHoldMiddle(..) => ScreenContext::MouseHoldMiddle,
             ScreenInstruction::Copy(..) => ScreenContext::Copy,
             ScreenInstruction::ToggleTab(..) => ScreenContext::ToggleTab,
             ScreenInstruction::AddClient(..) => ScreenContext::AddClient,
@@ -1307,6 +1313,12 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs();
                 screen.render();
             },
+            ScreenInstruction::MiddleClick(point, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .handle_middle_click(&point, client_id));
+                screen.update_tabs();
+                screen.render();
+            },
             ScreenInstruction::LeftMouseRelease(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_left_mouse_release(&point, client_id));
@@ -1315,6 +1327,11 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::RightMouseRelease(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .handle_right_mouse_release(&point, client_id));
+                screen.render();
+            },
+            ScreenInstruction::MiddleMouseRelease(point, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .handle_middle_mouse_release(&point, client_id));
                 screen.render();
             },
             ScreenInstruction::MouseHoldLeft(point, client_id) => {
@@ -1326,6 +1343,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MouseHoldRight(point, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| {
                     tab.handle_mouse_hold_right(&point, client_id);
+                });
+                screen.render();
+            },
+            ScreenInstruction::MouseHoldMiddle(point, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| {
+                    tab.handle_mouse_hold_middle(&point, client_id);
                 });
                 screen.render();
             },
