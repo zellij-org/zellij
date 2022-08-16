@@ -26,6 +26,8 @@ keybinds:
           key: [Ctrl: 'b',]
         - action: [Quit,]
           key: [Ctrl: 'q',]
+        - action: [SwitchToMode: Passthrough,]
+          key: [Ctrl: 'z',]
         - action: [NewPane: ]
           key: [ Alt: 'n',]
         - action: [MoveFocusOrTab: Left,]
