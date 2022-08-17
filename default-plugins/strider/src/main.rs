@@ -10,7 +10,7 @@ register_plugin!(State);
 impl ZellijPlugin for State {
     fn load(&mut self) {
         refresh_directory(self);
-        subscribe(&[EventType::Key, EventType::Mouse]);
+        subscribe(&[EventType::Key, EventType::Mouse]).expect(errors::TODO_HANDLING);
     }
 
     fn update(&mut self, event: Event) {

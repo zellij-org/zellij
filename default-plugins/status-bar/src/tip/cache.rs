@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use zellij_tile::prelude::errors;
 use zellij_tile::prelude::get_zellij_version;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,7 +43,7 @@ impl LocalCache {
             Err(err) => {
                 if json_cache.is_empty() {
                     return Ok(Metadata {
-                        zellij_version: get_zellij_version(),
+                        zellij_version: get_zellij_version().expect(errors::TODO_HANDLING),
                         cached_data: HashMap::new(),
                     });
                 }
