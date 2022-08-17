@@ -299,6 +299,28 @@ macro_rules! dump_screen {
     }};
 }
 
+fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
+    let mut coordinates = vec![];
+    let mouse_pos_encode = |pos: usize| -> Vec<u8> {
+        let pos = 32 + pos;
+        let first = 0xC0 + pos / 64;
+        let second = 0x80 + (pos & 63);
+        vec![first as u8, second as u8]
+    };
+
+    if column > 95 {
+        coordinates.append(&mut mouse_pos_encode(column));
+    } else {
+        coordinates.push(32 + column as u8);
+    }
+    if line > 95 {
+        coordinates.append(&mut mouse_pos_encode(line as usize));
+    } else {
+        coordinates.push(32 + line as u8);
+    }
+    coordinates
+}
+
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
@@ -340,9 +362,36 @@ pub struct Grid {
     pub link_handler: Rc<RefCell<LinkHandler>>,
     pub ring_bell: bool,
     scrollback_buffer_lines: usize,
-    pub mouse_mode: bool,
+    pub mouse_mode: MouseMode,
+    pub mouse_tracking: MouseTracking,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub enum MouseMode {
+    NoEncoding,
+    Utf8,
+    Sgr,
+}
+
+impl Default for MouseMode {
+    fn default() -> Self {
+        MouseMode::NoEncoding
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum MouseTracking {
+    Off,
+    Normal,
+    ButtonEventTracking,
+}
+
+impl Default for MouseTracking {
+    fn default() -> Self {
+        MouseTracking::Off
+    }
 }
 
 impl Debug for Grid {
@@ -444,7 +493,8 @@ impl Grid {
             link_handler,
             ring_bell: false,
             scrollback_buffer_lines: 0,
-            mouse_mode: false,
+            mouse_mode: MouseMode::default(),
+            mouse_tracking: MouseTracking::default(),
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
@@ -1471,6 +1521,8 @@ impl Grid {
         self.scrollback_buffer_lines = 0;
         self.search_results = Default::default();
         self.sixel_scrolling = false;
+        self.mouse_mode = MouseMode::NoEncoding;
+        self.mouse_tracking = MouseTracking::Off;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }
@@ -1671,6 +1723,209 @@ impl Grid {
                 }
                 self.render_full_viewport(); // TODO: this could be optimized if it's a performance bottleneck
             }
+        }
+    }
+    pub fn mouse_left_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let button_code = if is_held { b'@' } else { b' ' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column() + 1,
+                position.line() + 1,
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 32 } else { 0 };
+            Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_left_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<0;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_right_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let button_code = if is_held { b'B' } else { b'"' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column() + 1,
+                position.line() + 1,
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 34 } else { 2 };
+            Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_right_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<2;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_middle_click_signal(&self, position: &Position, is_held: bool) -> Option<String> {
+        let utf8_event = || -> Option<String> {
+            let button_code = if is_held { b'A' } else { b'!' };
+            let mut msg: Vec<u8> = vec![27, b'[', b'M', button_code];
+            msg.append(&mut utf8_mouse_coordinates(
+                position.column() + 1,
+                position.line() + 1,
+            ));
+            Some(String::from_utf8_lossy(&msg).into())
+        };
+        let sgr_event = || -> Option<String> {
+            let button_code = if is_held { 33 } else { 1 };
+            Some(format!(
+                "\u{1b}[<{:?};{:?};{:?}M",
+                button_code,
+                position.column() + 1,
+                position.line() + 1
+            ))
+        };
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::Normal) if !is_held => {
+                utf8_event()
+            },
+            (MouseMode::NoEncoding | MouseMode::Utf8, MouseTracking::ButtonEventTracking) => {
+                utf8_event()
+            },
+            (MouseMode::Sgr, MouseTracking::ButtonEventTracking) => sgr_event(),
+            (MouseMode::Sgr, MouseTracking::Normal) if !is_held => sgr_event(),
+            _ => None,
+        }
+    }
+    pub fn mouse_middle_click_release_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'#'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                // TODO: these don't add a +1 because it's done outside, we should change it to
+                // happen here for consistency
+                let mouse_event = format!(
+                    "\u{1b}[<1;{:?};{:?}m",
+                    position.column() + 1,
+                    position.line() + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_up_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'`'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<64;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
+        }
+    }
+    pub fn mouse_scroll_down_signal(&self, position: &Position) -> Option<String> {
+        match (&self.mouse_mode, &self.mouse_tracking) {
+            (_, MouseTracking::Off) => None,
+            (MouseMode::NoEncoding | MouseMode::Utf8, _) => {
+                let mut msg: Vec<u8> = vec![27, b'[', b'M', b'a'];
+                msg.append(&mut utf8_mouse_coordinates(
+                    position.column() + 1,
+                    position.line() + 1,
+                ));
+                Some(String::from_utf8_lossy(&msg).into())
+            },
+            (MouseMode::Sgr, _) => {
+                let mouse_event = format!(
+                    "\u{1b}[<65;{:?};{:?}M",
+                    position.column.0 + 1,
+                    position.line.0 + 1
+                );
+                Some(mouse_event)
+            },
         }
     }
 }
@@ -2027,59 +2282,74 @@ impl Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params_iter.next().map(|param| param[0]) {
-                    Some(2004) => {
-                        self.bracketed_paste_mode = false;
-                    },
-                    Some(1049) => {
-                        if let Some(mut alternate_screen_state) = self.alternate_screen_state.take()
-                        {
-                            if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
-                                // reap images before dropping the alternate_screen_state contents
-                                // - we can't implement a drop method for this because the store is
-                                // outside of the alternate_screen_state struct
-                                self.sixel_grid.reap_images(image_ids_to_reap);
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        2004 => {
+                            self.bracketed_paste_mode = false;
+                        },
+                        1049 => {
+                            if let Some(mut alternate_screen_state) =
+                                self.alternate_screen_state.take()
+                            {
+                                if let Some(image_ids_to_reap) = self.sixel_grid.clear() {
+                                    // reap images before dropping the alternate_screen_state contents
+                                    // - we can't implement a drop method for this because the store is
+                                    // outside of the alternate_screen_state struct
+                                    self.sixel_grid.reap_images(image_ids_to_reap);
+                                }
+                                alternate_screen_state.apply_contents_to(
+                                    &mut self.lines_above,
+                                    &mut self.viewport,
+                                    &mut self.cursor,
+                                    &mut self.sixel_grid,
+                                );
                             }
-                            alternate_screen_state.apply_contents_to(
-                                &mut self.lines_above,
-                                &mut self.viewport,
-                                &mut self.cursor,
-                                &mut self.sixel_grid,
-                            );
-                        }
-                        self.alternate_screen_state = None;
-                        self.clear_viewport_before_rendering = true;
-                        self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
-                        self.mark_for_rerender();
-                    },
-                    Some(25) => {
-                        self.hide_cursor();
-                        self.mark_for_rerender();
-                    },
-                    Some(1) => {
-                        self.cursor_key_mode = false;
-                    },
-                    Some(3) => {
-                        // DECCOLM - only side effects
-                        self.scroll_region = None;
-                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
-                        self.cursor.x = 0;
-                        self.cursor.y = 0;
-                    },
-                    Some(6) => {
-                        self.erasure_mode = false;
-                    },
-                    Some(7) => {
-                        self.disable_linewrap = true;
-                    },
-                    Some(80) => {
-                        self.sixel_scrolling = false;
-                    },
-                    Some(1006) => {
-                        self.mouse_mode = false;
-                    },
-                    _ => {},
-                };
+                            self.alternate_screen_state = None;
+                            self.clear_viewport_before_rendering = true;
+                            self.force_change_size(self.height, self.width); // the alternative_viewport might have been of a different size...
+                            self.mark_for_rerender();
+                        },
+                        25 => {
+                            self.hide_cursor();
+                            self.mark_for_rerender();
+                        },
+                        1 => {
+                            self.cursor_key_mode = false;
+                        },
+                        3 => {
+                            // DECCOLM - only side effects
+                            self.scroll_region = None;
+                            self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                            self.cursor.x = 0;
+                            self.cursor.y = 0;
+                        },
+                        6 => {
+                            self.erasure_mode = false;
+                        },
+                        7 => {
+                            self.disable_linewrap = true;
+                        },
+                        80 => {
+                            self.sixel_scrolling = false;
+                        },
+                        1000 => {
+                            self.mouse_tracking = MouseTracking::Off;
+                        },
+                        1002 => {
+                            self.mouse_tracking = MouseTracking::Off;
+                        },
+                        1003 => {
+                            // TBD: any-even mouse tracking
+                        },
+                        1005 => {
+                            self.mouse_mode = MouseMode::NoEncoding;
+                        },
+                        1006 => {
+                            self.mouse_mode = MouseMode::NoEncoding;
+                        },
+                        _ => {},
+                    };
+                }
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = false;
             }
@@ -2090,64 +2360,80 @@ impl Perform for Grid {
                 _ => false,
             };
             if first_intermediate_is_questionmark {
-                match params_iter.next().map(|param| param[0]) {
-                    Some(25) => {
-                        self.show_cursor();
-                        self.mark_for_rerender();
-                    },
-                    Some(2004) => {
-                        self.bracketed_paste_mode = true;
-                    },
-                    Some(1049) => {
-                        // enter alternate buffer
-                        let current_lines_above = std::mem::replace(
-                            &mut self.lines_above,
-                            VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
-                        );
-                        let current_viewport = std::mem::replace(
-                            &mut self.viewport,
-                            vec![Row::new(self.width).canonical()],
-                        );
-                        let current_cursor = std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
-                        let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
-                        let alternate_sixelgrid = std::mem::replace(
-                            &mut self.sixel_grid,
-                            SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
-                        );
-                        self.alternate_screen_state = Some(AlternateScreenState::new(
-                            current_lines_above,
-                            current_viewport,
-                            current_cursor,
-                            alternate_sixelgrid,
-                        ));
-                        self.clear_viewport_before_rendering = true;
-                        self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
-                        self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
-                    },
-                    Some(1) => {
-                        self.cursor_key_mode = true;
-                    },
-                    Some(3) => {
-                        // DECCOLM - only side effects
-                        self.scroll_region = None;
-                        self.clear_all(EMPTY_TERMINAL_CHARACTER);
-                        self.cursor.x = 0;
-                        self.cursor.y = 0;
-                    },
-                    Some(6) => {
-                        self.erasure_mode = true;
-                    },
-                    Some(7) => {
-                        self.disable_linewrap = false;
-                    },
-                    Some(80) => {
-                        self.sixel_scrolling = true;
-                    },
-                    Some(1006) => {
-                        self.mouse_mode = true;
-                    },
-                    _ => {},
-                };
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        25 => {
+                            self.show_cursor();
+                            self.mark_for_rerender();
+                        },
+                        2004 => {
+                            self.bracketed_paste_mode = true;
+                        },
+                        1049 => {
+                            // enter alternate buffer
+                            let current_lines_above = std::mem::replace(
+                                &mut self.lines_above,
+                                VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
+                            );
+                            let current_viewport = std::mem::replace(
+                                &mut self.viewport,
+                                vec![Row::new(self.width).canonical()],
+                            );
+                            let current_cursor =
+                                std::mem::replace(&mut self.cursor, Cursor::new(0, 0));
+                            let sixel_image_store = self.sixel_grid.sixel_image_store.clone();
+                            let alternate_sixelgrid = std::mem::replace(
+                                &mut self.sixel_grid,
+                                SixelGrid::new(self.character_cell_size.clone(), sixel_image_store),
+                            );
+                            self.alternate_screen_state = Some(AlternateScreenState::new(
+                                current_lines_above,
+                                current_viewport,
+                                current_cursor,
+                                alternate_sixelgrid,
+                            ));
+                            self.clear_viewport_before_rendering = true;
+                            self.scrollback_buffer_lines =
+                                self.recalculate_scrollback_buffer_count();
+                            self.output_buffer.update_all_lines(); // make sure the screen gets cleared in the next render
+                        },
+                        1 => {
+                            self.cursor_key_mode = true;
+                        },
+                        3 => {
+                            // DECCOLM - only side effects
+                            self.scroll_region = None;
+                            self.clear_all(EMPTY_TERMINAL_CHARACTER);
+                            self.cursor.x = 0;
+                            self.cursor.y = 0;
+                        },
+                        6 => {
+                            self.erasure_mode = true;
+                        },
+                        7 => {
+                            self.disable_linewrap = false;
+                        },
+                        80 => {
+                            self.sixel_scrolling = true;
+                        },
+                        1000 => {
+                            self.mouse_tracking = MouseTracking::Normal;
+                        },
+                        1002 => {
+                            self.mouse_tracking = MouseTracking::ButtonEventTracking;
+                        },
+                        1003 => {
+                            // TBD: any-even mouse tracking
+                        },
+                        1005 => {
+                            self.mouse_mode = MouseMode::Utf8;
+                        },
+                        1006 => {
+                            self.mouse_mode = MouseMode::Sgr;
+                        },
+                        _ => {},
+                    }
+                }
             } else if let Some(4) = params_iter.next().map(|param| param[0]) {
                 self.insert_mode = true;
             }

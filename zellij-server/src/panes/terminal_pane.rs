@@ -566,10 +566,30 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
-    fn mouse_mode(&self) -> bool {
-        self.grid.mouse_mode
+    fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_left_click_signal(position, is_held)
     }
-
+    fn mouse_left_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_left_click_release_signal(position)
+    }
+    fn mouse_right_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_right_click_signal(position, is_held)
+    }
+    fn mouse_right_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_right_click_release_signal(position)
+    }
+    fn mouse_middle_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_middle_click_signal(position, is_held)
+    }
+    fn mouse_middle_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_middle_click_release_signal(position)
+    }
+    fn mouse_scroll_up(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_up_signal(position)
+    }
+    fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_down_signal(position)
+    }
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)
