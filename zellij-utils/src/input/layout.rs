@@ -167,11 +167,12 @@ pub struct Layout {
     pub borderless: bool,
     pub focus: Option<bool>,
     pub tabs_index_in_children: Option<usize>,
+    template: Option<Box<Layout>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum LayoutParts {
-    Tabs(Vec<(String, Layout)>), // String is the tab name
+    Tabs(Vec<(Option<String>, Layout)>), // String is the tab name
     Panes(Vec<Layout>),
 }
 
@@ -679,21 +680,24 @@ impl Layout {
                 borderless,
                 focus: None, // TODO
                 tabs_index_in_children,
+                template: None,
             })
         }
         let mut base_layout = parse_kdl_layout(layout_node, direction, &mut tabs)?;
         if !tabs.is_empty() {
             let mut root_layout = Layout::default();
-            let mut tab_parts: Vec<(String, Layout)> = vec![];
+            let mut tab_parts: Vec<(Option<String>, Layout)> = vec![];
 
             for (i, tab) in tabs.drain(..).enumerate() {
-                let tab_name = format!("{}", i); // TODO: support tab name in layout
                 let mut layout_for_tab = base_layout.clone();
                 layout_for_tab.insert_tab_layout(&tab);
-                tab_parts.push((tab_name, layout_for_tab));
+                tab_parts.push((None, layout_for_tab));
 
             }
             root_layout.parts = LayoutParts::Tabs(tab_parts);
+            let mut layout_template = base_layout.clone();
+            layout_template.insert_tab_layout(&Layout::with_one_pane());
+            root_layout.template = Some(Box::new(layout_template));
             Ok(root_layout)
         } else {
             Ok(base_layout)
@@ -856,7 +860,15 @@ impl Layout {
         // self.parts.append(&mut parts);
     }
 
+    pub fn new_tab(&self) -> Layout {
+        match &self.template {
+            Some(template) => *template.clone(),
+            None => self.clone()
+        }
+    }
     pub fn insert_tab_layout(&mut self, tab_layout: &Layout) -> Result<(), &'static str> {
+        // this inserts a tab layout into a layout that doesn't yet have tabs,
+        // making sure to place it in the right place inside the existing template
         match self.tabs_index_in_children {
             Some(tabs_index_in_children) => {
                 match &mut self.parts {
@@ -864,7 +876,7 @@ impl Layout {
                         panes.insert(tabs_index_in_children, tab_layout.clone());
                         Ok(())
                     },
-                    LayoutParts::Tabs(_) => {
+                    LayoutParts::Tabs(tabs) => {
                         // TODO: CONTINUE HERE - if we insert tab and we have tabs, just add it
                         // here? (and below)
                         Err("Only top layout part can have a tabs block")
@@ -896,13 +908,9 @@ impl Layout {
         }
     }
 
-    pub fn tabs(&self) -> Vec<(String, Layout)> { // String is the tab name
+    pub fn tabs(&self) -> Vec<(Option<String>, Layout)> { // String is the tab name
         match &self.parts {
-            // LayoutParts::Tabs(tabs) => tabs.clone(),
-            LayoutParts::Tabs(tabs) => {
-                log::info!("tabs is: {:?}", tabs);
-                tabs.clone()
-            }
+            LayoutParts::Tabs(tabs) => tabs.clone(),
             _ => vec![]
         }
     }

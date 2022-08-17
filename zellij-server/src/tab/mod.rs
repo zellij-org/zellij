@@ -431,7 +431,6 @@ impl Tab {
         tab_index: usize,
         client_id: ClientId,
     ) {
-        log::info!("apply layout?");
         if self.tiled_panes.has_panes() {
             log::error!(
                 "Applying a layout to a tab with existing panes - this is not yet supported!"
