@@ -1,19 +1,14 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
 
-use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
 use colored::*;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
-use std::panic::PanicInfo;
 
-use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, Report};
+use miette::Diagnostic;
 use thiserror::Error as ThisError;
 
-/// The maximum amount of calls an [`ErrorContext`] will keep track
-/// of in its stack representation. This is a per-thread maximum.
-const MAX_THREAD_CALL_STACK: usize = 6;
 
 pub trait ErrorInstruction {
     fn error(err: String) -> Self;
@@ -41,139 +36,6 @@ Please report this error to the github issue.
 
 Also, if you want to see the backtrace, you can set the `RUST_BACKTRACE` environment variable to `1`.
 "#.into()
-    }
-}
-
-fn fmt_report(diag: Report) -> String {
-    let mut out = String::new();
-    GraphicalReportHandler::new_themed(GraphicalTheme::unicode())
-        .render_report(&mut out, diag.as_ref())
-        .unwrap();
-    out
-}
-
-/// Custom panic handler/hook. Prints the [`ErrorContext`].
-pub fn handle_panic<T>(info: &PanicInfo<'_>, sender: &SenderWithContext<T>)
-where
-    T: ErrorInstruction + Clone,
-{
-    use std::{process, thread};
-    let thread = thread::current();
-    let thread = thread.name().unwrap_or("unnamed");
-
-    let msg = match info.payload().downcast_ref::<&'static str>() {
-        Some(s) => Some(*s),
-        None => info.payload().downcast_ref::<String>().map(|s| &**s),
-    }
-    .unwrap_or("An unexpected error occurred!");
-
-    let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
-
-    let mut report: Report = Panic(format!("\u{1b}[0;31m{}\u{1b}[0;0m", msg)).into();
-
-    let mut location_string = String::new();
-    if let Some(location) = info.location() {
-        location_string = format!(
-            "At {}:{}:{}",
-            location.file(),
-            location.line(),
-            location.column()
-        );
-        report = report.wrap_err(location_string.clone());
-    }
-
-    if !err_ctx.is_empty() {
-        report = report.wrap_err(format!("{}", err_ctx));
-    }
-
-    report = report.wrap_err(format!(
-        "Thread '\u{1b}[0;31m{}\u{1b}[0;0m' panicked.",
-        thread
-    ));
-
-    error!(
-        "{}",
-        format!(
-            "Panic occured:
-             thread: {}
-             location: {}
-             message: {}",
-            thread, location_string, msg
-        )
-    );
-
-    if thread == "main" {
-        // here we only show the first line because the backtrace is not readable otherwise
-        // a better solution would be to escape raw mode before we do this, but it's not trivial
-        // to get os_input here
-        println!("\u{1b}[2J{}", fmt_report(report));
-        process::exit(1);
-    } else {
-        let _ = sender.send(T::error(fmt_report(report)));
-    }
-}
-
-pub fn get_current_ctx() -> ErrorContext {
-    ASYNCOPENCALLS
-        .try_with(|ctx| *ctx.borrow())
-        .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow()))
-}
-
-/// A representation of the call stack.
-#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
-pub struct ErrorContext {
-    calls: [ContextType; MAX_THREAD_CALL_STACK],
-}
-
-impl ErrorContext {
-    /// Returns a new, blank [`ErrorContext`] containing only [`Empty`](ContextType::Empty)
-    /// calls.
-    pub fn new() -> Self {
-        Self {
-            calls: [ContextType::Empty; MAX_THREAD_CALL_STACK],
-        }
-    }
-
-    /// Returns `true` if the calls has all [`Empty`](ContextType::Empty) calls.
-    pub fn is_empty(&self) -> bool {
-        self.calls.iter().all(|c| c == &ContextType::Empty)
-    }
-
-    /// Adds a call to this [`ErrorContext`]'s call stack representation.
-    pub fn add_call(&mut self, call: ContextType) {
-        for ctx in &mut self.calls {
-            if let ContextType::Empty = ctx {
-                *ctx = call;
-                break;
-            }
-        }
-        self.update_thread_ctx()
-    }
-
-    /// Updates the thread local [`ErrorContext`].
-    pub fn update_thread_ctx(&self) {
-        ASYNCOPENCALLS
-            .try_with(|ctx| *ctx.borrow_mut() = *self)
-            .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self));
-    }
-}
-
-impl Default for ErrorContext {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Display for ErrorContext {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        writeln!(f, "Originating Thread(s)")?;
-        for (index, ctx) in self.calls.iter().enumerate() {
-            if *ctx == ContextType::Empty {
-                break;
-            }
-            writeln!(f, "\t\u{1b}[0;0m{}. {}", index + 1, ctx)?;
-        }
-        Ok(())
     }
 }
 
@@ -378,4 +240,152 @@ pub enum ServerContext {
 pub enum PtyWriteContext {
     Write,
     Exit,
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub use not_wasm::*;
+
+#[cfg(not(target_family = "wasm"))]
+mod not_wasm {
+    use super::*;
+    use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
+    use miette::{GraphicalReportHandler, GraphicalTheme, Report};
+    use std::panic::PanicInfo;
+
+    /// The maximum amount of calls an [`ErrorContext`] will keep track
+    /// of in its stack representation. This is a per-thread maximum.
+    const MAX_THREAD_CALL_STACK: usize = 6;
+
+    /// Custom panic handler/hook. Prints the [`ErrorContext`].
+    pub fn handle_panic<T>(info: &PanicInfo<'_>, sender: &SenderWithContext<T>)
+    where
+        T: ErrorInstruction + Clone,
+    {
+        use std::{process, thread};
+        let thread = thread::current();
+        let thread = thread.name().unwrap_or("unnamed");
+
+        let msg = match info.payload().downcast_ref::<&'static str>() {
+            Some(s) => Some(*s),
+            None => info.payload().downcast_ref::<String>().map(|s| &**s),
+        }
+        .unwrap_or("An unexpected error occurred!");
+
+        let err_ctx = OPENCALLS.with(|ctx| *ctx.borrow());
+
+        let mut report: Report = Panic(format!("\u{1b}[0;31m{}\u{1b}[0;0m", msg)).into();
+
+        let mut location_string = String::new();
+        if let Some(location) = info.location() {
+            location_string = format!(
+                "At {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
+            report = report.wrap_err(location_string.clone());
+        }
+
+        if !err_ctx.is_empty() {
+            report = report.wrap_err(format!("{}", err_ctx));
+        }
+
+        report = report.wrap_err(format!(
+            "Thread '\u{1b}[0;31m{}\u{1b}[0;0m' panicked.",
+            thread
+        ));
+
+        error!(
+            "{}",
+            format!(
+                "Panic occured:
+             thread: {}
+             location: {}
+             message: {}",
+                thread, location_string, msg
+            )
+        );
+
+        if thread == "main" {
+            // here we only show the first line because the backtrace is not readable otherwise
+            // a better solution would be to escape raw mode before we do this, but it's not trivial
+            // to get os_input here
+            println!("\u{1b}[2J{}", fmt_report(report));
+            process::exit(1);
+        } else {
+            let _ = sender.send(T::error(fmt_report(report)));
+        }
+    }
+
+    pub fn get_current_ctx() -> ErrorContext {
+        ASYNCOPENCALLS
+            .try_with(|ctx| *ctx.borrow())
+            .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow()))
+    }
+
+    fn fmt_report(diag: Report) -> String {
+        let mut out = String::new();
+        GraphicalReportHandler::new_themed(GraphicalTheme::unicode())
+            .render_report(&mut out, diag.as_ref())
+            .unwrap();
+        out
+    }
+
+    /// A representation of the call stack.
+    #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+    pub struct ErrorContext {
+        calls: [ContextType; MAX_THREAD_CALL_STACK],
+    }
+
+    impl ErrorContext {
+        /// Returns a new, blank [`ErrorContext`] containing only [`Empty`](ContextType::Empty)
+        /// calls.
+        pub fn new() -> Self {
+            Self {
+                calls: [ContextType::Empty; MAX_THREAD_CALL_STACK],
+            }
+        }
+
+        /// Returns `true` if the calls has all [`Empty`](ContextType::Empty) calls.
+        pub fn is_empty(&self) -> bool {
+            self.calls.iter().all(|c| c == &ContextType::Empty)
+        }
+
+        /// Adds a call to this [`ErrorContext`]'s call stack representation.
+        pub fn add_call(&mut self, call: ContextType) {
+            for ctx in &mut self.calls {
+                if let ContextType::Empty = ctx {
+                    *ctx = call;
+                    break;
+                }
+            }
+            self.update_thread_ctx()
+        }
+
+        /// Updates the thread local [`ErrorContext`].
+        pub fn update_thread_ctx(&self) {
+            ASYNCOPENCALLS
+                .try_with(|ctx| *ctx.borrow_mut() = *self)
+                .unwrap_or_else(|_| OPENCALLS.with(|ctx| *ctx.borrow_mut() = *self));
+        }
+    }
+
+    impl Default for ErrorContext {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    impl Display for ErrorContext {
+        fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+            writeln!(f, "Originating Thread(s)")?;
+            for (index, ctx) in self.calls.iter().enumerate() {
+                if *ctx == ContextType::Empty {
+                    break;
+                }
+                writeln!(f, "\t\u{1b}[0;0m{}. {}", index + 1, ctx)?;
+            }
+            Ok(())
+        }
+    }
 }
