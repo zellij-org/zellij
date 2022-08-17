@@ -615,11 +615,10 @@ impl Layout {
     pub fn from_kdl(kdl_layout: &KdlDocument, direction: Option<SplitDirection>) -> Result<Self, ConfigError> {
         let mut tabs = vec![];
         let layout_node = kdl_layout.nodes().iter().find(|n| kdl_name!(n) == "layout").ok_or(ConfigError::KdlParsingError("No layout found".into()))?;
-        fn parse_kdl_layout (kdl_layout: &KdlNode, direction: Option<SplitDirection>, tabs: &mut Vec<Layout>) -> Result<Layout, ConfigError> {
+        fn parse_kdl_layout (kdl_layout: &KdlNode, tabs: &mut Vec<Layout>) -> Result<Layout, ConfigError> {
             let borderless: bool = kdl_get_child_entry_bool_value!(kdl_layout, "borderless").unwrap_or(false);
             let focus = kdl_get_child_entry_bool_value!(kdl_layout, "focus");
             let pane_name = kdl_get_child_entry_string_value!(kdl_layout, "name");
-            let direction = direction.unwrap_or_default();
             let mut split_size = None;
             if let Some(string_split_size) = kdl_get_string_entry!(kdl_layout, "size") {
                 // "10%" => SplitSize::Percent(10) or 10 => SplitSize::Fixed(10)
@@ -638,18 +637,17 @@ impl Layout {
                 }
                 run = Some(Run::Plugin(RunPlugin::from_kdl(kdl_plugin_block)?));
             }
+            let mut direction = SplitDirection::default();
             let mut layout_parts = vec![];
             let mut tabs_index_in_children = None;
             if let Some(kdl_parts) = kdl_get_child!(kdl_layout, "parts") {
-                let direction = kdl_get_string_entry!(kdl_parts, "direction").ok_or(ConfigError::KdlParsingError("no direction found for layout part".into()))?;
-                let direction = SplitDirection::from_str(direction)?;
-                // let mut parts: Vec<Layout> = vec![];
-                // if let Some(children) = kdl_children_nodes!(kdl_layout) {
+                let part_direction = kdl_get_string_entry!(kdl_parts, "direction").ok_or(ConfigError::KdlParsingError("no direction found for layout part".into()))?;
+                direction = SplitDirection::from_str(part_direction)?;
                 if let Some(children) = kdl_children_nodes!(kdl_parts) {
                     for (i, child) in children.iter().enumerate() {
                         let child_name = kdl_name!(child);
                         if child_name == "layout" {
-                            layout_parts.push(parse_kdl_layout(&child, Some(direction), tabs)?);
+                            layout_parts.push(parse_kdl_layout(&child, tabs)?);
                         } else if child_name == "tabs" {
                             tabs_index_in_children = Some(i);
                             if !tabs.is_empty() {
@@ -658,12 +656,12 @@ impl Layout {
                             match kdl_children_nodes!(child) {
                                 Some(children) => {
                                     for child in children {
-                                        let tab_layout = parse_kdl_layout(&child, Some(direction), tabs)?;
+                                        let tab_layout = parse_kdl_layout(&child, tabs)?;
                                         tabs.push(tab_layout);
                                     }
 
                                 },
-                                None => tabs.push(Layout::with_one_pane()),
+                                None => tabs.push(Layout::default()),
                             }
                         } else {
                             return Err(ConfigError::KdlParsingError(format!("Unknown layout part: {:?}", child_name)));
@@ -683,7 +681,8 @@ impl Layout {
                 template: None,
             })
         }
-        let mut base_layout = parse_kdl_layout(layout_node, direction, &mut tabs)?;
+        let mut base_layout = parse_kdl_layout(layout_node, &mut tabs)?;
+        println!("base_layout: {:?}", base_layout);
         if !tabs.is_empty() {
             let mut root_layout = Layout::default();
             let mut tab_parts: Vec<(Option<String>, Layout)> = vec![];
@@ -696,9 +695,13 @@ impl Layout {
             }
             root_layout.parts = LayoutParts::Tabs(tab_parts);
             let mut layout_template = base_layout.clone();
-            layout_template.insert_tab_layout(&Layout::with_one_pane());
+            layout_template.insert_tab_layout(&Layout::default());
             root_layout.template = Some(Box::new(layout_template));
             Ok(root_layout)
+        } else if base_layout.is_empty() {
+            // even a totally empty layout needs at least one pane
+            base_layout.parts = LayoutParts::Panes(vec![Layout::default()]);
+            Ok(base_layout)
         } else {
             Ok(base_layout)
         }
@@ -901,6 +904,12 @@ impl Layout {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        match &self.parts {
+            LayoutParts::Tabs(tabs) => tabs.is_empty(),
+            LayoutParts::Panes(panes) => panes.is_empty(),
+        }
+    }
     pub fn has_tabs(&self) -> bool {
         match self.parts {
             LayoutParts::Tabs(_) => true,

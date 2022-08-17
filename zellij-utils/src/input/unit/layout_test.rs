@@ -13,6 +13,245 @@ fn default_layout_dir(layout: String) -> PathBuf {
     layout_dir.join(layout)
 }
 
+#[test]
+fn empty_layout() {
+    let kdl_layout = "layout";
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout::with_one_pane();
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_one_pane() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout;
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout::with_one_pane();
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_multiple_panes() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout;
+                layout;
+                layout;
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout::default(),
+            Layout::default(),
+            Layout::default()
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_nested_panes() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    parts direction="Vertical" {
+                        layout;
+                        layout;
+                    }
+                }
+                layout {
+                    parts direction="Horizontal" {
+                        layout;
+                        layout;
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                direction: SplitDirection::Vertical,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout::default(),
+                ]),
+                ..Default::default()
+            },
+            Layout {
+                direction: SplitDirection::Horizontal,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout::default(),
+                ]),
+                ..Default::default()
+            }
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_multiple_nested_panes() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    parts direction="Vertical" {
+                        layout;
+                        layout {
+                            parts direction="Vertical" {
+                                layout;
+                                layout
+                            }
+                        }
+                    }
+                }
+                layout;
+                layout {
+                    parts direction="Horizontal" {
+                        layout;
+                        layout;
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                direction: SplitDirection::Vertical,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout {
+                        direction: SplitDirection::Vertical,
+                        parts: LayoutParts::Panes(vec![
+                            Layout::default(),
+                            Layout::default(),
+                        ]),
+                        ..Default::default()
+                    }
+                ]),
+                ..Default::default()
+            },
+            Layout::default(),
+            Layout {
+                direction: SplitDirection::Horizontal,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout::default(),
+                ]),
+                ..Default::default()
+            }
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_tabs() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                tabs {
+                    layout;
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Tabs(vec![
+            (None, Layout::default()),
+        ]),
+        ..Default::default()
+    };
+    // TODO: CONTINUE HERE (17/08)
+    // need to get this test to pass... there's some issue with layouts created with one pane,
+    // without one pane... need to figure out the best way to go about it
+    // to test: cargo test -- layout_with_tabs --nocapture
+
+    assert_eq!(layout.parts, expected_layout.parts);
+}
+
+#[test]
+fn layout_with_empty_tabs_block() {
+    // TBD
+}
+
+#[test]
+fn layout_with_nested_differing_tabs() {
+    // TBD
+}
+
+#[test]
+fn layout_with_panes_in_different_mixed_split_sizes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_panes_in_different_split_sizes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_command_panes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_plugin_panes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_borderless_panes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_focused_panes() {
+    // TBD
+}
+
+#[test]
+fn layout_with_pane_names() {
+    // TBD
+}
+
+#[test]
+fn layout_with_tab_names() {
+    // TBD
+}
+
+// TODO: CONTINUE HERE
+// - write tests similar to the config that will feed KDL into Layout::from_kdl and assert stuff
+// about the layout
+// - then bring these tests back
 // TODO: BRING THESE TESTS BACK!!
 //
 //
