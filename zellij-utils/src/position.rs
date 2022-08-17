@@ -13,6 +13,13 @@ impl Position {
             column: Column(column as usize),
         }
     }
+    pub fn change_line(&mut self, line: isize) {
+        self.line = Line(line);
+    }
+
+    pub fn change_column(&mut self, column: usize) {
+        self.column = Column(column);
+    }
 
     pub fn relative_to(&self, line: usize, column: usize) -> Self {
         Self {

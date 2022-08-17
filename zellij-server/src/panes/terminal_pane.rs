@@ -2,7 +2,7 @@ use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{CursorShape, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
@@ -24,9 +24,53 @@ use zellij_utils::{
     vte,
 };
 
+use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
+
 pub const SELECTION_SCROLL_INTERVAL_MS: u64 = 10;
 
-use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
+// Some keys in different formats but are used in the code
+const LEFT_ARROW: &[u8] = &[27, 91, 68];
+const RIGHT_ARROW: &[u8] = &[27, 91, 67];
+const UP_ARROW: &[u8] = &[27, 91, 65];
+const DOWN_ARROW: &[u8] = &[27, 91, 66];
+const HOME_KEY: &[u8] = &[27, 91, 72];
+const END_KEY: &[u8] = &[27, 91, 70];
+const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
+const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
+const TERMINATING_STRING: &str = "\0";
+const DELETE_KEY: &str = "\u{007F}";
+const BACKSPACE_KEY: &str = "\u{0008}";
+
+/// The ansi encoding of some keys
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum AnsiEncoding {
+    Left,
+    Right,
+    Up,
+    Down,
+    Home,
+    End,
+}
+
+impl AnsiEncoding {
+    /// Returns the ANSI representation of the entries.
+    /// NOTE: There is an ANSI escape code (27) at the beginning of the string,
+    ///       some editors will not show this
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            Self::Left => "OD".as_bytes(),
+            Self::Right => "OC".as_bytes(),
+            Self::Up => "OC".as_bytes(),
+            Self::Down => "OB".as_bytes(),
+            Self::Home => &[27, 79, 72], // ESC O H
+            Self::End => &[27, 79, 70],  // ESC O F
+        }
+    }
+
+    pub fn as_vec_bytes(&self) -> Vec<u8> {
+        self.as_bytes().to_vec()
+    }
+}
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
@@ -118,63 +162,39 @@ impl Pane for TerminalPane {
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
-        match input_bytes.as_slice() {
-            [27, 91, 68] => {
-                // left arrow
-                if self.grid.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OD".as_bytes().to_vec();
-                }
-            },
-            [27, 91, 67] => {
-                // right arrow
-                if self.grid.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OC".as_bytes().to_vec();
-                }
-            },
-            [27, 91, 65] => {
-                // up arrow
-                if self.grid.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OA".as_bytes().to_vec();
-                }
-            },
+        if self.grid.cursor_key_mode {
+            match input_bytes.as_slice() {
+                LEFT_ARROW => {
+                    return AnsiEncoding::Left.as_vec_bytes();
+                },
+                RIGHT_ARROW => {
+                    return AnsiEncoding::Right.as_vec_bytes();
+                },
+                UP_ARROW => {
+                    return AnsiEncoding::Up.as_vec_bytes();
+                },
+                DOWN_ARROW => {
+                    return AnsiEncoding::Down.as_vec_bytes();
+                },
 
-            [27, 91, 72] => {
-                // home key
-                if self.grid.cursor_key_mode {
-                    return vec![27, 79, 72]; // ESC O H
-                }
-            },
-            [27, 91, 70] => {
-                // end key
-                if self.grid.cursor_key_mode {
-                    return vec![27, 79, 70]; // ESC O F
-                }
-            },
-            [27, 91, 66] => {
-                // down arrow
-                if self.grid.cursor_key_mode {
-                    // please note that in the line below, there is an ANSI escape code (27) at the beginning of the string,
-                    // some editors will not show this
-                    return "OB".as_bytes().to_vec();
-                }
-            },
-            [27, 91, 50, 48, 48, 126] | [27, 91, 50, 48, 49, 126] => {
-                if !self.grid.bracketed_paste_mode {
-                    // Zellij itself operates in bracketed paste mode, so the terminal sends these
-                    // instructions (bracketed paste start and bracketed paste end respectively)
-                    // when pasting input. We only need to make sure not to send them to terminal
-                    // panes who do not work in this mode
-                    return vec![];
-                }
-            },
-            _ => {},
-        };
+                HOME_KEY => {
+                    return AnsiEncoding::Home.as_vec_bytes();
+                },
+                END_KEY => {
+                    return AnsiEncoding::End.as_vec_bytes();
+                },
+                BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => {
+                    if !self.grid.bracketed_paste_mode {
+                        // Zellij itself operates in bracketed paste mode, so the terminal sends these
+                        // instructions (bracketed paste start and bracketed paste end respectively)
+                        // when pasting input. We only need to make sure not to send them to terminal
+                        // panes who do not work in this mode
+                        return vec![];
+                    }
+                },
+                _ => {},
+            };
+        }
         input_bytes
     }
     fn position_and_size(&self) -> PaneGeom {
@@ -324,6 +344,7 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
+
         match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {
@@ -388,11 +409,10 @@ impl Pane for TerminalPane {
     }
     fn update_name(&mut self, name: &str) {
         match name {
-            "\0" => {
+            TERMINATING_STRING => {
                 self.pane_name = String::new();
             },
-            "\u{007F}" | "\u{0008}" => {
-                //delete and backspace keys
+            DELETE_KEY | BACKSPACE_KEY => {
                 self.pane_name.pop();
             },
             c => {
@@ -470,15 +490,7 @@ impl Pane for TerminalPane {
         self.active_at = time;
     }
     fn cursor_shape_csi(&self) -> String {
-        match self.grid.cursor_shape() {
-            CursorShape::Initial => "\u{1b}[0 q".to_string(),
-            CursorShape::Block => "\u{1b}[2 q".to_string(),
-            CursorShape::BlinkingBlock => "\u{1b}[1 q".to_string(),
-            CursorShape::Underline => "\u{1b}[4 q".to_string(),
-            CursorShape::BlinkingUnderline => "\u{1b}[3 q".to_string(),
-            CursorShape::Beam => "\u{1b}[6 q".to_string(),
-            CursorShape::BlinkingBeam => "\u{1b}[5 q".to_string(),
-        }
+        self.grid.cursor_shape().get_csi_str().to_string()
     }
     fn drain_messages_to_pty(&mut self) -> Vec<Vec<u8>> {
         self.grid.pending_messages_to_pty.drain(..).collect()
@@ -496,14 +508,18 @@ impl Pane for TerminalPane {
     fn update_selection(&mut self, to: &Position, _client_id: ClientId) {
         let should_scroll = self.selection_scrolled_at.elapsed()
             >= time::Duration::from_millis(SELECTION_SCROLL_INTERVAL_MS);
+        let cursor_at_the_bottom = to.line.0 < 0 && should_scroll;
+        let cursor_at_the_top = to.line.0 as usize >= self.grid.height && should_scroll;
+        let cursor_in_the_middle = to.line.0 >= 0 && (to.line.0 as usize) < self.grid.height;
+
         // TODO: check how far up/down mouse is relative to pane, to increase scroll lines?
-        if to.line.0 < 0 && should_scroll {
+        if cursor_at_the_bottom {
             self.grid.scroll_up_one_line();
             self.selection_scrolled_at = time::Instant::now();
-        } else if to.line.0 as usize >= self.grid.height && should_scroll {
+        } else if cursor_at_the_top {
             self.grid.scroll_down_one_line();
             self.selection_scrolled_at = time::Instant::now();
-        } else if to.line.0 >= 0 && (to.line.0 as usize) < self.grid.height {
+        } else if cursor_in_the_middle {
             self.grid.update_selection(to);
         }
 
@@ -550,10 +566,30 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
-    fn mouse_mode(&self) -> bool {
-        self.grid.mouse_mode
+    fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_left_click_signal(position, is_held)
     }
-
+    fn mouse_left_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_left_click_release_signal(position)
+    }
+    fn mouse_right_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_right_click_signal(position, is_held)
+    }
+    fn mouse_right_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_right_click_release_signal(position)
+    }
+    fn mouse_middle_click(&self, position: &Position, is_held: bool) -> Option<String> {
+        self.grid.mouse_middle_click_signal(position, is_held)
+    }
+    fn mouse_middle_click_release(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_middle_click_release_signal(position)
+    }
+    fn mouse_scroll_up(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_up_signal(position)
+    }
+    fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
+        self.grid.mouse_scroll_down_signal(position)
+    }
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)
@@ -561,11 +597,10 @@ impl Pane for TerminalPane {
 
     fn update_search_term(&mut self, needle: &str) {
         match needle {
-            "\0" => {
+            TERMINATING_STRING => {
                 self.search_term = String::new();
             },
-            "\u{007F}" | "\u{0008}" => {
-                //delete and backspace keys
+            DELETE_KEY | BACKSPACE_KEY => {
                 self.search_term.pop();
             },
             c => {
