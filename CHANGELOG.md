@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.31.2] - 2022-08-17
 * fix: crash when attaching to a session without the first tab (https://github.com/zellij-org/zellij/pull/1648)
 * fix: race crash on startup when server is not ready (https://github.com/zellij-org/zellij/pull/1651)
 * Terminal compatibility: forward OSC52 clipboard copy events from terminals (https://github.com/zellij-org/zellij/pull/1644)
