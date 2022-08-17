@@ -324,9 +324,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 };
 
                 // if !&layout.tabs.is_empty() {
-                if !&layout.has_tabs() {
+                if layout.has_tabs() {
                     // for tab_layout in layout.clone().tabs {
-                    for (tab_layout, tab_name) in layout.tabs() {
+                    for (tab_name, tab_layout) in layout.tabs() {
+                        log::info!("tab_name: {:?}, tab_layout: {:?}", tab_name, tab_layout);
                         spawn_tabs(Some(tab_layout.clone()), Some(tab_name));
                     }
 
@@ -356,6 +357,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 //                             .unwrap();
 //                     }
                 } else {
+                    log::info!("in else");
                     spawn_tabs(None, None);
                 }
                 session_data

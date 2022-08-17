@@ -639,10 +639,9 @@ impl Screen {
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
-        println!("screen.new_tab() 1");
+        log::info!("new_tab, layout: {:?}", layout);
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
-        println!("screen.new_tab() 2");
         let mut tab = Tab::new(
             tab_index,
             position,
@@ -663,9 +662,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
-        println!("screen.new_tab() 3");
         tab.apply_layout(layout, new_pids, tab_index, client_id);
-        println!("screen.new_tab() 4");
         if self.session_is_mirrored {
             if let Some(active_tab) = self.get_active_tab_mut(client_id) {
                 let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
@@ -688,22 +685,16 @@ impl Screen {
             }
             self.update_client_tab_focus(client_id, tab_index);
         }
-        println!("screen.new_tab() 5");
         tab.update_input_modes();
         tab.visible(true);
-        println!("screen.new_tab() 6");
         self.tabs.insert(tab_index, tab);
-        println!("tabs after inserting: {:?}", self.tabs.len());
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id);
         }
-        println!("screen.new_tab() 7: {:?}", self.tabs.len());
         self.update_tabs();
 
-        println!("screen.new_tab() 8: {:?}", self.tabs.len());
         self.render();
-        println!("screen.new_tab() 9: {:?}", self.tabs.len());
     }
 
     pub fn add_client(&mut self, client_id: ClientId) {

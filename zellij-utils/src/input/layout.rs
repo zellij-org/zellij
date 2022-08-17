@@ -846,6 +846,7 @@ impl Layout {
     }
 
     pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
+        log::info!("position_panes_in_space...");
         split_space(space, self)
     }
 
@@ -864,6 +865,8 @@ impl Layout {
                         Ok(())
                     },
                     LayoutParts::Tabs(_) => {
+                        // TODO: CONTINUE HERE - if we insert tab and we have tabs, just add it
+                        // here? (and below)
                         Err("Only top layout part can have a tabs block")
                     }
                 }
@@ -887,17 +890,26 @@ impl Layout {
     }
 
     pub fn has_tabs(&self) -> bool {
-        // TODO: CONTINUE HERE (15/08) - implement these, then test with:
-        // - cargo make build && target/debug/zellij
-        unimplemented!()
+        match self.parts {
+            LayoutParts::Tabs(_) => true,
+            _ => false
+        }
     }
 
-    pub fn tabs(&self) -> Vec<(Layout, String)> { // String is the tab name
-        unimplemented!()
+    pub fn tabs(&self) -> Vec<(String, Layout)> { // String is the tab name
+        match &self.parts {
+            // LayoutParts::Tabs(tabs) => tabs.clone(),
+            LayoutParts::Tabs(tabs) => {
+                log::info!("tabs is: {:?}", tabs);
+                tabs.clone()
+            }
+            _ => vec![]
+        }
     }
 
     pub fn focused_tab_index(&self) -> Option<usize> {
-        unimplemented!()
+        // TBD
+        None
     }
 
 //     fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Result<Vec<Self>, ConfigError> {
@@ -1027,8 +1039,7 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
             pane_positions
         },
         LayoutParts::Tabs(tabs) => {
-            // TODO
-            unimplemented!()
+            panic!("tab layout should not have nested tabs");
         }
     }
 //     let mut pane_positions = Vec::new();
