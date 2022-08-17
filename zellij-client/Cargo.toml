@@ -1,6 +1,6 @@
 [package]
 name = "zellij-client"
-version = "0.31.2"
+version = "0.32.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "The client-side library for Zellij"
@@ -10,7 +10,7 @@ license = "MIT"
 
 [dependencies]
 mio = { version = "0.7.11", features = ['os-ext'] }
-zellij-utils = { path = "../zellij-utils/", version = "0.31.2" }
+zellij-utils = { path = "../zellij-utils/", version = "0.32.0" }
 log = "0.4.17"
 
 [dev-dependencies]
