@@ -60,7 +60,7 @@ impl AnsiEncoding {
         match self {
             Self::Left => "OD".as_bytes(),
             Self::Right => "OC".as_bytes(),
-            Self::Up => "OC".as_bytes(),
+            Self::Up => "OA".as_bytes(),
             Self::Down => "OB".as_bytes(),
             Self::Home => &[27, 79, 72], // ESC O H
             Self::End => &[27, 79, 70],  // ESC O F
