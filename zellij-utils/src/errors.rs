@@ -1,5 +1,26 @@
 //! Error context system based on a thread-local representation of the call stack, itself based on
 //! the instructions that are sent between threads.
+//!
+//! # Help wanted
+//!
+//! As of writing this, zellij relies on `unwrap()` to catch errors (terminate execution) in many
+//! functions, rather than returning a [`Result`] to propagate these errors further up. While we
+//! don't consider `unwrap` to be a bad thing in general, it hides the underlying error and leaves
+//! the user only with a stack trace to go on. Worse than this, it will crash the application. This
+//! is particularly bad when the user is using long-running sessions to perform tasks.
+//!
+//! Hence, we would like to eliminate `unwrap()` statements from the code where possible, and apply
+//! better error handling instead. This way, functions higher up in the call stack can react to
+//! errors from underlying functions and either try to recover, or give some meaningful error
+//! messages if recovery isn't possible.
+//!
+//! Since the zellij codebase is pretty big and growing rapidly, this endeavour will continue to be
+//! pursued over time, as zellij develops. The idea is that modules or single files are converted
+//! bit by bit, preferrably in small PRs that each target a specific module or file. **If you are
+//! looking to contribute to zellij, this may be an ideal start for you!** This way you get to know
+//! the codebase and get an idea which modules are used at which other places in the code.
+//!
+//! If you have an interest in this, don't hesitate to get in touch with us.
 
 use colored::*;
 use log::error;
