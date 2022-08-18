@@ -186,66 +186,413 @@ fn layout_with_tabs() {
     let expected_layout = Layout {
         direction: SplitDirection::Horizontal,
         parts: LayoutParts::Tabs(vec![
-            (None, Layout::default()),
+            (None, Layout::with_one_pane()),
         ]),
+        template: Some(Box::new(Layout::with_one_pane())),
         ..Default::default()
     };
-    // TODO: CONTINUE HERE (17/08)
-    // need to get this test to pass... there's some issue with layouts created with one pane,
-    // without one pane... need to figure out the best way to go about it
-    // to test: cargo test -- layout_with_tabs --nocapture
-
-    assert_eq!(layout.parts, expected_layout.parts);
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_empty_tabs_block() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                tabs;
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Tabs(vec![
+            (None, Layout::with_one_pane()),
+        ]),
+        template: Some(Box::new(Layout::with_one_pane())),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_nested_differing_tabs() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout;
+                tabs {
+                    layout {
+                        parts direction="Vertical" {
+                            layout;
+                            layout;
+                            layout;
+                        }
+                    }
+                    layout {
+                        parts direction="Horizontal" {
+                            layout;
+                            layout;
+                            layout;
+                        }
+                    }
+                }
+                layout;
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Tabs(vec![
+            (None, Layout {
+                direction: SplitDirection::Horizontal,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout {
+                        direction: SplitDirection::Vertical,
+                        parts: LayoutParts::Panes(vec![Layout::default(), Layout::default(), Layout::default()]),
+                        ..Default::default()
+                    },
+                    Layout::default(),
+                ]),
+                ..Default::default()
+            }),
+            (None, Layout {
+                direction: SplitDirection::Horizontal,
+                parts: LayoutParts::Panes(vec![
+                    Layout::default(),
+                    Layout {
+                        direction: SplitDirection::Horizontal,
+                        parts: LayoutParts::Panes(vec![Layout::default(), Layout::default(), Layout::default()]),
+                        ..Default::default()
+                    },
+                    Layout::default(),
+                ]),
+                ..Default::default()
+            }),
+        ]),
+        template: Some(Box::new(Layout {
+            direction: SplitDirection::Horizontal,
+            parts: LayoutParts::Panes(vec![
+                Layout::default(),
+                Layout::default(),
+                Layout::default(),
+            ]),
+            ..Default::default()
+        })),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_panes_in_different_mixed_split_sizes() {
-    // TBD
-}
-
-#[test]
-fn layout_with_panes_in_different_split_sizes() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout size=1;
+                layout size="10%";
+                layout;
+                layout size=2;
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                split_size: Some(SplitSize::Fixed(1)),
+                ..Default::default()
+            },
+            Layout {
+                split_size: Some(SplitSize::Percent(10)),
+                ..Default::default()
+            },
+            Layout {
+                split_size: None,
+                ..Default::default()
+            },
+            Layout {
+                split_size: Some(SplitSize::Fixed(2)),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_command_panes() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    command {
+                        cmd "htop"
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_command_panes_and_cwd() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    command {
+                        cmd "htop"
+                        cwd "/path/to/my/cwd"
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    cwd: Some(PathBuf::from("/path/to/my/cwd")),
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_command_panes_and_cwd_and_args() {
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    command {
+                        cmd "htop"
+                        args "-h" "-v"
+                        cwd "/path/to/my/cwd"
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    args: vec![String::from("-h"), String::from("-v")],
+                    cwd: Some(PathBuf::from("/path/to/my/cwd")),
+                })),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_plugin_panes() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    plugin {
+                        location "zellij:tab-bar"
+                    }
+                }
+                layout {
+                    plugin {
+                        location "file:/path/to/my/plugin.wasm"
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                    _allow_exec_host_cmd: false,
+                })),
+                ..Default::default()
+            },
+            Layout {
+                run: Some(Run::Plugin(RunPlugin {
+                    location: RunPluginLocation::File(PathBuf::from("/path/to/my/plugin.wasm")),
+                    _allow_exec_host_cmd: false,
+                })),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_borderless_panes() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    borderless true
+                }
+                layout
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                borderless: true,
+                ..Default::default()
+            },
+            Layout::default()
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_focused_panes() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    focus true
+                }
+                layout
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                focus: Some(true),
+                ..Default::default()
+            },
+            Layout::default()
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_pane_names() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                layout {
+                    name "my awesome pane"
+                }
+                layout
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        parts: LayoutParts::Panes(vec![
+            Layout {
+                pane_name: Some("my awesome pane".into()),
+                ..Default::default()
+            },
+            Layout::default()
+        ]),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 #[test]
 fn layout_with_tab_names() {
-    // TBD
+    let kdl_layout = r#"
+        layout {
+            parts direction="Horizontal" {
+                tabs {
+                    layout tab_name="my cool tab name 1" {
+                        name "pane name inside tab 1"
+                    }
+                    layout tab_name="my cool tab name 2" {
+                        name "pane name inside tab 2"
+                    }
+                }
+            }
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout, None).unwrap();
+    let expected_layout = Layout {
+        direction: SplitDirection::Horizontal,
+        parts: LayoutParts::Tabs(vec![
+            (Some("my cool tab name 1".into()), Layout {
+                parts: LayoutParts::Panes(vec![
+                    Layout {
+                        pane_name: Some("pane name inside tab 1".into()),
+                        ..Default::default()
+                    }
+                ]),
+                ..Default::default()
+            }),
+            (Some("my cool tab name 2".into()), Layout {
+                parts: LayoutParts::Panes(vec![
+                    Layout {
+                        pane_name: Some("pane name inside tab 2".into()),
+                        ..Default::default()
+                    }
+                ]),
+                ..Default::default()
+            }),
+        ]),
+        template: Some(Box::new(Layout::with_one_pane())),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
 }
 
 // TODO: CONTINUE HERE

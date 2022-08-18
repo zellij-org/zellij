@@ -613,12 +613,12 @@ impl Layout {
         Layout::from_kdl(&kdl_layout, None)
     }
     pub fn from_kdl(kdl_layout: &KdlDocument, direction: Option<SplitDirection>) -> Result<Self, ConfigError> {
-        let mut tabs = vec![];
+        let mut tabs: Vec<(Option<String>, Layout)> = vec![];
         let layout_node = kdl_layout.nodes().iter().find(|n| kdl_name!(n) == "layout").ok_or(ConfigError::KdlParsingError("No layout found".into()))?;
-        fn parse_kdl_layout (kdl_layout: &KdlNode, tabs: &mut Vec<Layout>) -> Result<Layout, ConfigError> {
+        fn parse_kdl_layout (kdl_layout: &KdlNode, tabs: &mut Vec<(Option<String>, Layout)>) -> Result<Layout, ConfigError> {
             let borderless: bool = kdl_get_child_entry_bool_value!(kdl_layout, "borderless").unwrap_or(false);
             let focus = kdl_get_child_entry_bool_value!(kdl_layout, "focus");
-            let pane_name = kdl_get_child_entry_string_value!(kdl_layout, "name");
+            let pane_name = kdl_get_child_entry_string_value!(kdl_layout, "name").map(|name| name.to_string());
             let mut split_size = None;
             if let Some(string_split_size) = kdl_get_string_entry!(kdl_layout, "size") {
                 // "10%" => SplitSize::Percent(10) or 10 => SplitSize::Fixed(10)
@@ -656,12 +656,13 @@ impl Layout {
                             match kdl_children_nodes!(child) {
                                 Some(children) => {
                                     for child in children {
+                                        let tab_name = kdl_get_string_entry!(child, "tab_name").map(|tab_name| tab_name.to_string());
                                         let tab_layout = parse_kdl_layout(&child, tabs)?;
-                                        tabs.push(tab_layout);
+                                        tabs.push((tab_name, tab_layout));
                                     }
 
                                 },
-                                None => tabs.push(Layout::default()),
+                                None => tabs.push((None, Layout::default())),
                             }
                         } else {
                             return Err(ConfigError::KdlParsingError(format!("Unknown layout part: {:?}", child_name)));
@@ -671,31 +672,32 @@ impl Layout {
             }
             Ok(Layout {
                 direction,
-                pane_name: None, // TODO
+                pane_name,
                 parts: LayoutParts::Panes(layout_parts),
                 split_size,
                 run,
                 borderless,
-                focus: None, // TODO
+                focus,
                 tabs_index_in_children,
                 template: None,
             })
         }
         let mut base_layout = parse_kdl_layout(layout_node, &mut tabs)?;
-        println!("base_layout: {:?}", base_layout);
         if !tabs.is_empty() {
             let mut root_layout = Layout::default();
             let mut tab_parts: Vec<(Option<String>, Layout)> = vec![];
 
-            for (i, tab) in tabs.drain(..).enumerate() {
+            for (i, (tab_name, tab)) in tabs.drain(..).enumerate() {
                 let mut layout_for_tab = base_layout.clone();
                 layout_for_tab.insert_tab_layout(&tab);
-                tab_parts.push((None, layout_for_tab));
+                layout_for_tab.tabs_index_in_children = None;
+                tab_parts.push((tab_name, layout_for_tab));
 
             }
             root_layout.parts = LayoutParts::Tabs(tab_parts);
             let mut layout_template = base_layout.clone();
             layout_template.insert_tab_layout(&Layout::default());
+            layout_template.tabs_index_in_children = None;
             root_layout.template = Some(Box::new(layout_template));
             Ok(root_layout)
         } else if base_layout.is_empty() {
@@ -1146,16 +1148,7 @@ impl TryFrom<Url> for RunPluginLocation {
             "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
             "file" => {
                 let path = PathBuf::from(url.path());
-                let canonicalize = |p: &Path| {
-                    fs::canonicalize(p)
-                        .map_err(|_| PluginsConfigError::InvalidPluginLocation(p.to_owned()))
-                };
-                canonicalize(&path)
-                    .or_else(|_| match path.strip_prefix("/") {
-                        Ok(path) => canonicalize(path),
-                        Err(_) => Err(PluginsConfigError::InvalidPluginLocation(path.to_owned())),
-                    })
-                    .map(Self::File)
+                Ok(Self::File(path))
             },
             _ => Err(PluginsConfigError::InvalidUrl(url)),
         }
@@ -1320,7 +1313,7 @@ impl FromStr for SplitSize {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.chars().last() == Some('%') {
             let char_count = s.chars().count();
-            let percent_size = usize::from_str_radix(&s[..char_count], 10)?;
+            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
             Ok(SplitSize::Percent(percent_size))
         } else {
             let fixed_size = usize::from_str_radix(s, 10)?;
