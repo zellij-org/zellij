@@ -352,7 +352,7 @@ pub struct Grid {
     pub sixel_scrolling: bool,      // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
-    pub new_line_mode: bool,        // Automatic newline LNM
+    pub new_line_mode: bool, // Automatic newline LNM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
@@ -2653,13 +2653,14 @@ impl Perform for Grid {
 
                     // Note that this is relative to scrolling region.
                     let offset = match self.scroll_region {
-                        Some((scroll_region_top, _scroll_region_bottom)) =>
-                            scroll_region_top,
+                        Some((scroll_region_top, _scroll_region_bottom)) => scroll_region_top,
                         _ => 0,
                     };
-                    let position_report =
-                        format!("\u{1b}[{};{}R", self.cursor.y + 1 - offset,
-                                self.cursor.x + 1);
+                    let position_report = format!(
+                        "\u{1b}[{};{}R",
+                        self.cursor.y + 1 - offset,
+                        self.cursor.x + 1
+                    );
                     self.pending_messages_to_pty
                         .push(position_report.as_bytes().to_vec());
                 },
@@ -2682,7 +2683,7 @@ impl Perform for Grid {
                     self.pending_messages_to_pty
                         .push(response.as_bytes().to_vec());
                 },
-                _ => {}
+                _ => {},
             }
         } else if c == 't' {
             match next_param_or(1) as usize {
