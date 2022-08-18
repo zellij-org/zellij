@@ -1,6 +1,6 @@
 [package]
 name = "zellij-server"
-version = "0.32.0"
+version = "0.31.3"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "The server-side library for Zellij"
@@ -21,7 +21,7 @@ url = "2.2.2"
 wasmer = "1.0.0"
 wasmer-wasi = "1.0.0"
 cassowary = "0.3.0"
-zellij-utils = { path = "../zellij-utils/", version = "0.32.0" }
+zellij-utils = { path = "../zellij-utils/", version = "0.31.3" }
 log = "0.4.17"
 typetag = "0.1.7"
 chrono = "0.4.19"

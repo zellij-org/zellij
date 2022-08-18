@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.31.3] - 2022-08-18
+* HOTFIX: fix up-arrow regression
+
 ## [0.31.2] - 2022-08-17
 * fix: crash when attaching to a session without the first tab (https://github.com/zellij-org/zellij/pull/1648)
 * fix: race crash on startup when server is not ready (https://github.com/zellij-org/zellij/pull/1651)
