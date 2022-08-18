@@ -1928,6 +1928,9 @@ impl Grid {
             },
         }
     }
+    pub fn is_alternate_mode_active(&self) -> bool {
+        self.alternate_screen_state.is_some()
+    }
 }
 
 impl Perform for Grid {

@@ -642,6 +642,9 @@ impl Pane for TerminalPane {
         self.grid.clear_search();
         self.search_term.clear();
     }
+    fn is_alternate_mode_active(&self) -> bool {
+        self.grid.is_alternate_mode_active()
+    }
 }
 
 impl TerminalPane {
