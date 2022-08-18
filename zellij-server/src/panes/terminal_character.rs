@@ -586,6 +586,7 @@ impl Default for CharsetIndex {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StandardCharset {
     Ascii,
+    UK,
     SpecialCharacterAndLineDrawing,
 }
 
@@ -602,6 +603,10 @@ impl StandardCharset {
     pub fn map(self, c: char) -> char {
         match self {
             StandardCharset::Ascii => c,
+            StandardCharset::UK => match c {
+                '#' => '£',
+                _ => c,
+            },
             StandardCharset::SpecialCharacterAndLineDrawing => match c {
                 '`' => '◆',
                 'a' => '▒',

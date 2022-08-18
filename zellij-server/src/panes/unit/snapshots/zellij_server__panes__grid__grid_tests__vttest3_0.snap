@@ -1,7 +1,6 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (C):          Selected as G0 (with SI)              Selected as G1 (with SO)                                       
 01 (C):                                                                                                               
@@ -10,7 +9,7 @@ expression: "format!(\"{:?}\", grid)"
 04 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
 05 (C):          `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                
 06 (C): Character set A (British)                                                                                     
-07 (C):           !"#$%&'()*+,-./0123456789:;<=>?       !"#$%&'()*+,-./0123456789:;<=>?                               
+07 (C):           !"£$%&'()*+,-./0123456789:;<=>?       !"£$%&'()*+,-./0123456789:;<=>?                               
 08 (C):          @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_      @ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_                               
 09 (C):          `abcdefghijklmnopqrstuvwxyz{|}~       `abcdefghijklmnopqrstuvwxyz{|}~                                
 10 (C): Character set 0 (DEC Special graphics and line drawing)                                                       

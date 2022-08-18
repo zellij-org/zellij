@@ -2729,6 +2729,19 @@ impl Perform for Grid {
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
         match (byte, intermediates.get(0)) {
+            (b'A', charset_index_symbol) => {
+                let charset_index: CharsetIndex = match charset_index_symbol {
+                    Some(b'(') => CharsetIndex::G0,
+                    Some(b')') => CharsetIndex::G1,
+                    Some(b'*') => CharsetIndex::G2,
+                    Some(b'+') => CharsetIndex::G3,
+                    _ => {
+                        // invalid, silently do nothing
+                        return;
+                    },
+                };
+                self.configure_charset(StandardCharset::UK, charset_index);
+            },
             (b'B', charset_index_symbol) => {
                 let charset_index: CharsetIndex = match charset_index_symbol {
                     Some(b'(') => CharsetIndex::G0,
