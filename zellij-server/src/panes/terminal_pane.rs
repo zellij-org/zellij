@@ -163,12 +163,9 @@ impl Pane for TerminalPane {
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
         if self.grid.new_line_mode {
-            match input_bytes.as_slice() {
-                &[13] => {
-                    // LNM - carriage return is followed by linefeed
-                    return "\u{0d}\u{0a}".as_bytes().to_vec();
-                },
-                _ => {},
+            if let &[13] = input_bytes.as_slice() {
+                // LNM - carriage return is followed by linefeed
+                return "\u{0d}\u{0a}".as_bytes().to_vec();
             };
         }
         if self.grid.cursor_key_mode {
