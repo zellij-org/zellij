@@ -595,9 +595,18 @@ fn layout_with_tab_names() {
     assert_eq!(layout, expected_layout);
 }
 
-// TODO: CONTINUE HERE
+// TODO:
+// - session name
+// - focus for pane/tab
+// - other stuff in layouts
+// - merge layouts with config
+// - default layout files
+// - open new tab with layout template (maybe in tab_integration_tests?)
+// - empty layout
+
+// TODO: CONTINUE HERE (18/08)
 // - write tests similar to the config that will feed KDL into Layout::from_kdl and assert stuff
-// about the layout
+// about the layout - DONE
 // - then bring these tests back
 // TODO: BRING THESE TESTS BACK!!
 //
