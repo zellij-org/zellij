@@ -1826,8 +1826,8 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -1892,8 +1892,8 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -1958,8 +1958,8 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -2024,8 +2024,8 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
