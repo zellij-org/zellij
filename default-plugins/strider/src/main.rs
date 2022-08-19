@@ -58,10 +58,14 @@ impl ZellijPlugin for State {
                 Mouse::ScrollUp(_) => {
                     *self.selected_mut() = self.selected().saturating_sub(1);
                 },
-                Mouse::Release(line, _) => {
-                    if line < 0 {
+                Mouse::Release(mut line, _) => {
+                    // we need to shift the line with line -=1 because one line
+                    // is occupied by the current path, and all clicks on it are
+                    // to be ignored
+                    if line < 1 {
                         return;
                     }
+                    line -= 1;
                     let mut should_select = true;
                     if let Some((Event::Mouse(Mouse::Release(prev_line, _)), t)) = prev_event {
                         if prev_line == line
@@ -85,7 +89,14 @@ impl ZellijPlugin for State {
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
-        for i in 0..rows {
+        let display_current_dir = FsEntry::DisplayDir(self.current_dir.clone())
+            .as_line(cols)
+            .normal()
+            .on_yellow()
+            .black();
+        println!("{}", display_current_dir);
+
+        for i in 0..rows - 1 {
             if self.selected() < self.scroll() {
                 *self.scroll_mut() = self.selected();
             }
