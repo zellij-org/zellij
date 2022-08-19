@@ -77,8 +77,10 @@ pub trait LoggableError<T>: Sized {
     ///
     /// ```should_panic
     /// use anyhow;
+    /// use zellij_utils::errors::LoggableError;
     ///
-    /// Err(anyhow::anyhow!("Test error"))
+    /// let my_err: anyhow::Result<&str> = Err(anyhow::anyhow!("Test error"));
+    /// my_err
     ///     .print_error(|msg| println!("{msg}"))
     ///     .unwrap();
     /// ```
