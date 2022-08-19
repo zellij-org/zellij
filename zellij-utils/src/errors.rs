@@ -22,6 +22,7 @@
 //!
 //! If you have an interest in this, don't hesitate to get in touch with us.
 
+use anyhow::Context;
 use colored::*;
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -57,6 +58,111 @@ Please report this error to the github issue.
 
 Also, if you want to see the backtrace, you can set the `RUST_BACKTRACE` environment variable to `1`.
 "#.into()
+    }
+}
+
+/// Helper trait to easily log error types.
+///
+/// The `print_error` function takes a closure which takes a `&str` and fares with it as necessary
+/// to log the error to some usable location. For convenience, logging to stdout, stderr and
+/// `log::error!` is already implemented.
+///
+/// Note that the trait functions pass the error through unmodified, so they can be chained with
+/// the usual handling of [`std::result::Result`] types.
+pub trait LoggableError<T>: Sized {
+    /// Gives a formatted error message derived from `self` to the closure `fun` for
+    /// printing/logging as appropriate.
+    ///
+    /// # Examples
+    ///
+    /// ```should_panic
+    /// use anyhow;
+    ///
+    /// Err(anyhow::anyhow!("Test error"))
+    ///     .print_error(|msg| println!("{msg}"))
+    ///     .unwrap();
+    /// ```
+    fn print_error<F: Fn(&str)>(self, fun: F) -> Self;
+
+    /// Convenienve function, calls `print_error` with the closure `|msg| log::error!("{}", msg)`.
+    fn to_log(self) -> Self {
+        self.print_error(|msg| log::error!("{}", msg))
+    }
+
+    /// Convenienve function, calls `print_error` with the closure `|msg| eprintln!("{}", msg)`.
+    fn to_stderr(self) -> Self {
+        self.print_error(|msg| eprintln!("{}", msg))
+    }
+
+    /// Convenienve function, calls `print_error` with the closure `|msg| println!("{}", msg)`.
+    fn to_stdout(self) -> Self {
+        self.print_error(|msg| println!("{}", msg))
+    }
+}
+
+impl<T> LoggableError<T> for anyhow::Result<T> {
+    fn print_error<F: Fn(&str)>(self, fun: F) -> Self {
+        if let Err(ref err) = self {
+            let mut msg = format!("ERROR: {}", err);
+            for cause in err.chain().skip(1) {
+                msg = format!("{msg}\nbecause: {cause}");
+            }
+            fun(&msg);
+        }
+        self
+    }
+}
+
+/// Special trait to mark fatal/non-fatal errors.
+///
+/// This works in tandem with `LoggableError` above and is meant to make reading code easier with
+/// regard to whether an error is fatal or not (i.e. can be ignored, or at least doesn't make the
+/// application crash).
+///
+/// This essentially degrades any `std::result::Result<(), _>` to a simple `()`.
+pub trait FatalError<T> {
+    /// Mark results as being non-fatal.
+    ///
+    /// If the result is an `Err` variant, this will [print the error to the log][`to_log`].
+    /// Discards the result type afterwards.
+    ///
+    /// [`to_log`]: LoggableError::to_log
+    fn non_fatal(self);
+
+    /// Mark results as being fatal.
+    ///
+    /// If the result is an `Err` variant, this will [print the error to the log][`to_log`] and
+    /// panic the application.
+    ///
+    /// If the result is an `Ok` variant, the inner value is unwrapped and returned instead.
+    ///
+    /// [`to_log`]: LoggableError::to_log
+    ///
+    /// # Panics
+    ///
+    /// If the given result is an `Err` variant.
+    fn fatal(self) -> T;
+}
+
+/// Helper function to silence `#[warn(unused_must_use)]` cargo warnings. Used exclusively in
+/// `FatalError::non_fatal`!
+fn discard_result<T>(_arg: anyhow::Result<T>) {}
+
+impl<T> FatalError<T> for anyhow::Result<T> {
+    fn non_fatal(self) {
+        if self.is_err() {
+            discard_result(self.context("A non-fatal error occured").to_log());
+        }
+    }
+
+    fn fatal(self) -> T {
+        if let Ok(val) = self {
+            val
+        } else {
+            self.context("A fatal error occured")
+                .to_log()
+                .expect("A fatal error occured, program terminates")
+        }
     }
 }
 
