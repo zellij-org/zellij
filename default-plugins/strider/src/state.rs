@@ -69,8 +69,7 @@ impl FsEntry {
             },
             FsEntry::DisplayDir(..) => {
                 // use full path, but we need to remove the host part
-                let path = path.to_string_lossy().into_owned().replace("/host", "");
-                ".".to_string() + &path
+                path.to_string_lossy().replace("/host", "")
             },
         }
     }
