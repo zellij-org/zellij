@@ -676,12 +676,53 @@ mod config_test {
     #[test]
     fn can_define_options_in_configfile() {
         // TODO: consider writing a macro to generate a test like this for each option
+
+
+
+
+
+
+
+
         let config_contents = r#"
             simplified_ui true
+            theme "my cool theme"
+            default_mode "locked"
+            default_shell "/path/to/my/shell"
+            default_layout "/path/to/my/layout.kdl"
+            layout_dir "/path/to/my/layout-dir"
+            theme_dir "/path/to/my/theme-dir"
+            mouse_mode false
+            pane_frames false
+            mirror_session true
+            on_force_close "quit"
+            scroll_buffer_size 100000
+            copy_command "/path/to/my/copy-command"
+            copy_clipboard "primary"
+            copy_on_select false
+            scrollback_editor "/path/to/my/scrollback-editor"
+            session_name "my awesome session"
+            attach_to_session true
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
-        let simplified_ui_in_config = config.options.simplified_ui;
-        assert_eq!(simplified_ui_in_config, Some(true), "Option set in config");
+        assert_eq!(config.options.simplified_ui, Some(true), "Option set in config");
+        assert_eq!(config.options.theme, Some(String::from("my cool theme")), "Option set in config");
+        assert_eq!(config.options.default_mode, Some(InputMode::Locked), "Option set in config");
+        assert_eq!(config.options.default_shell, Some(PathBuf::from("/path/to/my/shell")), "Option set in config");
+        assert_eq!(config.options.default_layout, Some(PathBuf::from("/path/to/my/layout.kdl")), "Option set in config");
+        assert_eq!(config.options.layout_dir, Some(PathBuf::from("/path/to/my/layout-dir")), "Option set in config");
+        assert_eq!(config.options.theme_dir, Some(PathBuf::from("/path/to/my/theme-dir")), "Option set in config");
+        assert_eq!(config.options.mouse_mode, Some(false), "Option set in config");
+        assert_eq!(config.options.pane_frames, Some(false), "Option set in config");
+        assert_eq!(config.options.mirror_session, Some(true), "Option set in config");
+        assert_eq!(config.options.on_force_close, Some(OnForceClose::Quit), "Option set in config");
+        assert_eq!(config.options.scroll_buffer_size, Some(100000), "Option set in config");
+        assert_eq!(config.options.copy_command, Some(String::from("/path/to/my/copy-command")), "Option set in config");
+        assert_eq!(config.options.copy_clipboard, Some(Clipboard::Primary), "Option set in config");
+        assert_eq!(config.options.copy_on_select, Some(false), "Option set in config");
+        assert_eq!(config.options.scrollback_editor, Some(PathBuf::from("/path/to/my/scrollback-editor")), "Option set in config");
+        assert_eq!(config.options.session_name, Some(String::from("my awesome session")), "Option set in config");
+        assert_eq!(config.options.attach_to_session, Some(true), "Option set in config");
     }
 
     #[test]

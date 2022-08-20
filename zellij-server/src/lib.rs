@@ -325,12 +325,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 // if !&layout.tabs.is_empty() {
                 if layout.has_tabs() {
+                    log::info!("layout.has_tabs()");
                     // for tab_layout in layout.clone().tabs {
                     for (tab_name, tab_layout) in layout.tabs() {
                         spawn_tabs(Some(tab_layout.clone()), tab_name);
                     }
+                    log::info!("done spawned tab");
 
                     if let Some(focused_tab_index) = layout.focused_tab_index() {
+                        log::info!("focused_tab_index: {:?}", focused_tab_index);
                         session_data
                             .read()
                             .unwrap()

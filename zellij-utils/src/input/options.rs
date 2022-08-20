@@ -107,6 +107,14 @@ pub struct Options {
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
+
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub session_name: Option<String>,
+
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub attach_to_session: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -231,6 +239,12 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
+        let session_name = other
+            .session_name
+            .or_else(|| self.session_name.clone());
+        let attach_to_session = other
+            .attach_to_session
+            .or_else(|| self.attach_to_session.clone());
 
         Options {
             simplified_ui,
@@ -249,6 +263,8 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             scrollback_editor,
+            session_name,
+            attach_to_session,
         }
     }
 
@@ -286,6 +302,12 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
+        let session_name = other
+            .session_name
+            .or_else(|| self.session_name.clone());
+        let attach_to_session = other
+            .attach_to_session
+            .or_else(|| self.attach_to_session.clone());
 
         Options {
             simplified_ui,
@@ -304,6 +326,8 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             scrollback_editor,
+            session_name,
+            attach_to_session,
         }
     }
 
@@ -358,6 +382,7 @@ impl From<CliOptions> for Options {
             copy_clipboard: opts.copy_clipboard,
             copy_on_select: opts.copy_on_select,
             scrollback_editor: opts.scrollback_editor,
+            ..Default::default()
         }
     }
 }

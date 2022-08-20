@@ -1,17 +1,84 @@
+// layout {
+//     parts direction="Horizontal" {
+//         layout size=1 {
+//             borderless true
+//             plugin {
+//                 location "zellij:tab-bar"
+//             }
+//         }
+//         tabs;
+//         layout size=2 {
+//             borderless true
+//             plugin {
+//                 location "zellij:status-bar"
+//             }
+//         }
+//     }
+// }
+
+// TODO: CONTINUE HERE (20/08) - consider implementing this
+// with tab templates
 layout {
-    parts direction="Horizontal" {
-        layout size=1 {
-            borderless true
-            plugin {
-                location "zellij:tab-bar"
+    tab_template name="plugins" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar";
+        }
+        tab_body
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    tabs focused_index=1 {
+        tab template="plugins" name="some tab name" {
+            body split_direction="Vertical" {
+                pane
+                pane
+                pane
             }
         }
-        tabs;
-        layout size=2 {
-            borderless true
-            plugin {
-                location "zellij:status-bar"
+        tab template="plugins"
+        tab
+    }
+}
+
+// without templates
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:tab-bar";
+    }
+    pane
+    pane size=2 borderless=true {
+        plugin location="zellij:status-bar"
+    }
+}
+
+// with pane templates
+layout {
+    tab_template name="plugins" {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar";
+        }
+        tab_body
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+    pane_template name="3 vertical panes" {
+        pane_body split_direction="Vertical" {
+            pane
+            pane
+            pane
+        }
+    }
+    tabs focused_index=1 {
+        tab template="plugins" name="some tab name" {
+            tab_body split_direction="Horizontal" {
+                pane template="3 vertical panes"
+                pane
+                pane template="3 vertical panes"
             }
         }
+        tab template="plugins"
+        tab
     }
 }

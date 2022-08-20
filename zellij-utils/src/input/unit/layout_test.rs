@@ -596,7 +596,8 @@ fn layout_with_tab_names() {
 }
 
 // TODO:
-// - session name
+// - session name - added to the config, TODO (CONTINUE HERE 19/08): add test for it and for
+// attach_to_session in the config - DONE
 // - focus for pane/tab
 // - other stuff in layouts
 // - merge layouts with config

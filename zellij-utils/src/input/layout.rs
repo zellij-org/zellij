@@ -166,7 +166,11 @@ pub struct Layout {
     #[serde(default)]
     pub borderless: bool,
     pub focus: Option<bool>,
+    // TODO: move these elsewhere?
+    pub session_name: Option<String>,
+    pub attach_to_session: bool,
     pub tabs_index_in_children: Option<usize>,
+    focused_tab_index: Option<usize>,
     template: Option<Box<Layout>>,
 }
 
@@ -615,7 +619,8 @@ impl Layout {
     pub fn from_kdl(kdl_layout: &KdlDocument, direction: Option<SplitDirection>) -> Result<Self, ConfigError> {
         let mut tabs: Vec<(Option<String>, Layout)> = vec![];
         let layout_node = kdl_layout.nodes().iter().find(|n| kdl_name!(n) == "layout").ok_or(ConfigError::KdlParsingError("No layout found".into()))?;
-        fn parse_kdl_layout (kdl_layout: &KdlNode, tabs: &mut Vec<(Option<String>, Layout)>) -> Result<Layout, ConfigError> {
+        let mut focused_tab_index = None;
+        fn parse_kdl_layout (kdl_layout: &KdlNode, tabs: &mut Vec<(Option<String>, Layout)>, focused_tab_index: &mut Option<usize>) -> Result<Layout, ConfigError> {
             let borderless: bool = kdl_get_child_entry_bool_value!(kdl_layout, "borderless").unwrap_or(false);
             let focus = kdl_get_child_entry_bool_value!(kdl_layout, "focus");
             let pane_name = kdl_get_child_entry_string_value!(kdl_layout, "name").map(|name| name.to_string());
@@ -647,17 +652,22 @@ impl Layout {
                     for (i, child) in children.iter().enumerate() {
                         let child_name = kdl_name!(child);
                         if child_name == "layout" {
-                            layout_parts.push(parse_kdl_layout(&child, tabs)?);
+                            layout_parts.push(parse_kdl_layout(&child, tabs, focused_tab_index)?);
                         } else if child_name == "tabs" {
                             tabs_index_in_children = Some(i);
                             if !tabs.is_empty() {
                                 return Err(ConfigError::KdlParsingError(format!("Only one 'tabs' section allowed per layout...")));
                             }
+                            log::info!("child: {:?}", child);
+                            if let Some(idx) = kdl_get_int_entry!(child, "focused_tab_index") {
+                                log::info!("got idx: {:?}", idx);
+                                let _ = focused_tab_index.insert(idx as usize);
+                            }
                             match kdl_children_nodes!(child) {
                                 Some(children) => {
                                     for child in children {
                                         let tab_name = kdl_get_string_entry!(child, "tab_name").map(|tab_name| tab_name.to_string());
-                                        let tab_layout = parse_kdl_layout(&child, tabs)?;
+                                        let tab_layout = parse_kdl_layout(&child, tabs, focused_tab_index)?;
                                         tabs.push((tab_name, tab_layout));
                                     }
 
@@ -680,11 +690,15 @@ impl Layout {
                 focus,
                 tabs_index_in_children,
                 template: None,
+                session_name: None,
+                attach_to_session: false,
+                focused_tab_index: None,
             })
         }
-        let mut base_layout = parse_kdl_layout(layout_node, &mut tabs)?;
+        let mut base_layout = parse_kdl_layout(layout_node, &mut tabs, &mut focused_tab_index)?;
         if !tabs.is_empty() {
             let mut root_layout = Layout::default();
+            root_layout.focused_tab_index = focused_tab_index;
             let mut tab_parts: Vec<(Option<String>, Layout)> = vec![];
 
             for (i, (tab_name, tab)) in tabs.drain(..).enumerate() {
@@ -927,8 +941,8 @@ impl Layout {
     }
 
     pub fn focused_tab_index(&self) -> Option<usize> {
-        // TBD
-        None
+        log::info!("focused_tab_index? {:?}", self.focused_tab_index);
+        self.focused_tab_index
     }
 
 //     fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Result<Vec<Self>, ConfigError> {

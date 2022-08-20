@@ -318,43 +318,41 @@ pub(crate) fn start_client(opts: CliArgs) {
             );
         } else {
             //             TODO: bring this back
-//             if let Some(layout_some) = layout.clone() {
-//                 if let Some(session_name) = layout_some.session.name {
-//                     if layout_some.session.attach.unwrap() {
-//                         let client = attach_with_session_name(
-//                             Some(session_name),
-//                             config_options.clone(),
-//                             true,
-//                         );
-//
-//                         let attach_layout = match client {
-//                             ClientInfo::Attach(_, _) => None,
-//                             ClientInfo::New(_) => layout,
-//                         };
-//
-//                         start_client_impl(
-//                             Box::new(os_input),
-//                             opts,
-//                             config,
-//                             config_options,
-//                             client,
-//                             attach_layout,
-//                         );
-//                     } else {
-//                         start_client_plan(session_name.clone());
-//                         start_client_impl(
-//                             Box::new(os_input),
-//                             opts,
-//                             config,
-//                             config_options,
-//                             ClientInfo::New(session_name),
-//                             layout,
-//                         );
-//                     }
-//
-//                     process::exit(0);
-//                 }
-//             }
+            if let Some(session_name) = config_options.session_name.as_ref() {
+                match config_options.attach_to_session {
+                    Some(true) => {
+                        let client = attach_with_session_name(
+                            Some(session_name.clone()),
+                            config_options.clone(),
+                            true,
+                        );
+                        let attach_layout = match client {
+                            ClientInfo::Attach(_, _) => None,
+                            ClientInfo::New(_) => Some(layout),
+                        };
+                        start_client_impl(
+                            Box::new(os_input),
+                            opts,
+                            config,
+                            config_options,
+                            client,
+                            attach_layout,
+                        );
+                    },
+                    _ => {
+                        start_client_plan(session_name.clone());
+                        start_client_impl(
+                            Box::new(os_input),
+                            opts,
+                            config,
+                            config_options.clone(),
+                            ClientInfo::New(session_name.clone()),
+                            Some(layout),
+                        );
+                    }
+                }
+                process::exit(0); // TODO: why is this here?
+            }
 
             let session_name = names::Generator::default().next().unwrap();
             start_client_plan(session_name.clone());

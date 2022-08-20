@@ -631,6 +631,12 @@ impl Options {
             .map(|theme| theme.to_string());
         let default_mode = kdl_property_first_arg_as_string!(kdl_options, "default_mode")
             .and_then(|default_mode| InputMode::try_from(default_mode).ok());
+        let default_layout = kdl_property_first_arg_as_string!(kdl_options, "default_layout")
+            .map(|default_layout| PathBuf::from(default_layout));
+        let layout_dir = kdl_property_first_arg_as_string!(kdl_options, "layout_dir")
+            .map(|layout_dir| PathBuf::from(layout_dir));
+        let theme_dir = kdl_property_first_arg_as_string!(kdl_options, "theme_dir")
+            .map(|theme_dir| PathBuf::from(theme_dir));
         let mouse_mode = kdl_property_first_arg_as_bool!(kdl_options, "mouse_mode");
         let scroll_buffer_size = kdl_property_first_arg_as_i64!(kdl_options, "scroll_buffer_size")
             .map(|scroll_buffer_size| scroll_buffer_size as usize);
@@ -642,14 +648,16 @@ impl Options {
         let scrollback_editor = kdl_property_first_arg_as_string!(kdl_options, "scrollback_editor")
             .map(|scrollback_editor| PathBuf::from(scrollback_editor));
         let mirror_session = kdl_property_first_arg_as_bool!(kdl_options, "mirror_session");
+        let session_name = kdl_property_first_arg_as_string!(kdl_options, "session_name").map(|s| s.into());
+        let attach_to_session = kdl_property_first_arg_as_bool!(kdl_options, "attach_to_session");
         Options {
             simplified_ui,
             theme,
             default_mode,
             default_shell,
-            default_layout: Some(PathBuf::from("default")), // TODO
-            layout_dir: None, // TODO
-            theme_dir: None, // TODO
+            default_layout,
+            layout_dir,
+            theme_dir,
             mouse_mode,
             pane_frames,
             mirror_session,
@@ -659,6 +667,8 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             scrollback_editor,
+            session_name,
+            attach_to_session,
         }
     }
 }

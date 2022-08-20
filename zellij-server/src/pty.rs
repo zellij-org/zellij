@@ -133,6 +133,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                 pty.set_active_pane(pane_id, client_id);
             },
             PtyInstruction::GoToTab(tab_index, client_id) => {
+                log::info!("GoToTab {:?}", tab_index);
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
