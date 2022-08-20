@@ -68,7 +68,7 @@ impl ZellijPlugin for State {
                     line -= 1;
                     let mut should_select = true;
                     if let Some((Event::Mouse(Mouse::Release(prev_line, _)), t)) = prev_event {
-                        if prev_line == line
+                        if prev_line - 1 == line
                             && Instant::now().saturating_duration_since(t).as_millis() < 400
                         {
                             self.traverse_dir_or_open_file();
