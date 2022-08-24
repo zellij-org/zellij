@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
+* fix: bracketed paste handling regression (https://github.com/zellij-org/zellij/pull/1689)
 
 ## [0.31.3] - 2022-08-18
 * HOTFIX: fix up-arrow regression
