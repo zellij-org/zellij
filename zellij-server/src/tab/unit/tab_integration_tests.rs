@@ -2044,3 +2044,51 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
         ]
     );
 }
+
+#[test]
+fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
+    // regression test for: https://github.com/zellij-org/zellij/issues/1687
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab =
+        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer.clone());
+
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string()),
+                    PtyWriteInstruction::Exit => break,
+                }
+            }
+        });
+    let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
+    tab.write_to_active_terminal(bracketed_paste_start, client_id);
+    tab.write_to_active_terminal("test".as_bytes().to_vec(), client_id);
+    tab.write_to_active_terminal(bracketed_paste_end, client_id);
+
+    to_pty_writer.send(PtyWriteInstruction::Exit).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec!["", "test", ""]
+    );
+}
