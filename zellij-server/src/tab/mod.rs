@@ -1597,16 +1597,27 @@ impl Tab {
                 .unwrap();
         }
     }
-    pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
+    pub fn dump_active_terminal_pane(&mut self, file: Option<String>, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let dump = active_pane.dump_screen(client_id);
             self.os_api.write_to_file(dump, file);
         }
     }
+    pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
+        let all_panes = &mut self.tiled_panes.panes;
+        let mut dump_vec: Vec<String> = Vec::new();
+        for (_, curr_pane) in all_panes.iter_mut() {
+            let dump = curr_pane.dump_screen(client_id);
+            dump_vec.push(dump)
+        }
+
+        let all_dumps = dump_vec.join("\n");
+        self.os_api.write_to_file(all_dumps, file);
+    }
     pub fn edit_scrollback(&mut self, client_id: ClientId) {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
-        self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
+        self.dump_active_terminal_pane(Some(String::from(file.to_string_lossy())), client_id);
         let line_number = self
             .get_active_pane(client_id)
             .and_then(|a_t| a_t.get_line_number());

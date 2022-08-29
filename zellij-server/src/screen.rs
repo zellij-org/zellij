@@ -87,6 +87,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
+    DumpPane(String, ClientId),
     DumpScreen(String, ClientId),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
@@ -184,6 +185,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::DumpPane(..) => ScreenContext::DumpPane,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -1093,6 +1095,11 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MoveFocusUp(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .move_focus_up(client_id));
+                screen.render();
+            },
+            ScreenInstruction::DumpPane(file, client_id) => {
+                active_tab!(screen, client_id, |tab: &mut Tab| tab
+                    .dump_active_terminal_pane(Some(file.to_string()), client_id));
                 screen.render();
             },
             ScreenInstruction::DumpScreen(file, client_id) => {

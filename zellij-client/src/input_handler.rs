@@ -253,6 +253,7 @@ impl InputHandler {
                 | Action::NewPane(_)
                 | Action::WriteChars(_)
                 | Action::EditScrollback
+                | Action::DumpPane(_)
                 | Action::DumpScreen(_)
                 | Action::ToggleActiveSyncTab
                 | Action::ToggleFloatingPanes

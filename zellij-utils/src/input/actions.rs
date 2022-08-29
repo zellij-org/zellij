@@ -67,6 +67,8 @@ pub enum Action {
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
+    /// Dumps the pane to a file
+    DumpPane(String),
     /// Dumps the screen to a file
     DumpScreen(String),
     /// Scroll up in focus pane.

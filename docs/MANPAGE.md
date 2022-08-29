@@ -153,6 +153,7 @@ ACTIONS
   next ID.
 * __MoveFocus: <Direction\>__ -  moves focus in the specified direction (Left,
   Right, Up, Down).
+* __DumpPane: <File\>__ - dumps the active pane in the specified file.
 * __DumpScreen: <File\>__ - dumps the screen in the specified file.
 * __EditScrollback__ - replaces the current pane with the scrollback buffer.
 * __ScrollUp__ - scrolls up 1 line in the focused pane.
