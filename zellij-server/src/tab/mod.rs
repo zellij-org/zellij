@@ -1701,7 +1701,10 @@ impl Tab {
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send UP n times
-                self.write_to_terminal_at("\u{1b}OA".repeat(3).as_bytes().to_owned(), point)
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point)
+                }
             } else {
                 pane.scroll_up(lines, client_id);
             }
@@ -1714,7 +1717,10 @@ impl Tab {
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send DOWN n times
-                self.write_to_terminal_at("\u{1b}OB".repeat(3).as_bytes().to_owned(), point)
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point)
+                }
             } else {
                 pane.scroll_down(lines, client_id);
                 if !pane.is_scrolled() {
