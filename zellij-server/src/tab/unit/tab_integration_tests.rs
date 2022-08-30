@@ -201,7 +201,8 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        LayoutTemplate::default().try_into().unwrap(),
+        // LayoutTemplate::default().try_into().unwrap(),
+        Layout::default(),
         vec![1],
         index,
         client_id,

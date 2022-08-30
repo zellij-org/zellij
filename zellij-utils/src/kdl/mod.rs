@@ -1,5 +1,5 @@
-//! Definition of the actions that can be bound to keys.
 
+pub mod kdl_layout_parser;
 // use super::layout::TabLayout;
 use crate::data::{InputMode, Key, CharOrArrow, PaletteColor};
 use crate::input::options::{Options, OnForceClose, Clipboard};
@@ -599,6 +599,45 @@ macro_rules! kdl_get_child_entry_string_value {
             .and_then(|c| c.get($child_name))
             .and_then(|c| c.get(0))
             .and_then(|c| c.value().as_string())
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_bool_property_or_child_value {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node.get($name)
+            .and_then(|e| e.value().as_bool())
+            .or_else(|| $kdl_node.children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.value().as_bool())
+            )
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_string_property_or_child_value {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node.get($name)
+            .and_then(|e| e.value().as_string())
+            .or_else(|| $kdl_node.children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.value().as_string())
+            )
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_int_property_or_child_value {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node.get($name)
+            .and_then(|e| e.value().as_i64())
+            .or_else(|| $kdl_node.children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
+                .and_then(|c| c.value().as_i64())
+            )
     }
 }
 

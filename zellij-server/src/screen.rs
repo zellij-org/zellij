@@ -649,7 +649,6 @@ impl Screen {
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
     pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
-        log::info!("new_tab, layout: {:?}", layout);
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
         let mut tab = Tab::new(

@@ -455,14 +455,17 @@ impl TiledPanes {
                 *display_area,
                 *viewport,
             );
-            if pane_grid.layout(SplitDirection::Horizontal, cols).is_ok() {
-                let column_difference = cols as isize - display_area.cols as isize;
-                // FIXME: Should the viewport be an Offset?
-                viewport.cols = (viewport.cols as isize + column_difference) as usize;
-                display_area.cols = cols;
-            } else {
-                log::error!("Failed to horizontally resize the tab!!!");
-            }
+            match pane_grid.layout(SplitDirection::Horizontal, cols) {
+                Ok(_) => {
+                    let column_difference = cols as isize - display_area.cols as isize;
+                    // FIXME: Should the viewport be an Offset?
+                    viewport.cols = (viewport.cols as isize + column_difference) as usize;
+                    display_area.cols = cols;
+                },
+                Err(e) => {
+                    log::error!("Failed to horizontally resize the tab: {:?}", e);
+                }
+            };
             if pane_grid.layout(SplitDirection::Vertical, rows).is_ok() {
                 let row_difference = rows as isize - display_area.rows as isize;
                 viewport.rows = (viewport.rows as isize + row_difference) as usize;

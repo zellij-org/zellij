@@ -48,6 +48,8 @@ interprocess = "1.1.1"
 async-std = { version = "1.3.0", features = ["unstable"] }
 
 [dev-dependencies]
+insta = { version = "1.6.0", features = ["backtrace"] }
+
 
 [features]
 disable_automatic_asset_installation = []

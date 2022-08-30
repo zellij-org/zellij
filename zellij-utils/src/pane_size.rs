@@ -83,6 +83,17 @@ impl Dimension {
         self.inner = inner;
     }
 
+    pub fn adjust_inner(&mut self, full_size: usize) {
+        match self.constraint {
+            Constraint::Percent(percent) => {
+                self.set_inner(((percent / 100.0) * full_size as f64) as usize);
+            }
+            Constraint::Fixed(fixed_size) => {
+                self.set_inner(fixed_size);
+            }
+        }
+    }
+
     pub fn is_fixed(&self) -> bool {
         matches!(self.constraint, Constraint::Fixed(_))
     }

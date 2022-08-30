@@ -2048,7 +2048,6 @@ impl Tab {
                 );
                 if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true)
                 {
-                    log::info!("can have mouse event: {:?}", mouse_event);
                     self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
                     return true; // we need to re-render in this case so the selection disappears
                 }

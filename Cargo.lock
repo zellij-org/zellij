@@ -3466,6 +3466,7 @@ dependencies = [
  "colorsys",
  "crossbeam",
  "directories-next",
+ "insta",
  "interprocess",
  "kdl",
  "knuffel",
