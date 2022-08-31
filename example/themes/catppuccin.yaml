@@ -1,0 +1,52 @@
+# Catppuccin themes
+# from https://github.com/catppuccin/catppuccin
+
+themes:
+  catppuccin-latte:
+    bg: [239, 241, 245] # Base
+    fg: [156, 160, 176] # Overlay0
+    black: [108, 111, 133] # Surface0
+    white: [76, 79, 105] # Text
+    red: [210, 15, 57] # Red
+    green: [64, 160, 43] # Green
+    blue: [30, 102, 245] # Blue
+    yellow: [223, 142, 29] # Yellow
+    magenta: [230, 69, 83] # Maroon
+    orange: [254, 100, 11] # Peach
+    cyan: [23, 146, 153] # Teal
+  catppuccin-frappe:
+    bg: [48, 52, 70] # Base
+    fg: [115, 121, 148] # Overlay0
+    black: [65, 69, 89] # Surface0
+    white: [198, 208, 245] # Text
+    red: [231, 130, 132] # Red
+    green: [166, 209, 137] # Green
+    blue: [140, 170, 238] # Blue
+    yellow: [229, 200, 144] # Yellow
+    magenta: [234, 153, 156] # Maroon
+    orange: [239, 159, 118] # Peach
+    cyan: [129, 200, 190] # Teal
+  catppuccin-macchiato:
+    bg: [36, 39, 58] # Base
+    fg: [110, 115, 141] # Overlay0
+    black: [54, 58, 79] # Surface0
+    white: [202, 211, 245] # Text
+    red: [237, 135, 150] # Red
+    green: [166, 218, 149] # Green
+    blue: [138, 173, 244] # Blue
+    yellow: [238, 212, 159] # Yellow
+    magenta: [238, 153, 160] # Maroon
+    orange: [245, 169, 127] # Peach
+    cyan: [139, 213, 202] # Teal
+  catppuccin-mocha:
+    bg: [30, 30, 46] # Base
+    fg: [108, 112, 134] # Overlay0
+    black: [49, 50, 68] # Surface0
+    white: [205, 214, 244] # Text
+    red: [243, 139, 168] # Red
+    green: [166, 227, 161] # Green
+    blue: [137, 180, 250] # Blue
+    yellow: [249, 226, 175] # Yellow
+    magenta: [235, 160, 172] # Maroon
+    orange: [250, 179, 135] # Peach
+    cyan: [148, 226, 213] # Teal
