@@ -18,6 +18,9 @@ use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
 use crate::setup;
 
+use std::fmt;
+use std::collections::BTreeMap;
+
 // lazy_static! {
 //     static ref DEFAULT_CONFIG_PLUGINS: PluginsConfig = {
 //         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec()).unwrap();
@@ -30,8 +33,18 @@ use crate::setup;
 // pub struct PluginsConfigFromYaml(Vec<PluginConfigFromYaml>);
 
 /// Used in the config struct for plugin metadata
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct PluginsConfig(HashMap<PluginTag, PluginConfig>);
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
+pub struct PluginsConfig(pub HashMap<PluginTag, PluginConfig>);
+
+impl fmt::Debug for PluginsConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut stable_sorted = BTreeMap::new();
+        for (plugin_tag, plugin_config) in self.0.iter() {
+            stable_sorted.insert(plugin_tag, plugin_config);
+        }
+        write!(f, "{:#?}", stable_sorted)
+    }
+}
 
 impl PluginsConfig {
     pub fn new() -> Self {
@@ -40,33 +53,6 @@ impl PluginsConfig {
     pub fn from_data(data: HashMap<PluginTag, PluginConfig>) -> Self {
         PluginsConfig(data)
     }
-    pub fn from_kdl(kdl_plugin_config: &KdlNode) -> Result<Self, ConfigError> {
-        let mut plugins: HashMap<PluginTag, PluginConfig> = HashMap::new();
-        for plugin_config in kdl_children_nodes_or_error!(kdl_plugin_config, "no plugin config found") {
-            let plugin_name = kdl_name!(plugin_config);
-            let plugin_tag = PluginTag::new(plugin_name);
-            let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
-                .map(|path| PathBuf::from(path))
-                .ok_or::<Box<dyn std::error::Error>>("Plugin path not found".into())?;
-            let allow_exec_host_cmd = kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
-                .unwrap_or(false);
-            let plugin_config = PluginConfig {
-                path,
-                run: PluginType::Pane(None),
-                location: RunPluginLocation::Zellij(plugin_tag.clone()),
-                _allow_exec_host_cmd: allow_exec_host_cmd,
-            };
-            plugins.insert(plugin_tag, plugin_config);
-        }
-        Ok(PluginsConfig(plugins))
-    }
-
-    /// Entrypoint from the config module
-//     pub fn get_plugins_with_default(user_plugins: Self) -> Self {
-//         let mut base_plugins = DEFAULT_CONFIG_PLUGINS.clone();
-//         base_plugins.0.extend(user_plugins.0);
-//         base_plugins
-//     }
 
     /// Get plugin config from run configuration specified in layout files.
     pub fn get(&self, run: impl Borrow<RunPlugin>) -> Option<PluginConfig> {

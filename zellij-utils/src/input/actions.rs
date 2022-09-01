@@ -61,11 +61,34 @@ pub enum SearchDirection {
     Up,
 }
 
+impl FromStr for SearchDirection {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Down" | "down" => Ok(SearchDirection::Down),
+            "Up" | "up" => Ok(SearchDirection::Up),
+            _ => Err(format!("Failed to parse SearchDirection. Unknown SearchDirection: {}", s)),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum SearchOption {
     CaseSensitivity,
     WholeWord,
     Wrap,
+}
+
+impl FromStr for SearchOption {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "CaseSensitivity" | "casesensitivity" | "Casesensitivity" => Ok(SearchOption::CaseSensitivity),
+            "WholeWord" | "wholeword" | "Wholeword" => Ok(SearchOption::WholeWord),
+            "Wrap" | "wrap" => Ok(SearchOption::Wrap),
+            _ => Err(format!("Failed to parse SearchOption. Unknown SearchOption: {}", s)),
+        }
+    }
 }
 
 // As these actions are bound to the default config, please

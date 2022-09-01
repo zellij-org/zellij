@@ -31,20 +31,6 @@ const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
 
-// /// Intermediate deserialization config struct
-// #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
-// pub struct ConfigFromYaml {
-//     #[serde(flatten)]
-//     pub options: Option<Options>,
-//     pub keybinds: Option<KeybindsFromYaml>,
-//     pub themes: Option<ThemesFromYamlIntermediate>,
-//     #[serde(flatten)]
-//     pub env: Option<EnvironmentVariables>,
-//     #[serde(default)]
-//     pub plugins: PluginsConfigFromYaml,
-//     pub ui: Option<UiConfig>,
-// }
-
 /// Main configuration.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Config {
@@ -128,30 +114,6 @@ impl Config {
             None => self.themes.get_theme("default").map(|theme| theme.palette)
         }
     }
-    pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> ConfigResult {
-        let mut config = base_config.unwrap_or_else(|| Config::default());
-        let kdl_config: KdlDocument = kdl_config.parse()?;
-        // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
-        // this should give an informative parsing error
-        if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds)?;
-        }
-        config.options = Options::from_kdl(&kdl_config);
-        if let Some(kdl_themes) = kdl_config.get("themes") {
-            config.themes = Themes::from_kdl(kdl_themes)?;
-        }
-        if let Some(kdl_plugin_config) = kdl_config.get("plugins") {
-            config.plugins = PluginsConfig::from_kdl(kdl_plugin_config)?;
-        }
-        if let Some(kdl_ui_config) = kdl_config.get("ui") {
-            config.ui = UiConfig::from_kdl(&kdl_ui_config)?;
-        }
-        if let Some(env_config) = kdl_config.get("env") {
-            config.env = EnvironmentVariables::from_kdl(&env_config)?;
-        }
-        Ok(config)
-    }
-
     /// Gets default configuration from assets
     // TODO Deserialize the Config from bytes &[u8],
     // once serde-yaml supports zero-copy

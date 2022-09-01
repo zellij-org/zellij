@@ -11,36 +11,18 @@
 use crate::{
     input::{
         command::RunCommand,
-        config::{ConfigError, LayoutNameInTabError},
+        config::{Config, ConfigError, LayoutNameInTabError},
     },
     pane_size::{Dimension, PaneGeom},
     setup,
 };
 
-use crate::kdl::kdl_layout_parser::KdlLayoutParser;
 use kdl::*;
 
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
 
-use crate::{
-    kdl_children,
-    kdl_string_arguments,
-    kdl_children_nodes,
-    kdl_name,
-    kdl_document_name,
-    kdl_get_string_entry,
-    kdl_get_int_entry,
-    kdl_get_child_entry_bool_value,
-    kdl_get_child_entry_string_value,
-    kdl_get_child,
-    kdl_get_bool_property_or_child_value,
-    kdl_get_string_property_or_child_value,
-    kdl_get_int_property_or_child_value,
-};
-
 use super::{
-    // config::ConfigFromYaml,
     plugins::{PluginTag, PluginsConfigError},
 };
 use serde::{Deserialize, Serialize};
@@ -95,19 +77,6 @@ pub struct RunPlugin {
     pub location: RunPluginLocation,
 }
 
-impl RunPlugin {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
-        let _allow_exec_host_cmd = kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
-        let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(ConfigError::KdlParsingError("Plugins must have a location".into()))?;
-        let url = Url::parse(string_url).map_err(|e| ConfigError::KdlParsingError(format!("Failed to aprse url: {:?}", e)))?;
-        let location = RunPluginLocation::try_from(url)?;
-        Ok(RunPlugin {
-            _allow_exec_host_cmd,
-            location,
-        })
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum RunPluginLocation {
     File(PathBuf),
@@ -154,9 +123,6 @@ pub struct Layout {
     #[serde(default)]
     pub borderless: bool,
     pub focus: Option<bool>,
-    // TODO: move these elsewhere?
-    pub session_name: Option<String>,
-    pub attach_to_session: bool,
     pub external_children_index: Option<usize>,
     pub focused_tab_index: Option<usize>,
     pub template: Option<Box<Layout>>,
@@ -204,7 +170,7 @@ impl Layout {
         default_layout.parts = LayoutParts::Panes(vec![Layout::default()]);
         default_layout
     }
-    pub fn from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<Self, ConfigError> {
+    pub fn stringified_from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<String, ConfigError> {
         match layout_path {
             Some(layout_path) => {
                 // The way we determine where to look for the layout is similar to
@@ -212,87 +178,81 @@ impl Layout {
                 // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
                 if layout_path.extension().is_some() || layout_path.components().count() > 1 {
                     // We look localy!
-                    Layout::from_path(layout_path)
+                    Layout::stringified_from_path(layout_path)
                 } else {
                     // We look in the default dir
-                    Layout::from_dir(layout_path, layout_dir.as_ref())
+                    Layout::stringified_from_dir(layout_path, layout_dir.as_ref())
                 }
             },
             None => {
-                Layout::from_dir(
+                Layout::stringified_from_dir(
                     &std::path::PathBuf::from("default"),
                     layout_dir.as_ref(),
                 )
             }
         }
     }
-    pub fn from_dir(
+    pub fn from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>, config: Config) -> Result<(Layout, Config), ConfigError> {
+        let raw_layout = Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let kdl_layout: KdlDocument = raw_layout.parse()?;
+        let layout = Layout::from_kdl(&kdl_layout)?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    pub fn stringified_from_dir(
         layout: &PathBuf,
         layout_dir: Option<&PathBuf>,
-    ) -> Result<Self, ConfigError> {
+    ) -> Result<String, ConfigError> {
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
                 if layout_path.with_extension("kdl").exists() {
-                    Self::from_path(layout_path)
+                    Self::stringified_from_path(layout_path)
                 } else {
-                    Layout::from_default_assets(layout)
+                    Layout::stringified_from_default_assets(layout)
                 }
             },
-            None => Layout::from_default_assets(layout),
+            None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn from_path(layout_path: &Path) -> Result<Self, ConfigError> {
+    pub fn stringified_from_path(layout_path: &Path) -> Result<String, ConfigError> {
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
 
         let mut kdl_layout = String::new();
         layout_file.read_to_string(&mut kdl_layout)?;
-        let kdl_layout: KdlDocument = kdl_layout.parse()?;
-        Layout::from_kdl(&kdl_layout)
+        Ok(kdl_layout)
     }
-    pub fn from_kdl(kdl_layout: &KdlDocument) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(&kdl_layout).parse()
-    }
-    pub fn from_default_assets(path: &Path) -> Result<Self, ConfigError> {
+    pub fn stringified_from_default_assets(path: &Path) -> Result<String, ConfigError> {
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
         match path.to_str() {
-            Some("default") => Self::default_from_assets(),
-            Some("strider") => Self::strider_from_assets(),
-            Some("disable-status-bar") => Self::disable_status_from_assets(),
-            Some("compact") => Self::compact_from_assets(),
+            Some("default") => Self::stringified_default_from_assets(),
+            Some("strider") => Self::stringified_strider_from_assets(),
+            Some("disable-status-bar") => Self::stringified_disable_status_from_assets(),
+            Some("compact") => Self::stringified_compact_from_assets(),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
             )),
         }
     }
-
-    pub fn default_from_assets() -> Result<Layout, ConfigError> {
-        let kdl_layout = String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?;
-        let kdl_layout: KdlDocument = kdl_layout.parse()?;
-        Layout::from_kdl(&kdl_layout)
+    pub fn stringified_default_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)
     }
 
-    pub fn strider_from_assets() -> Result<Layout, ConfigError> {
-        let kdl_layout = String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?;
-        let kdl_layout: KdlDocument = kdl_layout.parse()?;
-        Layout::from_kdl(&kdl_layout)
+    pub fn stringified_strider_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)
     }
 
-    pub fn disable_status_from_assets() -> Result<Layout, ConfigError> {
-        let kdl_layout = String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?;
-        let kdl_layout: KdlDocument = kdl_layout.parse()?;
-        Layout::from_kdl(&kdl_layout)
+    pub fn stringified_disable_status_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)
     }
 
-    pub fn compact_from_assets() -> Result<Layout, ConfigError> {
-        let kdl_layout = String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?;
-        let kdl_layout: KdlDocument = kdl_layout.parse()?;
-        Layout::from_kdl(&kdl_layout)
+    pub fn stringified_compact_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
     }
 
     pub fn total_terminal_panes(&self) -> usize {
@@ -378,12 +338,6 @@ impl Layout {
 
     pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
         split_space(space, self)
-    }
-
-    pub fn merge_layout_parts(&mut self, mut parts: Vec<Layout>) {
-        // TODO
-        unimplemented!()
-        // self.parts.append(&mut parts);
     }
 
     pub fn new_tab(&self) -> Layout {

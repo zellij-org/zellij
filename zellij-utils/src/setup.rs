@@ -194,64 +194,30 @@ impl Setup {
     /// 2. layout options
     ///    (`layout.yaml` / `zellij --layout`)
     /// 3. config options (`config.yaml`)
-    pub fn from_options(
-        opts: &CliArgs,
-    // ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
+    pub fn from_cli_args(
+        cli_args: &CliArgs,
     ) -> Result<(Config, Layout, Options), ConfigError> {
-        let clean = match &opts.command {
-            Some(Command::Setup(ref setup)) => setup.clean,
-            _ => false,
-        };
-
-        // setup functions that don't require deserialisation of the config
-        if let Some(Command::Setup(ref setup)) = &opts.command {
-            setup.from_cli().map_or_else(
-                |e| {
-                    eprintln!("{:?}", e);
-                    process::exit(1);
-                },
-                |_| {},
-            );
-        };
-
-        let config = if !clean {
-            match Config::try_from(opts) {
-                Ok(config) => config,
-                Err(e) => {
-                    return Err(e);
-                },
-            }
-        } else {
+        let clean = cli_args.should_clean_config();
+        // note that this can potentially exit the process
+        Setup::handle_setup_commands(cli_args);
+        let config = if clean {
             Config::default()
+        } else {
+            Config::try_from(cli_args)?
         };
-
-        let config_options = Options::from_cli(&config.options, opts.command.clone());
-
-        let layout_dir = config_options
-            .layout_dir
-            .clone()
-            .or_else(|| get_layout_dir(opts.config_dir.clone().or_else(find_default_config_dir)));
-        let chosen_layout = opts
-            .layout
-            .clone()
-            .or_else(|| config_options.default_layout.clone());
-
-//         // TODO: CONTINUE HERE - change this to Layout::from_kdl and have this function return a
-//         // Layout instead of a LayoutFromYaml
-//         let layout_result =
-//             LayoutFromYamlIntermediate::from_path_or_default(chosen_layout.as_ref(), layout_dir);
-//         let layout = match layout_result {
-//             None => None,
-//             Some(Ok(layout)) => Some(layout),
-//             Some(Err(e)) => {
-//                 return Err(e);
-//             },
-//         };
-        let layout = Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir)?;
-
-        if let Some(Command::Setup(ref setup)) = &opts.command {
+        let cli_config_options: Option<Options> = if let Some(Command::Options(options)) = cli_args.command.clone() {
+            Some(options.into())
+        } else {
+            None
+        };
+        let (layout, config) = Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
+        let config_options = match cli_config_options {
+            Some(cli_config_options) => config.options.merge(cli_config_options),
+            None =>  config.options.clone()
+        };
+        if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup
-                .from_cli_with_options(opts, &config_options)
+                .from_cli_with_options(cli_args, &config_options)
                 .map_or_else(
                     |e| {
                         eprintln!("{:?}", e);
@@ -260,9 +226,7 @@ impl Setup {
                     |_| {},
                 );
         };
-
-        Ok((config, layout, config_options)) // TODO: no!!!!!111oneoneone
-        // Setup::merge_config_with_layout(config, layout, config_options)
+        Ok((config, layout, config_options))
     }
 
     /// General setup helpers
@@ -305,33 +269,6 @@ impl Setup {
             std::process::exit(0);
         }
         Ok(())
-    }
-
-    fn merge_config_with_layout(
-        config: Config,
-        // layout: Option<LayoutFromYamlIntermediate>,
-        layout: Layout,
-        config_options: Options,
-    // ) -> Result<(Config, Option<LayoutFromYaml>, Options), ConfigError> {
-    ) -> Result<(Config, Layout, Options), ConfigError> {
-        unimplemented!()
-//         let (layout, layout_config) = match layout.map(|l| l.to_layout_and_config()) {
-//             None => (None, None),
-//             Some((layout, layout_config)) => (Some(layout), layout_config),
-//         };
-//
-//         let (config, config_options) = if let Some(layout_config) = layout_config {
-//             let config_options = if let Some(options) = layout_config.options.clone() {
-//                 config_options.merge(options)
-//             } else {
-//                 config_options
-//             };
-//             // let config = config.merge(layout_config.try_into()?); // TODO: NO! handle this!
-//             (config, config_options)
-//         } else {
-//             (config, config_options)
-//         };
-//         Ok((config, layout, config_options))
     }
 
     pub fn check_defaults_config(opts: &CliArgs, config_options: &Options) -> std::io::Result<()> {
@@ -481,103 +418,134 @@ impl Setup {
             _ => {},
         }
     }
+    fn parse_layout_and_override_config(cli_config_options: Option<&Options>, config: Config, cli_args: &CliArgs) -> Result<(Layout, Config), ConfigError> {
+        // find the layout folder relative to which we'll look for our layout
+        let layout_dir = cli_config_options.as_ref()
+            .and_then(|cli_options| cli_options.layout_dir.clone())
+            .or_else(|| config.options.layout_dir.clone())
+            .or_else(|| get_layout_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)));
+        // the chosen layout can either be a path relative to the layout_dir or a name of one
+        // of our assets, this distinction is made when parsing the layout - TODO: ideally, this
+        // logic should not be split up and all the decisions should happen here
+        let chosen_layout = cli_args
+            .layout
+            .clone()
+            .or_else(|| cli_config_options.as_ref().and_then(|cli_options| cli_options.default_layout.clone()));
+        // we merge-override the config here because the layout might contain configuration
+        // that needs to take precedence
+        let (layout, config) = Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)?;
+        Ok((layout, config))
+    }
+    fn handle_setup_commands(cli_args: &CliArgs) {
+        if let Some(Command::Setup(ref setup)) = &cli_args.command {
+            setup.from_cli().map_or_else(
+                |e| {
+                    eprintln!("{:?}", e);
+                    process::exit(1);
+                },
+                |_| {},
+            );
+        };
+    }
+
 }
 
-// TODO: write these test cases once we're done with the layout
-//
-// #[cfg(test)]
-// mod setup_test {
-//     use super::Setup;
-//     use crate::data::InputMode;
-//     use crate::input::{
-//         config::{Config, ConfigError},
-//         layout::LayoutFromYamlIntermediate,
-//         options::Options,
-//     };
-//
-//     fn deserialise_config_and_layout(
-//         config: &str,
-//         layout: &str,
-//     ) -> Result<(Config, LayoutFromYamlIntermediate), ConfigError> {
-//         // let config = Config::from_yaml(config)?;
-//         let config = Config::from_kdl(config)?;
-//         let layout = LayoutFromYamlIntermediate::from_yaml(layout)?;
-//         Ok((config, layout))
-//     }
-//
-//     #[test]
-//     fn empty_config_empty_layout() {
-//         let goal = Config::default();
-//         let config = r"";
-//         let layout = r"";
-//         let config_layout_result = deserialise_config_and_layout(config, layout);
-//         let (config, layout) = config_layout_result.unwrap();
-//         let config_options = Options::default();
-//         let (config, _layout, _config_options) =
-//             Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
-//         assert_eq!(config, goal);
-//     }
-//
-//     #[test]
-//     fn config_empty_layout() {
-//         let mut goal = Config::default();
-//         goal.options.default_shell = Some(std::path::PathBuf::from("fish"));
-//         let config = r"---
-//         default_shell: fish";
-//         let layout = r"";
-//         let config_layout_result = deserialise_config_and_layout(config, layout);
-//         let (config, layout) = config_layout_result.unwrap();
-//         let config_options = Options::default();
-//         let (config, _layout, _config_options) =
-//             Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
-//         assert_eq!(config, goal);
-//     }
-//
-//     #[test]
-//     fn layout_overwrites_config() {
-//         let mut goal = Config::default();
-//         goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
-//         let config = r"---
-//         default_shell: fish";
-//         let layout = r"---
-//         default_shell: bash";
-//         let config_layout_result = deserialise_config_and_layout(config, layout);
-//         let (config, layout) = config_layout_result.unwrap();
-//         let config_options = Options::default();
-//         let (config, _layout, _config_options) =
-//             Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
-//         assert_eq!(config, goal);
-//     }
-//
-//     #[test]
-//     fn empty_config_nonempty_layout() {
-//         let mut goal = Config::default();
-//         goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
-//         let config = r"";
-//         let layout = r"---
-//         default_shell: bash";
-//         let config_layout_result = deserialise_config_and_layout(config, layout);
-//         let (config, layout) = config_layout_result.unwrap();
-//         let config_options = Options::default();
-//         let (config, _layout, _config_options) =
-//             Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
-//         assert_eq!(config, goal);
-//     }
-//
-//     #[test]
-//     fn nonempty_config_nonempty_layout() {
-//         let mut goal = Config::default();
-//         goal.options.default_shell = Some(std::path::PathBuf::from("bash"));
-//         goal.options.default_mode = Some(InputMode::Locked);
-//         let config = r"---
-//         default_mode: locked";
-//         let layout = r"---
-//         default_shell: bash";
-//         let config_layout_result = deserialise_config_and_layout(config, layout);
-//         let (config, layout) = config_layout_result.unwrap();
-//         let config_options = Options::default();
-//         let (config, _layout, _config_options) =
-//             Setup::merge_config_with_layout(config, Some(layout), config_options).unwrap();
-//         assert_eq!(config, goal);
-//     }
-// }
+#[cfg(test)]
+mod setup_test {
+    use super::Setup;
+    use std::path::PathBuf;
+    use insta::assert_snapshot;
+    use crate::cli::{CliArgs, Command};
+    use crate::input::{
+        options::{Options, CliOptions},
+    };
+
+    #[test]
+    fn default_config_with_no_cli_arguments() {
+        let cli_args = CliArgs::default();
+        let (config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+        assert_snapshot!(format!("{:#?}", layout));
+        assert_snapshot!(format!("{:#?}", options));
+    }
+    #[test]
+    fn cli_arguments_override_config_options() {
+        let mut cli_args = CliArgs::default();
+        cli_args.command = Some(Command::Options(
+            CliOptions {
+                options: Options {
+                    simplified_ui: Some(true),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        ));
+        let (_config, _layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", options));
+    }
+    #[test]
+    fn layout_options_override_config_options() {
+        let mut cli_args = CliArgs::default();
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-options.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", options));
+        assert_snapshot!(format!("{:#?}", layout));
+    }
+    #[test]
+    fn cli_arguments_override_layout_options() {
+        let mut cli_args = CliArgs::default();
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-options.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.command = Some(Command::Options(
+            CliOptions {
+                options: Options {
+                    pane_frames: Some(true),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        ));
+        let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", options));
+        assert_snapshot!(format!("{:#?}", layout));
+    }
+    #[test]
+    fn layout_env_vars_override_config_env_vars() {
+        let mut cli_args = CliArgs::default();
+        cli_args.config = Some(PathBuf::from(format!("{}/src/test-fixtures/config-with-env-vars.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-env-vars.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+    }
+    #[test]
+    fn layout_ui_config_overrides_config_ui_config() {
+        let mut cli_args = CliArgs::default();
+        cli_args.config = Some(PathBuf::from(format!("{}/src/test-fixtures/config-with-ui-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-ui-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+    }
+    #[test]
+    fn layout_plugins_override_config_plugins() {
+        let mut cli_args = CliArgs::default();
+        cli_args.config = Some(PathBuf::from(format!("{}/src/test-fixtures/config-with-plugins-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-plugins-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+    }
+    #[test]
+    fn layout_themes_override_config_themes() {
+        let mut cli_args = CliArgs::default();
+        cli_args.config = Some(PathBuf::from(format!("{}/src/test-fixtures/config-with-themes-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-themes-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+    }
+    #[test]
+    fn layout_keybinds_override_config_keybinds() {
+        let mut cli_args = CliArgs::default();
+        cli_args.config = Some(PathBuf::from(format!("{}/src/test-fixtures/config-with-keybindings-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        cli_args.layout = Some(PathBuf::from(format!("{}/src/test-fixtures/layout-with-keybindings-config.kdl", env!("CARGO_MANIFEST_DIR"))));
+        let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
+        assert_snapshot!(format!("{:#?}", config));
+    }
+}

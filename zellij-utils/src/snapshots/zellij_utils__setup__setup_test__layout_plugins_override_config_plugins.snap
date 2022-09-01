@@ -1,0 +1,2959 @@
+---
+source: zellij-utils/src/setup.rs
+assertion_line: 609
+expression: "format!(\"{:#?}\", config)"
+---
+Config {
+    keybinds: {
+        Normal: {
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Char(
+                    'y',
+                ),
+            ): [
+                Run(
+                    RunCommandAction {
+                        command: "diskonaut",
+                        args: [],
+                        cwd: Some(
+                            "/home/aram",
+                        ),
+                        direction: None,
+                    },
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+        },
+        Locked: {
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Resize: {
+            Left: [
+                Resize(
+                    Left,
+                ),
+            ],
+            Down: [
+                Resize(
+                    Down,
+                ),
+            ],
+            Up: [
+                Resize(
+                    Up,
+                ),
+            ],
+            Right: [
+                Resize(
+                    Right,
+                ),
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '+',
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Char(
+                '-',
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Char(
+                '=',
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Char(
+                'h',
+            ): [
+                Resize(
+                    Left,
+                ),
+            ],
+            Char(
+                'j',
+            ): [
+                Resize(
+                    Down,
+                ),
+            ],
+            Char(
+                'k',
+            ): [
+                Resize(
+                    Up,
+                ),
+            ],
+            Char(
+                'l',
+            ): [
+                Resize(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Pane: {
+            Left: [
+                MoveFocus(
+                    Left,
+                ),
+            ],
+            Down: [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Up: [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Right: [
+                MoveFocus(
+                    Right,
+                ),
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'c',
+            ): [
+                SwitchToMode(
+                    RenamePane,
+                ),
+            ],
+            Char(
+                'd',
+            ): [
+                NewPane(
+                    Some(
+                        Down,
+                    ),
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'e',
+            ): [
+                TogglePaneEmbedOrFloating,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'f',
+            ): [
+                ToggleFocusFullscreen,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'h',
+            ): [
+                MoveFocus(
+                    Left,
+                ),
+            ],
+            Char(
+                'j',
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Char(
+                'k',
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Char(
+                'l',
+            ): [
+                MoveFocus(
+                    Right,
+                ),
+            ],
+            Char(
+                'n',
+            ): [
+                NewPane(
+                    None,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'p',
+            ): [
+                SwitchFocus,
+            ],
+            Char(
+                'r',
+            ): [
+                NewPane(
+                    Some(
+                        Right,
+                    ),
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'w',
+            ): [
+                ToggleFloatingPanes,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'x',
+            ): [
+                CloseFocus,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'z',
+            ): [
+                TogglePaneFrames,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Tab: {
+            Left: [
+                GoToPreviousTab,
+            ],
+            Down: [
+                GoToNextTab,
+            ],
+            Up: [
+                GoToPreviousTab,
+            ],
+            Right: [
+                GoToNextTab,
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '1',
+            ): [
+                GoToTab(
+                    1,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '2',
+            ): [
+                GoToTab(
+                    2,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '3',
+            ): [
+                GoToTab(
+                    3,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '4',
+            ): [
+                GoToTab(
+                    4,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '5',
+            ): [
+                GoToTab(
+                    5,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '6',
+            ): [
+                GoToTab(
+                    6,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '7',
+            ): [
+                GoToTab(
+                    7,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '8',
+            ): [
+                GoToTab(
+                    8,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '9',
+            ): [
+                GoToTab(
+                    9,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'h',
+            ): [
+                GoToPreviousTab,
+            ],
+            Char(
+                'j',
+            ): [
+                GoToNextTab,
+            ],
+            Char(
+                'k',
+            ): [
+                GoToPreviousTab,
+            ],
+            Char(
+                'l',
+            ): [
+                GoToNextTab,
+            ],
+            Char(
+                'n',
+            ): [
+                NewTab(
+                    None,
+                    None,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'r',
+            ): [
+                SwitchToMode(
+                    RenameTab,
+                ),
+                TabNameInput(
+                    [
+                        0,
+                    ],
+                ),
+            ],
+            Char(
+                's',
+            ): [
+                ToggleActiveSyncTab,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'x',
+            ): [
+                CloseTab,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            BackTab: [
+                ToggleTab,
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Scroll: {
+            PageDown: [
+                PageScrollDown,
+            ],
+            PageUp: [
+                PageScrollUp,
+            ],
+            Left: [
+                PageScrollUp,
+            ],
+            Down: [
+                ScrollDown,
+            ],
+            Up: [
+                ScrollUp,
+            ],
+            Right: [
+                PageScrollDown,
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'd',
+            ): [
+                HalfPageScrollDown,
+            ],
+            Char(
+                'e',
+            ): [
+                EditScrollback,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'h',
+            ): [
+                PageScrollUp,
+            ],
+            Char(
+                'j',
+            ): [
+                ScrollDown,
+            ],
+            Char(
+                'k',
+            ): [
+                ScrollUp,
+            ],
+            Char(
+                'l',
+            ): [
+                PageScrollDown,
+            ],
+            Char(
+                's',
+            ): [
+                SwitchToMode(
+                    EnterSearch,
+                ),
+            ],
+            Char(
+                'u',
+            ): [
+                HalfPageScrollUp,
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                PageScrollUp,
+            ],
+            Ctrl(
+                'c',
+            ): [
+                ScrollToBottom,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'f',
+            ): [
+                PageScrollDown,
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        EnterSearch: {
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Search,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'c',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+        },
+        Search: {
+            PageDown: [
+                PageScrollDown,
+            ],
+            PageUp: [
+                PageScrollUp,
+            ],
+            Left: [
+                PageScrollUp,
+            ],
+            Down: [
+                ScrollDown,
+            ],
+            Up: [
+                ScrollUp,
+            ],
+            Right: [
+                PageScrollDown,
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'c',
+            ): [
+                SearchToggleOption(
+                    CaseSensitivity,
+                ),
+            ],
+            Char(
+                'd',
+            ): [
+                HalfPageScrollDown,
+            ],
+            Char(
+                'h',
+            ): [
+                PageScrollUp,
+            ],
+            Char(
+                'j',
+            ): [
+                ScrollDown,
+            ],
+            Char(
+                'k',
+            ): [
+                ScrollUp,
+            ],
+            Char(
+                'l',
+            ): [
+                PageScrollDown,
+            ],
+            Char(
+                'n',
+            ): [
+                Search(
+                    Down,
+                ),
+            ],
+            Char(
+                'o',
+            ): [
+                SearchToggleOption(
+                    WholeWord,
+                ),
+            ],
+            Char(
+                'p',
+            ): [
+                Search(
+                    Up,
+                ),
+            ],
+            Char(
+                'u',
+            ): [
+                HalfPageScrollUp,
+            ],
+            Char(
+                'w',
+            ): [
+                SearchToggleOption(
+                    Wrap,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                PageScrollUp,
+            ],
+            Ctrl(
+                'c',
+            ): [
+                ScrollToBottom,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'f',
+            ): [
+                PageScrollDown,
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        RenameTab: {
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'c',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Esc: [
+                UndoRenameTab,
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+        },
+        RenamePane: {
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'c',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Esc: [
+                UndoRenamePane,
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+        },
+        Session: {
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'd',
+            ): [
+                Detach,
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Move: {
+            Left: [
+                MovePane(
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            Down: [
+                MovePane(
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            Up: [
+                MovePane(
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            Right: [
+                MovePane(
+                    Some(
+                        Right,
+                    ),
+                ),
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'h',
+            ): [
+                MovePane(
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            Char(
+                'j',
+            ): [
+                MovePane(
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            Char(
+                'k',
+            ): [
+                MovePane(
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            Char(
+                'l',
+            ): [
+                MovePane(
+                    Some(
+                        Right,
+                    ),
+                ),
+            ],
+            Char(
+                'n',
+            ): [
+                MovePane(
+                    None,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            BackTab: [
+                MovePane(
+                    None,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+        Tmux: {
+            Left: [
+                MoveFocus(
+                    Left,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Down: [
+                MoveFocus(
+                    Down,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Up: [
+                MoveFocus(
+                    Up,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Right: [
+                MoveFocus(
+                    Right,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                '%',
+            ): [
+                NewPane(
+                    Some(
+                        Right,
+                    ),
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ',',
+            ): [
+                SwitchToMode(
+                    RenameTab,
+                ),
+            ],
+            Char(
+                '[',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Char(
+                '\\',
+            ): [
+                NewPane(
+                    Some(
+                        Down,
+                    ),
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'c',
+            ): [
+                NewTab(
+                    None,
+                    None,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'd',
+            ): [
+                Detach,
+            ],
+            Char(
+                'h',
+            ): [
+                MoveFocus(
+                    Left,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'j',
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'k',
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'l',
+            ): [
+                MoveFocus(
+                    Right,
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'n',
+            ): [
+                GoToNextTab,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'o',
+            ): [
+                FocusNextPane,
+            ],
+            Char(
+                'p',
+            ): [
+                GoToPreviousTab,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                'z',
+            ): [
+                ToggleFocusFullscreen,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                Write(
+                    [
+                        2,
+                    ],
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
+    },
+    options: Options {
+        simplified_ui: None,
+        theme: None,
+        default_mode: None,
+        default_shell: None,
+        default_layout: None,
+        layout_dir: None,
+        theme_dir: None,
+        mouse_mode: None,
+        pane_frames: None,
+        mirror_session: None,
+        on_force_close: None,
+        scroll_buffer_size: None,
+        copy_command: None,
+        copy_clipboard: None,
+        copy_on_select: None,
+        scrollback_editor: None,
+        session_name: None,
+        attach_to_session: None,
+    },
+    themes: {},
+    plugins: {
+        PluginTag(
+            "compact-bar",
+        ): PluginConfig {
+            path: "compact-bar",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "compact-bar",
+                ),
+            ),
+        },
+        PluginTag(
+            "some-other-plugin",
+        ): PluginConfig {
+            path: "i-am-defined-in-the-layout",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "some-other-plugin",
+                ),
+            ),
+        },
+        PluginTag(
+            "status-bar",
+        ): PluginConfig {
+            path: "status-bar",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "status-bar",
+                ),
+            ),
+        },
+        PluginTag(
+            "strider",
+        ): PluginConfig {
+            path: "strider",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "strider",
+                ),
+            ),
+        },
+        PluginTag(
+            "tab-bar",
+        ): PluginConfig {
+            path: "tab-bar-from-layout",
+            run: Pane(
+                None,
+            ),
+            _allow_exec_host_cmd: false,
+            location: Zellij(
+                PluginTag(
+                    "tab-bar",
+                ),
+            ),
+        },
+    },
+    ui: UiConfig {
+        pane_frames: FrameConfig {
+            rounded_corners: false,
+        },
+    },
+    env: {},
+}

@@ -1,0 +1,11 @@
+layout
+keybinds clear-defaults=true {
+    normal {
+        bind "b" { SwitchToMode "Locked"; }
+        bind "Ctrl c" { SwitchToMode "Resize"; }
+    }
+    resize {
+        bind "b" { SwitchToMode "Locked"; }
+        bind "Ctrl c" { SwitchToMode "Resize"; }
+    }
+}

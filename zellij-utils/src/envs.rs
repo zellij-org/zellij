@@ -5,9 +5,11 @@ use crate::input::config::ConfigError;
 use kdl::KdlNode;
 use crate::{kdl_children_nodes_or_error, kdl_name, kdl_first_entry_as_string, kdl_first_entry_as_i64};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, BTreeMap},
     env::{set_var, var},
 };
+
+use std::fmt;
 
 pub const ZELLIJ_ENV_KEY: &str = "ZELLIJ";
 pub fn get_zellij() -> Result<String> {
@@ -37,9 +39,19 @@ pub fn get_socket_dir() -> Result<String> {
 }
 
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EnvironmentVariables {
     env: HashMap<String, String>,
+}
+
+impl fmt::Debug for EnvironmentVariables {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut stable_sorted = BTreeMap::new();
+        for (env_var_name, env_var_value) in self.env.iter() {
+            stable_sorted.insert(env_var_name, env_var_value);
+        }
+        write!(f, "{:#?}", stable_sorted)
+    }
 }
 
 impl EnvironmentVariables {
@@ -54,20 +66,6 @@ impl EnvironmentVariables {
             env: data
         }
     }
-    pub fn from_kdl(kdl_env_variables: &KdlNode) -> Result<Self, ConfigError> {
-        let mut env: HashMap<String, String> = HashMap::new();
-        for env_var in kdl_children_nodes_or_error!(kdl_env_variables, "empty env variable block") {
-            let env_var_name = kdl_name!(env_var);
-            let env_var_str_value = kdl_first_entry_as_string!(env_var).map(|s| format!("{}", s.to_string()));
-            let env_var_int_value = kdl_first_entry_as_i64!(env_var).map(|s| format!("{}", s.to_string()));
-            let env_var_value = env_var_str_value
-                .or(env_var_int_value)
-                .ok_or::<Box<dyn std::error::Error>>(format!("Failed to parse env var: {:?}", env_var_name).into())?;
-            env.insert(env_var_name.into(), env_var_value);
-        }
-        Ok(EnvironmentVariables::from_data(env))
-    }
-
     /// Set all the ENVIRONMENT VARIABLES, that are configured
     /// in the configuration and layout files
     pub fn set_vars(&self) {

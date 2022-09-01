@@ -46,6 +46,15 @@ pub struct CliArgs {
     pub debug: bool,
 }
 
+impl CliArgs {
+    pub fn should_clean_config(&self) -> bool {
+        match &self.command {
+            Some(Command::Setup(ref setup)) => setup.clean,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum Command {
     /// Change the behaviour of zellij

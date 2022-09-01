@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 711
+assertion_line: 712
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -30,8 +30,6 @@ Layout {
                                             run: None,
                                             borderless: false,
                                             focus: None,
-                                            session_name: None,
-                                            attach_to_session: false,
                                             external_children_index: None,
                                             focused_tab_index: None,
                                             template: None,
@@ -59,8 +57,6 @@ Layout {
                                                         ),
                                                         borderless: false,
                                                         focus: None,
-                                                        session_name: None,
-                                                        attach_to_session: false,
                                                         external_children_index: None,
                                                         focused_tab_index: None,
                                                         template: None,
@@ -71,8 +67,6 @@ Layout {
                                             run: None,
                                             borderless: false,
                                             focus: None,
-                                            session_name: None,
-                                            attach_to_session: false,
                                             external_children_index: None,
                                             focused_tab_index: None,
                                             template: None,
@@ -87,8 +81,6 @@ Layout {
                                             run: None,
                                             borderless: false,
                                             focus: None,
-                                            session_name: None,
-                                            attach_to_session: false,
                                             external_children_index: None,
                                             focused_tab_index: None,
                                             template: None,
@@ -99,8 +91,6 @@ Layout {
                                 run: None,
                                 borderless: false,
                                 focus: None,
-                                session_name: None,
-                                attach_to_session: false,
                                 external_children_index: None,
                                 focused_tab_index: None,
                                 template: None,
@@ -111,8 +101,6 @@ Layout {
                     run: None,
                     borderless: false,
                     focus: None,
-                    session_name: None,
-                    attach_to_session: false,
                     external_children_index: None,
                     focused_tab_index: None,
                     template: None,
@@ -124,8 +112,6 @@ Layout {
     run: None,
     borderless: false,
     focus: None,
-    session_name: None,
-    attach_to_session: false,
     external_children_index: None,
     focused_tab_index: None,
     template: Some(
@@ -144,8 +130,6 @@ Layout {
                         run: None,
                         borderless: false,
                         focus: None,
-                        session_name: None,
-                        attach_to_session: false,
                         external_children_index: None,
                         focused_tab_index: None,
                         template: None,
@@ -156,8 +140,6 @@ Layout {
             run: None,
             borderless: false,
             focus: None,
-            session_name: None,
-            attach_to_session: false,
             external_children_index: None,
             focused_tab_index: None,
             template: None,

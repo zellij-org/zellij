@@ -152,7 +152,7 @@ fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
         let action = format!("[{}]", action);
         match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
             Ok(parsed) => {
-                let (config, _, config_options) = match Setup::from_options(&opts) {
+                let (config, _, config_options) = match Setup::from_cli_args(&opts) {
                     Ok(results) => results,
                     Err(e) => {
                         eprintln!("{}", e);
@@ -249,7 +249,7 @@ fn attach_with_session_name(
 }
 
 pub(crate) fn start_client(opts: CliArgs) {
-    let (config, layout, config_options) = match Setup::from_options(&opts) {
+    let (config, layout, config_options) = match Setup::from_cli_args(&opts) {
         Ok(results) => results,
         Err(e) => {
             eprintln!("{}", e);

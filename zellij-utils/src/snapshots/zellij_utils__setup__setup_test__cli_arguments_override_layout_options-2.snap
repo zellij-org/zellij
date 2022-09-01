@@ -1,0 +1,49 @@
+---
+source: zellij-utils/src/setup.rs
+assertion_line: 509
+expression: "format!(\"{:#?}\", layout)"
+---
+Layout {
+    direction: Horizontal,
+    pane_name: None,
+    parts: Panes(
+        [],
+    ),
+    split_size: None,
+    run: None,
+    borderless: false,
+    focus: None,
+    external_children_index: None,
+    focused_tab_index: None,
+    template: Some(
+        Layout {
+            direction: Horizontal,
+            pane_name: None,
+            parts: Panes(
+                [
+                    Layout {
+                        direction: Horizontal,
+                        pane_name: None,
+                        parts: Panes(
+                            [],
+                        ),
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        focused_tab_index: None,
+                        template: None,
+                    },
+                ],
+            ),
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+            focused_tab_index: None,
+            template: None,
+        },
+    ),
+}

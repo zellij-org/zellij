@@ -10,10 +10,27 @@ use crate::data::{InputMode, Key, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
+use std::fmt;
 
 /// Used in the config struct
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Default)]
+#[derive(Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct Keybinds(pub HashMap<InputMode, HashMap<Key, Vec<Action>>>);
+
+impl fmt::Debug for Keybinds {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut stable_sorted = BTreeMap::new();
+        for (mode, keybinds) in self.0.iter() {
+            let mut stable_sorted_mode_keybinds = BTreeMap::new();
+            for (key, actions) in keybinds {
+                stable_sorted_mode_keybinds.insert(key, actions);
+            }
+            stable_sorted.insert(mode, stable_sorted_mode_keybinds);
+        }
+        write!(f, "{:#?}", stable_sorted)
+    }
+}
+
+
 // pub struct Keybinds(HashMap<InputMode, ModeKeybinds>);
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ModeKeybinds(BTreeMap<Key, Vec<Action>>);
@@ -70,63 +87,6 @@ enum Unbind {
 }
 
 impl Keybinds {
-    fn bind_actions_for_each_key(key_block: &KdlNode, input_mode_keybinds: &mut HashMap<Key, Vec<Action>>) -> Result<(), ConfigError>{
-        let keys: Vec<Key> = keys_from_kdl!(key_block);
-        let actions: Vec<Action> = actions_from_kdl!(key_block);
-        for key in keys {
-            input_mode_keybinds.insert(key, actions.clone());
-        }
-        Ok(())
-    }
-    fn unbind_keys(key_block: &KdlNode, input_mode_keybinds: &mut HashMap<Key, Vec<Action>>) -> Result<(), ConfigError>{
-        let keys: Vec<Key> = keys_from_kdl!(key_block);
-        for key in keys {
-            input_mode_keybinds.remove(&key);
-        }
-        Ok(())
-    }
-    fn unbind_keys_in_all_modes(global_unbind: &KdlNode, keybinds_from_config: &mut Keybinds) -> Result<(), ConfigError> {
-        let keys: Vec<Key> = keys_from_kdl!(global_unbind);
-        for mode in keybinds_from_config.0.values_mut() {
-            for key in &keys {
-                mode.remove(&key);
-            }
-        }
-        Ok(())
-    }
-    fn input_mode_keybindings <'a>(mode: &KdlNode, keybinds_from_config: &'a mut Keybinds) -> Result<&'a mut HashMap<Key, Vec<Action>>, ConfigError> {
-        let mode_name = kdl_name!(mode);
-        let input_mode = InputMode::from_str(mode_name)?;
-        let input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&input_mode);
-        let clear_defaults_for_mode = kdl_arg_is_truthy!(mode, "clear-defaults");
-        if clear_defaults_for_mode {
-            input_mode_keybinds.clear();
-        }
-        Ok(input_mode_keybinds)
-    }
-    pub fn from_kdl(kdl_keybinds: &KdlNode, base_keybinds: Keybinds) -> Result<Self, ConfigError> {
-        let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
-        let mut keybinds_from_config = if clear_defaults { Keybinds::default() } else { base_keybinds };
-        for mode in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
-            if kdl_name!(mode) == "unbind" {
-                continue;
-            }
-            let mut input_mode_keybinds = Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            let bind_nodes = kdl_children_nodes_or_error!(mode, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
-            let unbind_nodes = kdl_children_nodes_or_error!(mode, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
-            for key_block in bind_nodes {
-                Keybinds::bind_actions_for_each_key(key_block, &mut input_mode_keybinds)?;
-            }
-            // we loop twice so that the unbinds always happen after the binds
-            for key_block in unbind_nodes {
-                Keybinds::unbind_keys(key_block, &mut input_mode_keybinds)?;
-            }
-        }
-        if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
-            Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
-        };
-        Ok(keybinds_from_config)
-    }
     pub fn get_actions_for_key_in_mode(&self, mode: &InputMode, key: &Key) -> Option<&Vec<Action>> {
         self.0.get(mode)
             .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key))

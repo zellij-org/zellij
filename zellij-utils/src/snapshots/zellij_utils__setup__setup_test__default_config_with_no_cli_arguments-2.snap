@@ -1,0 +1,107 @@
+---
+source: zellij-utils/src/setup.rs
+assertion_line: 468
+expression: "format!(\"{:#?}\", layout)"
+---
+Layout {
+    direction: Horizontal,
+    pane_name: None,
+    parts: Panes(
+        [],
+    ),
+    split_size: None,
+    run: None,
+    borderless: false,
+    focus: None,
+    external_children_index: None,
+    focused_tab_index: None,
+    template: Some(
+        Layout {
+            direction: Horizontal,
+            pane_name: None,
+            parts: Panes(
+                [
+                    Layout {
+                        direction: Horizontal,
+                        pane_name: None,
+                        parts: Panes(
+                            [],
+                        ),
+                        split_size: Some(
+                            Fixed(
+                                1,
+                            ),
+                        ),
+                        run: Some(
+                            Plugin(
+                                RunPlugin {
+                                    _allow_exec_host_cmd: false,
+                                    location: Zellij(
+                                        PluginTag(
+                                            "tab-bar",
+                                        ),
+                                    ),
+                                },
+                            ),
+                        ),
+                        borderless: true,
+                        focus: None,
+                        external_children_index: None,
+                        focused_tab_index: None,
+                        template: None,
+                    },
+                    Layout {
+                        direction: Horizontal,
+                        pane_name: None,
+                        parts: Panes(
+                            [],
+                        ),
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                        focused_tab_index: None,
+                        template: None,
+                    },
+                    Layout {
+                        direction: Horizontal,
+                        pane_name: None,
+                        parts: Panes(
+                            [],
+                        ),
+                        split_size: Some(
+                            Fixed(
+                                2,
+                            ),
+                        ),
+                        run: Some(
+                            Plugin(
+                                RunPlugin {
+                                    _allow_exec_host_cmd: false,
+                                    location: Zellij(
+                                        PluginTag(
+                                            "status-bar",
+                                        ),
+                                    ),
+                                },
+                            ),
+                        ),
+                        borderless: true,
+                        focus: None,
+                        external_children_index: None,
+                        focused_tab_index: None,
+                        template: None,
+                    },
+                ],
+            ),
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+            focused_tab_index: None,
+            template: None,
+        },
+    ),
+}

@@ -23,24 +23,6 @@ pub struct RunCommand {
     pub cwd: Option<PathBuf>,
 }
 
-impl RunCommand {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
-        let command = PathBuf::from(kdl_get_child_entry_string_value!(kdl_node, "cmd").ok_or(ConfigError::KdlParsingError("Command must have a cmd value".into()))?);
-        let cwd = kdl_get_child_entry_string_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
-        let args = match kdl_get_child!(kdl_node, "args") {
-            Some(kdl_args) => {
-                kdl_string_arguments!(kdl_args).iter().map(|s| String::from(*s)).collect()
-            },
-            None => vec![]
-        };
-        Ok(RunCommand {
-            command,
-            args,
-            cwd,
-        })
-    }
-}
-
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommandAction {

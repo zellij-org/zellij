@@ -1,0 +1,25 @@
+---
+source: zellij-utils/src/setup.rs
+assertion_line: 546
+expression: "format!(\"{:#?}\", options)"
+---
+Options {
+    simplified_ui: None,
+    theme: None,
+    default_mode: None,
+    default_shell: None,
+    default_layout: None,
+    layout_dir: None,
+    theme_dir: None,
+    mouse_mode: None,
+    pane_frames: None,
+    mirror_session: None,
+    on_force_close: None,
+    scroll_buffer_size: None,
+    copy_command: None,
+    copy_clipboard: None,
+    copy_on_select: None,
+    scrollback_editor: None,
+    session_name: None,
+    attach_to_session: None,
+}

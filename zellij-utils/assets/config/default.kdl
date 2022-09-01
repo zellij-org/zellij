@@ -4,7 +4,7 @@ keybinds {
         bind "Ctrl p" { SwitchToMode "Pane"; }
         bind "Ctrl n" { SwitchToMode "Resize"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl o" { SwitchToMode "Session"; }
         bind "Ctrl h" { SwitchToMode "Move"; }
         bind "Ctrl b" { SwitchToMode "Tmux"; }
@@ -32,7 +32,7 @@ keybinds {
         bind "Ctrl p" { SwitchToMode "Pane"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Ctrl n" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl o" { SwitchToMode "Session"; }
         bind "Ctrl h" { SwitchToMode "Move"; }
         bind "Ctrl b" { SwitchToMode "Tmux"; }
@@ -56,7 +56,7 @@ keybinds {
         bind "Ctrl n" { SwitchToMode "Resize"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Ctrl p" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl o" { SwitchToMode "Session"; }
         bind "Ctrl h" { SwitchToMode "Move"; }
         bind "Ctrl b" { SwitchToMode "Tmux"; }
@@ -89,7 +89,7 @@ keybinds {
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Ctrl n" { SwitchToMode "Resize"; }
         bind "Ctrl h" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl o" { SwitchToMode "Session"; }
         bind "Ctrl q" { Quit; }
         bind "n" "Tab" { MovePane; }
@@ -110,7 +110,7 @@ keybinds {
         bind "Ctrl p" { SwitchToMode "Pane"; }
         bind "Ctrl n" { SwitchToMode "Resize"; }
         bind "Ctrl t" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl h" { SwitchToMode "Move"; }
         bind "Ctrl b" { SwitchToMode "Tmux"; }
         bind "Ctrl o" { SwitchToMode "Session"; }
@@ -139,7 +139,7 @@ keybinds {
         bind "Alt +" "Alt =" { Resize "Increase"; }
         bind "Alt -" { Resize "Decrease"; }
     }
-    search {
+    scroll {
         bind "Ctrl s" "Space" "Enter" "Esc" { SwitchToMode "Normal"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Ctrl g" { SwitchToMode "Locked"; }
@@ -149,6 +149,7 @@ keybinds {
         bind "Ctrl o" { SwitchToMode "Session"; }
         bind "Ctrl n" { SwitchToMode "Resize"; }
         bind "e" { EditScrollback; SwitchToMode "Normal"; }
+        bind "s" { SwitchToMode "EnterSearch"; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
         bind "Ctrl q" { Quit; }
         bind "j" "Down" { ScrollDown; }
@@ -166,6 +167,48 @@ keybinds {
         bind "Alt -" { Resize "Decrease"; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
+    }
+    search {
+        bind "Ctrl s" "Space" "Enter" "Esc" { SwitchToMode "Normal"; }
+        bind "Ctrl t" { SwitchToMode "Tab"; }
+        bind "Ctrl g" { SwitchToMode "Locked"; }
+        bind "Ctrl p" { SwitchToMode "Pane"; }
+        bind "Ctrl h" { SwitchToMode "Move"; }
+        bind "Ctrl b" { SwitchToMode "Tmux"; }
+        bind "Ctrl o" { SwitchToMode "Session"; }
+        bind "Ctrl n" { SwitchToMode "Resize"; }
+        bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
+        bind "j" "Down" { ScrollDown; }
+        bind "k" "Up" { ScrollUp; }
+        bind "Ctrl q" { Quit; }
+        bind "Ctrl f" "PageDown" "Right" "l" { PageScrollDown; }
+        bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
+        bind "d" { HalfPageScrollDown; }
+        bind "u" { HalfPageScrollUp; }
+        bind "Alt n" { NewPane; }
+        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
+        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
+        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
+        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
+        bind "Alt +" "Alt =" { Resize "Increase"; }
+        bind "Alt -" { Resize "Decrease"; }
+        bind "n" { Search "down"; }
+        bind "p" { Search "up"; }
+        bind "c" { SearchToggleOption "CaseSensitivity"; }
+        bind "w" { SearchToggleOption "Wrap"; }
+        bind "o" { SearchToggleOption "WholeWord"; }
+    }
+    entersearch {
+        bind "Enter" { SwitchToMode "Search"; }
+        bind "Ctrl c" "Esc" { SwitchToMode "Scroll"; }
+        bind "Alt n" { NewPane; }
+        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
+        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
+        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
+        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
+        bind "Alt =" {Resize "Increase"; }
+        bind "Alt +" {Resize "Increase"; }
+        bind "Alt -" {Resize "Decrease"; }
     }
     renametab {
         bind "Enter" "Ctrl c" "Esc" { SwitchToMode "Normal"; }
@@ -198,7 +241,7 @@ keybinds {
         bind "Ctrl b" { SwitchToMode "Tmux"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Ctrl o" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Search"; }
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
         bind "Ctrl q" { Quit; }
         bind "d" { Detach; }
         bind "Alt n" { NewPane; }
@@ -216,7 +259,7 @@ keybinds {
         bind "Ctrl h" { SwitchToMode "Move"; }
         bind "Ctrl t" { SwitchToMode "Tab"; }
         bind "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "[" { SwitchToMode "Search"; }
+        bind "[" { SwitchToMode "Scroll"; }
         bind "Ctrl q" { Quit; }
         bind "Ctrl b" { Write 2; SwitchToMode "Normal"; }
         bind "\\" { NewPane "Down"; SwitchToMode "Normal"; }
@@ -247,6 +290,13 @@ keybinds {
     }
 }
 
+plugins {
+    tab-bar { path "tab-bar"; }
+    status-bar { path "status-bar"; }
+    strider { path "strider"; }
+    compact-bar { path "compact-bar"; }
+}
+
 //  Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 //  eg. when terminal window with an active zellij session is closed
 //  Options:
@@ -273,7 +323,7 @@ keybinds {
 //  Choose the theme that is specified in the themes section.
 //  For some examples, see: https://github.com/zellij-org/zellij/tree/main/example/themes
 //  Default: default
-// theme "default"
+// theme "dracula"
 
 //  Choose the mode that zellij uses when starting up.
 //  Default: normal
@@ -324,51 +374,3 @@ keybinds {
 //  or should each user have their own cursor (false)
 //  Default: false
 // mirror_session true
-
-themes {
-    dracula {
-        // From https://github.com/dracula/zellij
-        bg 40 42 54
-        red 255 85 85
-        green 80 250 123
-        yellow 241 250 140
-        blue 98 114 164
-        magenta 255 121 198
-        orange 255 184 108
-        fg 248 248 242
-        cyan 139 233 253
-        black 0 0 0
-        white 255 255 255
-    }
-    nord {
-        fg "#D8DEE9"
-        bg "#2E3440"
-        black "#3B4252"
-        red "#BF616A"
-        green "#A3BE8C"
-        yellow "#EBCB8B"
-        blue "#81A1C1"
-        magenta "#B48EAD"
-        cyan "#88C0D0"
-        white "#E5E9F0"
-        orange "#D08770"
-    }
-}
-
-plugins {
-    tab-bar { path "tab-bar"; }
-    status-bar { path "status-bar"; }
-    strider { path "strider"; }
-    compact-bar { path "compact-bar"; }
-}
-
-ui {
-    pane_frames {
-        rounded_corners false
-    }
-}
-
-env {
-    RUST_BACKTRACE 1
-    foo "bar"
-}

@@ -244,7 +244,7 @@ pub enum Event {
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum)]
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum, PartialOrd, Ord)]
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
@@ -292,26 +292,26 @@ pub enum InputMode {
     Tmux,
 }
 
-impl TryFrom<&str> for InputMode {
-    type Error = String;
-    fn try_from(mode: &str) -> Result<Self, String> {
-        match mode {
-            "normal" | "Normal" => Ok(InputMode::Normal),
-            "locked" | "Locked" => Ok(InputMode::Locked),
-            "resize" | "Resize" => Ok(InputMode::Resize),
-            "pane" | "Pane" => Ok(InputMode::Pane),
-            "tab" | "Tab" => Ok(InputMode::Tab),
-            "search" | "Search" => Ok(InputMode::Search),
-            "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
-            "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
-            "session" | "Session" => Ok(InputMode::Session),
-            "move" | "Move" => Ok(InputMode::Move),
-            "prompt" | "Prompt" => Ok(InputMode::Prompt),
-            "tmux" | "Tmux" => Ok(InputMode::Tmux),
-            _ => Err(format!("Unrecognized mode: {}", mode)),
-        }
-    }
-}
+// impl TryFrom<&str> for InputMode {
+//     type Error = String;
+//     fn try_from(mode: &str) -> Result<Self, String> {
+//         match mode {
+//             "normal" | "Normal" => Ok(InputMode::Normal),
+//             "locked" | "Locked" => Ok(InputMode::Locked),
+//             "resize" | "Resize" => Ok(InputMode::Resize),
+//             "pane" | "Pane" => Ok(InputMode::Pane),
+//             "tab" | "Tab" => Ok(InputMode::Tab),
+//             "search" | "Search" => Ok(InputMode::Search),
+//             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
+//             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+//             "session" | "Session" => Ok(InputMode::Session),
+//             "move" | "Move" => Ok(InputMode::Move),
+//             "prompt" | "Prompt" => Ok(InputMode::Prompt),
+//             "tmux" | "Tmux" => Ok(InputMode::Tmux),
+//             _ => Err(format!("Unrecognized mode: {}", mode)),
+//         }
+//     }
+// }
 
 impl Default for InputMode {
     fn default() -> InputMode {
@@ -352,12 +352,14 @@ impl FromStr for InputMode {
             "pane" | "Pane" => Ok(InputMode::Pane),
             "tab" | "Tab" => Ok(InputMode::Tab),
             "search" | "Search" => Ok(InputMode::Search),
+            "scroll" | "Scroll" => Ok(InputMode::Scroll),
             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
             "session" | "Session" => Ok(InputMode::Session),
             "move" | "Move" => Ok(InputMode::Move),
             "prompt" | "Prompt" => Ok(InputMode::Prompt),
             "tmux" | "Tmux" => Ok(InputMode::Tmux),
+            "entersearch" | "Entersearch" | "EnterSearch" => Ok(InputMode::EnterSearch),
             e => Err(format!("unknown mode \"{}\"", e).into()),
         }
     }
@@ -452,7 +454,7 @@ pub struct PluginIds {
 }
 
 /// Tag used to identify the plugin in layout and config yaml files
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
 
 impl PluginTag {

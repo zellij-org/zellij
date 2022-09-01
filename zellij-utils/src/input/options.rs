@@ -150,73 +150,6 @@ impl Options {
             Options::default()
         }
     }
-//     pub fn from_kdl(kdl_options: &KdlDocument) -> Self {
-//         let on_force_close = kdl_options.get("on_force_close")
-//             .and_then(|on_force_close| on_force_close.entries().iter().next())
-//             .and_then(|on_force_close| on_force_close.value().as_string())
-//             .and_then(|on_force_close| <OnForceClose as FromStr>::from_str(on_force_close).ok());
-//         let simplified_ui = kdl_options.get("simplified_ui")
-//             .and_then(|simplified_ui| simplified_ui.entries().iter().next())
-//             .and_then(|simplified_ui| simplified_ui.value().as_bool());
-//         let default_shell = kdl_options.get("default_shell")
-//             .and_then(|default_shell| default_shell.entries().iter().next())
-//             .and_then(|default_shell| default_shell.value().as_string())
-//             .map(|default_shell| PathBuf::from(default_shell));
-//         let pane_frames = kdl_options.get("pane_frames")
-//             .and_then(|pane_frames| pane_frames.entries().iter().next())
-//             .and_then(|pane_frames| pane_frames.value().as_bool());
-//         let theme = kdl_options.get("theme")
-//             .and_then(|theme| theme.entries().iter().next())
-//             .and_then(|theme| theme.value().as_string())
-//             .map(|theme| theme.to_string());
-//         let default_mode = kdl_options.get("default_mode")
-//             .and_then(|default_mode| default_mode.entries().iter().next())
-//             .and_then(|default_mode| default_mode.value().as_string())
-//             .and_then(|default_mode| InputMode::try_from(default_mode).ok());
-//         let mouse_mode = kdl_options.get("mouse_mode")
-//             .and_then(|mouse_mode| mouse_mode.entries().iter().next())
-//             .and_then(|mouse_mode| mouse_mode.value().as_bool());
-//         let scroll_buffer_size = kdl_options.get("scroll_buffer_size")
-//             .and_then(|scroll_buffer_size| scroll_buffer_size.entries().iter().next())
-//             .and_then(|scroll_buffer_size| scroll_buffer_size.value().as_i64())
-//             .map(|scroll_buffer_size| scroll_buffer_size as usize);
-//         let copy_command = kdl_options.get("copy_command")
-//             .and_then(|copy_command| copy_command.entries().iter().next())
-//             .and_then(|copy_command| copy_command.value().as_string())
-//             .map(|copy_command| copy_command.to_string());
-//         let copy_clipboard = kdl_options.get("copy_clipboard")
-//             .and_then(|copy_clipboard| copy_clipboard.entries().iter().next())
-//             .and_then(|copy_clipboard| copy_clipboard.value().as_string())
-//             .and_then(|on_force_close| <Clipboard as FromStr>::from_str(on_force_close).ok());
-//         let copy_on_select = kdl_options.get("copy_on_select")
-//             .and_then(|copy_on_select| copy_on_select.entries().iter().next())
-//             .and_then(|copy_on_select| copy_on_select.value().as_bool());
-//         let scrollback_editor = kdl_options.get("scrollback_editor")
-//             .and_then(|scrollback_editor| scrollback_editor.entries().iter().next())
-//             .and_then(|scrollback_editor| scrollback_editor.value().as_string())
-//             .map(|scrollback_editor| PathBuf::from(scrollback_editor));
-//         let mirror_session = kdl_options.get("mirror_session")
-//             .and_then(|mirror_session| mirror_session.entries().iter().next())
-//             .and_then(|mirror_session| mirror_session.value().as_bool());
-//         Options {
-//             simplified_ui,
-//             theme,
-//             default_mode,
-//             default_shell,
-//             default_layout: Some(PathBuf::from("default")), // TODO
-//             layout_dir: None, // TODO
-//             mouse_mode,
-//             pane_frames,
-//             mirror_session,
-//             on_force_close,
-//             scroll_buffer_size,
-//             copy_command,
-//             copy_clipboard,
-//             copy_on_select,
-//             scrollback_editor,
-//         }
-//     }
-
     /// Merges two [`Options`] structs, a `Some` in `other`
     /// will supersede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
@@ -351,7 +284,7 @@ pub struct CliOptions {
     #[clap(long, conflicts_with("pane-frames"), value_parser)]
     pub no_pane_frames: bool,
     #[clap(flatten)]
-    options: Options,
+    pub options: Options,
 }
 
 impl From<CliOptions> for Options {
