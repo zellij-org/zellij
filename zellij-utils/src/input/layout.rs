@@ -110,22 +110,74 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
-// The layout struct ultimately used to build the layouts.
+// // The layout struct ultimately used to build the layouts.
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+// pub struct Layout {
+//     pub direction: SplitDirection,
+//     #[serde(default)]
+//     pub pane_name: Option<String>,
+//     #[serde(default)]
+//     pub parts: LayoutParts,
+//     pub split_size: Option<SplitSize>,
+//     pub run: Option<Run>,
+//     #[serde(default)]
+//     pub borderless: bool,
+//     pub focus: Option<bool>,
+//     pub external_children_index: Option<usize>,
+//     pub focused_tab_index: Option<usize>,
+//     pub template: Option<Box<Layout>>,
+// }
+
+// TODO: CONTINUE HERE - keep following the compiler in kdl_layout_parser.rs
+// to work with these new refactored structs
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
-    pub direction: SplitDirection,
-    #[serde(default)]
-    pub pane_name: Option<String>,
-    #[serde(default)]
-    pub parts: LayoutParts,
+    pub tabs: Vec<(Option<String>, PaneLayout)>,
+    pub focused_tab_index: Option<usize>,
+    pub template: Option<PaneLayout>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct PaneLayout {
+    pub children_split_direction: SplitDirection,
+    pub name: Option<String>,
+    pub children: Vec<PaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-    #[serde(default)]
     pub borderless: bool,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
-    pub focused_tab_index: Option<usize>,
-    pub template: Option<Box<Layout>>,
+}
+
+impl PaneLayout {
+    pub fn insert_children_layout(&mut self, children_layout: &mut PaneLayout) -> Result<bool, ConfigError> {
+        // returns true if successfully inserted and false otherwise
+        match self.external_children_index {
+            Some(external_children_index) => {
+                self.children.insert(external_children_index, children_layout.clone());
+                self.external_children_index = None;
+                Ok(true)
+            },
+            None => {
+                for pane in self.children.iter_mut() {
+                    if pane.insert_children_layout(children_layout)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+        }
+    }
+    pub fn children_block_count(&self) -> usize {
+        let mut count = 0;
+        if self.external_children_index.is_some() {
+            count += 1;
+        }
+        for pane in self.children {
+            count += pane.children_block_count();
+        }
+        count
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

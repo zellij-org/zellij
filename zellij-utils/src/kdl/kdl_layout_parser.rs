@@ -12,7 +12,7 @@ use crate::{
     input::{
         command::RunCommand,
         config::{ConfigError, LayoutNameInTabError},
-        layout::{Layout, LayoutParts, SplitDirection, Run, RunPlugin, RunPluginLocation, SplitSize},
+        layout::{Layout, PaneLayout, LayoutParts, SplitDirection, Run, RunPlugin, RunPluginLocation, SplitSize},
         plugins::{PluginTag, PluginsConfigError},
     },
     pane_size::{Dimension, PaneGeom},
@@ -40,10 +40,6 @@ use crate::{
     kdl_get_int_property_or_child_value,
 };
 
-// use super::{
-//     // config::ConfigFromYaml,
-//     plugins::{PluginTag, PluginsConfigError},
-// };
 use serde::{Deserialize, Serialize};
 use std::convert::{TryFrom, TryInto};
 use std::vec::Vec;
@@ -58,9 +54,9 @@ use url::Url;
 
 pub struct KdlLayoutParser <'a>{
     kdl_layout: &'a KdlDocument,
-    tab_templates: HashMap<String, Layout>,
-    pane_templates: HashMap<String, Layout>,
-    default_tab_template: Option<Layout>,
+    tab_templates: HashMap<String, PaneLayout>,
+    pane_templates: HashMap<String, PaneLayout>,
+    default_tab_template: Option<PaneLayout>,
 }
 
 impl <'a>KdlLayoutParser <'a> {
@@ -145,7 +141,7 @@ impl <'a>KdlLayoutParser <'a> {
         }
         Ok(run)
     }
-    fn parse_pane_node(&self, kdl_node: &KdlNode) -> Result<Layout, ConfigError> {
+    fn parse_pane_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
         let borderless = kdl_get_bool_property_or_child_value!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value!(kdl_node, "focus");
         let pane_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|name| name.to_string());
@@ -168,7 +164,7 @@ impl <'a>KdlLayoutParser <'a> {
             ..Default::default()
         })
     }
-    fn parse_pane_node_with_template(&self, kdl_node: &KdlNode, mut pane_layout: Layout) -> Result<Layout, ConfigError> {
+    fn parse_pane_node_with_template(&self, kdl_node: &KdlNode, mut pane_layout: PaneLayout) -> Result<PaneLayout, ConfigError> {
         let direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
@@ -206,47 +202,47 @@ impl <'a>KdlLayoutParser <'a> {
         let focus = kdl_get_bool_property_or_child_value!(kdl_node, "focus");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_or_plugin_block(kdl_node)?;
-        let direction = self.parse_split_direction(kdl_node)?;
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
             None => (None, vec![])
         };
-        self.pane_templates.insert(template_name, Layout {
+        self.pane_templates.insert(template_name, PaneLayout {
             borderless: borderless.unwrap_or_default(),
             focus,
             split_size,
             run,
-            direction,
+            children_split_direction,
             external_children_index,
-            parts: LayoutParts::Panes(pane_parts),
+            children: pane_parts,
             ..Default::default()
         });
         Ok(())
     }
-    fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(Option<String>, Layout), ConfigError> { // String is the tab name
+    fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(Option<String>, PaneLayout), ConfigError> { // String is the tab name
         match self.default_tab_template.as_ref().map(|t| t.clone()) {
             Some(default_tab_template) => {
                 self.parse_tab_node_with_template(kdl_node, default_tab_template)
             },
             None => {
                 let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
-                let direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
+                let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
                     Some(direction) => SplitDirection::from_str(direction)?,
                     None => SplitDirection::default(),
                 };
-                let pane_parts = match kdl_children_nodes!(kdl_node) {
+                let children = match kdl_children_nodes!(kdl_node) {
                     Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
-                    None => vec![Layout::default()],
+                    None => vec![],
                 };
-                Ok((tab_name, Layout {
-                    direction,
-                    parts: LayoutParts::Panes(pane_parts),
+                Ok((tab_name, PaneLayout {
+                    children_split_direction,
+                    children,
                     ..Default::default()
                 }))
             }
         }
     }
-    fn parse_child_pane_nodes_for_tab(&self, children: &[KdlNode]) -> Result<Vec<Layout>, ConfigError> {
+    fn parse_child_pane_nodes_for_tab(&self, children: &[KdlNode]) -> Result<Vec<PaneLayout>, ConfigError> {
         let mut nodes = vec![];
         for child in children {
             if kdl_name!(child) == "pane" {
@@ -256,11 +252,11 @@ impl <'a>KdlLayoutParser <'a> {
             }
         }
         if nodes.is_empty() {
-            nodes.push(Layout::default());
+            nodes.push(PaneLayout::default());
         }
         Ok(nodes)
     }
-    fn parse_child_pane_nodes_for_pane(&self, children: &[KdlNode]) -> Result<(Option<usize>, Vec<Layout>), ConfigError> { // usize is external_children_index
+    fn parse_child_pane_nodes_for_pane(&self, children: &[KdlNode]) -> Result<(Option<usize>, Vec<PaneLayout>), ConfigError> { // usize is external_children_index
         let mut external_children_index = None;
         let mut nodes = vec![];
         for (i, child) in children.iter().enumerate() {
@@ -274,14 +270,14 @@ impl <'a>KdlLayoutParser <'a> {
         }
         Ok((external_children_index, nodes))
     }
-    fn assert_one_children_block(&self, layout: &Layout) -> Result<(), ConfigError> {
+    fn assert_one_children_block(&self, layout: &PaneLayout) -> Result<(), ConfigError> {
         let children_block_count = layout.children_block_count();
         if children_block_count != 1 {
             return Err(ConfigError::KdlParsingError(format!("Layout has {} children blocks, only 1 is allowed", children_block_count)));
         }
         Ok(())
     }
-    fn insert_layout_children_or_error(&self, layout: &mut Layout, mut child_panes_layout: Layout) -> Result<(), ConfigError> {
+    fn insert_layout_children_or_error(&self, layout: &mut PaneLayout, mut child_panes_layout: PaneLayout) -> Result<(), ConfigError> {
         let successfully_inserted = layout.insert_children_layout(&mut child_panes_layout)?;
         if !successfully_inserted {
             Err(ConfigError::KdlParsingError("This tab template does not have children".into()))
@@ -289,18 +285,18 @@ impl <'a>KdlLayoutParser <'a> {
             Ok(())
         }
     }
-    fn parse_tab_node_with_template(&mut self, kdl_node: &KdlNode, mut tab_layout: Layout) -> Result<(Option<String>, Layout), ConfigError> { // String is the tab name
+    fn parse_tab_node_with_template(&mut self, kdl_node: &KdlNode, mut tab_layout: PaneLayout) -> Result<(Option<String>, PaneLayout), ConfigError> { // String is the tab name
         let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
-        let direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
+        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
             Some(direction) => SplitDirection::from_str(direction)?,
             None => SplitDirection::default(),
         };
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
                 let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
-                let child_panes_layout = Layout {
-                    direction,
-                    parts: LayoutParts::Panes(child_panes),
+                let child_panes_layout = PaneLayout {
+                    children_split_direction,
+                    children: child_panes,
                     ..Default::default()
                 };
                 self.assert_one_children_block(&tab_layout)?;
@@ -308,7 +304,7 @@ impl <'a>KdlLayoutParser <'a> {
             },
             None => {
                 if let Some(index_of_children) = tab_layout.external_children_index {
-                    tab_layout.parts.insert_pane(index_of_children, Layout::default())?;
+                    tab_layout.children.insert(index_of_children, PaneLayout::default());
                 }
             }
         }
@@ -325,40 +321,37 @@ impl <'a>KdlLayoutParser <'a> {
         self.default_tab_template = Some(self.parse_tab_template_node(kdl_node)?);
         Ok(())
     }
-    fn parse_tab_template_node(&self, kdl_node: &KdlNode) -> Result<Layout, ConfigError> {
-        let direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
+    fn parse_tab_template_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
+        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
             Some(direction) => SplitDirection::from_str(direction)?,
             None => SplitDirection::default(),
         };
-        let mut pane_parts = vec![];
+        let mut tab_children = vec![];
         let mut external_children_index = None;
         if let Some(children) = kdl_children_nodes!(kdl_node) {
             for (i, child) in children.iter().enumerate() {
                 if kdl_name!(child) == "pane" {
-                    pane_parts.push(self.parse_pane_node(child)?);
+                    tab_children.push(self.parse_pane_node(child)?);
                 } else if kdl_name!(child) == "children" {
                     external_children_index = Some(i);
                 } else if let Some(pane_template) = self.pane_templates.get(kdl_name!(child)).cloned() {
-                    pane_parts.push(self.parse_pane_node_with_template(child, pane_template)?);
+                    tab_children.push(self.parse_pane_node_with_template(child, pane_template)?);
                 }
             }
         }
-        if pane_parts.is_empty() {
-            pane_parts.push(Layout::default());
-        }
-        Ok(Layout {
-            direction,
-            parts: LayoutParts::Panes(pane_parts),
+        Ok(PaneLayout {
+            children_split_direction,
+            children: tab_children,
             external_children_index,
             ..Default::default()
         })
     }
-    fn default_template(&self) -> Result<Option<Layout>, ConfigError> {
+    fn default_template(&self) -> Result<Option<PaneLayout>, ConfigError> {
         match &self.default_tab_template {
             Some(template) => {
                 let mut template = template.clone();
                 if let Some(children_index) = template.external_children_index {
-                    template.parts.insert_pane(children_index, Layout::default())?;
+                    template.children.insert(children_index, PaneLayout::default())
                 }
                 template.external_children_index = None;
                 Ok(Some(template))
@@ -445,43 +438,44 @@ impl <'a>KdlLayoutParser <'a> {
         }
         Ok(())
     }
-    fn layout_with_tabs(&self, tabs: Vec<(Option<String>, Layout)>) -> Result<Layout, ConfigError> {
-        let template = self.default_template()?.unwrap_or_else(|| Layout::with_one_pane());
+    fn layout_with_tabs(&self, tabs: Vec<(Option<String>, PaneLayout)>) -> Result<Layout, ConfigError> {
+        let template = self.default_template()?.unwrap_or_else(|| PaneLayout::default());
+
         Ok(Layout {
-            parts: LayoutParts::Tabs(tabs),
-            template: Some(Box::new(template)),
+            tabs: tabs,
+            template: Some(template),
             ..Default::default()
         })
     }
-    fn layout_with_one_tab(&self, panes: Vec<Layout>) -> Result<Layout, ConfigError> {
-        let main_tab_layout = Layout {
-            parts: LayoutParts::Panes(panes.clone()),
+    fn layout_with_one_tab(&self, panes: Vec<PaneLayout>) -> Result<Layout, ConfigError> {
+        let main_tab_layout = PaneLayout {
+            children: panes,
             ..Default::default()
         };
         let default_template = self.default_template()?;
-        let parts = if default_template.is_none() {
+        let tabs = if default_template.is_none() {
             // in this case, the layout will be created as the default template and we don't need
             // to explicitly place it in the first tab
-            LayoutParts::default()
+            vec![]
         } else {
-            LayoutParts::Tabs(vec![(None, main_tab_layout.clone())])
+            vec![(None, main_tab_layout.clone())]
         };
         let template = default_template.unwrap_or_else(|| main_tab_layout.clone());
         // create a layout with one tab that has these child panes
         Ok(Layout {
-            parts,
-            template: Some(Box::new(template)),
+            tabs,
+            template: Some(template),
             ..Default::default()
         })
     }
     fn layout_with_one_pane(&self) -> Result<Layout, ConfigError> {
-        let template = self.default_template()?.unwrap_or_else(|| Layout::with_one_pane());
+        let template = self.default_template()?.unwrap_or_else(|| PaneLayout::default());
         Ok(Layout {
-            template: Some(Box::new(template)),
+            template: Some(template),
             ..Default::default()
         })
     }
-    fn populate_layout_child(&mut self, child: &KdlNode, child_tabs: &mut Vec<(Option<String>, Layout)>, child_panes: &mut Vec<Layout>) -> Result<(), ConfigError> {
+    fn populate_layout_child(&mut self, child: &KdlNode, child_tabs: &mut Vec<(Option<String>, PaneLayout)>, child_panes: &mut Vec<PaneLayout>) -> Result<(), ConfigError> {
         let child_name = kdl_name!(child);
         if child_name == "pane" {
             if !child_tabs.is_empty() {
