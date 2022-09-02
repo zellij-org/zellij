@@ -558,7 +558,9 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::BackgroundColor(ref background_color_instruction) => {
                             send_to_screen_or_retry_queue!(
                                 rlocked_sessions,
-                                ScreenInstruction::TerminalBackgroundColor(background_color_instruction.clone()),
+                                ScreenInstruction::TerminalBackgroundColor(
+                                    background_color_instruction.clone()
+                                ),
                                 instruction,
                                 retry_queue
                             );
@@ -566,7 +568,9 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::ForegroundColor(ref foreground_color_instruction) => {
                             send_to_screen_or_retry_queue!(
                                 rlocked_sessions,
-                                ScreenInstruction::TerminalForegroundColor(foreground_color_instruction.clone()),
+                                ScreenInstruction::TerminalForegroundColor(
+                                    foreground_color_instruction.clone()
+                                ),
                                 instruction,
                                 retry_queue
                             );
