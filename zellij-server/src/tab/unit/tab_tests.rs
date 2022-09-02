@@ -63,7 +63,11 @@ impl ServerOsApi for FakeInputOutput {
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) {
+    fn send_to_client(
+        &self,
+        _client_id: ClientId,
+        _msg: ServerToClientMsg,
+    ) -> Result<(), &'static str> {
         unimplemented!()
     }
     fn new_client(

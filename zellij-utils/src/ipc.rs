@@ -156,12 +156,19 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
-    pub fn send(&mut self, msg: T) {
+    pub fn send(&mut self, msg: T) -> Result<(), &'static str> {
         let err_ctx = get_current_ctx();
-        rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).unwrap();
-        // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
-        // do we need to handle errors here in other cases?
-        let _ = self.sender.flush();
+        // rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).unwrap();
+        if let Err(e) = rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)) {
+            // panic!("aaa!~!!");
+            log::error!("Failed to send ipc message: {:?}", e);
+            Err("Failed to send message to client")
+        } else {
+            // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
+            // do we need to handle errors here in other cases?
+            let _ = self.sender.flush();
+            Ok(())
+        }
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.
