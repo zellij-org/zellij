@@ -316,7 +316,11 @@ pub trait ServerOsApi: Send + Sync {
     fn force_kill(&self, pid: Pid) -> Result<(), nix::Error>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
-    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg);
+    fn send_to_client(
+        &self,
+        client_id: ClientId,
+        msg: ServerToClientMsg,
+    ) -> Result<(), &'static str>;
     fn new_client(
         &mut self,
         client_id: ClientId,
@@ -373,9 +377,15 @@ impl ServerOsApi for ServerOsInputOutput {
         let _ = kill(pid, Some(Signal::SIGKILL));
         Ok(())
     }
-    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) {
+    fn send_to_client(
+        &self,
+        client_id: ClientId,
+        msg: ServerToClientMsg,
+    ) -> Result<(), &'static str> {
         if let Some(sender) = self.client_senders.lock().unwrap().get_mut(&client_id) {
-            sender.send(msg);
+            sender.send(msg)
+        } else {
+            Ok(())
         }
     }
     fn new_client(

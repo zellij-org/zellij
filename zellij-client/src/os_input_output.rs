@@ -145,7 +145,9 @@ impl ClientOsApi for ClientOsInputOutput {
     }
 
     fn send_to_server(&self, msg: ClientToServerMsg) {
-        self.send_instructions_to_server
+        // TODO: handle the error here, right now we silently ignore it
+        let _ = self
+            .send_instructions_to_server
             .lock()
             .unwrap()
             .as_mut()
