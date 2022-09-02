@@ -474,6 +474,7 @@ fn route_action(
     should_break
 }
 
+// this should only be used for one-off startup instructions
 macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
@@ -547,7 +548,6 @@ pub(crate) fn route_thread_main(
                                 .unwrap();
                         },
                         ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
-                            // this is experimental, please be cautious implementing this elsewhere
                             send_to_screen_or_retry_queue!(
                                 rlocked_sessions,
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
@@ -555,35 +555,33 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
-                        ClientToServerMsg::BackgroundColor(background_color_instruction) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
-                                    background_color_instruction,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::BackgroundColor(ref background_color_instruction) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalBackgroundColor(
+                                    background_color_instruction.clone()
+                                ),
+                                instruction,
+                                retry_queue
+                            );
                         },
-                        ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalForegroundColor(
-                                    foreground_color_instruction,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::ForegroundColor(ref foreground_color_instruction) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalForegroundColor(
+                                    foreground_color_instruction.clone()
+                                ),
+                                instruction,
+                                retry_queue
+                            );
                         },
-                        ClientToServerMsg::ColorRegisters(color_registers) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalColorRegisters(
-                                    color_registers,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::ColorRegisters(ref color_registers) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalColorRegisters(color_registers.clone()),
+                                instruction,
+                                retry_queue
+                            );
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,
