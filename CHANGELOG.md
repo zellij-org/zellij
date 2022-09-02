@@ -8,7 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
 * fix: bracketed paste handling regression (https://github.com/zellij-org/zellij/pull/1689)
 * fix: occasional startup crashes (https://github.com/zellij-org/zellij/pull/1706)
-
+* fix: gracefully handle SSH disconnects (https://github.com/zellij-org/zellij/pull/1710)
+* 
 ## [0.31.3] - 2022-08-18
 * HOTFIX: fix up-arrow regression
 
