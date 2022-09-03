@@ -132,6 +132,16 @@ macro_rules! remove_client {
     };
 }
 
+macro_rules! send_to_client {
+    ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
+        let send_to_client_res = $os_input.send_to_client($client_id, $msg);
+        if let Err(_) = send_to_client_res {
+            // failed to send to client, remove it
+            remove_client!($client_id, $os_input, $session_state);
+        }
+    };
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct SessionState {
     clients: HashMap<ClientId, Option<Size>>,
@@ -392,15 +402,26 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Event::ModeUpdate(mode_info),
                     ))
                     .unwrap();
-                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode));
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::SwitchToMode(mode),
+                    session_state
+                );
             },
             ServerInstruction::UnblockInputThread => {
                 for client_id in session_state.read().unwrap().clients.keys() {
-                    os_input.send_to_client(*client_id, ServerToClientMsg::UnblockInputThread);
+                    send_to_client!(
+                        *client_id,
+                        os_input,
+                        ServerToClientMsg::UnblockInputThread,
+                        session_state
+                    );
                 }
             },
             ServerInstruction::ClientExit(client_id) => {
-                os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                let _ =
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
@@ -465,14 +486,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
-                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
-                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    let _ = os_input
+                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                     remove_client!(client_id, os_input, session_state);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
@@ -509,14 +532,16 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
                     for (client_id, client_render_instruction) in output.iter() {
-                        os_input.send_to_client(
+                        send_to_client!(
                             *client_id,
+                            os_input,
                             ServerToClientMsg::Render(client_render_instruction.clone()),
+                            session_state
                         );
                     }
                 } else {
                     for client_id in client_ids {
-                        os_input
+                        let _ = os_input
                             .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                         remove_client!(client_id, os_input, session_state);
                     }
@@ -526,7 +551,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::Error(backtrace) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
-                    os_input.send_to_client(
+                    let _ = os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit(ExitReason::Error(backtrace.clone())),
                     );
@@ -535,7 +560,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 break;
             },
             ServerInstruction::ConnStatus(client_id) => {
-                os_input.send_to_client(client_id, ServerToClientMsg::Connected);
+                let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
             },
             ServerInstruction::ActiveClients(client_id) => {
@@ -545,7 +570,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_ids,
                     client_id
                 );
-                os_input.send_to_client(client_id, ServerToClientMsg::ActiveClients(client_ids));
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::ActiveClients(client_ids),
+                    session_state
+                );
             },
         }
     }

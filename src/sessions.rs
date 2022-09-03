@@ -54,7 +54,7 @@ fn assert_socket(name: &str) -> bool {
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
             let mut sender = IpcSenderWithContext::new(stream);
-            sender.send(ClientToServerMsg::ConnStatus);
+            let _ = sender.send(ClientToServerMsg::ConnStatus);
             let mut receiver: IpcReceiverWithContext<ServerToClientMsg> = sender.get_receiver();
             match receiver.recv() {
                 Some((ServerToClientMsg::Connected, _)) => true,
@@ -115,7 +115,7 @@ pub(crate) fn kill_session(name: &str) {
     let path = &*ZELLIJ_SOCK_DIR.join(name);
     match LocalSocketStream::connect(path) {
         Ok(stream) => {
-            IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
+            let _ = IpcSenderWithContext::new(stream).send(ClientToServerMsg::KillSession);
         },
         Err(e) => {
             eprintln!("Error occurred: {:?}", e);
