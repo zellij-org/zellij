@@ -31,6 +31,15 @@ use std::fmt::{Display, Error, Formatter};
 use miette::Diagnostic;
 use thiserror::Error as ThisError;
 
+/// Re-exports of common error-handling code.
+pub mod prelude {
+    pub use super::FatalError;
+    pub use super::LoggableError;
+    pub use anyhow::anyhow;
+    pub use anyhow::bail;
+    pub use anyhow::Context;
+    pub use anyhow::Result;
+}
 
 pub trait ErrorInstruction {
     fn error(err: String) -> Self;
