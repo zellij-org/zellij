@@ -152,6 +152,7 @@ pub trait FatalError<T> {
     /// # Panics
     ///
     /// If the given result is an `Err` variant.
+    #[track_caller]
     fn fatal(self) -> T;
 }
 
@@ -162,7 +163,7 @@ fn discard_result<T>(_arg: anyhow::Result<T>) {}
 impl<T> FatalError<T> for anyhow::Result<T> {
     fn non_fatal(self) {
         if self.is_err() {
-            discard_result(self.context("A non-fatal error occured").to_log());
+            discard_result(self.context("a non-fatal error occured").to_log());
         }
     }
 
@@ -170,9 +171,8 @@ impl<T> FatalError<T> for anyhow::Result<T> {
         if let Ok(val) = self {
             val
         } else {
-            self.context("A fatal error occured")
-                .to_log()
-                .expect("A fatal error occured, program terminates")
+            self.context("a fatal error occured")
+                .expect("Program terminates")
         }
     }
 }
