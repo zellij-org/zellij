@@ -11,7 +11,9 @@ use crate::{
 };
 use std::convert::TryInto;
 use std::path::PathBuf;
+use zellij_utils::channels::Receiver;
 use zellij_utils::envs::set_session_name;
+use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::layout::LayoutTemplate;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -2058,43 +2060,104 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
     };
     let client_id: u16 = 1;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut pty_writer_thing = Outer::new();
     let mut tab =
-        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer.clone());
+        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_thing.sender());
 
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string()),
-                    PtyWriteInstruction::Exit => break,
-                }
-            }
-        });
+    pty_writer_thing.start();
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
     tab.write_to_active_terminal(bracketed_paste_start, client_id);
     tab.write_to_active_terminal("test".as_bytes().to_vec(), client_id);
     tab.write_to_active_terminal(bracketed_paste_end, client_id);
 
-    to_pty_writer.send(PtyWriteInstruction::Exit).unwrap();
+    pty_writer_thing.exit();
+    assert_eq!(pty_writer_thing.get_output(), vec!["", "test", ""]);
+}
 
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
-    assert_eq!(
-        *messages_to_pty_writer.lock().unwrap(),
-        vec!["", "test", ""]
-    );
+struct PtyInstructionBus {
+    output: Arc<Mutex<Vec<String>>>,
+    pty_writer_sender: SenderWithContext<PtyWriteInstruction>,
+    pty_writer_receiver: Receiver<(PtyWriteInstruction, ErrorContext)>,
+}
+
+impl PtyInstructionBus {
+    fn new() -> Self {
+        let output = Arc::new(Mutex::new(vec![]));
+        let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+            channels::unbounded();
+        let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+
+        Self {
+            output,
+            pty_writer_sender,
+            pty_writer_receiver,
+        }
+    }
+}
+
+struct Outer {
+    handle: Option<std::thread::JoinHandle<()>>,
+    pty_instruction_bus: Arc<PtyInstructionBus>,
+}
+
+impl Outer {
+    fn new() -> Self {
+        Self {
+            handle: None,
+            pty_instruction_bus: Arc::new(PtyInstructionBus::new()),
+        }
+    }
+
+    /// spawn thread that will:
+    /// - copy all output from received `PtyWriteInstruction::Write` instructions
+    /// - exit upon receiving `PtyWriteInstruction::Exit`
+    fn start(&mut self) {
+        let bus = self.pty_instruction_bus.clone();
+        let handle = std::thread::Builder::new()
+            .name("pty_writer".to_string())
+            .spawn({
+                let output = bus.output.clone();
+                move || loop {
+                    let (event, _err_ctx) = bus
+                        .pty_writer_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => output
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string()),
+                        PtyWriteInstruction::Exit => break,
+                    }
+                }
+            })
+            .unwrap();
+        self.handle = Some(handle);
+    }
+
+    ///
+    fn exit(&mut self) {
+        self.pty_instruction_bus
+            .pty_writer_sender
+            .send(PtyWriteInstruction::Exit)
+            .unwrap();
+        let handle = self.handle.take().unwrap();
+        handle.join().unwrap();
+    }
+
+    fn sender(&self) -> SenderWithContext<PtyWriteInstruction> {
+        self.pty_instruction_bus.pty_writer_sender.clone()
+    }
+
+    fn get_output(&self) -> Vec<String> {
+        self.pty_instruction_bus
+            .clone()
+            .output
+            .lock()
+            .unwrap()
+            .clone()
+    }
 }
 
 #[test]
