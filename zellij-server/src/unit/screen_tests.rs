@@ -8,7 +8,7 @@ use crate::{
 use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
-use zellij_utils::input::layout::Layout;
+use zellij_utils::input::layout::{PaneLayout, Layout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -111,7 +111,7 @@ fn create_new_screen(size: Size) -> Screen {
 fn new_tab(screen: &mut Screen, pid: i32) {
     let client_id = 1;
     screen.new_tab(
-        Layout::with_one_pane(),
+        PaneLayout::default(),
         vec![pid],
         client_id,
     );

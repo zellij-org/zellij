@@ -40,7 +40,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{Layout, Run},
+        layout::{PaneLayout, Layout, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -450,7 +450,7 @@ impl Tab {
 
     pub fn apply_layout(
         &mut self,
-        layout: Layout,
+        layout: PaneLayout,
         new_pids: Vec<RawFd>,
         tab_index: usize,
         client_id: ClientId,
@@ -474,7 +474,7 @@ impl Tab {
         let mut new_pids = new_pids.iter();
 
         let mut focus_pane_id: Option<PaneId> = None;
-        let mut set_focus_pane_id = |layout: &Layout, pane_id: PaneId| {
+        let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
             if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
                 focus_pane_id = Some(pane_id);
             }
@@ -494,7 +494,7 @@ impl Tab {
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                     pane_title,
-                    layout.pane_name.clone().unwrap_or_default(),
+                    layout.name.clone().unwrap_or_default(),
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -509,7 +509,7 @@ impl Tab {
                     *position_and_size,
                     self.style,
                     next_terminal_position,
-                    layout.pane_name.clone().unwrap_or_default(),
+                    layout.name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),

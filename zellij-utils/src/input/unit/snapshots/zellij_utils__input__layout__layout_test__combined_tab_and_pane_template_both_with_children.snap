@@ -1,293 +1,201 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 907
+assertion_line: 899
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
-    direction: Horizontal,
-    pane_name: None,
-    parts: Tabs(
-        [
-            (
-                Some(
-                    "my tab",
-                ),
-                Layout {
-                    direction: Horizontal,
-                    pane_name: None,
-                    parts: Panes(
-                        [
-                            Layout {
-                                direction: Vertical,
-                                pane_name: None,
-                                parts: Panes(
-                                    [
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [
-                                                    Layout {
-                                                        direction: Horizontal,
-                                                        pane_name: Some(
-                                                            "middle",
-                                                        ),
-                                                        parts: Panes(
-                                                            [],
-                                                        ),
-                                                        split_size: None,
-                                                        run: None,
-                                                        borderless: false,
-                                                        focus: None,
-                                                        external_children_index: None,
-                                                        focused_tab_index: None,
-                                                        template: None,
-                                                    },
-                                                ],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                    ],
-                                ),
+    tabs: [
+        (
+            Some(
+                "my tab",
+            ),
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Vertical,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
                                 split_size: None,
                                 run: None,
                                 borderless: false,
                                 focus: None,
                                 external_children_index: None,
-                                focused_tab_index: None,
-                                template: None,
                             },
-                            Layout {
-                                direction: Horizontal,
-                                pane_name: None,
-                                parts: Panes(
-                                    [
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                    ],
-                                ),
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [
+                                    PaneLayout {
+                                        children_split_direction: Horizontal,
+                                        name: Some(
+                                            "middle",
+                                        ),
+                                        children: [],
+                                        split_size: None,
+                                        run: None,
+                                        borderless: false,
+                                        focus: None,
+                                        external_children_index: None,
+                                    },
+                                ],
                                 split_size: None,
                                 run: None,
                                 borderless: false,
                                 focus: None,
                                 external_children_index: None,
-                                focused_tab_index: None,
-                                template: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
                             },
                         ],
-                    ),
-                    split_size: None,
-                    run: None,
-                    borderless: false,
-                    focus: None,
-                    external_children_index: None,
-                    focused_tab_index: None,
-                    template: None,
-                },
-            ),
-            (
-                None,
-                Layout {
-                    direction: Horizontal,
-                    pane_name: None,
-                    parts: Panes(
-                        [
-                            Layout {
-                                direction: Vertical,
-                                pane_name: None,
-                                parts: Panes(
-                                    [
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [
-                                                    Layout {
-                                                        direction: Horizontal,
-                                                        pane_name: Some(
-                                                            "middle",
-                                                        ),
-                                                        parts: Panes(
-                                                            [],
-                                                        ),
-                                                        split_size: None,
-                                                        run: None,
-                                                        borderless: false,
-                                                        focus: None,
-                                                        external_children_index: None,
-                                                        focused_tab_index: None,
-                                                        template: None,
-                                                    },
-                                                ],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                        Layout {
-                                            direction: Horizontal,
-                                            pane_name: None,
-                                            parts: Panes(
-                                                [],
-                                            ),
-                                            split_size: None,
-                                            run: None,
-                                            borderless: false,
-                                            focus: None,
-                                            external_children_index: None,
-                                            focused_tab_index: None,
-                                            template: None,
-                                        },
-                                    ],
-                                ),
-                                split_size: None,
-                                run: None,
-                                borderless: false,
-                                focus: None,
-                                external_children_index: None,
-                                focused_tab_index: None,
-                                template: None,
-                            },
-                            Layout {
-                                direction: Horizontal,
-                                pane_name: None,
-                                parts: Panes(
-                                    [],
-                                ),
-                                split_size: None,
-                                run: None,
-                                borderless: false,
-                                focus: None,
-                                external_children_index: None,
-                                focused_tab_index: None,
-                                template: None,
-                            },
-                        ],
-                    ),
-                    split_size: None,
-                    run: None,
-                    borderless: false,
-                    focus: None,
-                    external_children_index: None,
-                    focused_tab_index: None,
-                    template: None,
-                },
-            ),
-        ],
-    ),
-    split_size: None,
-    run: None,
-    borderless: false,
-    focus: None,
-    external_children_index: None,
-    focused_tab_index: None,
-    template: Some(
-        Layout {
-            direction: Horizontal,
-            pane_name: None,
-            parts: Panes(
-                [
-                    Layout {
-                        direction: Horizontal,
-                        pane_name: None,
-                        parts: Panes(
-                            [],
-                        ),
                         split_size: None,
                         run: None,
                         borderless: false,
                         focus: None,
                         external_children_index: None,
-                        focused_tab_index: None,
-                        template: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
                     },
                 ],
-            ),
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+        (
+            None,
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Vertical,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [
+                                    PaneLayout {
+                                        children_split_direction: Horizontal,
+                                        name: Some(
+                                            "middle",
+                                        ),
+                                        children: [],
+                                        split_size: None,
+                                        run: None,
+                                        borderless: false,
+                                        focus: None,
+                                        external_children_index: None,
+                                    },
+                                ],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+    ],
+    focused_tab_index: None,
+    template: Some(
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [],
             split_size: None,
             run: None,
             borderless: false,
             focus: None,
             external_children_index: None,
-            focused_tab_index: None,
-            template: None,
         },
     ),
 }

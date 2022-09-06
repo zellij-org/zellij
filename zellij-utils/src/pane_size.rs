@@ -83,15 +83,26 @@ impl Dimension {
         self.inner = inner;
     }
 
-    pub fn adjust_inner(&mut self, full_size: usize) {
+    pub fn adjust_inner(&mut self, full_size: usize) -> f64 { // returns the leftover from
+                                                                // rounding if any
+        // TODO: elsewhere?
         match self.constraint {
             Constraint::Percent(percent) => {
-                self.set_inner(((percent / 100.0) * full_size as f64) as usize);
+                let new_inner = (percent / 100.0) * full_size as f64;
+                let rounded = new_inner.floor();
+                let leftover = rounded - new_inner;
+                self.set_inner(rounded as usize);
+                leftover
+                // self.set_inner(((percent / 100.0) * full_size as f64).round() as usize);
             }
             Constraint::Fixed(fixed_size) => {
                 self.set_inner(fixed_size);
+                0.0
             }
         }
+    }
+    pub fn increase_inner(&mut self, by: usize) {
+        self.inner += by;
     }
 
     pub fn is_fixed(&self) -> bool {

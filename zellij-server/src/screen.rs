@@ -8,7 +8,7 @@ use std::str;
 
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
-use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position};
+use zellij_utils::{input::command::TerminalAction, input::layout::{PaneLayout, Layout}, position::Position};
 
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
@@ -106,7 +106,7 @@ pub enum ScreenInstruction {
     ClosePane(PaneId, Option<ClientId>),
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(Layout, Vec<RawFd>, ClientId),
+    NewTab(PaneLayout, Vec<RawFd>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
@@ -648,7 +648,7 @@ impl Screen {
 
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
-    pub fn new_tab(&mut self, layout: Layout, new_pids: Vec<RawFd>, client_id: ClientId) {
+    pub fn new_tab(&mut self, layout: PaneLayout, new_pids: Vec<RawFd>, client_id: ClientId) {
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
         let mut tab = Tab::new(

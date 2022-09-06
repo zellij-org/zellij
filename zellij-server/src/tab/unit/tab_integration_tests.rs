@@ -11,7 +11,7 @@ use crate::{
 };
 use std::path::PathBuf;
 use zellij_utils::envs::set_session_name;
-use zellij_utils::input::layout::Layout;
+use zellij_utils::input::layout::{Layout, PaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -144,8 +144,63 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        Layout::with_one_pane(),
+        PaneLayout::default(),
         vec![1],
+        index,
+        client_id,
+    );
+    tab
+}
+
+fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput {
+        file_dumps: Arc::new(Mutex::new(HashMap::new())),
+    });
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let layout = Layout::from_str(layout).unwrap();
+    let tab_layout = layout.new_tab();
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
+        client_id,
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+    );
+    let pane_ids = tab_layout.extract_run_instructions().iter().enumerate().map(|(i, _)| i as i32).collect();
+    tab.apply_layout(
+        tab_layout,
+        pane_ids,
         index,
         client_id,
     );
@@ -202,7 +257,7 @@ fn create_new_tab_with_mock_pty_writer(
     );
     tab.apply_layout(
         // LayoutTemplate::default().try_into().unwrap(),
-        Layout::default(),
+        PaneLayout::default(),
         vec![1],
         index,
         client_id,
@@ -261,7 +316,7 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        Layout::with_one_pane(),
+        PaneLayout::default(),
         vec![1],
         index,
         client_id,
@@ -2043,4 +2098,108 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
             "\u{1b}[Mag%".to_string(), // utf8 scroll down
         ]
     );
+}
+
+#[test]
+fn tab_with_basic_layout() {
+    let layout = r#"
+        layout {
+            pane split_direction="Vertical" {
+                pane
+                pane split_direction="Horizontal" {
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn tab_with_nested_layout() {
+    let layout = r#"
+        layout {
+            pane_template name="top-and-vertical-sandwich" {
+                pane
+                vertical-sandwich {
+                    pane
+                }
+            }
+            pane_template name="vertical-sandwich" split_direction="vertical" {
+                pane
+                children
+                pane
+            }
+            pane_template name="nested-vertical-sandwich" split_direction="vertical" {
+                pane
+                top-and-vertical-sandwich
+                pane
+            }
+            nested-vertical-sandwich
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn tab_with_nested_uneven_layout() {
+    let layout = r#"
+        layout {
+            pane_template name="horizontal-with-vertical-top" {
+                pane split_direction="Vertical" {
+                    pane
+                    children
+                }
+                pane
+            }
+            horizontal-with-vertical-top name="my tab" {
+                pane
+                pane
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None);
+    let snapshot = take_snapshot(
+        output.serialize().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
 }

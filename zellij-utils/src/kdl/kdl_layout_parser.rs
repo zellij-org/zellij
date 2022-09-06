@@ -144,37 +144,34 @@ impl <'a>KdlLayoutParser <'a> {
     fn parse_pane_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
         let borderless = kdl_get_bool_property_or_child_value!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value!(kdl_node, "focus");
-        let pane_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|name| name.to_string());
+        let name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|name| name.to_string());
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_or_plugin_block(kdl_node)?;
-        let direction = self.parse_split_direction(kdl_node)?;
-        let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
+        let (external_children_index, children) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
             None => (None, vec![])
         };
-        Ok(Layout {
+        Ok(PaneLayout {
             borderless: borderless.unwrap_or_default(),
             focus,
-            pane_name,
+            name,
             split_size,
             run,
-            direction,
+            children_split_direction,
             external_children_index,
-            parts: LayoutParts::Panes(pane_parts),
+            children,
             ..Default::default()
         })
     }
     fn parse_pane_node_with_template(&self, kdl_node: &KdlNode, mut pane_layout: PaneLayout) -> Result<PaneLayout, ConfigError> {
-        let direction = self.parse_split_direction(kdl_node)?;
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
-                let (_, mut child_panes) = self.parse_child_pane_nodes_for_pane(&children)?;
-                if child_panes.is_empty() {
-                    child_panes.push(Layout::default());
-                }
-                let child_panes_layout = Layout {
-                    direction,
-                    parts: LayoutParts::Panes(child_panes),
+                let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
+                let child_panes_layout = PaneLayout {
+                    children_split_direction,
+                    children: child_panes,
                     ..Default::default()
                 };
                 self.assert_one_children_block(&pane_layout)?;
@@ -182,7 +179,7 @@ impl <'a>KdlLayoutParser <'a> {
             },
             None => {
                 if let Some(index_of_children) = pane_layout.external_children_index {
-                    pane_layout.parts.insert_pane(index_of_children, Layout::default())?;
+                    pane_layout.children.insert(index_of_children, PaneLayout::default());
                 }
             }
         }

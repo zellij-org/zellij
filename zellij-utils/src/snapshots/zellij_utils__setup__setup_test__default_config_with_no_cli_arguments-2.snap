@@ -4,104 +4,79 @@ assertion_line: 468
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
-    direction: Horizontal,
-    pane_name: None,
-    parts: Panes(
-        [],
-    ),
-    split_size: None,
-    run: None,
-    borderless: false,
-    focus: None,
-    external_children_index: None,
+    tabs: [],
     focused_tab_index: None,
     template: Some(
-        Layout {
-            direction: Horizontal,
-            pane_name: None,
-            parts: Panes(
-                [
-                    Layout {
-                        direction: Horizontal,
-                        pane_name: None,
-                        parts: Panes(
-                            [],
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: Some(
+                        Fixed(
+                            1,
                         ),
-                        split_size: Some(
-                            Fixed(
-                                1,
-                            ),
-                        ),
-                        run: Some(
-                            Plugin(
-                                RunPlugin {
-                                    _allow_exec_host_cmd: false,
-                                    location: Zellij(
-                                        PluginTag(
-                                            "tab-bar",
-                                        ),
+                    ),
+                    run: Some(
+                        Plugin(
+                            RunPlugin {
+                                _allow_exec_host_cmd: false,
+                                location: Zellij(
+                                    PluginTag(
+                                        "tab-bar",
                                     ),
-                                },
-                            ),
+                                ),
+                            },
                         ),
-                        borderless: true,
-                        focus: None,
-                        external_children_index: None,
-                        focused_tab_index: None,
-                        template: None,
-                    },
-                    Layout {
-                        direction: Horizontal,
-                        pane_name: None,
-                        parts: Panes(
-                            [],
+                    ),
+                    borderless: true,
+                    focus: None,
+                    external_children_index: None,
+                },
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                },
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: Some(
+                        Fixed(
+                            2,
                         ),
-                        split_size: None,
-                        run: None,
-                        borderless: false,
-                        focus: None,
-                        external_children_index: None,
-                        focused_tab_index: None,
-                        template: None,
-                    },
-                    Layout {
-                        direction: Horizontal,
-                        pane_name: None,
-                        parts: Panes(
-                            [],
-                        ),
-                        split_size: Some(
-                            Fixed(
-                                2,
-                            ),
-                        ),
-                        run: Some(
-                            Plugin(
-                                RunPlugin {
-                                    _allow_exec_host_cmd: false,
-                                    location: Zellij(
-                                        PluginTag(
-                                            "status-bar",
-                                        ),
+                    ),
+                    run: Some(
+                        Plugin(
+                            RunPlugin {
+                                _allow_exec_host_cmd: false,
+                                location: Zellij(
+                                    PluginTag(
+                                        "status-bar",
                                     ),
-                                },
-                            ),
+                                ),
+                            },
                         ),
-                        borderless: true,
-                        focus: None,
-                        external_children_index: None,
-                        focused_tab_index: None,
-                        template: None,
-                    },
-                ],
-            ),
+                    ),
+                    borderless: true,
+                    focus: None,
+                    external_children_index: None,
+                },
+            ],
             split_size: None,
             run: None,
             borderless: false,
             focus: None,
             external_children_index: None,
-            focused_tab_index: None,
-            template: None,
         },
     ),
 }

@@ -11,7 +11,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Layout, Run},
+        layout::{PaneLayout, Layout, Run},
     },
 };
 
@@ -34,7 +34,7 @@ pub(crate) enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     // NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
-    NewTab(Option<TerminalAction>, Option<Layout>, Option<String>, ClientId), // the String is the tab name
+    NewTab(Option<TerminalAction>, Option<PaneLayout>, Option<String>, ClientId), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     Exit,
@@ -275,7 +275,7 @@ impl Pty {
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
-        layout: Layout,
+        layout: PaneLayout,
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {

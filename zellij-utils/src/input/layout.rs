@@ -173,10 +173,32 @@ impl PaneLayout {
         if self.external_children_index.is_some() {
             count += 1;
         }
-        for pane in self.children {
+        for pane in &self.children {
             count += pane.children_block_count();
         }
         count
+    }
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
+        // split_space(space, self, space)
+        let res = split_space(space, self, space);
+        res
+    }
+    pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
+        let mut run_instructions = vec![];
+        if self.children.is_empty() {
+            run_instructions.push(self.run.clone());
+        }
+        for child in &self.children {
+            let mut child_run_instructions = child.extract_run_instructions();
+            run_instructions.append(&mut child_run_instructions);
+        }
+        run_instructions
+    }
+    pub fn with_one_pane() -> Self {
+        // TODO: do we need this?
+        let mut default_layout = PaneLayout::default();
+        default_layout.children = vec![PaneLayout::default()];
+        default_layout
     }
 }
 
@@ -217,11 +239,6 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    pub fn with_one_pane() -> Self {
-        let mut default_layout = Layout::default();
-        default_layout.parts = LayoutParts::Panes(vec![Layout::default()]);
-        default_layout
-    }
     pub fn stringified_from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<String, ConfigError> {
         match layout_path {
             Some(layout_path) => {
@@ -250,6 +267,10 @@ impl Layout {
         let layout = Layout::from_kdl(&kdl_layout)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
+    }
+    pub fn from_str(raw: &str) -> Result<Layout, ConfigError> {
+        let kdl_layout: KdlDocument = raw.parse()?;
+        Layout::from_kdl(&kdl_layout)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
@@ -307,275 +328,284 @@ impl Layout {
         Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
     }
 
-    pub fn total_terminal_panes(&self) -> usize {
-        // TODO: better
-        let mut total_panes = 0;
-        match &self.parts {
-            LayoutParts::Panes(parts) => {
-                total_panes += parts.len();
-                for part in parts {
-                    match part.run {
-                        Some(Run::Command(_)) | None => {
-                            total_panes += part.total_terminal_panes();
-                        },
-                        Some(Run::Plugin(_)) => {},
-                    }
-                }
-                total_panes
-            },
-            LayoutParts::Tabs(tabs) => {
-                // let parts = tabs.values();
-                total_panes += tabs.len();
-                for tab in tabs {
-                    let (_tab_name, part) = tab;
-                    match part.run {
-                        Some(Run::Command(_)) | None => {
-                            total_panes += part.total_terminal_panes();
-                        },
-                        Some(Run::Plugin(_)) => {},
-                    }
-                }
-                total_panes
-            }
-        }
-    }
+//     pub fn total_terminal_panes(&self) -> usize {
+//         // TODO: better
+//         let mut total_panes = 0;
+//         match &self.parts {
+//             LayoutParts::Panes(parts) => {
+//                 total_panes += parts.len();
+//                 for part in parts {
+//                     match part.run {
+//                         Some(Run::Command(_)) | None => {
+//                             total_panes += part.total_terminal_panes();
+//                         },
+//                         Some(Run::Plugin(_)) => {},
+//                     }
+//                 }
+//                 total_panes
+//             },
+//             LayoutParts::Tabs(tabs) => {
+//                 // let parts = tabs.values();
+//                 total_panes += tabs.len();
+//                 for tab in tabs {
+//                     let (_tab_name, part) = tab;
+//                     match part.run {
+//                         Some(Run::Command(_)) | None => {
+//                             total_panes += part.total_terminal_panes();
+//                         },
+//                         Some(Run::Plugin(_)) => {},
+//                     }
+//                 }
+//                 total_panes
+//             }
+//         }
+//     }
 
-    pub fn total_borderless_panes(&self) -> usize {
-        // TODO: better
-        let mut total_borderless_panes = 0;
-        match &self.parts {
-            LayoutParts::Panes(parts) => {
-                total_borderless_panes += parts.iter().filter(|p| p.borderless).count();
-                for part in parts {
-                    total_borderless_panes += part.total_borderless_panes();
-                }
-                total_borderless_panes
-            },
-            LayoutParts::Tabs(tabs) => {
-                total_borderless_panes += tabs.iter().filter(|(_, p)| p.borderless).count();
-                for part in tabs {
-                    let (_part_name, part) = part;
-                    total_borderless_panes += part.total_borderless_panes();
-                }
-                total_borderless_panes
-            }
-        }
-    }
-    pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
-        // TODO: better
-        let mut run_instructions = vec![];
-        match &self.parts {
-            LayoutParts::Panes(parts) => {
-                if parts.is_empty() {
-                    run_instructions.push(self.run.clone());
-                }
-                for part in parts {
-                    let mut current_runnables = part.extract_run_instructions();
-                    run_instructions.append(&mut current_runnables);
-                }
-            },
-            LayoutParts::Tabs(tabs) => {
-                if tabs.len() == 0 {
-                    run_instructions.push(self.run.clone());
-                }
-                for tab in tabs {
-                    let (_part_name, part) = tab;
-                    let mut current_runnables = part.extract_run_instructions();
-                    run_instructions.append(&mut current_runnables);
-                }
-            }
-        }
-        run_instructions
-    }
+//     pub fn total_borderless_panes(&self) -> usize {
+//         // TODO: better
+//         let mut total_borderless_panes = 0;
+//         match &self.parts {
+//             LayoutParts::Panes(parts) => {
+//                 total_borderless_panes += parts.iter().filter(|p| p.borderless).count();
+//                 for part in parts {
+//                     total_borderless_panes += part.total_borderless_panes();
+//                 }
+//                 total_borderless_panes
+//             },
+//             LayoutParts::Tabs(tabs) => {
+//                 total_borderless_panes += tabs.iter().filter(|(_, p)| p.borderless).count();
+//                 for part in tabs {
+//                     let (_part_name, part) = part;
+//                     total_borderless_panes += part.total_borderless_panes();
+//                 }
+//                 total_borderless_panes
+//             }
+//         }
+//     }
+//     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
+//         // TODO: better
+//         let mut run_instructions = vec![];
+//         match &self.parts {
+//             LayoutParts::Panes(parts) => {
+//                 if parts.is_empty() {
+//                     run_instructions.push(self.run.clone());
+//                 }
+//                 for part in parts {
+//                     let mut current_runnables = part.extract_run_instructions();
+//                     run_instructions.append(&mut current_runnables);
+//                 }
+//             },
+//             LayoutParts::Tabs(tabs) => {
+//                 if tabs.len() == 0 {
+//                     run_instructions.push(self.run.clone());
+//                 }
+//                 for tab in tabs {
+//                     let (_part_name, part) = tab;
+//                     let mut current_runnables = part.extract_run_instructions();
+//                     run_instructions.append(&mut current_runnables);
+//                 }
+//             }
+//         }
+//         run_instructions
+//     }
 
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
-        split_space(space, self)
-    }
+//     pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
+//         split_space(space, self)
+//     }
 
-    pub fn new_tab(&self) -> Layout {
+    pub fn new_tab(&self) -> PaneLayout {
         match &self.template {
-            Some(template) => *template.clone(),
-            None => Layout::with_one_pane()
+            Some(template) => template.clone(),
+            None => PaneLayout::default()
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        match &self.parts {
-            LayoutParts::Tabs(tabs) => tabs.is_empty(),
-            LayoutParts::Panes(panes) => panes.is_empty(),
-        }
+        !self.tabs.is_empty()
+//         match &self.parts {
+//             LayoutParts::Tabs(tabs) => tabs.is_empty(),
+//             LayoutParts::Panes(panes) => panes.is_empty(),
+//         }
     }
+    // TODO: do we need both of these?
     pub fn has_tabs(&self) -> bool {
-        match self.parts {
-            LayoutParts::Tabs(_) => true,
-            _ => false
-        }
+        !self.tabs.is_empty()
     }
 
-    pub fn tabs(&self) -> Vec<(Option<String>, Layout)> { // String is the tab name
-        match &self.parts {
-            LayoutParts::Tabs(tabs) => tabs.clone(),
-            _ => vec![]
-        }
+    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout)> { // String is the tab name
+        self.tabs.clone()
+//         match &self.parts {
+//             LayoutParts::Tabs(tabs) => tabs.clone(),
+//             _ => vec![]
+//         }
     }
 
     pub fn focused_tab_index(&self) -> Option<usize> {
         self.focused_tab_index
     }
 
-    pub fn children_block_count(&self) -> usize {
-        let mut count = 0;
-        if self.external_children_index.is_some() {
-            count += 1;
-        }
-        match &self.parts {
-            LayoutParts::Tabs(tabs) => {
-                for tab in tabs {
-                    count += tab.1.children_block_count();
-                }
-            }
-            LayoutParts::Panes(panes) => {
-                for pane in panes {
-                    count += pane.children_block_count();
-                }
-            }
-        }
-        count
-    }
-    pub fn insert_children_layout(&mut self, children_layout: &mut Layout) -> Result<bool, ConfigError> {
-        // returns true if successfully inserted and false otherwise
-        let external_children_index = self.external_children_index;
-        match &mut self.parts {
-            LayoutParts::Tabs(tabs) => Err(ConfigError::KdlParsingError("Cannot insert child layout in tabs".into())),
-            LayoutParts::Panes(panes) => {
-                match external_children_index {
-                    Some(external_children_index) => {
-                        panes.insert(external_children_index, children_layout.clone());
-                        self.external_children_index = None;
-                        Ok(true)
-                    },
-                    None => {
-                        for pane in panes.iter_mut() {
-                            if pane.insert_children_layout(children_layout)? {
-                                return Ok(true);
-                            }
-                        }
-                        Ok(false)
-                    }
-                }
-            }
-        }
-    }
+//     pub fn children_block_count(&self) -> usize {
+//         let mut count = 0;
+//         if self.external_children_index.is_some() {
+//             count += 1;
+//         }
+//         match &self.parts {
+//             LayoutParts::Tabs(tabs) => {
+//                 for tab in tabs {
+//                     count += tab.1.children_block_count();
+//                 }
+//             }
+//             LayoutParts::Panes(panes) => {
+//                 for pane in panes {
+//                     count += pane.children_block_count();
+//                 }
+//             }
+//         }
+//         count
+//     }
+//     pub fn insert_children_layout(&mut self, children_layout: &mut Layout) -> Result<bool, ConfigError> {
+//         // returns true if successfully inserted and false otherwise
+//         let external_children_index = self.external_children_index;
+//         match &mut self.parts {
+//             LayoutParts::Tabs(tabs) => Err(ConfigError::KdlParsingError("Cannot insert child layout in tabs".into())),
+//             LayoutParts::Panes(panes) => {
+//                 match external_children_index {
+//                     Some(external_children_index) => {
+//                         panes.insert(external_children_index, children_layout.clone());
+//                         self.external_children_index = None;
+//                         Ok(true)
+//                     },
+//                     None => {
+//                         for pane in panes.iter_mut() {
+//                             if pane.insert_children_layout(children_layout)? {
+//                                 return Ok(true);
+//                             }
+//                         }
+//                         Ok(false)
+//                     }
+//                 }
+//             }
+//         }
+//     }
 }
 
-fn layout_size(direction: SplitDirection, layout: &Layout) -> usize {
-    fn child_layout_size(
-        direction: SplitDirection,
-        parent_direction: SplitDirection,
-        layout: &Layout,
-    ) -> usize {
-        let size = if parent_direction == direction { 1 } else { 0 };
-        let parts_is_empty = match &layout.parts {
-            LayoutParts::Panes(parts) => parts.is_empty(),
-            LayoutParts::Tabs(tabs) => tabs.len() == 0
+// fn layout_size(direction: SplitDirection, layout: &Layout) -> usize {
+//     fn child_layout_size(
+//         direction: SplitDirection,
+//         parent_direction: SplitDirection,
+//         layout: &Layout,
+//     ) -> usize {
+//         let size = if parent_direction == direction { 1 } else { 0 };
+//         let parts_is_empty = match &layout.parts {
+//             LayoutParts::Panes(parts) => parts.is_empty(),
+//             LayoutParts::Tabs(tabs) => tabs.len() == 0
+//         };
+//         // if layout.parts.is_empty() {
+//         if parts_is_empty {
+//             size
+//         } else {
+//             match &layout.parts {
+//                 LayoutParts::Panes(parts) => {
+//                     let children_size = parts
+//                         .iter()
+//                         .map(|p| child_layout_size(direction, layout.direction, p))
+//                         .sum();
+//                     max(size, children_size)
+//                 },
+//                 LayoutParts::Tabs(tabs) => {
+//                     let children_size = tabs
+//                         .iter()
+//                         .map(|(_, p)| child_layout_size(direction, layout.direction, p))
+//                         .sum();
+//                     max(size, children_size)
+//                 }
+//             }
+//         }
+//     }
+//     child_layout_size(direction, direction, layout)
+// }
+
+fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_split: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
+    let mut pane_positions = Vec::new();
+    let sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|part| part.split_size).collect();
+
+    let mut split_geom = Vec::new();
+    let (mut current_position, split_dimension_space, mut inherited_dimension, total_split_dimension_space) =
+        match layout.children_split_direction {
+            SplitDirection::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows, total_space_to_split.cols),
+            SplitDirection::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols, total_space_to_split.rows),
         };
-        // if layout.parts.is_empty() {
-        if parts_is_empty {
-            size
-        } else {
-            match &layout.parts {
-                LayoutParts::Panes(parts) => {
-                    let children_size = parts
+
+    let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
+
+    let mut total_pane_size = 0;
+    for (&size, part) in sizes.iter().zip(&*layout.children) {
+        let mut split_dimension = match size {
+            Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
+            Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
+            None => {
+                let total_fixed_size = split_dimension_space.as_usize();
+                let free_percent = if let Some(p) = split_dimension_space.as_percent() {
+                    p - sizes
                         .iter()
-                        .map(|p| child_layout_size(direction, layout.direction, p))
-                        .sum();
-                    max(size, children_size)
-                },
-                LayoutParts::Tabs(tabs) => {
-                    let children_size = tabs
-                        .iter()
-                        .map(|(_, p)| child_layout_size(direction, layout.direction, p))
-                        .sum();
-                    max(size, children_size)
-                }
-            }
-        }
-    }
-    child_layout_size(direction, direction, layout)
-}
-
-fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneGeom)> {
-    match &layout.parts {
-        LayoutParts::Panes(parts) => {
-            let mut pane_positions = Vec::new();
-            let sizes: Vec<Option<SplitSize>> = parts.iter().map(|part| part.split_size).collect();
-
-            let mut split_geom = Vec::new();
-            let (mut current_position, split_dimension_space, mut inherited_dimension) =
-                match layout.direction {
-                    SplitDirection::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows),
-                    SplitDirection::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols),
-                };
-
-            let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
-
-            for (&size, part) in sizes.iter().zip(&*parts) {
-                let mut split_dimension = match size {
-                    Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
-                    Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
-                    None => {
-                        let total_fixed_size = split_dimension_space.as_usize();
-                        let free_percent = if let Some(p) = split_dimension_space.as_percent() {
-                            p - sizes
-                                .iter()
-                                .map(|&s| {
-                                    match s {
-                                        Some(SplitSize::Percent(ip)) => ip as f64,
-                                        Some(SplitSize::Fixed(fixed)) => (fixed as f64 / total_fixed_size as f64) * 100.0,
-                                        _ => 0.0,
-                                    }
-                                })
-                                .sum::<f64>()
-                        } else {
-                            panic!("Implicit sizing within fixed-size panes is not supported");
-                        };
-                        Dimension::percent(free_percent / flex_parts as f64)
-                    },
-                };
-                split_dimension.adjust_inner(split_dimension_space.as_usize());
-                let geom = match layout.direction {
-                    SplitDirection::Vertical => PaneGeom {
-                        x: current_position,
-                        y: space_to_split.y,
-                        cols: split_dimension,
-                        rows: inherited_dimension,
-                    },
-                    SplitDirection::Horizontal => PaneGeom {
-                        x: space_to_split.x,
-                        y: current_position,
-                        cols: inherited_dimension,
-                        rows: split_dimension,
-                    },
-                };
-                split_geom.push(geom);
-                current_position += split_dimension.as_usize();
-            }
-
-            for (i, part) in parts.iter().enumerate() {
-                let part_position_and_size = split_geom.get(i).unwrap();
-                if !part.parts.is_empty() {
-                    let mut part_positions = split_space(part_position_and_size, part);
-                    pane_positions.append(&mut part_positions);
+                        .map(|&s| {
+                            match s {
+                                Some(SplitSize::Percent(ip)) => ip as f64,
+                                Some(SplitSize::Fixed(fixed)) => (fixed as f64 / total_fixed_size as f64) * 100.0,
+                                _ => 0.0,
+                            }
+                        })
+                        .sum::<f64>()
                 } else {
-                    pane_positions.push((part.clone(), *part_position_and_size));
-                }
+                    panic!("Implicit sizing within fixed-size panes is not supported");
+                };
+                Dimension::percent(free_percent / flex_parts as f64)
+            },
+        };
+        split_dimension.adjust_inner(total_split_dimension_space.as_usize());
+        total_pane_size += split_dimension.as_usize();
+
+        let geom = match layout.children_split_direction {
+            SplitDirection::Vertical => PaneGeom {
+                x: current_position,
+                y: space_to_split.y,
+                cols: split_dimension,
+                rows: inherited_dimension,
+            },
+            SplitDirection::Horizontal => PaneGeom {
+                x: space_to_split.x,
+                y: current_position,
+                cols: inherited_dimension,
+                rows: split_dimension,
+            },
+        };
+        split_geom.push(geom);
+        current_position += split_dimension.as_usize();
+    }
+
+    // add extra space from rounding errors to the last pane
+    if total_pane_size < split_dimension_space.as_usize() {
+        let increase_by = split_dimension_space.as_usize() - total_pane_size;
+        if let Some(last_geom) = split_geom.last_mut() {
+            match layout.children_split_direction {
+                SplitDirection::Vertical => last_geom.cols.increase_inner(increase_by),
+                SplitDirection::Horizontal => last_geom.rows.increase_inner(increase_by),
             }
-            pane_positions
-        },
-        LayoutParts::Tabs(tabs) => {
-            panic!("tab layout should not have nested tabs");
         }
     }
+    for (i, part) in layout.children.iter().enumerate() {
+        let part_position_and_size = split_geom.get(i).unwrap();
+        if !part.children.is_empty() {
+            let mut part_positions = split_space(part_position_and_size, part, total_space_to_split);
+            pane_positions.append(&mut part_positions);
+        } else {
+            pane_positions.push((part.clone(), *part_position_and_size));
+        }
+    }
+    if pane_positions.is_empty() {
+        pane_positions.push((layout.clone(), space_to_split.clone()));
+    }
+    pane_positions
 }
 
 impl TryFrom<Url> for RunPluginLocation {

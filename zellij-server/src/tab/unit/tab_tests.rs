@@ -8,7 +8,7 @@ use crate::{
     ClientId,
 };
 use std::path::PathBuf;
-use zellij_utils::input::layout::Layout;
+use zellij_utils::input::layout::PaneLayout;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -128,7 +128,7 @@ fn create_new_tab(size: Size) -> Tab {
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        Layout::with_one_pane(),
+        PaneLayout::default(),
         vec![1],
         index,
         client_id,
@@ -179,7 +179,7 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        Layout::with_one_pane(),
+        PaneLayout::default(),
         vec![1],
         index,
         client_id,
