@@ -352,6 +352,7 @@ pub struct Grid {
     pub sixel_scrolling: bool,      // DECSDM
     pub insert_mode: bool,
     pub disable_linewrap: bool,
+    pub new_line_mode: bool, // Automatic newline LNM
     pub clear_viewport_before_rendering: bool,
     pub width: usize,
     pub height: usize,
@@ -478,6 +479,7 @@ impl Grid {
             sixel_scrolling: false,
             insert_mode: false,
             disable_linewrap: false,
+            new_line_mode: false,
             alternate_screen_state: None,
             clear_viewport_before_rendering: false,
             active_charset: Default::default(),
@@ -1515,6 +1517,7 @@ impl Grid {
         self.active_charset = Default::default();
         self.erasure_mode = false;
         self.disable_linewrap = false;
+        self.new_line_mode = false;
         self.cursor.change_shape(CursorShape::Initial);
         self.output_buffer.update_all_lines();
         self.changed_colors = None;
@@ -1927,6 +1930,9 @@ impl Grid {
                 Some(mouse_event)
             },
         }
+    }
+    pub fn is_alternate_mode_active(&self) -> bool {
+        self.alternate_screen_state.is_some()
     }
 }
 
@@ -2350,8 +2356,18 @@ impl Perform for Grid {
                         _ => {},
                     };
                 }
-            } else if let Some(4) = params_iter.next().map(|param| param[0]) {
-                self.insert_mode = false;
+            } else {
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        4 => {
+                            self.insert_mode = false;
+                        },
+                        20 => {
+                            self.new_line_mode = false;
+                        },
+                        _ => {},
+                    }
+                }
             }
         } else if c == 'h' {
             let first_intermediate_is_questionmark = match intermediates.get(0) {
@@ -2434,8 +2450,18 @@ impl Perform for Grid {
                         _ => {},
                     }
                 }
-            } else if let Some(4) = params_iter.next().map(|param| param[0]) {
-                self.insert_mode = true;
+            } else {
+                for param in params_iter.map(|param| param[0]) {
+                    match param {
+                        4 => {
+                            self.insert_mode = true;
+                        },
+                        20 => {
+                            self.new_line_mode = true;
+                        },
+                        _ => {},
+                    }
+                }
             }
         } else if c == 'r' {
             if params.len() > 1 {
@@ -2602,8 +2628,8 @@ impl Perform for Grid {
             // https://vt100.net/docs/vt510-rm/DA1.html
             match intermediates.get(0) {
                 None | Some(0) => {
-                    // primary device attributes
-                    let terminal_capabilities = "\u{1b}[?64;4c";
+                    // primary device attributes - VT220 with sixel
+                    let terminal_capabilities = "\u{1b}[?62;4c";
                     self.pending_messages_to_pty
                         .push(terminal_capabilities.as_bytes().to_vec());
                 },
@@ -2627,10 +2653,38 @@ impl Perform for Grid {
                 },
                 6 => {
                     // CPR - cursor position report
-                    let position_report =
-                        format!("\x1b[{};{}R", self.cursor.y + 1, self.cursor.x + 1);
+
+                    // Note that this is relative to scrolling region.
+                    let offset = match self.scroll_region {
+                        Some((scroll_region_top, _scroll_region_bottom)) => scroll_region_top,
+                        _ => 0,
+                    };
+                    let position_report = format!(
+                        "\u{1b}[{};{}R",
+                        self.cursor.y + 1 - offset,
+                        self.cursor.x + 1
+                    );
                     self.pending_messages_to_pty
                         .push(position_report.as_bytes().to_vec());
+                },
+                _ => {},
+            }
+        } else if c == 'x' {
+            // DECREQTPARM - Request Terminal Parameters
+            // https://vt100.net/docs/vt100-ug/chapter3.html#DECREQTPARM
+            //
+            // Respond with (same as xterm): Parity NONE, 8 bits,
+            // xmitspeed 38400, recvspeed 38400.  (CLoCk MULtiplier =
+            // 1, STP option flags = 0)
+            //
+            // (xterm used to respond to DECREQTPARM in all modes.
+            // Now it seems to only do so when explicitly in VT100 mode.)
+            let query = next_param_or(0);
+            match query {
+                0 | 1 => {
+                    let response = format!("\u{1b}[{};1;1;128;128;1;0x", query + 2);
+                    self.pending_messages_to_pty
+                        .push(response.as_bytes().to_vec());
                 },
                 _ => {},
             }
@@ -2678,6 +2732,19 @@ impl Perform for Grid {
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
         match (byte, intermediates.get(0)) {
+            (b'A', charset_index_symbol) => {
+                let charset_index: CharsetIndex = match charset_index_symbol {
+                    Some(b'(') => CharsetIndex::G0,
+                    Some(b')') => CharsetIndex::G1,
+                    Some(b'*') => CharsetIndex::G2,
+                    Some(b'+') => CharsetIndex::G3,
+                    _ => {
+                        // invalid, silently do nothing
+                        return;
+                    },
+                };
+                self.configure_charset(StandardCharset::UK, charset_index);
+            },
             (b'B', charset_index_symbol) => {
                 let charset_index: CharsetIndex = match charset_index_symbol {
                     Some(b'(') => CharsetIndex::G0,

@@ -71,7 +71,11 @@ impl ServerOsApi for FakeInputOutput {
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) {
+    fn send_to_client(
+        &self,
+        _client_id: ClientId,
+        _msg: ServerToClientMsg,
+    ) -> Result<(), &'static str> {
         unimplemented!()
     }
     fn new_client(
@@ -1881,8 +1885,8 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -1947,8 +1951,8 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -2013,8 +2017,8 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -2079,8 +2083,8 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     tab.handle_middle_click(&Position::new(5, 71), client_id);
     tab.handle_mouse_hold_middle(&Position::new(9, 72), client_id);
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
-    tab.scroll_terminal_up(&Position::new(5, 71), 1, client_id);
-    tab.scroll_terminal_down(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
+    tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
     assert_eq!(
         *messages_to_pty_writer.lock().unwrap(),
@@ -2202,4 +2206,116 @@ fn tab_with_nested_uneven_layout() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+#[test]
+fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
+    // regression test for: https://github.com/zellij-org/zellij/issues/1687
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab =
+        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer.clone());
+
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string()),
+                    PtyWriteInstruction::Exit => break,
+                }
+            }
+        });
+    let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
+    let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
+    tab.write_to_active_terminal(bracketed_paste_start, client_id);
+    tab.write_to_active_terminal("test".as_bytes().to_vec(), client_id);
+    tab.write_to_active_terminal(bracketed_paste_end, client_id);
+
+    to_pty_writer.send(PtyWriteInstruction::Exit).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    assert_eq!(
+        *messages_to_pty_writer.lock().unwrap(),
+        vec!["", "test", ""]
+    );
+}
+
+#[test]
+fn pane_faux_scrolling_in_alternate_mode() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id: u16 = 1;
+    let lines_to_scroll = 3;
+
+    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
+    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+        channels::unbounded();
+    let to_pty_writer = SenderWithContext::new(to_pty_writer);
+    let mut tab =
+        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer.clone());
+
+    let _pty_writer_thread = std::thread::Builder::new()
+        .name("pty_writer".to_string())
+        .spawn({
+            let messages_to_pty_writer = messages_to_pty_writer.clone();
+            move || loop {
+                let (event, _err_ctx) = pty_writer_receiver
+                    .recv()
+                    .expect("failed to receive event on channel");
+                match event {
+                    PtyWriteInstruction::Write(msg, _) => messages_to_pty_writer
+                        .lock()
+                        .unwrap()
+                        .push(String::from_utf8_lossy(&msg).to_string()),
+                    PtyWriteInstruction::Exit => break,
+                }
+            }
+        });
+
+    let enable_alternate_screen = String::from("\u{1b}[?1049h"); // CSI ? 1049 h -> switch to the Alternate Screen Buffer
+    let set_application_mode = String::from("\u{1b}[?1h");
+
+    // no output since alternate scren not active yet
+    tab.handle_scrollwheel_up(&Position::new(1, 1), lines_to_scroll, client_id);
+    tab.handle_scrollwheel_down(&Position::new(1, 1), lines_to_scroll, client_id);
+
+    tab.handle_pty_bytes(1, enable_alternate_screen.as_bytes().to_vec());
+    // CSI A * lines_to_scroll, CSI B * lines_to_scroll
+    tab.handle_scrollwheel_up(&Position::new(1, 1), lines_to_scroll, client_id);
+    tab.handle_scrollwheel_down(&Position::new(1, 1), lines_to_scroll, client_id);
+
+    tab.handle_pty_bytes(1, set_application_mode.as_bytes().to_vec());
+    // SS3 A * lines_to_scroll, SS3 B * lines_to_scroll
+    tab.handle_scrollwheel_up(&Position::new(1, 1), lines_to_scroll, client_id);
+    tab.handle_scrollwheel_down(&Position::new(1, 1), lines_to_scroll, client_id);
+
+    to_pty_writer.send(PtyWriteInstruction::Exit).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+
+    let mut expected: Vec<&str> = Vec::new();
+    expected.append(&mut vec!["\u{1b}[A"; lines_to_scroll]);
+    expected.append(&mut vec!["\u{1b}[B"; lines_to_scroll]);
+    expected.append(&mut vec!["\u{1b}OA"; lines_to_scroll]);
+    expected.append(&mut vec!["\u{1b}OB"; lines_to_scroll]);
+
+    assert_eq!(*messages_to_pty_writer.lock().unwrap(), expected);
 }

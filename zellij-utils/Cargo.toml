@@ -30,7 +30,7 @@ strum = "0.20.0"
 strum_macros = "0.20.1"
 thiserror = "1.0.30"
 url = { version = "2.2.2", features = ["serde"] }
-vte = "0.10.1"
+vte = { version = "0.11.0", default-features = false }
 log = "0.4.17"
 unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
