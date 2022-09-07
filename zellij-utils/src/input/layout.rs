@@ -179,8 +179,8 @@ impl PaneLayout {
         count
     }
     pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
-        // split_space(space, self, space)
         let res = split_space(space, self, space);
+        log::info!("res: {:#?}", res);
         res
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
@@ -530,10 +530,10 @@ fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_sp
     let sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|part| part.split_size).collect();
 
     let mut split_geom = Vec::new();
-    let (mut current_position, split_dimension_space, mut inherited_dimension, total_split_dimension_space) =
+    let (mut current_position, split_dimension_space, mut inherited_dimension, total_split_dimension_space, total_inherited_dimension_space) =
         match layout.children_split_direction {
-            SplitDirection::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows, total_space_to_split.cols),
-            SplitDirection::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols, total_space_to_split.rows),
+            SplitDirection::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows, total_space_to_split.cols, total_space_to_split.rows),
+            SplitDirection::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols, total_space_to_split.rows, total_space_to_split.cols),
         };
 
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
