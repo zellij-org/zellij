@@ -179,8 +179,7 @@ impl PaneLayout {
         count
     }
     pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
-        let res = split_space(space, self, space);
-        res
+        split_space(space, self, space)
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
@@ -545,14 +544,12 @@ fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_sp
             Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
             None => {
-                let total_fixed_size = split_dimension_space.as_usize();
                 let free_percent = if let Some(p) = split_dimension_space.as_percent() {
                     p - sizes
                         .iter()
                         .map(|&s| {
                             match s {
                                 Some(SplitSize::Percent(ip)) => ip as f64,
-                                Some(SplitSize::Fixed(fixed)) => (fixed as f64 / total_fixed_size as f64) * 100.0,
                                 _ => 0.0,
                             }
                         })
