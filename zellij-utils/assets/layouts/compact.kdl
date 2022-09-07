@@ -1,13 +1,6 @@
----
-template:
-  direction: Horizontal
-  parts:
-    - direction: Vertical
-      body: true
-    - direction: Vertical
-      borderless: true
-      split_size:
-        Fixed: 1
-      run:
-        plugin:
-          location: "zellij:compact-bar"
+layout {
+    pane
+    pane size=1 borderless=true {
+        plugin location="zellij:compact-bar"
+    }
+}

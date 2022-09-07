@@ -7,12 +7,6 @@ layout {
         plugin location="zellij:status-bar"
     }
 }
-// keybinds {
-//     normal {
-//         bind "Ctrl g" { SwitchToMode "Pane"; }
-//         bind "Ctrl a" { SwitchToMode "Locked"; }
-//     }
-// }
 // pane_frames false
 // default_mode "pane"
 // themes {
