@@ -1,5 +1,7 @@
 mod kdl_layout_parser;
 use kdl_layout_parser::KdlLayoutParser;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 use crate::envs::EnvironmentVariables;
 use crate::input::command::RunCommand;
 use crate::input::keybinds::Keybinds;
@@ -130,7 +132,7 @@ macro_rules! parse_kdl_action_char_or_string_arguments {
 #[macro_export]
 macro_rules! kdl_arg_is_truthy {
     ( $kdl_node:expr, $arg_name:expr ) => {
-        $kdl_node.get("clear-defaults").and_then(|c| c.value().as_bool()).unwrap_or(false)
+        $kdl_node.get($arg_name).and_then(|c| c.value().as_bool()).unwrap_or(false)
     }
 }
 
@@ -766,23 +768,55 @@ impl EnvironmentVariables {
 }
 
 impl Keybinds {
+    fn bind_keys_in_block(block: &KdlNode, input_mode_keybinds: &mut HashMap<Key, Vec<Action>>) -> Result<(), ConfigError> {
+        let bind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
+        let unbind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
+        for key_block in bind_nodes {
+            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds)?;
+        }
+        // we loop twice so that the unbinds always happen after the binds
+        for key_block in unbind_nodes {
+            Keybinds::unbind_keys(key_block, input_mode_keybinds)?;
+        }
+        Ok(())
+    }
     pub fn from_kdl(kdl_keybinds: &KdlNode, base_keybinds: Keybinds) -> Result<Self, ConfigError> {
         let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
         let mut keybinds_from_config = if clear_defaults { Keybinds::default() } else { base_keybinds };
+        for block in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
+            if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
+                let mut modes_to_exclude = vec![];
+                for mode_name in kdl_string_arguments!(block) {
+                    modes_to_exclude.push(InputMode::from_str(mode_name)?);
+                }
+                for mode in InputMode::iter() {
+                    if modes_to_exclude.contains(&mode) {
+                        continue;
+                    }
+                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                }
+            }
+            if kdl_name!(block) == "shared_among" {
+                let mut modes_to_include = vec![];
+                for mode_name in kdl_string_arguments!(block) {
+                    modes_to_include.push(InputMode::from_str(mode_name)?);
+                }
+                for mode in InputMode::iter() {
+                    if !modes_to_include.contains(&mode) {
+                        continue;
+                    }
+                    let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                }
+            }
+        }
         for mode in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
-            if kdl_name!(mode) == "unbind" {
+            if kdl_name!(mode) == "unbind" || kdl_name!(mode) == "shared_except" || kdl_name!(mode) == "shared_among" || kdl_name!(mode) == "shared" {
                 continue;
             }
             let mut input_mode_keybinds = Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            let bind_nodes = kdl_children_nodes_or_error!(mode, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
-            let unbind_nodes = kdl_children_nodes_or_error!(mode, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
-            for key_block in bind_nodes {
-                Keybinds::bind_actions_for_each_key(key_block, &mut input_mode_keybinds)?;
-            }
-            // we loop twice so that the unbinds always happen after the binds
-            for key_block in unbind_nodes {
-                Keybinds::unbind_keys(key_block, &mut input_mode_keybinds)?;
-            }
+            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds)?;
         }
         if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
             Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;

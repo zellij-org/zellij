@@ -166,6 +166,7 @@ impl std::error::Error for LayoutNameInTabError {
 #[cfg(test)]
 mod config_test {
     use std::io::Write;
+    use strum::IntoEnumIterator;
 
     use tempfile::tempdir;
 
@@ -608,6 +609,62 @@ mod config_test {
         assert_eq!(z_in_pane_mode, None, "Second keybind cleared in its mode as well");
         assert_eq!(r_in_pane_mode, Some(&vec![Action::TogglePaneFrames]), "Unrelated keybinding in default config still bound");
         assert_eq!(t_in_pane_mode, Some(&vec![Action::SwitchToMode(InputMode::Tab)]), "Keybinding from custom config still bound");
+    }
+
+    #[test]
+    fn can_define_shared_keybinds_for_all_modes() {
+        let config_contents = r#"
+            keybinds {
+                shared {
+                    bind "Ctrl g" { SwitchToMode "Locked"; }
+                }
+            }
+        "#;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        for mode in InputMode::iter() {
+            let action_in_mode = config.keybinds.get_actions_for_key_in_mode(&mode, &Key::Ctrl('g'));
+            assert_eq!(action_in_mode, Some(&vec![Action::SwitchToMode(InputMode::Locked)]), "Keybind bound in mode");
+        }
+    }
+
+    #[test]
+    fn can_define_shared_keybinds_with_exclusion() {
+        let config_contents = r#"
+            keybinds {
+                shared_except "locked" {
+                    bind "Ctrl g" { SwitchToMode "Locked"; }
+                }
+            }
+        "#;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        for mode in InputMode::iter() {
+            let action_in_mode = config.keybinds.get_actions_for_key_in_mode(&mode, &Key::Ctrl('g'));
+            if mode == InputMode::Locked {
+                assert_eq!(action_in_mode, None, "Keybind unbound in excluded mode");
+            } else {
+                assert_eq!(action_in_mode, Some(&vec![Action::SwitchToMode(InputMode::Locked)]), "Keybind bound in mode");
+            }
+        }
+    }
+
+    #[test]
+    fn can_define_shared_keybinds_with_inclusion() {
+        let config_contents = r#"
+            keybinds {
+                shared_among "normal" "resize" "pane" {
+                    bind "Ctrl g" { SwitchToMode "Locked"; }
+                }
+            }
+        "#;
+        let config = Config::from_kdl(config_contents, None).unwrap();
+        for mode in InputMode::iter() {
+            let action_in_mode = config.keybinds.get_actions_for_key_in_mode(&mode, &Key::Ctrl('g'));
+            if mode == InputMode::Normal || mode == InputMode::Resize || mode == InputMode::Pane {
+                assert_eq!(action_in_mode, Some(&vec![Action::SwitchToMode(InputMode::Locked)]), "Keybind bound in included mode");
+            } else {
+                assert_eq!(action_in_mode, None, "Keybind unbound in other modes");
+            }
+        }
     }
 
     #[test]

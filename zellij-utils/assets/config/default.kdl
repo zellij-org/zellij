@@ -1,26 +1,5 @@
 keybinds {
     normal {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl q" { Quit; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt =" "Alt +" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
-        bind "Alt y" {
-            Run "diskonaut" {
-                cwd "/home/aram"
-            }
-        }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
     }
@@ -28,39 +7,16 @@ keybinds {
         bind "Ctrl g" { SwitchToMode "Normal"; }
     }
     resize {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl n" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl q" { Quit; }
+        bind "Ctrl n" { SwitchToMode "Normal"; }
         bind "h" "Left" { Resize "Left"; }
         bind "j" "Down" { Resize "Down"; }
         bind "k" "Up" { Resize "Up"; }
         bind "l" "Right" { Resize "Right"; }
         bind "=" "+" { Resize "Increase"; }
         bind "-" { Resize "Decrease"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
     }
     pane {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl p" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl q" { Quit; }
+        bind "Ctrl p" { SwitchToMode "Normal"; }
         bind "h" "Left" { MoveFocus "Left"; }
         bind "l" "Right" { MoveFocus "Right"; }
         bind "j" "Down" { MoveFocus "Down"; }
@@ -74,48 +30,19 @@ keybinds {
         bind "z" { TogglePaneFrames; SwitchToMode "Normal"; }
         bind "w" { ToggleFloatingPanes; SwitchToMode "Normal"; }
         bind "e" { TogglePaneEmbedOrFloating; SwitchToMode "Normal"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
         bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
     }
     move {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl h" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl q" { Quit; }
+        bind "Ctrl h" { SwitchToMode "Normal"; }
         bind "n" "Tab" { MovePane; }
         bind "h" "Left" { MovePane "Left"; }
         bind "j" "Down" { MovePane "Down"; }
         bind "k" "Up" { MovePane "Up"; }
         bind "l" "Right" { MovePane "Right"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
     }
     tab {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl t" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
+        bind "Ctrl t" { SwitchToMode "Normal"; }
         bind "r" { SwitchToMode "RenameTab"; TabNameInput 0; }
-        bind "Ctrl q" { Quit; }
         bind "h" "Left" "Up" "k" { GoToPreviousTab; }
         bind "l" "Right" "Down" "j" { GoToNextTab; }
         bind "n" { NewTab; SwitchToMode "Normal"; }
@@ -131,67 +58,30 @@ keybinds {
         bind "8" { GoToTab 8; SwitchToMode "Normal"; }
         bind "9" { GoToTab 9; SwitchToMode "Normal"; }
         bind "Tab" { ToggleTab; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
     }
     scroll {
-        bind "Ctrl s" "Space" "Enter" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
+        bind "Ctrl s" { SwitchToMode "Normal"; }
         bind "e" { EditScrollback; SwitchToMode "Normal"; }
         bind "s" { SwitchToMode "EnterSearch"; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
-        bind "Ctrl q" { Quit; }
         bind "j" "Down" { ScrollDown; }
         bind "k" "Up" { ScrollUp; }
         bind "Ctrl f" "PageDown" "Right" "l" { PageScrollDown; }
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
         // uncomment this and adjust key if using copy_on_select=false
         // bind "Alt c" { Copy; }
     }
     search {
-        bind "Ctrl s" "Space" "Enter" "Esc" { SwitchToMode "Normal"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl o" { SwitchToMode "Session"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
+        bind "Ctrl s" { SwitchToMode "Normal"; }
         bind "Ctrl c" { ScrollToBottom; SwitchToMode "Normal"; }
         bind "j" "Down" { ScrollDown; }
         bind "k" "Up" { ScrollUp; }
-        bind "Ctrl q" { Quit; }
         bind "Ctrl f" "PageDown" "Right" "l" { PageScrollDown; }
         bind "Ctrl b" "PageUp" "Left" "h" { PageScrollUp; }
         bind "d" { HalfPageScrollDown; }
         bind "u" { HalfPageScrollUp; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
         bind "n" { Search "down"; }
         bind "p" { Search "up"; }
         bind "c" { SearchToggleOption "CaseSensitivity"; }
@@ -199,70 +89,25 @@ keybinds {
         bind "o" { SearchToggleOption "WholeWord"; }
     }
     entersearch {
-        bind "Enter" { SwitchToMode "Search"; }
         bind "Ctrl c" "Esc" { SwitchToMode "Scroll"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt =" {Resize "Increase"; }
-        bind "Alt +" {Resize "Increase"; }
-        bind "Alt -" {Resize "Decrease"; }
     }
     renametab {
-        bind "Enter" "Ctrl c" "Esc" { SwitchToMode "Normal"; }
+        bind "Ctrl c" { SwitchToMode "Normal"; }
         bind "Esc" { UndoRenameTab; SwitchToMode "Tab"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt =" {Resize "Increase"; }
-        bind "Alt +" {Resize "Increase"; }
-        bind "Alt -" {Resize "Decrease"; }
     }
     renamepane {
-        bind "Enter" "Ctrl c" "Esc" { SwitchToMode "Normal"; }
+        bind "Ctrl c" { SwitchToMode "Normal"; }
         bind "Esc" { UndoRenamePane; SwitchToMode "Pane"; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
     }
     session {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl b" { SwitchToMode "Tmux"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Ctrl o" "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
+        bind "Ctrl o" { SwitchToMode "Normal"; }
         bind "Ctrl s" { SwitchToMode "Scroll"; }
-        bind "Ctrl q" { Quit; }
         bind "d" { Detach; }
-        bind "Alt n" { NewPane; }
-        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
-        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
-        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
-        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "Alt +" "Alt =" { Resize "Increase"; }
-        bind "Alt -" { Resize "Decrease"; }
     }
     tmux {
-        bind "Ctrl g" { SwitchToMode "Locked"; }
-        bind "Ctrl n" { SwitchToMode "Resize"; }
-        bind "Ctrl p" { SwitchToMode "Pane"; }
-        bind "Ctrl h" { SwitchToMode "Move"; }
-        bind "Ctrl t" { SwitchToMode "Tab"; }
-        bind "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
         bind "[" { SwitchToMode "Scroll"; }
-        bind "Ctrl q" { Quit; }
         bind "Ctrl b" { Write 2; SwitchToMode "Normal"; }
-        bind "\\" { NewPane "Down"; SwitchToMode "Normal"; }
+        bind "\"" { NewPane "Down"; SwitchToMode "Normal"; }
         bind "%" { NewPane "Right"; SwitchToMode "Normal"; }
         bind "z" { ToggleFocusFullscreen; SwitchToMode "Normal"; }
         bind "c" { NewTab; SwitchToMode "Normal"; }
@@ -277,16 +122,43 @@ keybinds {
         bind "l" { MoveFocus "Right"; SwitchToMode "Normal"; }
         bind "j" { MoveFocus "Down"; SwitchToMode "Normal"; }
         bind "k" { MoveFocus "Up"; SwitchToMode "Normal"; }
+        bind "o" { FocusNextPane; }
+        bind "d" { Detach; }
+    }
+    shared_except "locked" {
+        bind "Ctrl g" { SwitchToMode "Locked"; }
+        bind "Ctrl q" { Quit; }
         bind "Alt n" { NewPane; }
         bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
         bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
         bind "Alt j" "Alt Down" { MoveFocus "Down"; }
         bind "Alt k" "Alt Up" { MoveFocus "Up"; }
-        bind "o" { FocusNextPane; }
-        bind "Alt =" { Resize "Increase"; }
-        bind "Alt +" { Resize "Increase"; }
+        bind "Alt =" "Alt +" { Resize "Increase"; }
         bind "Alt -" { Resize "Decrease"; }
-        bind "d" { Detach; }
+    }
+    shared_except "normal" "locked" {
+        bind "Enter" "Space" "Esc" { SwitchToMode "Normal"; }
+    }
+    shared_except "pane" "locked" {
+        bind "Ctrl p" { SwitchToMode "Pane"; }
+    }
+    shared_except "resize" "locked" {
+        bind "Ctrl n" { SwitchToMode "Resize"; }
+    }
+    shared_except "scroll" "locked" {
+        bind "Ctrl s" { SwitchToMode "Scroll"; }
+    }
+    shared_except "session" "locked" {
+        bind "Ctrl o" { SwitchToMode "Session"; }
+    }
+    shared_except "tab" "locked" {
+        bind "Ctrl t" { SwitchToMode "Tab"; }
+    }
+    shared_except "move" "locked" {
+        bind "Ctrl h" { SwitchToMode "Move"; }
+    }
+    shared_except "tmux" "locked" {
+        bind "Ctrl b" { SwitchToMode "Tmux"; }
     }
 }
 

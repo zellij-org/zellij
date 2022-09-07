@@ -79,22 +79,6 @@ Config {
                 ),
             ],
             Alt(
-                Char(
-                    'y',
-                ),
-            ): [
-                Run(
-                    RunCommandAction {
-                        command: "diskonaut",
-                        args: [],
-                        cwd: Some(
-                            "/home/aram",
-                        ),
-                        direction: None,
-                    },
-                ),
-            ],
-            Alt(
                 Direction(
                     Left,
                 ),
@@ -1412,7 +1396,14 @@ Config {
                 '\n',
             ): [
                 SwitchToMode(
-                    Search,
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
                 ),
             ],
             Alt(
@@ -1524,10 +1515,71 @@ Config {
                 ),
             ],
             Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
                 'c',
             ): [
                 SwitchToMode(
                     Scroll,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
                 ),
             ],
             Esc: [
@@ -1828,6 +1880,13 @@ Config {
                     Normal,
                 ),
             ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
             Alt(
                 Char(
                     '+',
@@ -1937,10 +1996,71 @@ Config {
                 ),
             ],
             Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
                 'c',
             ): [
                 SwitchToMode(
                     Normal,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
                 ),
             ],
             Esc: [
@@ -1958,6 +2078,13 @@ Config {
                     Normal,
                 ),
             ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
             Alt(
                 Char(
                     '+',
@@ -2067,10 +2194,71 @@ Config {
                 ),
             ],
             Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
                 'c',
             ): [
                 SwitchToMode(
                     Normal,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
                 ),
             ],
             Esc: [
@@ -2435,6 +2623,15 @@ Config {
             ],
             Alt(
                 Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
                     Right,
                 ),
             ): [
@@ -2458,6 +2655,13 @@ Config {
             ): [
                 MoveFocus(
                     Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
                 ),
             ],
             Ctrl(
@@ -2525,6 +2729,196 @@ Config {
                 ),
             ],
         },
+        Prompt: {
+            Char(
+                '\n',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
+                ' ',
+            ): [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Alt(
+                Char(
+                    '+',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    '-',
+                ),
+            ): [
+                Resize(
+                    Decrease,
+                ),
+            ],
+            Alt(
+                Char(
+                    '=',
+                ),
+            ): [
+                Resize(
+                    Increase,
+                ),
+            ],
+            Alt(
+                Char(
+                    'h',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Char(
+                    'j',
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Alt(
+                Char(
+                    'k',
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Char(
+                    'l',
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Char(
+                    'n',
+                ),
+            ): [
+                NewPane(
+                    None,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Left,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Left,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Right,
+                ),
+            ): [
+                MoveFocusOrTab(
+                    Right,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Up,
+                ),
+            ): [
+                MoveFocus(
+                    Up,
+                ),
+            ],
+            Alt(
+                Direction(
+                    Down,
+                ),
+            ): [
+                MoveFocus(
+                    Down,
+                ),
+            ],
+            Ctrl(
+                'b',
+            ): [
+                SwitchToMode(
+                    Tmux,
+                ),
+            ],
+            Ctrl(
+                'g',
+            ): [
+                SwitchToMode(
+                    Locked,
+                ),
+            ],
+            Ctrl(
+                'h',
+            ): [
+                SwitchToMode(
+                    Move,
+                ),
+            ],
+            Ctrl(
+                'n',
+            ): [
+                SwitchToMode(
+                    Resize,
+                ),
+            ],
+            Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
+                'p',
+            ): [
+                SwitchToMode(
+                    Pane,
+                ),
+            ],
+            Ctrl(
+                'q',
+            ): [
+                Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
+            ],
+            Ctrl(
+                't',
+            ): [
+                SwitchToMode(
+                    Tab,
+                ),
+            ],
+            Esc: [
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+        },
         Tmux: {
             Left: [
                 MoveFocus(
@@ -2573,6 +2967,18 @@ Config {
                 ),
             ],
             Char(
+                '"',
+            ): [
+                NewPane(
+                    Some(
+                        Down,
+                    ),
+                ),
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
                 '%',
             ): [
                 NewPane(
@@ -2596,18 +3002,6 @@ Config {
             ): [
                 SwitchToMode(
                     Scroll,
-                ),
-            ],
-            Char(
-                '\\',
-            ): [
-                NewPane(
-                    Some(
-                        Down,
-                    ),
-                ),
-                SwitchToMode(
-                    Normal,
                 ),
             ],
             Char(
@@ -2837,6 +3231,13 @@ Config {
                 ),
             ],
             Ctrl(
+                'o',
+            ): [
+                SwitchToMode(
+                    Session,
+                ),
+            ],
+            Ctrl(
                 'p',
             ): [
                 SwitchToMode(
@@ -2847,6 +3248,13 @@ Config {
                 'q',
             ): [
                 Quit,
+            ],
+            Ctrl(
+                's',
+            ): [
+                SwitchToMode(
+                    Scroll,
+                ),
             ],
             Ctrl(
                 't',

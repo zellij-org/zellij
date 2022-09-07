@@ -5,7 +5,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
 use super::config:: {self, ConfigError};
-use crate::{kdl_arg_is_truthy, kdl_children_or_error, kdl_string_arguments, kdl_argument_values, kdl_children, kdl_name, keys_from_kdl, actions_from_kdl, kdl_children_nodes_or_error};
 use crate::data::{InputMode, Key, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
