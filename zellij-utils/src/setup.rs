@@ -10,6 +10,7 @@ use crate::{
         options::Options,
     },
 };
+use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
 use directories_next::BaseDirs;
@@ -80,6 +81,9 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("layouts"))
 }
 
+pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
+    config_dir.map(|dir| dir.join("themes"))
+}
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -210,11 +214,31 @@ impl Setup {
         } else {
             None
         };
-        let (layout, config) = Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
+        let (layout, mut config) = Setup::parse_layout_and_override_config(cli_config_options.as_ref(), config, cli_args)?;
         let config_options = match cli_config_options {
             Some(cli_config_options) => config.options.merge(cli_config_options),
             None =>  config.options.clone()
         };
+
+        if let Some(theme_dir) = config_options
+            .theme_dir
+            .clone()
+            .or_else(|| get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)))
+        {
+            if theme_dir.is_dir() {
+                for entry in (theme_dir.read_dir()?).flatten() {
+                    if let Some(extension) = entry.path().extension() {
+                        if extension == "kdl" {
+                            if let Ok((theme_name, theme)) = Theme::from_path(entry.path()) {
+                                config.themes.insert(theme_name, theme);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup
                 .from_cli_with_options(cli_args, &config_options)

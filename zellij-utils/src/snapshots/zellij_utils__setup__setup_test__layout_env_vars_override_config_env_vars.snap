@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 593
+assertion_line: 541
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -500,6 +500,11 @@ Config {
             ): [
                 SwitchToMode(
                     RenamePane,
+                ),
+                PaneNameInput(
+                    [
+                        0,
+                    ],
                 ),
             ],
             Char(

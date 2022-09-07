@@ -97,7 +97,6 @@ impl TryFrom<&CliArgs> for Config {
             if path.exists() {
                 let default_config = Config::from_default_assets()?;
                 Config::from_path(&path, Some(default_config))
-                // Config::new(&path)
             } else {
                 Config::from_default_assets()
             }
@@ -115,11 +114,8 @@ impl Config {
         }
     }
     /// Gets default configuration from assets
-    // TODO Deserialize the Config from bytes &[u8],
-    // once serde-yaml supports zero-copy
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        // Self::from_yaml(&cfg)
         Self::from_kdl(&cfg, None)
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {
@@ -637,15 +633,6 @@ mod config_test {
 
     #[test]
     fn can_define_options_in_configfile() {
-        // TODO: consider writing a macro to generate a test like this for each option
-
-
-
-
-
-
-
-
         let config_contents = r#"
             simplified_ui true
             theme "my cool theme"

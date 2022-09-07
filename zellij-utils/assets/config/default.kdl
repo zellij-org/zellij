@@ -81,7 +81,7 @@ keybinds {
         bind "Alt k" "Alt Up" { MoveFocus "Up"; }
         bind "Alt +" "Alt =" { Resize "Increase"; }
         bind "Alt -" { Resize "Decrease"; }
-        bind "c" { SwitchToMode "RenamePane"; }
+        bind "c" { SwitchToMode "RenamePane"; PaneNameInput 0;}
     }
     move {
         bind "Ctrl g" { SwitchToMode "Locked"; }
@@ -324,6 +324,22 @@ plugins {
 //  For some examples, see: https://github.com/zellij-org/zellij/tree/main/example/themes
 //  Default: default
 // theme "dracula"
+
+// themes {
+//     dracula {
+//         fg 248 248 242
+//         bg 40 42 54
+//         red 255 85 85
+//         green 80 250 123
+//         yellow 241 250 140
+//         blue 98 114 164
+//         magenta 255 121 198
+//         orange 255 184 108
+//         cyan 139 233 253
+//         black 0 0 0
+//         white 255 255 255
+//     }
+// }
 
 //  Choose the mode that zellij uses when starting up.
 //  Default: normal

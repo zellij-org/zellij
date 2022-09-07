@@ -59,6 +59,9 @@ impl Themes {
     pub fn from_data(theme_data: HashMap<String, Theme>) -> Self {
         Themes(theme_data)
     }
+    pub fn insert(&mut self, theme_name: String, theme: Theme) {
+        self.0.insert(theme_name, theme);
+    }
     pub fn merge(&self, mut other: Themes) -> Self {
         let mut merged = self.clone();
         for (name, theme) in other.0.drain() {

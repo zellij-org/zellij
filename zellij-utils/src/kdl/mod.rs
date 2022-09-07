@@ -9,6 +9,8 @@ use url::Url;
 use crate::data::{InputMode, Key, CharOrArrow, PaletteColor, Palette};
 use crate::input::options::{Options, OnForceClose, Clipboard};
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
 use crate::input::plugins::{PluginsConfig, PluginsConfigError, PluginConfig, PluginType, PluginTag};
 use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
 use crate::cli::{CliArgs, Command};
@@ -932,5 +934,34 @@ impl Themes {
         }
         let themes = Themes::from_data(themes);
         Ok(themes)
+    }
+}
+
+impl Theme {
+    pub fn from_path(path_to_theme_file: PathBuf) -> Result<(String, Self), ConfigError> {
+        // String is the theme name
+        let mut file = File::open(path_to_theme_file)?;
+        let mut kdl_config = String::new();
+        file.read_to_string(&mut kdl_config);
+        let kdl_config: KdlDocument = kdl_config.parse()?;
+        let kdl_config = kdl_config.nodes().get(0).ok_or(ConfigError::KdlParsingError("No theme found in file".into()))?;
+        let theme_name = kdl_name!(kdl_config);
+        let theme_colors = kdl_children_or_error!(kdl_config, "empty theme");
+        Ok((theme_name.into(), Theme {
+            palette: Palette {
+                fg: PaletteColor::try_from(("fg", theme_colors))?,
+                bg: PaletteColor::try_from(("bg", theme_colors))?,
+                red: PaletteColor::try_from(("red", theme_colors))?,
+                green: PaletteColor::try_from(("green", theme_colors))?,
+                yellow: PaletteColor::try_from(("yellow", theme_colors))?,
+                blue: PaletteColor::try_from(("blue", theme_colors))?,
+                magenta: PaletteColor::try_from(("magenta", theme_colors))?,
+                orange: PaletteColor::try_from(("orange", theme_colors))?,
+                cyan: PaletteColor::try_from(("cyan", theme_colors))?,
+                black: PaletteColor::try_from(("black", theme_colors))?,
+                white: PaletteColor::try_from(("white", theme_colors))?,
+                ..Default::default()
+            }
+        }))
     }
 }
