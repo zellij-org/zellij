@@ -40,9 +40,7 @@ impl State {
                     self.path = p;
                     refresh_directory(self);
                 },
-                FsEntry::File(p, _) => {
-                    open_file(p.strip_prefix(ROOT).unwrap()).expect(errors::TODO_HANDLING)
-                },
+                FsEntry::File(p, _) => open_file(p.strip_prefix(ROOT).unwrap()),
             }
         }
     }

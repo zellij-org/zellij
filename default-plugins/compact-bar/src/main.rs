@@ -35,8 +35,7 @@ impl ZellijPlugin for State {
             EventType::TabUpdate,
             EventType::ModeUpdate,
             EventType::Mouse,
-        ])
-        .expect(errors::TODO_HANDLING);
+        ]);
     }
 
     fn update(&mut self, event: Event) {

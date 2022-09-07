@@ -179,8 +179,7 @@ impl ZellijPlugin for State {
             EventType::CopyToClipboard,
             EventType::InputReceived,
             EventType::SystemClipboardFailure,
-        ])
-        .expect(errors::TODO_HANDLING);
+        ]);
     }
 
     fn update(&mut self, event: Event) {
