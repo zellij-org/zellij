@@ -21,6 +21,67 @@
 //! the codebase and get an idea which modules are used at which other places in the code.
 //!
 //! If you have an interest in this, don't hesitate to get in touch with us.
+//!
+//!
+//! # Error handling facilities
+//!
+//! ## Displaying panic messages
+//!
+//! Panics are generally handled via the [`Panic`] error type and the
+//! [`handle_panic`][`handle_panic`] panic handler function. The fancy formatting is performed by
+//! the [`miette`] crate.
+//!
+//!
+//! ## Propagating errors
+//!
+//! We use the [`anyhow`] crate to propagate errors up the call stack. At the moment, zellij
+//! doesn't have custom error types, so we wrap whatever errors the underlying libraries give us,
+//! if any. [`anyhow`] serves the purpose of providing [`context`][`context`] about where (i.e.
+//! under which circumstances) an error happened.
+//!
+//! A critical requirement for propagating errors is that all functions involved must return the
+//! [`Result`] type. This allows convenient error handling with the `?` operator.
+//!
+//! At some point you will likely stop propagating errors and decide what to do with the error.
+//! Generally you can:
+//!
+//! 1. Try to recover from the error, or
+//! 2. Report the error to the user and either
+//!     1. Terminate program execution (See [`fatal`][`fatal`]), or
+//!     2. Continue program execution (See [`non_fatal`][`non_fatal`])
+//!
+//!
+//! ## Handling errors
+//!
+//! Ideally, when the program encounters an error it will try to recover as best as it can. This
+//! can mean falling back to some sane default if a specific value (e.g. an environment variable)
+//! cannot be found. Note that this isn't always applicable. If in doubt, don't hesitate to ask.
+//!
+//! Recovery usually isn't an option if an operation has changed the internal state (i.e. the value
+//! or content of specific variables) of objects in the code. In this case, if an error is
+//! encountered, it is best to declare the program state corrupted and terminate the whole
+//! application. This can be done by [`unwrap`]ing on the [`Result`] type. Always try to propagate
+//! the error as best as you can and attach meaningful context before [`unwrap`]ing. This gives the
+//! user an idea what went wrong and can also help developers in quickly identifying which parts of
+//! the code to debug if necessary.
+//!
+//! When you encounter such a fatal error and cannot propagate it further up (e.g. because the
+//! current function cannot be changed to return a [`Result`], or because it is the "root" function
+//! of a program thread), use the [`fatal`][`fatal`] function to panic the application. It will
+//! attach some small context to the error and finally [`unwrap`] it. Using this function over the
+//! regular [`unwrap`] has the added benefit that other developers seeing this in the code know
+//! that someone has previously spent some thought about error handling at this location.
+//!
+//! If you encounter a non-fatal error, use the [`non_fatal`][`non_fatal`] function to handle
+//! it. Instead of [`panic`]ing the application, the error is written to the application log and
+//! execution continues. Please use this sparingly, as an error usually calls for actions to be
+//! taken rather than ignoring it.
+//!
+//!
+//! [`handle_panic`]: not_wasm::handle_panic
+//! [`context`]: anyhow::Context
+//! [`fatal`]: FatalError::fatal
+//! [`non_fatal`]: FatalError::non_fatal
 
 use anyhow::Context;
 use colored::*;
