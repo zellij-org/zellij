@@ -142,12 +142,8 @@ pub trait FatalError<T> {
 
     /// Mark results as being fatal.
     ///
-    /// If the result is an `Err` variant, this will [print the error to the log][`to_log`] and
-    /// panic the application.
-    ///
+    /// If the result is an `Err` variant, this will unwrap the error and panic the application.
     /// If the result is an `Ok` variant, the inner value is unwrapped and returned instead.
-    ///
-    /// [`to_log`]: LoggableError::to_log
     ///
     /// # Panics
     ///
