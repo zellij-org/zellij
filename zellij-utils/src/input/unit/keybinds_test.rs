@@ -3,9 +3,6 @@ use super::super::keybinds::*;
 use crate::input::config::Config;
 use crate::data::{self, CharOrArrow, Key};
 
-// TODO: make sure these are all covered
-// TODO: move keybind tests here
-
 #[test]
 fn can_define_keybindings_in_configfile() {
     let config_contents = r#"

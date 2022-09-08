@@ -166,7 +166,6 @@ impl std::error::Error for LayoutNameInTabError {
 #[cfg(test)]
 mod config_test {
     use std::io::Write;
-    use strum::IntoEnumIterator;
 
     use tempfile::tempdir;
 
