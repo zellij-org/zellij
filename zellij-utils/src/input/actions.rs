@@ -206,13 +206,3 @@ impl From<OnForceClose> for Action {
         }
     }
 }
-
-// #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-// pub struct ActionsFromYaml(Vec<Action>);
-
-// impl ActionsFromYaml {
-//     /// Get a reference to the actions from yaml's actions.
-//     pub fn actions(&self) -> &[Action] {
-//         self.0.as_ref()
-//     }
-// }

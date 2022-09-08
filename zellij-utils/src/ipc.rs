@@ -85,7 +85,6 @@ pub enum ClientToServerMsg {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        // Box<LayoutFromYaml>,
         Box<Layout>,
         Option<PluginsConfig>,
     ),
