@@ -1199,6 +1199,11 @@ Config {
                 SwitchToMode(
                     EnterSearch,
                 ),
+                SearchInput(
+                    [
+                        0,
+                    ],
+                ),
             ],
             Char(
                 'u',
@@ -1396,7 +1401,7 @@ Config {
                 '\n',
             ): [
                 SwitchToMode(
-                    Normal,
+                    Search,
                 ),
             ],
             Char(
