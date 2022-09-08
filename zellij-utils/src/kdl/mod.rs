@@ -246,6 +246,9 @@ impl Action {
             "TabNameInput" => {
                 Ok(Action::TabNameInput(bytes))
             }
+            "SearchInput" => {
+                Ok(Action::SearchInput(bytes))
+            }
             "GoToTab" => {
                 let tab_index = *bytes
                     .get(0)
@@ -417,6 +420,7 @@ impl TryFrom<&KdlNode> for Action {
             "NewTab" => Ok(Action::NewTab(None, None)), // TODO: consider the Some(TabLayout, "tab_name") case...
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "TabNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
+            "SearchInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "SearchToggleOption" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
             "Run" => {
                 let arguments = action_arguments.iter().copied();
