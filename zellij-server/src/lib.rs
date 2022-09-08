@@ -332,17 +332,12 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                 };
 
-                // if !&layout.tabs.is_empty() {
                 if layout.has_tabs() {
-                    log::info!("layout.has_tabs()");
-                    // for tab_layout in layout.clone().tabs {
                     for (tab_name, tab_layout) in layout.tabs() {
                         spawn_tabs(Some(tab_layout.clone()), tab_name);
                     }
-                    log::info!("done spawned tab");
 
                     if let Some(focused_tab_index) = layout.focused_tab_index() {
-                        log::info!("focused_tab_index: {:?}", focused_tab_index);
                         session_data
                             .read()
                             .unwrap()
@@ -352,23 +347,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .send_to_pty(PtyInstruction::GoToTab((focused_tab_index + 1) as u32, client_id))
                             .unwrap();
                     }
-//                     let focused_tab = layout
-//                         .tabs
-//                         .into_iter()
-//                         .enumerate()
-//                         .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
-//                     if let Some((tab_index, _)) = focused_tab {
-//                         session_data
-//                             .read()
-//                             .unwrap()
-//                             .as_ref()
-//                             .unwrap()
-//                             .senders
-//                             .send_to_pty(PtyInstruction::GoToTab((tab_index + 1) as u32, client_id))
-//                             .unwrap();
-//                     }
                 } else {
-                    log::info!("in else");
                     spawn_tabs(None, None);
                 }
                 session_data

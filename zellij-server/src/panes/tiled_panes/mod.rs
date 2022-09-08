@@ -155,8 +155,6 @@ impl TiledPanes {
         removed_pane
     }
     pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
-        log::info!("");
-        log::info!("inserting pane");
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -171,7 +169,6 @@ impl TiledPanes {
             let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
             let size_of_both_panes = pane_to_split.position_and_size();
             if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes) {
-                log::info!("first_geom: {:?}, second_geom: {:?}", first_geom, second_geom);
                 pane_to_split.set_geom(first_geom);
                 pane.set_geom(second_geom);
                 self.panes.insert(pane_id, pane);
@@ -223,11 +220,9 @@ impl TiledPanes {
         );
         let result = match direction {
             SplitDirection::Horizontal => {
-                log::info!("relayout horizontal");
                 pane_grid.layout(direction, (*self.display_area.borrow()).cols)
             },
             SplitDirection::Vertical => {
-                log::info!("relayout vertical");
                 pane_grid.layout(direction, (*self.display_area.borrow()).rows)
             }
         };

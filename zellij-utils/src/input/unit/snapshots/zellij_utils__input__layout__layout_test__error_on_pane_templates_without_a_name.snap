@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 1000
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlParsingError("Pane templates must have a name")

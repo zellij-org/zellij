@@ -11,7 +11,7 @@
 use crate::{
     input::{
         command::RunCommand,
-        config::{Config, ConfigError, LayoutNameInTabError},
+        config::{Config, ConfigError},
     },
     pane_size::{Dimension, PaneGeom},
     setup,
@@ -110,26 +110,6 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
-// // The layout struct ultimately used to build the layouts.
-// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-// pub struct Layout {
-//     pub direction: SplitDirection,
-//     #[serde(default)]
-//     pub pane_name: Option<String>,
-//     #[serde(default)]
-//     pub parts: LayoutParts,
-//     pub split_size: Option<SplitSize>,
-//     pub run: Option<Run>,
-//     #[serde(default)]
-//     pub borderless: bool,
-//     pub focus: Option<bool>,
-//     pub external_children_index: Option<usize>,
-//     pub focused_tab_index: Option<usize>,
-//     pub template: Option<Box<Layout>>,
-// }
-
-// TODO: CONTINUE HERE - keep following the compiler in kdl_layout_parser.rs
-// to work with these new refactored structs
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, PaneLayout)>,

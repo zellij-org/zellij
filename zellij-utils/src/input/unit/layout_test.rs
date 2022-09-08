@@ -3,18 +3,6 @@ use super::super::layout::*;
 use std::convert::TryInto;
 use insta::assert_snapshot;
 
-fn layout_test_dir(layout: String) -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let layout_dir = root.join("src/input/unit/fixtures/layouts");
-    layout_dir.join(layout)
-}
-
-fn default_layout_dir(layout: String) -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let layout_dir = root.join("assets/layouts");
-    layout_dir.join(layout)
-}
-
 #[test]
 fn empty_layout() {
     let kdl_layout = "layout";
@@ -945,4 +933,109 @@ fn cannot_define_pane_template_names_as_keywords() {
         let layout = Layout::from_kdl(&kdl_layout);
         assert!(layout.is_err(), "{}", format!("error provided for pane template name with keyword: {}", keyword));
     }
+}
+
+#[test]
+fn error_on_multiple_layout_nodes_in_file() {
+    let kdl_layout = format!("
+        layout
+        layout
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_unknown_layout_node() {
+    let kdl_layout = format!("
+        layout {{
+            pane
+            i_am_not_a_proper_node
+            pane
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_unknown_layout_pane_property() {
+    let kdl_layout = format!("
+        layout {{
+            pane spit_size=1
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_unknown_layout_pane_template_property() {
+    let kdl_layout = format!("
+        layout {{
+            pane_template name=\"my_cool_template\" spit_size=1
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_unknown_layout_tab_property() {
+    let kdl_layout = format!("
+        layout {{
+            tab spit_size=1
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_unknown_layout_tab_template_property() {
+    let kdl_layout = format!("
+        layout {{
+            tab_template name=\"my_cool_template\" spit_size=1
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_pane_templates_without_a_name() {
+    let kdl_layout = format!("
+        layout {{
+            pane_template {{
+                pane
+                children
+                pane
+            }}
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_tab_templates_without_a_name() {
+    let kdl_layout = format!("
+        layout {{
+            tab_template {{
+                pane
+                children
+                pane
+            }}
+        }}
+    ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
 }

@@ -2,6 +2,7 @@ use super::super::actions::*;
 use super::super::keybinds::*;
 use crate::input::config::Config;
 use crate::data::{self, CharOrArrow, Key};
+use insta::assert_snapshot;
 
 #[test]
 fn can_define_keybindings_in_configfile() {
@@ -459,4 +460,31 @@ fn keybindings_unbinds_happen_after_binds() {
             &Key::Char('z'),
         );
     assert_eq!(z_in_pane_mode, None, "Key was ultimately unbound");
+}
+
+#[test]
+fn error_received_on_unknown_input_mode() {
+    let config_contents = r#"
+        keybinds {
+            i_do_not_exist {
+                bind "z" { SwitchToMode "Resize"; }
+            }
+        }
+    "#;
+    let config_error = Config::from_kdl(config_contents, None).unwrap_err();
+    assert_snapshot!(format!("{:?}", config_error));
+}
+
+#[test]
+fn error_received_on_unknown_key_instruction() {
+    let config_contents = r#"
+        keybinds {
+            pane {
+                i_am_not_bind_or_unbind
+                bind "z" { SwitchToMode "Resize"; }
+            }
+        }
+    "#;
+    let config_error = Config::from_kdl(config_contents, None).unwrap_err();
+    assert_snapshot!(format!("{:?}", config_error));
 }

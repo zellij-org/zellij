@@ -1,7 +1,6 @@
 mod kdl_layout_parser;
 use kdl_layout_parser::KdlLayoutParser;
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 use crate::envs::EnvironmentVariables;
 use crate::input::command::RunCommand;
 use crate::input::keybinds::Keybinds;
@@ -13,10 +12,8 @@ use crate::input::options::{Options, OnForceClose, Clipboard};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use crate::input::plugins::{PluginsConfig, PluginsConfigError, PluginConfig, PluginType, PluginTag};
+use crate::input::plugins::{PluginsConfig, PluginConfig, PluginType, PluginTag};
 use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
-use crate::cli::{CliArgs, Command};
-use crate::setup;
 
 use kdl::{KdlDocument, KdlValue, KdlNode};
 
@@ -169,6 +166,13 @@ macro_rules! kdl_string_arguments {
     ( $kdl_node:expr ) => {{
         let res: Result<Vec<_>, _> = $kdl_node.entries().iter().map(|e| e.value().as_string().ok_or(ConfigError::KdlParsingError("Not a string".into()))).collect();
         res?
+    }}
+}
+
+#[macro_export]
+macro_rules! kdl_property_names {
+    ( $kdl_node:expr ) => {{
+        $kdl_node.entries().iter().filter_map(|e| e.name()).map(|e| e.value())
     }}
 }
 
@@ -773,14 +777,22 @@ impl EnvironmentVariables {
 
 impl Keybinds {
     fn bind_keys_in_block(block: &KdlNode, input_mode_keybinds: &mut HashMap<Key, Vec<Action>>) -> Result<(), ConfigError> {
-        let bind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
-        let unbind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
+        let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
+//         let bind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
+//         let unbind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
+        let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
+        let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
         for key_block in bind_nodes {
             Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds)?;
         }
-        // we loop twice so that the unbinds always happen after the binds
+        // we loop a second time so that the unbinds always happen after the binds
         for key_block in unbind_nodes {
             Keybinds::unbind_keys(key_block, input_mode_keybinds)?;
+        }
+        for key_block in all_nodes {
+            if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
+                return Err(ConfigError::KdlParsingError(format!("Unknown keybind instruction: '{}'", kdl_name!(key_block))));
+            }
         }
         Ok(())
     }
@@ -980,7 +992,7 @@ impl Theme {
         // String is the theme name
         let mut file = File::open(path_to_theme_file)?;
         let mut kdl_config = String::new();
-        file.read_to_string(&mut kdl_config);
+        file.read_to_string(&mut kdl_config)?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
         let kdl_config = kdl_config.nodes().get(0).ok_or(ConfigError::KdlParsingError("No theme found in file".into()))?;
         let theme_name = kdl_name!(kdl_config);

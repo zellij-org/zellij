@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 996
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlParsingError("Invalid tab property 'spit_size'")

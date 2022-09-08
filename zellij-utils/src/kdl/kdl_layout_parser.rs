@@ -1,22 +1,7 @@
-//! The layout system.
-//  Layouts have been moved from [`zellij-server`] to
-//  [`zellij-utils`] in order to provide more helpful
-//  error messages to the user until a more general
-//  logging system is in place.
-//  In case there is a logging system in place evaluate,
-//  if [`zellij-utils`], or [`zellij-server`] is a proper
-//  place.
-//  If plugins should be able to depend on the layout system
-//  then [`zellij-utils`] could be a proper place.
-use crate::{
-    input::{
-        command::RunCommand,
-        config::{ConfigError, LayoutNameInTabError},
-        layout::{Layout, PaneLayout, LayoutParts, SplitDirection, Run, RunPlugin, RunPluginLocation, SplitSize},
-        plugins::{PluginTag, PluginsConfigError},
-    },
-    pane_size::{Dimension, PaneGeom},
-    setup,
+use crate::input::{
+    command::RunCommand,
+    config::ConfigError,
+    layout::{Layout, PaneLayout, SplitDirection, Run, RunPlugin, RunPluginLocation, SplitSize},
 };
 
 use kdl::*;
@@ -25,31 +10,20 @@ use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    kdl_children,
     kdl_string_arguments,
     kdl_children_nodes,
     kdl_name,
-    kdl_document_name,
     kdl_get_string_entry,
-    kdl_get_int_entry,
-    kdl_get_child_entry_bool_value,
-    kdl_get_child_entry_string_value,
     kdl_get_child,
     kdl_get_bool_property_or_child_value,
     kdl_get_string_property_or_child_value,
     kdl_get_int_property_or_child_value,
+    kdl_property_names,
 };
 
-use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::vec::Vec;
-use std::{
-    cmp::max,
-    fmt, fs,
-    ops::Not,
-    path::{Path, PathBuf},
-};
-use std::{fs::File, io::prelude::*};
+use std::path::PathBuf;
 use url::Url;
 
 pub struct KdlLayoutParser <'a>{
@@ -78,6 +52,22 @@ impl <'a>KdlLayoutParser <'a> {
         word == "plugin" ||
         word == "children" ||
         word == "tab"
+    }
+    fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
+        property_name == "borderless" ||
+        property_name == "focus" ||
+        property_name == "name" ||
+        property_name == "size" ||
+        property_name == "plugin" ||
+        property_name == "command" ||
+        property_name == "cwd" ||
+        property_name == "args" ||
+        property_name == "split_direction"
+    }
+    fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
+        property_name == "focus" ||
+        property_name == "name" ||
+        property_name == "split_direction"
     }
     fn assert_legal_node_name(&self, name: &str) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -142,6 +132,7 @@ impl <'a>KdlLayoutParser <'a> {
         Ok(run)
     }
     fn parse_pane_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
+        self.assert_valid_pane_properties(kdl_node)?;
         let borderless = kdl_get_bool_property_or_child_value!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|name| name.to_string());
@@ -193,6 +184,7 @@ impl <'a>KdlLayoutParser <'a> {
         })
     }
     fn parse_pane_template_node(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> { // String is the tab name
+        self.assert_valid_pane_properties(kdl_node)?;
         let template_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string()).ok_or(ConfigError::KdlParsingError("Pane templates must have a name".into()))?;
         self.assert_legal_node_name(&template_name)?;
         let borderless = kdl_get_bool_property_or_child_value!(kdl_node, "borderless");
@@ -217,6 +209,7 @@ impl <'a>KdlLayoutParser <'a> {
         Ok(())
     }
     fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(Option<String>, PaneLayout), ConfigError> { // String is the tab name
+        self.assert_valid_tab_properties(kdl_node)?;
         match self.default_tab_template.as_ref().map(|t| t.clone()) {
             Some(default_tab_template) => {
                 self.parse_tab_node_with_template(kdl_node, default_tab_template)
@@ -274,6 +267,24 @@ impl <'a>KdlLayoutParser <'a> {
         }
         Ok(())
     }
+    fn assert_valid_pane_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
+        let all_property_names = kdl_property_names!(pane_node);
+        for name in all_property_names {
+            if !self.is_a_valid_pane_property(name) {
+                return Err(ConfigError::KdlParsingError(format!("Invalid pane property '{}'", name)));
+            }
+        }
+        Ok(())
+    }
+    fn assert_valid_tab_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
+        let all_property_names = kdl_property_names!(pane_node);
+        for name in all_property_names {
+            if !self.is_a_valid_tab_property(name) {
+                return Err(ConfigError::KdlParsingError(format!("Invalid tab property '{}'", name)));
+            }
+        }
+        Ok(())
+    }
     fn insert_layout_children_or_error(&self, layout: &mut PaneLayout, mut child_panes_layout: PaneLayout) -> Result<(), ConfigError> {
         let successfully_inserted = layout.insert_children_layout(&mut child_panes_layout)?;
         if !successfully_inserted {
@@ -319,6 +330,7 @@ impl <'a>KdlLayoutParser <'a> {
         Ok(())
     }
     fn parse_tab_template_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
+        self.assert_valid_tab_properties(kdl_node)?;
         let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
             Some(direction) => SplitDirection::from_str(direction)?,
             None => SplitDirection::default(),
@@ -494,11 +506,17 @@ impl <'a>KdlLayoutParser <'a> {
                 return Err(ConfigError::KdlParsingError("Cannot have both tabs and panes in the same node".into()));
             }
             child_panes.push(self.parse_pane_node_with_template(child, pane_template)?);
+        } else if !self.is_a_reserved_word(child_name) {
+            return Err(ConfigError::KdlParsingError(format!("Unknown layout node: '{}'", child_name)));
         }
         Ok(())
     }
     pub fn parse(&mut self) -> Result<Layout, ConfigError> {
         let layout_node = self.kdl_layout.nodes().iter().find(|n| kdl_name!(n) == "layout").ok_or(ConfigError::KdlParsingError("No layout found".into()))?;
+        let has_multiple_layout_nodes = self.kdl_layout.nodes().iter().filter(|n| kdl_name!(n) == "layout").count() > 1;
+        if has_multiple_layout_nodes {
+            return Err(ConfigError::KdlParsingError("Only one layout node per file allowed".into()));
+        }
         let mut child_tabs = vec![];
         let mut child_panes = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {

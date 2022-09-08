@@ -1,21 +1,13 @@
-//! Deserializes configuration options.
-use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::path::PathBuf;
 use thiserror::Error;
-use crate::data::{self, Palette, PaletteColor, PluginTag, CharOrArrow, Key, InputMode};
+use crate::data::{Palette, PaletteColor, PluginTag, InputMode};
 use super::layout::RunPluginLocation;
 
-use super::actions::{Action, Direction};
+use std::collections::HashMap;
 
-use std::collections::{HashMap, HashSet};
-
-use kdl::{KdlDocument, KdlValue, KdlNode};
-
-use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::options::{Options, OnForceClose, Clipboard};
@@ -24,9 +16,7 @@ use super::theme::{UiConfig, Theme, Themes, FrameConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::setup;
-use crate::{entry_count, kdl_entries_as_i64, kdl_first_entry_as_string, kdl_first_entry_as_i64};
 
-// const DEFAULT_CONFIG_FILE_NAME: &str = "config.yaml";
 const DEFAULT_CONFIG_FILE_NAME: &str = "config.kdl";
 
 type ConfigResult = Result<Config, ConfigError>;
@@ -49,9 +39,6 @@ pub enum ConfigError {
     KdlDeserializationError(#[from] kdl::KdlError),
     #[error("KdlDeserialization error: {0}")]
     KdlParsingError(String),
-    // Deserialization error
-    #[error("Deserialization error: {0}")]
-    Serde(#[from] serde_yaml::Error),
     // Io error
     #[error("IoError: {0}")]
     Io(#[from] io::Error),
@@ -63,9 +50,6 @@ pub enum ConfigError {
     // Internal Deserialization Error
     #[error("FromUtf8Error: {0}")]
     FromUtf8(#[from] std::string::FromUtf8Error),
-    // Naming a part in a tab is unsupported
-    #[error("There was an error in the layout file, {0}")]
-    LayoutNameInTab(#[from] LayoutNameInTabError),
     // Plugins have a semantic error, usually trying to parse two of the same tag
     #[error("PluginsError: {0}")]
     PluginsError(#[from] PluginsConfigError),
@@ -78,7 +62,6 @@ impl TryFrom<&CliArgs> for Config {
         if let Some(ref path) = opts.config {
             let default_config = Config::from_default_assets()?;
             return Config::from_path(path, Some(default_config));
-            // return Config::new(path);
         }
 
         if let Some(Command::Setup(ref setup)) = opts.command {
@@ -131,38 +114,6 @@ impl Config {
     }
 }
 
-// TODO: Split errors up into separate modules
-#[derive(Debug, Clone)]
-pub struct LayoutNameInTabError;
-
-impl fmt::Display for LayoutNameInTabError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "LayoutNameInTabError:
-The `parts` inside the `tabs` can't be named. For example:
----
-tabs:
-  - direction: Vertical
-    name: main
-    parts:
-      - direction: Vertical
-        name: section # <== The part section can't be named.
-      - direction: Vertical
-  - direction: Vertical
-    name: test
-"
-        )
-    }
-}
-
-impl std::error::Error for LayoutNameInTabError {
-    fn description(&self) -> &str {
-        "The `parts` inside the `tabs` can't be named."
-    }
-}
-
-// The unit test location.
 #[cfg(test)]
 mod config_test {
     use std::io::Write;

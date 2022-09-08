@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 960
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlParsingError("Unknown layout node: 'i_am_not_a_proper_node'")

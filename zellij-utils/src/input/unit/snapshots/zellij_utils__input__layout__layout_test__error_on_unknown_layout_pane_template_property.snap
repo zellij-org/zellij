@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 984
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlParsingError("Invalid pane property 'spit_size'")
