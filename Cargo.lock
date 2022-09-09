@@ -3491,7 +3491,6 @@ dependencies = [
  "rmp-serde",
  "serde",
  "serde_json",
- "serde_yaml",
  "signal-hook 0.3.14",
  "strip-ansi-escapes",
  "strum",

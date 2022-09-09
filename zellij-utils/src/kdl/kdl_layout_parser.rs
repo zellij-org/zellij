@@ -210,28 +210,21 @@ impl <'a>KdlLayoutParser <'a> {
     }
     fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(bool, Option<String>, PaneLayout), ConfigError> { // (is_focused, Option<tab_name>, PaneLayout)
         self.assert_valid_tab_properties(kdl_node)?;
-        match self.default_tab_template.as_ref().map(|t| t.clone()) {
-            Some(default_tab_template) => {
-                self.parse_tab_node_with_template(kdl_node, default_tab_template)
-            },
-            None => {
-                let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
-                let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-                let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
-                    Some(direction) => SplitDirection::from_str(direction)?,
-                    None => SplitDirection::default(),
-                };
-                let children = match kdl_children_nodes!(kdl_node) {
-                    Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
-                    None => vec![],
-                };
-                Ok((is_focused, tab_name, PaneLayout {
-                    children_split_direction,
-                    children,
-                    ..Default::default()
-                }))
-            }
-        }
+        let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
+        let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
+        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
+            Some(direction) => SplitDirection::from_str(direction)?,
+            None => SplitDirection::default(),
+        };
+        let children = match kdl_children_nodes!(kdl_node) {
+            Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
+            None => vec![],
+        };
+        Ok((is_focused, tab_name, PaneLayout {
+            children_split_direction,
+            children,
+            ..Default::default()
+        }))
     }
     fn parse_child_pane_nodes_for_tab(&self, children: &[KdlNode]) -> Result<Vec<PaneLayout>, ConfigError> {
         let mut nodes = vec![];

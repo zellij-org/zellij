@@ -532,7 +532,7 @@ fn layout_with_default_tab_template() {
         layout {
             default_tab_template {
                 pane
-                children
+                pane
                 pane
             }
             tab name="my first tab" split_direction="Vertical" {
@@ -548,62 +548,7 @@ fn layout_with_default_tab_template() {
     "#;
     let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
     let layout = Layout::from_kdl(&kdl_layout).unwrap();
-    let expected_layout = Layout {
-        tabs: vec![
-            (Some("my first tab".into()), PaneLayout {
-                children_split_direction: SplitDirection::Horizontal,
-                children: vec![
-                    PaneLayout::default(),
-                    PaneLayout {
-                        children_split_direction: SplitDirection::Vertical,
-                        children: vec![
-                            PaneLayout::default(),
-                            PaneLayout::default(),
-                        ],
-                        ..Default::default()
-                    },
-                    PaneLayout::default(),
-                ],
-                ..Default::default()
-            }),
-            (Some("my second tab".into()), PaneLayout {
-                children_split_direction: SplitDirection::Horizontal,
-                children: vec![
-                    PaneLayout::default(),
-                    PaneLayout {
-                        children_split_direction: SplitDirection::Horizontal,
-                        children: vec![
-                            PaneLayout::default(),
-                            PaneLayout::default(),
-                        ],
-                        ..Default::default()
-                    },
-                    PaneLayout::default(),
-                ],
-                ..Default::default()
-            }),
-            (None, PaneLayout {
-                children_split_direction: SplitDirection::Horizontal,
-                children: vec![
-                    PaneLayout::default(),
-                    PaneLayout::default(),
-                    PaneLayout::default(),
-                ],
-                ..Default::default()
-            }),
-        ],
-        template: Some(PaneLayout {
-            children_split_direction: SplitDirection::Horizontal,
-            children: vec![
-                PaneLayout::default(),
-                PaneLayout::default(),
-                PaneLayout::default(),
-            ],
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    assert_eq!(layout, expected_layout);
+    assert_snapshot!(format!("{:#?}", layout));
 }
 
 #[test]
