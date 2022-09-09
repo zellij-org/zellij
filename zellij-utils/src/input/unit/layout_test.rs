@@ -431,6 +431,30 @@ fn layout_with_tab_names() {
 }
 
 #[test]
+fn layout_with_focused_tab() {
+    let kdl_layout = r#"
+        layout {
+            tab
+            tab focus=true
+            tab
+        }
+    "#;
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let expected_layout = Layout {
+        tabs: vec![
+            (None, PaneLayout::default()),
+            (None, PaneLayout::default()),
+            (None, PaneLayout::default()),
+        ],
+        template: Some(PaneLayout::default()),
+        focused_tab_index: Some(1),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
 fn layout_with_tab_templates() {
     let kdl_layout = r#"
         layout {
@@ -1035,6 +1059,20 @@ fn error_on_tab_templates_without_a_name() {
             }}
         }}
     ");
+    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
+    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn error_on_more_than_one_focused_tab() {
+    let kdl_layout = r#"
+        layout {
+            tab focus=true
+            tab focus=true
+            tab
+        }
+    "#;
     let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
     let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));

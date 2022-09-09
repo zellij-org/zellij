@@ -208,7 +208,7 @@ impl <'a>KdlLayoutParser <'a> {
         });
         Ok(())
     }
-    fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(Option<String>, PaneLayout), ConfigError> { // String is the tab name
+    fn parse_tab_node(&mut self, kdl_node: &KdlNode) -> Result<(bool, Option<String>, PaneLayout), ConfigError> { // (is_focused, Option<tab_name>, PaneLayout)
         self.assert_valid_tab_properties(kdl_node)?;
         match self.default_tab_template.as_ref().map(|t| t.clone()) {
             Some(default_tab_template) => {
@@ -216,6 +216,7 @@ impl <'a>KdlLayoutParser <'a> {
             },
             None => {
                 let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
+                let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
                 let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
                     Some(direction) => SplitDirection::from_str(direction)?,
                     None => SplitDirection::default(),
@@ -224,7 +225,7 @@ impl <'a>KdlLayoutParser <'a> {
                     Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
                     None => vec![],
                 };
-                Ok((tab_name, PaneLayout {
+                Ok((is_focused, tab_name, PaneLayout {
                     children_split_direction,
                     children,
                     ..Default::default()
@@ -293,8 +294,9 @@ impl <'a>KdlLayoutParser <'a> {
             Ok(())
         }
     }
-    fn parse_tab_node_with_template(&mut self, kdl_node: &KdlNode, mut tab_layout: PaneLayout) -> Result<(Option<String>, PaneLayout), ConfigError> { // String is the tab name
+    fn parse_tab_node_with_template(&mut self, kdl_node: &KdlNode, mut tab_layout: PaneLayout) -> Result<(bool, Option<String>, PaneLayout), ConfigError> {  // (is_focused, Option<tab_name>, PaneLayout)
         let tab_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
+        let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
             Some(direction) => SplitDirection::from_str(direction)?,
             None => SplitDirection::default(),
@@ -317,7 +319,7 @@ impl <'a>KdlLayoutParser <'a> {
             }
         }
         tab_layout.external_children_index = None;
-        Ok((tab_name, tab_layout))
+        Ok((is_focused, tab_name, tab_layout))
     }
     fn populate_one_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> { // String is the tab name
         let template_name = kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string()).ok_or(ConfigError::KdlParsingError("Tab templates must have a name".into()))?;
@@ -447,12 +449,13 @@ impl <'a>KdlLayoutParser <'a> {
         }
         Ok(())
     }
-    fn layout_with_tabs(&self, tabs: Vec<(Option<String>, PaneLayout)>) -> Result<Layout, ConfigError> {
+    fn layout_with_tabs(&self, tabs: Vec<(Option<String>, PaneLayout)>, focused_tab_index: Option<usize>) -> Result<Layout, ConfigError> {
         let template = self.default_template()?.unwrap_or_else(|| PaneLayout::default());
 
         Ok(Layout {
             tabs: tabs,
             template: Some(template),
+            focused_tab_index,
             ..Default::default()
         })
     }
@@ -484,7 +487,7 @@ impl <'a>KdlLayoutParser <'a> {
             ..Default::default()
         })
     }
-    fn populate_layout_child(&mut self, child: &KdlNode, child_tabs: &mut Vec<(Option<String>, PaneLayout)>, child_panes: &mut Vec<PaneLayout>) -> Result<(), ConfigError> {
+    fn populate_layout_child(&mut self, child: &KdlNode, child_tabs: &mut Vec<(bool, Option<String>, PaneLayout)>, child_panes: &mut Vec<PaneLayout>) -> Result<(), ConfigError> {
         let child_name = kdl_name!(child);
         if child_name == "pane" {
             if !child_tabs.is_empty() {
@@ -527,7 +530,13 @@ impl <'a>KdlLayoutParser <'a> {
             }
         }
         if !child_tabs.is_empty() {
-            self.layout_with_tabs(child_tabs)
+            let has_more_than_one_focused_tab = child_tabs.iter().filter(|(is_focused, _, _)| *is_focused).count() > 1;
+            if has_more_than_one_focused_tab {
+                return Err(ConfigError::KdlParsingError("Only one tab can be focused".into()));
+            }
+            let focused_tab_index = child_tabs.iter().position(|(is_focused, _, _)| *is_focused);
+            let child_tabs: Vec<(Option<String>, PaneLayout)> = child_tabs.drain(..).map(|(_is_focused, tab_name, pane_layout)| (tab_name, pane_layout)).collect();
+            self.layout_with_tabs(child_tabs, focused_tab_index)
         } else if !child_panes.is_empty() {
             self.layout_with_one_tab(child_panes)
         } else {

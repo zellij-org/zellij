@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 1078
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlParsingError("Only one tab can be focused")
