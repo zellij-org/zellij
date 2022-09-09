@@ -562,7 +562,7 @@ impl Screen {
             .context("failed to resize to screen size: {new_screen_size:#?}")
     }
 
-    pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) -> Result<()> {
+    pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
         self.pixel_dimensions.merge(pixel_dimensions);
         if let Some(character_cell_size) = self.pixel_dimensions.character_cell_size {
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
@@ -575,44 +575,31 @@ impl Screen {
             };
             *self.character_cell_size.borrow_mut() = Some(character_cell_size);
         }
-        Ok(())
     }
 
-    pub fn update_terminal_background_color(
-        &mut self,
-        background_color_instruction: String,
-    ) -> Result<()> {
+    pub fn update_terminal_background_color(&mut self, background_color_instruction: String) {
         if let Some(AnsiCode::RgbCode((r, g, b))) =
             xparse_color(background_color_instruction.as_bytes())
         {
             let bg_palette_color = PaletteColor::Rgb((r, g, b));
             self.terminal_emulator_colors.borrow_mut().bg = bg_palette_color;
         }
-        Ok(())
     }
 
-    pub fn update_terminal_foreground_color(
-        &mut self,
-        foreground_color_instruction: String,
-    ) -> Result<()> {
+    pub fn update_terminal_foreground_color(&mut self, foreground_color_instruction: String) {
         if let Some(AnsiCode::RgbCode((r, g, b))) =
             xparse_color(foreground_color_instruction.as_bytes())
         {
             let fg_palette_color = PaletteColor::Rgb((r, g, b));
             self.terminal_emulator_colors.borrow_mut().fg = fg_palette_color;
         }
-        Ok(())
     }
 
-    pub fn update_terminal_color_registers(
-        &mut self,
-        color_registers: Vec<(usize, String)>,
-    ) -> Result<()> {
+    pub fn update_terminal_color_registers(&mut self, color_registers: Vec<(usize, String)>) {
         let mut terminal_emulator_color_codes = self.terminal_emulator_color_codes.borrow_mut();
         for (color_register, color_sequence) in color_registers {
             terminal_emulator_color_codes.insert(color_register, color_sequence);
         }
-        Ok(())
     }
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
@@ -895,7 +882,7 @@ impl Screen {
         }
     }
 
-    pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) -> Result<()> {
+    pub fn change_mode(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         let previous_mode = self
             .mode_info
             .get(&client_id)
@@ -940,7 +927,6 @@ impl Screen {
             tab.change_mode_info(mode_info.clone(), client_id);
             tab.mark_active_pane_for_rerender(client_id);
         }
-        Ok(())
     }
 
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -1365,19 +1351,19 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::TerminalPixelDimensions(pixel_dimensions) => {
-                screen.update_pixel_dimensions(pixel_dimensions)?;
+                screen.update_pixel_dimensions(pixel_dimensions);
             },
             ScreenInstruction::TerminalBackgroundColor(background_color_instruction) => {
-                screen.update_terminal_background_color(background_color_instruction)?;
+                screen.update_terminal_background_color(background_color_instruction);
             },
             ScreenInstruction::TerminalForegroundColor(background_color_instruction) => {
-                screen.update_terminal_foreground_color(background_color_instruction)?;
+                screen.update_terminal_foreground_color(background_color_instruction);
             },
             ScreenInstruction::TerminalColorRegisters(color_registers) => {
-                screen.update_terminal_color_registers(color_registers)?;
+                screen.update_terminal_color_registers(color_registers);
             },
             ScreenInstruction::ChangeMode(mode_info, client_id) => {
-                screen.change_mode(mode_info, client_id)?;
+                screen.change_mode(mode_info, client_id);
                 screen.render()?;
             },
             ScreenInstruction::ToggleActiveSyncTab(client_id) => {

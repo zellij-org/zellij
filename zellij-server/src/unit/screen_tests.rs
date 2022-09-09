@@ -481,32 +481,26 @@ fn update_screen_pixel_dimensions() {
     };
     let mut screen = create_new_screen(size);
     let initial_pixel_dimensions = screen.pixel_dimensions;
-    screen
-        .update_pixel_dimensions(PixelDimensions {
-            character_cell_size: Some(SizeInPixels {
-                height: 10,
-                width: 5,
-            }),
-            text_area_size: None,
-        })
-        .expect("TEST");
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: Some(SizeInPixels {
+            height: 10,
+            width: 5,
+        }),
+        text_area_size: None,
+    });
     let pixel_dimensions_after_first_update = screen.pixel_dimensions;
-    screen
-        .update_pixel_dimensions(PixelDimensions {
-            character_cell_size: None,
-            text_area_size: Some(SizeInPixels {
-                height: 100,
-                width: 50,
-            }),
-        })
-        .expect("TEST");
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: None,
+        text_area_size: Some(SizeInPixels {
+            height: 100,
+            width: 50,
+        }),
+    });
     let pixel_dimensions_after_second_update = screen.pixel_dimensions;
-    screen
-        .update_pixel_dimensions(PixelDimensions {
-            character_cell_size: None,
-            text_area_size: None,
-        })
-        .expect("TEST");
+    screen.update_pixel_dimensions(PixelDimensions {
+        character_cell_size: None,
+        text_area_size: None,
+    });
     let pixel_dimensions_after_third_update = screen.pixel_dimensions;
     assert_eq!(
         initial_pixel_dimensions,
