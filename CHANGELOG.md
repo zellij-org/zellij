@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+* debugging: Improve error handling in screen thread (https://github.com/zellij-org/zellij/pull/1670)
+
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
 * fix: bracketed paste handling regression (https://github.com/zellij-org/zellij/pull/1689)
