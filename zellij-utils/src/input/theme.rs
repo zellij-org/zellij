@@ -136,4 +136,4 @@ impl Serialize for HexColor {
 
 #[cfg(test)]
 #[path = "./unit/theme_test.rs"]
-mod layout_test;
+mod theme_test;

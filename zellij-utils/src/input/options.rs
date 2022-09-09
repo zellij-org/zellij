@@ -5,7 +5,6 @@ use clap::{ArgEnum, Args};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
-use kdl::{KdlDocument, KdlValue, KdlNode};
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize, ArgEnum)]
 pub enum OnForceClose {

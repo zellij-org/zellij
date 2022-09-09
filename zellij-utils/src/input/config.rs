@@ -2,17 +2,14 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use thiserror::Error;
-use crate::data::{Palette, PaletteColor, PluginTag, InputMode};
-use super::layout::RunPluginLocation;
-
-use std::collections::HashMap;
+use crate::data::Palette;
 
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
-use super::options::{Options, OnForceClose, Clipboard};
-use super::plugins::{PluginsConfig, PluginsConfigError, PluginConfig, PluginType};
-use super::theme::{UiConfig, Theme, Themes, FrameConfig};
+use super::options::Options;
+use super::plugins::{PluginsConfig, PluginsConfigError};
+use super::theme::{UiConfig, Themes};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::setup;
@@ -117,9 +114,13 @@ impl Config {
 #[cfg(test)]
 mod config_test {
     use std::io::Write;
-
+    use std::collections::HashMap;
+    use crate::data::{Palette, PaletteColor, PluginTag, InputMode};
     use tempfile::tempdir;
-
+    use crate::input::layout::RunPluginLocation;
+    use crate::input::options::{OnForceClose, Clipboard};
+    use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
+    use crate::input::plugins::{PluginsConfig, PluginConfig, PluginType};
     use super::*;
 
     #[test]

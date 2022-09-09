@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{PaneLayout, Layout};
+use super::layout::PaneLayout;
 use crate::data::InputMode;
 use crate::input::options::OnForceClose;
 use serde::{Deserialize, Serialize};

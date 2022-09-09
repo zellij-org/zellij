@@ -5,10 +5,9 @@ use crate::{
     thread_bus::Bus,
     ClientId,
 };
-use std::convert::TryInto;
 use std::path::PathBuf;
 use zellij_utils::input::command::TerminalAction;
-use zellij_utils::input::layout::{PaneLayout, Layout};
+use zellij_utils::input::layout::PaneLayout;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 

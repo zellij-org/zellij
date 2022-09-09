@@ -11,7 +11,6 @@ use zellij_utils::{
         actions::Action,
         cast_termwiz_key,
         config::Config,
-        keybinds::Keybinds,
         mouse::{MouseButton, MouseEvent},
         options::Options,
     },

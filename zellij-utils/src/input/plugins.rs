@@ -1,22 +1,15 @@
 //! Plugins configuration metadata
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-use kdl::KdlNode;
-use crate::{kdl_children_nodes_or_error, kdl_name, kdl_property_first_arg_as_string, kdl_children_property_first_arg_as_string, kdl_children_property_first_arg_as_bool};
-
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use super::config::ConfigError;
 use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
-use crate::setup;
 
 use std::fmt;
 use std::collections::BTreeMap;

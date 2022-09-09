@@ -3,10 +3,6 @@ use super::actions::Direction;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use kdl::*;
-use crate::{kdl_get_child, kdl_get_child_entry_string_value, kdl_string_arguments};
-use crate::input::config::ConfigError;
-
 #[derive(Debug, Clone)]
 pub enum TerminalAction {
     OpenFile(PathBuf, Option<usize>), // path to file and optional line_number

@@ -3,6 +3,7 @@ use super::super::keybinds::*;
 use crate::input::config::Config;
 use crate::data::{self, CharOrArrow, Key};
 use insta::assert_snapshot;
+use strum::IntoEnumIterator;
 
 #[test]
 fn can_define_keybindings_in_configfile() {

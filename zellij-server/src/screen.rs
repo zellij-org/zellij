@@ -8,7 +8,7 @@ use std::str;
 
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
-use zellij_utils::{input::command::TerminalAction, input::layout::{PaneLayout, Layout}, position::Position};
+use zellij_utils::{input::command::TerminalAction, input::layout::PaneLayout, position::Position};
 
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
@@ -1430,6 +1430,6 @@ pub(crate) fn screen_thread_main(
     }
 }
 
-#[cfg(test)]
 #[path = "./unit/screen_tests.rs"]
+#[cfg(test)]
 mod screen_tests;

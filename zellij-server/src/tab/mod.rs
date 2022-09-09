@@ -40,7 +40,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{PaneLayout, Layout, Run},
+        layout::{PaneLayout, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},

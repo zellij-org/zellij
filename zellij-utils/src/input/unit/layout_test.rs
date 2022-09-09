@@ -1,6 +1,4 @@
-use crate::input::config::ConfigError;
 use super::super::layout::*;
-use std::convert::TryInto;
 use insta::assert_snapshot;
 
 #[test]

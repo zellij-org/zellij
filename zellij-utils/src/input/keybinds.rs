@@ -1,14 +1,9 @@
-//! Mapping of inputs to sequences of actions.
-use std::str::FromStr;
-use kdl::{KdlDocument, KdlValue, KdlNode};
 use std::collections::{BTreeMap, HashMap};
 
 use super::actions::Action;
-use super::config:: {self, ConfigError};
 use crate::data::{InputMode, Key, KeybindsVec};
 
 use serde::{Deserialize, Serialize};
-use strum::IntoEnumIterator;
 use std::fmt;
 
 /// Used in the config struct

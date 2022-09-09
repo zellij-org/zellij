@@ -10,7 +10,7 @@ use crate::{
         options::Options,
     },
 };
-use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
+use crate::input::theme::Theme;
 use clap::{Args, IntoApp};
 use clap_complete::Shell;
 use directories_next::BaseDirs;
