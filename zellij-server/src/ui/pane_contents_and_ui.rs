@@ -26,11 +26,12 @@ impl<'a> PaneContentsAndUi<'a> {
         multiple_users_exist_in_session: bool,
         z_index: Option<usize>,
     ) -> Self {
-        let focused_clients: Vec<ClientId> = active_panes
+        let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
             .filter(|(_c_id, p_id)| **p_id == pane.pid())
             .map(|(c_id, _p_id)| *c_id)
             .collect();
+        focused_clients.sort_unstable();
         PaneContentsAndUi {
             pane,
             output,
