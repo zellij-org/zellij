@@ -31,7 +31,7 @@ impl<'a> PaneContentsAndUi<'a> {
             .filter(|(_c_id, p_id)| **p_id == pane.pid())
             .map(|(c_id, _p_id)| *c_id)
             .collect();
-        focused_clients.sort();
+        focused_clients.sort_unstable();
         PaneContentsAndUi {
             pane,
             output,
