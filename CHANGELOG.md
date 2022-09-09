@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
 * fix: bracketed paste handling regression (https://github.com/zellij-org/zellij/pull/1689)
 * fix: occasional startup crashes (https://github.com/zellij-org/zellij/pull/1706)
