@@ -10,6 +10,10 @@
 # 1. Alt-r for resize, 2. Alt-p for pane,
 # 4. .. move, 5. .. tab, 6. .. scroll
 # Press Enter or Escape to switch back to normal mode
+# From scroll mode, use 'e' for opening the shell history in
+# a tmp file in default editor.
+# Use s to start search, enter or Alt-c to abort search and
+# Alt-s to return back from search to scroll mode.
 
 # Run `zellij setup --check` for troubleshooting and inspecting
 # current config locations and features that are enabled.
@@ -30,8 +34,6 @@ keybinds:
           key: [ Alt: 't',]
         - action: [SwitchToMode: Scroll,]
           key: [ Alt: 's',]
-        - action: [SwitchToMode: Session,]
-          key: [ Alt: 'e',]
         - action: [SwitchToMode: Move,]
           key: [ Alt: 'm',]
         - action: [NewPane: ]
@@ -168,6 +170,8 @@ keybinds:
           key: [ Char: "\t" ]
     scroll:
         - unbind: true
+        - action: [EditScrollback, SwitchToMode: Normal]
+          key: [Char: 'e']
         - action: [SwitchToMode: Normal,]
           key: [Char: "\n", Esc]
         - action: [ScrollDown,]
@@ -190,6 +194,46 @@ keybinds:
           key: [ Alt: 'j',]
         - action: [MoveFocus: Up,]
           key: [ Alt: 'k',]
+        - action: [SwitchToMode: EnterSearch, SearchInput: [0],]
+          key: [Char: 's']
+    entersearch:
+        - unbind: true
+        - action: [SwitchToMode: Search,]
+          key: [Char: "\n"]
+        - action: [SearchInput: [27], SwitchToMode: Scroll,]
+          key: [ Alt: 'c', Esc]
+        - action: [MoveFocusOrTab: Left,]
+          key: [ Alt: 'h', Alt: Left]
+        - action: [MoveFocusOrTab: Right,]
+          key: [ Alt: 'l', Alt: Right]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j', Alt: Down]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k', Alt: Up]
+    search:
+        - unbind: true
+        - action: [SwitchToMode: Normal,]
+          key: [ Alt: 's', Char: ' ', Char: "\n", Esc]
+        - action: [SwitchToMode: EnterSearch, SearchInput: [0],]
+          key: [Char: 's']
+        - action: [Search: Down]
+          key: [Char: 'n']
+        - action: [Search: Up]
+          key: [Char: 'p']
+        - action: [SearchToggleOption: CaseSensitivity]
+          key: [Char: 'c']
+        - action: [SearchToggleOption: Wrap]
+          key: [Char: 'w']
+        - action: [SearchToggleOption: WholeWord]
+          key: [Char: 'o']
+        - action: [MoveFocusOrTab: Left,]
+          key: [ Alt: 'h', Alt: Left]
+        - action: [MoveFocusOrTab: Right,]
+          key: [ Alt: 'l', Alt: Right]
+        - action: [MoveFocus: Down,]
+          key: [ Alt: 'j', Alt: Down]
+        - action: [MoveFocus: Up,]
+          key: [ Alt: 'k', Alt: Up]
     renametab:
         - unbind: true
     renamepane:
