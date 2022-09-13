@@ -106,6 +106,69 @@ impl ServerOsApi for FakeInputOutput {
     }
 }
 
+struct MockPtyInstructionBus {
+    output: Arc<Mutex<Vec<String>>>,
+    pty_writer_sender: SenderWithContext<PtyWriteInstruction>,
+    pty_writer_receiver: Arc<Receiver<(PtyWriteInstruction, ErrorContext)>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl MockPtyInstructionBus {
+    fn new() -> Self {
+        let output = Arc::new(Mutex::new(vec![]));
+        let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
+            channels::unbounded();
+        let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
+        let pty_writer_receiver = Arc::new(pty_writer_receiver);
+
+        Self {
+            output,
+            pty_writer_sender,
+            pty_writer_receiver,
+            handle: None,
+        }
+    }
+
+    fn start(&mut self) {
+        let output = self.output.clone();
+        let pty_writer_receiver = self.pty_writer_receiver.clone();
+        let handle = std::thread::Builder::new()
+            .name("pty_writer".to_string())
+            .spawn({
+                move || loop {
+                    let (event, _err_ctx) = pty_writer_receiver
+                        .recv()
+                        .expect("failed to receive event on channel");
+                    match event {
+                        PtyWriteInstruction::Write(msg, _) => output
+                            .lock()
+                            .unwrap()
+                            .push(String::from_utf8_lossy(&msg).to_string()),
+                        PtyWriteInstruction::Exit => break,
+                    }
+                }
+            })
+            .unwrap();
+        self.handle = Some(handle);
+    }
+
+    fn exit(&mut self) {
+        self.pty_writer_sender
+            .send(PtyWriteInstruction::Exit)
+            .unwrap();
+        let handle = self.handle.take().unwrap();
+        handle.join().unwrap();
+    }
+
+    fn sender(&self) -> SenderWithContext<PtyWriteInstruction> {
+        self.pty_writer_sender.clone()
+    }
+
+    fn get_output(&self) -> Vec<String> {
+        self.output.lock().unwrap().clone()
+    }
+}
+
 // TODO: move to shared thingy with other test file
 fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     set_session_name("test".into());
@@ -1795,32 +1858,14 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     };
     let client_id = 1;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
-    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
-    // TODO: note that this thread does not die when the test dies
-    // it only dies once all the test process exits... not a biggy if we have only a handful of
-    // these, but otherwise we might want to think of a better way to handle this
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            // TODO: kill this thread
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                if let PtyWriteInstruction::Write(msg, _) = event {
-                    messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string());
-                }
-            }
-        });
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1006h"); // button event tracking (1002) with SGR encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
     tab.handle_left_click(&Position::new(5, 71), client_id);
@@ -1834,9 +1879,11 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+
+    pty_instruction_bus.exit();
+
     assert_eq!(
-        *messages_to_pty_writer.lock().unwrap(),
+        pty_instruction_bus.get_output(),
         vec![
             "\u{1b}[<0;71;5M".to_string(),  // SGR left click
             "\u{1b}[<32;72;9M".to_string(), // SGR left click (hold)
@@ -1861,32 +1908,14 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     };
     let client_id = 1;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
-    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
-    // TODO: note that this thread does not die when the test dies
-    // it only dies once all the test process exits... not a biggy if we have only a handful of
-    // these, but otherwise we might want to think of a better way to handle this
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            // TODO: kill this thread
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                if let PtyWriteInstruction::Write(msg, _) = event {
-                    messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string());
-                }
-            }
-        });
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1006h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
     tab.handle_left_click(&Position::new(5, 71), client_id);
@@ -1900,9 +1929,11 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+
+    pty_instruction_bus.exit();
+
     assert_eq!(
-        *messages_to_pty_writer.lock().unwrap(),
+        pty_instruction_bus.get_output(),
         vec![
             "\u{1b}[<0;71;5M".to_string(), // SGR left click
             // no hold event here, as hold events are not reported in normal mode
@@ -1927,32 +1958,14 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     };
     let client_id = 1;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
-    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
-    // TODO: note that this thread does not die when the test dies
-    // it only dies once all the test process exits... not a biggy if we have only a handful of
-    // these, but otherwise we might want to think of a better way to handle this
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            // TODO: kill this thread
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                if let PtyWriteInstruction::Write(msg, _) = event {
-                    messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string());
-                }
-            }
-        });
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1002;1005h"); // button event tracking (1002) with utf8 encoding (1005)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
     tab.handle_left_click(&Position::new(5, 71), client_id);
@@ -1966,9 +1979,11 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+
+    pty_instruction_bus.exit();
+
     assert_eq!(
-        *messages_to_pty_writer.lock().unwrap(),
+        pty_instruction_bus.get_output(),
         vec![
             "\u{1b}[M g%".to_string(),  // utf8 left click
             "\u{1b}[M@h)".to_string(),  // utf8 left click (hold)
@@ -1993,32 +2008,14 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     };
     let client_id = 1;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
-    let mut tab = create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer);
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
-    // TODO: note that this thread does not die when the test dies
-    // it only dies once all the test process exits... not a biggy if we have only a handful of
-    // these, but otherwise we might want to think of a better way to handle this
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            // TODO: kill this thread
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                if let PtyWriteInstruction::Write(msg, _) = event {
-                    messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string());
-                }
-            }
-        });
     let sgr_mouse_mode_any_button = String::from("\u{1b}[?1000;1005h"); // normal event tracking (1000) with sgr encoding (1006)
     tab.handle_pty_bytes(1, sgr_mouse_mode_any_button.as_bytes().to_vec());
     tab.handle_left_click(&Position::new(5, 71), client_id);
@@ -2032,9 +2029,11 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     tab.handle_middle_mouse_release(&Position::new(7, 75), client_id);
     tab.handle_scrollwheel_up(&Position::new(5, 71), 1, client_id);
     tab.handle_scrollwheel_down(&Position::new(5, 71), 1, client_id);
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+
+    pty_instruction_bus.exit();
+
     assert_eq!(
-        *messages_to_pty_writer.lock().unwrap(),
+        pty_instruction_bus.get_output(),
         vec![
             "\u{1b}[M g%".to_string(), // utf8 left click
             // no hold event here, as hold events are not reported in normal mode
@@ -2060,104 +2059,23 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
     };
     let client_id: u16 = 1;
 
-    let mut pty_writer_thing = Outer::new();
-    let mut tab =
-        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), pty_writer_thing.sender());
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
-    pty_writer_thing.start();
     let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
     let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201
     tab.write_to_active_terminal(bracketed_paste_start, client_id);
     tab.write_to_active_terminal("test".as_bytes().to_vec(), client_id);
     tab.write_to_active_terminal(bracketed_paste_end, client_id);
 
-    pty_writer_thing.exit();
-    assert_eq!(pty_writer_thing.get_output(), vec!["", "test", ""]);
-}
+    pty_instruction_bus.exit();
 
-struct PtyInstructionBus {
-    output: Arc<Mutex<Vec<String>>>,
-    pty_writer_sender: SenderWithContext<PtyWriteInstruction>,
-    pty_writer_receiver: Receiver<(PtyWriteInstruction, ErrorContext)>,
-}
-
-impl PtyInstructionBus {
-    fn new() -> Self {
-        let output = Arc::new(Mutex::new(vec![]));
-        let (pty_writer_sender, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-            channels::unbounded();
-        let pty_writer_sender = SenderWithContext::new(pty_writer_sender);
-
-        Self {
-            output,
-            pty_writer_sender,
-            pty_writer_receiver,
-        }
-    }
-}
-
-struct Outer {
-    handle: Option<std::thread::JoinHandle<()>>,
-    pty_instruction_bus: Arc<PtyInstructionBus>,
-}
-
-impl Outer {
-    fn new() -> Self {
-        Self {
-            handle: None,
-            pty_instruction_bus: Arc::new(PtyInstructionBus::new()),
-        }
-    }
-
-    /// spawn thread that will:
-    /// - copy all output from received `PtyWriteInstruction::Write` instructions
-    /// - exit upon receiving `PtyWriteInstruction::Exit`
-    fn start(&mut self) {
-        let bus = self.pty_instruction_bus.clone();
-        let handle = std::thread::Builder::new()
-            .name("pty_writer".to_string())
-            .spawn({
-                let output = bus.output.clone();
-                move || loop {
-                    let (event, _err_ctx) = bus
-                        .pty_writer_receiver
-                        .recv()
-                        .expect("failed to receive event on channel");
-                    match event {
-                        PtyWriteInstruction::Write(msg, _) => output
-                            .lock()
-                            .unwrap()
-                            .push(String::from_utf8_lossy(&msg).to_string()),
-                        PtyWriteInstruction::Exit => break,
-                    }
-                }
-            })
-            .unwrap();
-        self.handle = Some(handle);
-    }
-
-    ///
-    fn exit(&mut self) {
-        self.pty_instruction_bus
-            .pty_writer_sender
-            .send(PtyWriteInstruction::Exit)
-            .unwrap();
-        let handle = self.handle.take().unwrap();
-        handle.join().unwrap();
-    }
-
-    fn sender(&self) -> SenderWithContext<PtyWriteInstruction> {
-        self.pty_instruction_bus.pty_writer_sender.clone()
-    }
-
-    fn get_output(&self) -> Vec<String> {
-        self.pty_instruction_bus
-            .clone()
-            .output
-            .lock()
-            .unwrap()
-            .clone()
-    }
+    assert_eq!(pty_instruction_bus.get_output(), vec!["", "test", ""]);
 }
 
 #[test]
@@ -2169,30 +2087,13 @@ fn pane_faux_scrolling_in_alternate_mode() {
     let client_id: u16 = 1;
     let lines_to_scroll = 3;
 
-    let messages_to_pty_writer = Arc::new(Mutex::new(vec![]));
-    let (to_pty_writer, pty_writer_receiver): ChannelWithContext<PtyWriteInstruction> =
-        channels::unbounded();
-    let to_pty_writer = SenderWithContext::new(to_pty_writer);
-    let mut tab =
-        create_new_tab_with_mock_pty_writer(size, ModeInfo::default(), to_pty_writer.clone());
-
-    let _pty_writer_thread = std::thread::Builder::new()
-        .name("pty_writer".to_string())
-        .spawn({
-            let messages_to_pty_writer = messages_to_pty_writer.clone();
-            move || loop {
-                let (event, _err_ctx) = pty_writer_receiver
-                    .recv()
-                    .expect("failed to receive event on channel");
-                match event {
-                    PtyWriteInstruction::Write(msg, _) => messages_to_pty_writer
-                        .lock()
-                        .unwrap()
-                        .push(String::from_utf8_lossy(&msg).to_string()),
-                    PtyWriteInstruction::Exit => break,
-                }
-            }
-        });
+    let mut pty_instruction_bus = MockPtyInstructionBus::new();
+    let mut tab = create_new_tab_with_mock_pty_writer(
+        size,
+        ModeInfo::default(),
+        pty_instruction_bus.sender(),
+    );
+    pty_instruction_bus.start();
 
     let enable_alternate_screen = String::from("\u{1b}[?1049h"); // CSI ? 1049 h -> switch to the Alternate Screen Buffer
     let set_application_mode = String::from("\u{1b}[?1h");
@@ -2211,9 +2112,7 @@ fn pane_faux_scrolling_in_alternate_mode() {
     tab.handle_scrollwheel_up(&Position::new(1, 1), lines_to_scroll, client_id);
     tab.handle_scrollwheel_down(&Position::new(1, 1), lines_to_scroll, client_id);
 
-    to_pty_writer.send(PtyWriteInstruction::Exit).unwrap();
-
-    std::thread::sleep(std::time::Duration::from_millis(100)); // give time for messages to arrive
+    pty_instruction_bus.exit();
 
     let mut expected: Vec<&str> = Vec::new();
     expected.append(&mut vec!["\u{1b}[A"; lines_to_scroll]);
@@ -2221,5 +2120,5 @@ fn pane_faux_scrolling_in_alternate_mode() {
     expected.append(&mut vec!["\u{1b}OA"; lines_to_scroll]);
     expected.append(&mut vec!["\u{1b}OB"; lines_to_scroll]);
 
-    assert_eq!(*messages_to_pty_writer.lock().unwrap(), expected);
+    assert_eq!(pty_instruction_bus.get_output(), expected);
 }
