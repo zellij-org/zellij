@@ -160,11 +160,11 @@ impl MockPtyInstructionBus {
         handle.join().unwrap();
     }
 
-    fn sender(&self) -> SenderWithContext<PtyWriteInstruction> {
+    fn pty_write_sender(&self) -> SenderWithContext<PtyWriteInstruction> {
         self.pty_writer_sender.clone()
     }
 
-    fn get_output(&self) -> Vec<String> {
+    fn clone_output(&self) -> Vec<String> {
         self.output.lock().unwrap().clone()
     }
 }
@@ -1862,7 +1862,7 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -1883,7 +1883,7 @@ fn pane_in_sgr_button_event_tracking_mouse_mode() {
     pty_instruction_bus.exit();
 
     assert_eq!(
-        pty_instruction_bus.get_output(),
+        pty_instruction_bus.clone_output(),
         vec![
             "\u{1b}[<0;71;5M".to_string(),  // SGR left click
             "\u{1b}[<32;72;9M".to_string(), // SGR left click (hold)
@@ -1912,7 +1912,7 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -1933,7 +1933,7 @@ fn pane_in_sgr_normal_event_tracking_mouse_mode() {
     pty_instruction_bus.exit();
 
     assert_eq!(
-        pty_instruction_bus.get_output(),
+        pty_instruction_bus.clone_output(),
         vec![
             "\u{1b}[<0;71;5M".to_string(), // SGR left click
             // no hold event here, as hold events are not reported in normal mode
@@ -1962,7 +1962,7 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -1983,7 +1983,7 @@ fn pane_in_utf8_button_event_tracking_mouse_mode() {
     pty_instruction_bus.exit();
 
     assert_eq!(
-        pty_instruction_bus.get_output(),
+        pty_instruction_bus.clone_output(),
         vec![
             "\u{1b}[M g%".to_string(),  // utf8 left click
             "\u{1b}[M@h)".to_string(),  // utf8 left click (hold)
@@ -2012,7 +2012,7 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -2033,7 +2033,7 @@ fn pane_in_utf8_normal_event_tracking_mouse_mode() {
     pty_instruction_bus.exit();
 
     assert_eq!(
-        pty_instruction_bus.get_output(),
+        pty_instruction_bus.clone_output(),
         vec![
             "\u{1b}[M g%".to_string(), // utf8 left click
             // no hold event here, as hold events are not reported in normal mode
@@ -2063,7 +2063,7 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -2075,7 +2075,7 @@ fn pane_bracketed_paste_ignored_when_not_in_bracketed_paste_mode() {
 
     pty_instruction_bus.exit();
 
-    assert_eq!(pty_instruction_bus.get_output(), vec!["", "test", ""]);
+    assert_eq!(pty_instruction_bus.clone_output(), vec!["", "test", ""]);
 }
 
 #[test]
@@ -2091,7 +2091,7 @@ fn pane_faux_scrolling_in_alternate_mode() {
     let mut tab = create_new_tab_with_mock_pty_writer(
         size,
         ModeInfo::default(),
-        pty_instruction_bus.sender(),
+        pty_instruction_bus.pty_write_sender(),
     );
     pty_instruction_bus.start();
 
@@ -2120,5 +2120,5 @@ fn pane_faux_scrolling_in_alternate_mode() {
     expected.append(&mut vec!["\u{1b}OA"; lines_to_scroll]);
     expected.append(&mut vec!["\u{1b}OB"; lines_to_scroll]);
 
-    assert_eq!(pty_instruction_bus.get_output(), expected);
+    assert_eq!(pty_instruction_bus.clone_output(), expected);
 }
