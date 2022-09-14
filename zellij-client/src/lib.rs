@@ -26,7 +26,7 @@ use zellij_utils::{
     data::{ClientId, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, options::Options},
+    input::{config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
