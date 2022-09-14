@@ -356,7 +356,6 @@ pub fn start_client(
                 break;
             },
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
             },
             ClientInstruction::Render(output) => {
