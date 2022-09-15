@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use crate::position::Position;
 
 /// The four directions (left, right, up, down).
-#[derive(Eq, Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Eq, Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum Direction {
     Left,
     Right,
@@ -189,6 +189,8 @@ pub enum Action {
     EditFile(PathBuf, Option<usize>, Option<Direction>, Option<bool>), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>),
+    /// Open a new tiled (embedded, non-floating) pane
+    NewTiledPane(Option<Direction>, Option<RunCommandAction>),
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
@@ -270,13 +272,13 @@ impl Action {
                         let run_command_action = RunCommandAction { command, args, cwd, direction };
                         match floating {
                             Some(true) => Ok(vec![Action::NewFloatingPane(Some(run_command_action))]),
-                            _ => Ok(vec![Action::Run(run_command_action)]),
+                            _ => Ok(vec![Action::NewTiledPane(direction, Some(run_command_action))]),
                         }
                     },
                     None => {
                         match floating {
                             Some(true) => Ok(vec![Action::NewFloatingPane(None)]),
-                            _ => Ok(vec![Action::NewPane(direction)]),
+                            _ => Ok(vec![Action::NewTiledPane(direction, None)]),
                         }
                     }
                 }

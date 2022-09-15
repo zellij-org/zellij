@@ -306,6 +306,34 @@ pub(crate) fn route_action(
             });
             session.senders.send_to_pty(PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))).unwrap();
         },
+        Action::NewTiledPane(direction, run_command) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
+                .unwrap();
+            let run_cmd = run_command.map(|cmd| TerminalAction::RunCommand(cmd.into())).or_else(|| {
+                session.default_shell.clone()
+            });
+            let pty_instr = match direction {
+                Some(Direction::Left) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                },
+                Some(Direction::Right) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                },
+                Some(Direction::Up) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                },
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                },
+                // No direction specified - try to put it in the biggest available spot
+                None => {
+                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
+                },
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        },
         Action::TogglePaneEmbedOrFloating => {
             session
                 .senders
