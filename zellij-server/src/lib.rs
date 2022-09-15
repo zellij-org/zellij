@@ -118,10 +118,18 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        let _ = self.screen_thread.take().unwrap().join();
-        let _ = self.pty_thread.take().unwrap().join();
-        let _ = self.wasm_thread.take().unwrap().join();
-        let _ = self.pty_writer_thread.take().unwrap().join();
+        if let Some(screen_thread) = self.screen_thread.take() {
+            let _ = screen_thread.join();
+        }
+        if let Some(pty_thread) = self.pty_thread.take() {
+            let _ = pty_thread.join();
+        }
+        if let Some(wasm_thread) = self.wasm_thread.take() {
+            let _ = wasm_thread.join();
+        }
+        if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
+            let _ = pty_writer_thread.join();
+        }
     }
 }
 

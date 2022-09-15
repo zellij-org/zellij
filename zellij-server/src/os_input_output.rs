@@ -198,6 +198,7 @@ pub fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId) + Send>,
     default_editor: Option<PathBuf>,
 ) -> Result<(RawFd, RawFd), &'static str> {
+    log::info!("terminal_action: {:?}", terminal_action);
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {

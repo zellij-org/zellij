@@ -9,6 +9,7 @@ use dialoguer::Confirm;
 use miette::Result;
 use std::path::PathBuf;
 use std::process;
+use zellij_utils::input::actions::Action;
 use zellij_client::start_client as start_client_impl;
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
@@ -118,22 +119,20 @@ fn find_indexed_session(
     }
 }
 
-/// Send a vec of `[Action]` to a currently running session.
-#[cfg(feature = "unstable")]
-pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
+pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, session_name: Option<String>) {
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
         },
         ActiveSession::One(session_name) => {
-            attach_with_fake_client(opts, &session_name);
+            attach_with_cli_client(cli_action, &session_name);
         },
         ActiveSession::Many => {
-            if let Some(session_name) = opts.session.clone() {
-                attach_with_fake_client(opts, &session_name);
+            if let Some(session_name) = session_name {
+                attach_with_cli_client(cli_action, &session_name);
             } else if let Ok(session_name) = envs::get_session_name() {
-                attach_with_fake_client(opts, &session_name);
+                attach_with_cli_client(cli_action, &session_name);
             } else {
                 println!("Please specify the session name to send actions to. The following sessions are active:");
                 print_sessions(get_sessions().unwrap());
@@ -143,44 +142,22 @@ pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
     };
 }
 
-#[cfg(feature = "unstable")]
-fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
-    if let Some(zellij_utils::cli::Command::Sessions(zellij_utils::cli::Sessions::Action {
-        action: Some(action),
-    })) = opts.command.clone()
-    {
-        let action = format!("[{}]", action);
-        match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
-            Ok(parsed) => {
-                let (config, _, config_options) = match Setup::from_cli_args(&opts) {
-                    Ok(results) => results,
-                    Err(e) => {
-                        eprintln!("{}", e);
-                        process::exit(1);
-                    },
-                };
-                let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
-
-                let actions = parsed.actions().to_vec();
-                log::debug!("Starting fake Zellij client!");
-                zellij_client::fake_client::start_fake_client(
-                    Box::new(os_input),
-                    opts,
-                    *Box::new(config),
-                    config_options,
-                    ClientInfo::New(name.to_string()),
-                    None,
-                    actions,
-                );
-                log::debug!("Quitting fake client now.");
-                std::process::exit(0);
-            },
-            Err(e) => {
-                eprintln!("{:?}", e);
-                std::process::exit(1);
-            },
-        };
-    };
+fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {
+    let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
+    match Action::actions_from_cli(cli_action) {
+        Ok(actions) => {
+            zellij_client::cli_client::start_cli_client(
+                Box::new(os_input),
+                session_name,
+                actions,
+            );
+            std::process::exit(0);
+        }
+        Err(e) => {
+            log::error!("Error sending action: {}", e);
+            std::process::exit(2);
+        }
+    }
 }
 
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {

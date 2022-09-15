@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, BTreeMap},
     env::{set_var, var},
 };
+use crate::data::ClientId;
 
 use std::fmt;
 
@@ -17,6 +18,7 @@ pub fn set_zellij(v: String) {
 }
 
 pub const SESSION_NAME_ENV_KEY: &str = "ZELLIJ_SESSION_NAME";
+pub const CLIENT_ID_ENV_VAR: &str = "ZELLIJ_CLIENT_ID";
 
 pub fn get_session_name() -> Result<String> {
     Ok(var(SESSION_NAME_ENV_KEY)?)
@@ -24,6 +26,15 @@ pub fn get_session_name() -> Result<String> {
 
 pub fn set_session_name(v: String) {
     set_var(SESSION_NAME_ENV_KEY, v);
+}
+
+pub fn set_client_id(client_id: ClientId) {
+    log::info!("set_client_id: {:?}", client_id);
+    set_var(CLIENT_ID_ENV_VAR, format!("{:?}", client_id));
+}
+
+pub fn get_client_id() -> Result<String> {
+    Ok(var(CLIENT_ID_ENV_VAR)?)
 }
 
 pub fn set_initial_environment_vars() {

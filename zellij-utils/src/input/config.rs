@@ -50,6 +50,14 @@ pub enum ConfigError {
     // Plugins have a semantic error, usually trying to parse two of the same tag
     #[error("PluginsError: {0}")]
     PluginsError(#[from] PluginsConfigError),
+    #[error("{0}")]
+    ConversionError(#[from] ConversionError),
+}
+
+#[derive(Debug, Error)]
+pub enum ConversionError {
+    #[error("{0}")]
+    UnknownInputMode(String),
 }
 
 impl TryFrom<&CliArgs> for Config {

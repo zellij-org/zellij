@@ -734,6 +734,14 @@ impl Tab {
         }
         self.set_force_render();
     }
+    pub fn show_floating_panes(&mut self) {
+        self.floating_panes.toggle_show_panes(true);
+        self.set_force_render();
+    }
+    pub fn hide_floating_panes(&mut self) {
+        self.floating_panes.toggle_show_panes(false);
+        self.set_force_render();
+    }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
         if self.floating_panes.panes_are_visible() {
@@ -2034,7 +2042,6 @@ impl Tab {
         position_on_screen: &Position,
         client_id: ClientId,
     ) -> bool {
-        println!("mouse hold middle");
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
@@ -2042,13 +2049,11 @@ impl Tab {
         } else {
             false
         };
-        println!("is repeated: {:?}", is_repeated);
         self.last_mouse_hold_position = Some(*position_on_screen);
 
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
-            println!("can have active pane");
             let mut relative_position = active_pane.relative_position(position_on_screen);
             if !is_repeated {
                 relative_position.change_column(

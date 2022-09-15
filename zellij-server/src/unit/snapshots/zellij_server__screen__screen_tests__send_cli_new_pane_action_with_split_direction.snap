@@ -1,0 +1,6 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 1553
+expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
+---
+[SpawnTerminalVertically(None, 10), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]

@@ -20,7 +20,7 @@ use zellij_utils::{
 
 use crate::ClientId;
 
-fn route_action(
+pub(crate) fn route_action(
     action: Action,
     session: &SessionMetaData,
     _os_input: &dyn ServerOsApi,
@@ -247,6 +247,64 @@ fn route_action(
                 None => PtyInstruction::SpawnTerminal(shell, ClientOrTabIndex::ClientId(client_id)),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
+        },
+        Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
+            match should_float {
+                Some(true) => {
+                    session
+                        .senders
+                        .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
+                        .unwrap();
+
+                },
+                Some(false) => {
+                    session
+                        .senders
+                        .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
+                        .unwrap();
+                },
+                None => {}
+            };
+
+            let open_file = TerminalAction::OpenFile(path_to_file, line_number);
+            let pty_instr = match (split_direction, should_float.unwrap_or(false)) {
+                (Some(Direction::Left), false) => PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id),
+                (Some(Direction::Right), false) => PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id),
+                (Some(Direction::Up), false) => PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id),
+                (Some(Direction::Down), false) => {
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                },
+                // No direction specified or should float - defer placement to screen
+                (None, _) | (_, true) => PtyInstruction::SpawnTerminal(Some(open_file), ClientOrTabIndex::ClientId(client_id)),
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        },
+        Action::SwitchModeForAllClients(input_mode) => {
+            let attrs = &session.client_attributes;
+            session
+                .senders
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    None,
+                    Event::ModeUpdate(get_mode_info(input_mode, attrs, session.capabilities)),
+                ))
+                .unwrap();
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(
+                    get_mode_info(input_mode, attrs, session.capabilities)
+                ))
+                .unwrap();
+        },
+        Action::NewFloatingPane(run_command) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
+                .unwrap();
+            let run_cmd = run_command.map(|cmd| TerminalAction::RunCommand(cmd.into())).or_else(|| {
+                session.default_shell.clone()
+            });
+            session.senders.send_to_pty(PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))).unwrap();
         },
         Action::TogglePaneEmbedOrFloating => {
             session

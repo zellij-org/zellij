@@ -1,7 +1,7 @@
 pub mod os_input_output;
 
 mod command_is_executing;
-pub mod fake_client;
+pub mod cli_client;
 mod input_handler;
 mod sessions;
 mod stdin_ansi_parser;

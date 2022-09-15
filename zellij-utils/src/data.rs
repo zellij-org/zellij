@@ -1,3 +1,4 @@
+use crate::input::config::ConversionError;
 use crate::input::actions::Action;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
@@ -342,9 +343,9 @@ impl Default for PaletteColor {
 }
 
 impl FromStr for InputMode {
-    type Err = Box<dyn std::error::Error>;
+    type Err = ConversionError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, ConversionError> {
         match s {
             "normal" | "Normal" => Ok(InputMode::Normal),
             "locked" | "Locked" => Ok(InputMode::Locked),
@@ -360,7 +361,7 @@ impl FromStr for InputMode {
             "prompt" | "Prompt" => Ok(InputMode::Prompt),
             "tmux" | "Tmux" => Ok(InputMode::Tmux),
             "entersearch" | "Entersearch" | "EnterSearch" => Ok(InputMode::EnterSearch),
-            e => Err(format!("unknown mode \"{}\"", e).into()),
+            e => Err(ConversionError::UnknownInputMode(e.into())),
         }
     }
 }

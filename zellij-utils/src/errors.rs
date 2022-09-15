@@ -231,6 +231,8 @@ pub enum ScreenContext {
     NewPane,
     OpenInPlaceEditor,
     ToggleFloatingPanes,
+    ShowFloatingPanes,
+    HideFloatingPanes,
     TogglePaneEmbedOrFloating,
     HorizontalSplit,
     VerticalSplit,
@@ -293,6 +295,7 @@ pub enum ScreenContext {
     TerminalForegroundColor,
     TerminalColorRegisters,
     ChangeMode,
+    ChangeModeForAllClients,
     LeftClick,
     RightClick,
     MiddleClick,
@@ -356,6 +359,7 @@ pub enum ClientContext {
     SwitchToMode,
     Connected,
     ActiveClients,
+    OwnClientId,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
