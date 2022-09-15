@@ -119,23 +119,37 @@ fn find_indexed_session(
     }
 }
 
-pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, session_name: Option<String>) {
+pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, requested_session_name: Option<String>) {
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
         },
         ActiveSession::One(session_name) => {
+            if let Some(requested_session_name) = requested_session_name {
+                if requested_session_name != session_name {
+                    eprintln!("Session '{}' not found. The following sessions are active:", requested_session_name);
+                    eprintln!("{}", session_name);
+                    std::process::exit(1);
+                }
+            }
             attach_with_cli_client(cli_action, &session_name);
         },
         ActiveSession::Many => {
-            if let Some(session_name) = session_name {
-                attach_with_cli_client(cli_action, &session_name);
+            let existing_sessions = get_sessions().unwrap();
+            if let Some(session_name) = requested_session_name {
+                if existing_sessions.contains(&session_name) {
+                    attach_with_cli_client(cli_action, &session_name);
+                } else {
+                    eprintln!("Session '{}' not found. The following sessions are active:", session_name);
+                    print_sessions(existing_sessions);
+                    std::process::exit(1);
+                }
             } else if let Ok(session_name) = envs::get_session_name() {
                 attach_with_cli_client(cli_action, &session_name);
             } else {
-                println!("Please specify the session name to send actions to. The following sessions are active:");
-                print_sessions(get_sessions().unwrap());
+                eprintln!("Please specify the session name to send actions to. The following sessions are active:");
+                print_sessions(existing_sessions);
                 std::process::exit(1);
             }
         },
