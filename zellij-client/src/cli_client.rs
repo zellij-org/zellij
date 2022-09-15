@@ -1,15 +1,14 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
 use std::{fs, path::PathBuf};
-use zellij_utils::envs;
+use std::process;
 
 use crate::{
     os_input_output::ClientOsApi,
 };
 use zellij_utils::{
-    data::ClientId,
     input::actions::Action,
-    ipc::ClientToServerMsg,
+    ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
 pub fn start_cli_client(
@@ -17,7 +16,6 @@ pub fn start_cli_client(
     session_name: &str,
     actions: Vec<Action>,
 ) {
-    let client_id: Option<ClientId> = envs::get_client_id().ok().map(|s| s.encode_utf16().next().unwrap()); // TODO: better? does this even work?
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
@@ -27,7 +25,16 @@ pub fn start_cli_client(
     };
     os_input.connect_to_server(&*zellij_ipc_pipe);
     for action in actions {
-        let msg = ClientToServerMsg::Action(action, client_id);
+        let msg = ClientToServerMsg::Action(action, None);
         os_input.send_to_server(msg);
+    }
+    loop {
+        match os_input.recv_from_server() {
+            Some((ServerToClientMsg::UnblockInputThread, _)) => {
+                os_input.send_to_server(ClientToServerMsg::ClientExited);
+                process::exit(0);
+            },
+            _ => {}
+        }
     }
 }
