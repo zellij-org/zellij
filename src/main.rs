@@ -6,7 +6,7 @@ mod tests;
 
 use zellij_utils::{
     clap::Parser,
-    cli::{CliArgs, Command, Sessions},
+    cli::{CliArgs, CliAction, Command, Sessions},
     logging::*,
 };
 
@@ -17,6 +17,17 @@ fn main() {
     {
         if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
             commands::send_action_to_session(cli_action, opts.session);
+            std::process::exit(0);
+        }
+        if let Some(Command::Sessions(Sessions::Command{ command, direction, cwd, args, floating })) = opts.command {
+            let command_cli_action = CliAction::NewPane {
+                command,
+                direction,
+                cwd,
+                args,
+                floating,
+            };
+            commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
         }
     }

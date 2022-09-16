@@ -124,6 +124,19 @@ pub enum Sessions {
     #[clap(visible_alias = "ac")]
     #[clap(subcommand)]
     Action(CliAction),
+    /// Send actions to a specific session
+    #[clap(visible_alias = "c")]
+    Command {
+        command: Option<String>,
+        #[clap(short, long, value_parser, conflicts_with("floating"))]
+        direction: Option<Direction>,
+        #[clap(long, value_parser)]
+        cwd: Option<PathBuf>,
+        #[clap(short, long, value_parser)]
+        args: Option<String>,
+        #[clap(short, long, value_parser, default_missing_value("true"))]
+        floating: Option<bool>,
+    }
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
