@@ -30,6 +30,10 @@ fn main() {
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
         }
+        if let Some(Command::Sessions(Sessions::Convert{ old_config_file, output })) = opts.command {
+            commands::convert_old_config_file(old_config_file, output);
+            std::process::exit(0);
+        }
     }
 
     if let Some(Command::Sessions(Sessions::ListSessions)) = opts.command {

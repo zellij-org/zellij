@@ -6,6 +6,7 @@ mod input_handler;
 mod sessions;
 mod stdin_ansi_parser;
 mod stdin_handler;
+pub mod old_config_converter;
 
 use log::info;
 use std::env::current_exe;

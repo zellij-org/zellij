@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::process;
 use zellij_utils::input::actions::Action;
 use zellij_client::start_client as start_client_impl;
+use zellij_client::old_config_converter::config_yaml_to_config_kdl;
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
@@ -21,6 +22,8 @@ use zellij_utils::{
     envs,
     setup::{get_default_data_dir, Setup},
 };
+
+use std::{fs::File, io::prelude::*};
 
 #[cfg(feature = "unstable")]
 use miette::IntoDiagnostic;
@@ -154,6 +157,34 @@ pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, r
             }
         },
     };
+}
+pub(crate) fn convert_old_config_file(old_config_file: PathBuf, output_location: Option<PathBuf>) {
+    match File::open(&old_config_file) {
+        Ok(mut handle) => {
+            let mut raw_config_file = String::new();
+            let _ = handle.read_to_string(&mut raw_config_file);
+            match config_yaml_to_config_kdl(&raw_config_file) {
+                Ok(kdl_config) => {
+                    // TODO: CONTINUE HERE (18/09)
+                    // - print/error in the main function (main.rs?) - DONE
+                    // - add tests for Options + Keybinds - DONE
+                    // - write conversions + tests for everything else - DONE
+                    // - refactor and move on to converting layouts
+                    println!("{}", kdl_config);
+                    process::exit(0);
+                },
+                Err(e) => {
+                    eprintln!("Failed to convert config: {}", e);
+                    process::exit(1);
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            process::exit(1);
+        }
+    }
+
 }
 
 fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {

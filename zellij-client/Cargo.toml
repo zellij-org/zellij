@@ -10,6 +10,9 @@ license = "MIT"
 
 [dependencies]
 mio = { version = "0.7.11", features = ['os-ext'] }
+serde = { version = "1.0", features = ["derive"] }
+url = { version = "2.2.2", features = ["serde"] }
+serde_yaml = "0.8"
 zellij-utils = { path = "../zellij-utils/", version = "0.32.0" }
 log = "0.4.17"
 

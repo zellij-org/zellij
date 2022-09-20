@@ -3412,6 +3412,9 @@ dependencies = [
  "insta",
  "log",
  "mio",
+ "serde",
+ "serde_yaml",
+ "url",
  "zellij-utils",
 ]
 

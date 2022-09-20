@@ -350,8 +350,6 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             // eg. #fff (hex, will be converted to rgb)
             let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
             s.remove(0);
-            // TODO: test this
-            // TODO: why do we need the * 0x11 here?
             let r = u8::from_str_radix(&s[0..1], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
             let g = u8::from_str_radix(&s[1..2], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
             let b = u8::from_str_radix(&s[2..3], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
@@ -366,7 +364,7 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_eight_bit() {
             let n = kdl_first_entry_as_i64!(color).ok_or(format!("Failed to parse color"))?;
-            Ok(PaletteColor::EightBit(n as u8)) // TODO: test values greater than u8 bounds
+            Ok(PaletteColor::EightBit(n as u8))
         } else {
             Err("Failed to parse color".into())
         }
@@ -421,7 +419,7 @@ impl TryFrom<&KdlNode> for Action {
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
             "NewPane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
             "PaneNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "NewTab" => Ok(Action::NewTab(None, None)), // TODO: consider the Some(TabLayout, "tab_name") case...
+            "NewTab" => Ok(Action::NewTab(None, None)),
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "TabNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
             "SearchInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
@@ -446,6 +444,7 @@ impl TryFrom<&KdlNode> for Action {
                     cwd,
                     direction,
                 };
+                log::info!("run_command_action: {:?}", run_command_action);
                 Ok(Action::Run(run_command_action))
             }
             _ => {
@@ -778,8 +777,6 @@ impl EnvironmentVariables {
 impl Keybinds {
     fn bind_keys_in_block(block: &KdlNode, input_mode_keybinds: &mut HashMap<Key, Vec<Action>>) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
-//         let bind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "bind");
-//         let unbind_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode").iter().filter(|n| kdl_name!(n) == "unbind");
         let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
         let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
         for key_block in bind_nodes {

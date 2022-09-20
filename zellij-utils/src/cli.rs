@@ -136,6 +136,11 @@ pub enum Sessions {
         args: Option<String>,
         #[clap(short, long, value_parser, default_missing_value("true"))]
         floating: Option<bool>,
+    },
+    #[clap(visible_alias = "co")]
+    Convert {
+        old_config_file: PathBuf,
+        output: Option<PathBuf>,
     }
 }
 
