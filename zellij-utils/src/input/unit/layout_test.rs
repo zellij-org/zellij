@@ -530,7 +530,7 @@ fn layout_with_default_tab_template() {
         layout {
             default_tab_template {
                 pane
-                pane
+                children
                 pane
             }
             tab name="my first tab" split_direction="Vertical" {

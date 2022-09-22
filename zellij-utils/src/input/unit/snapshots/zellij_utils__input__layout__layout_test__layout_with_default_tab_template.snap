@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 551
+assertion_line: 549
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -10,13 +10,44 @@ Layout {
                 "my first tab",
             ),
             PaneLayout {
-                children_split_direction: Vertical,
+                children_split_direction: Horizontal,
                 name: None,
                 children: [
                     PaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Vertical,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
                         split_size: None,
                         run: None,
                         borderless: false,
@@ -62,6 +93,37 @@ Layout {
                     PaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
                         children: [],
                         split_size: None,
                         run: None,
@@ -82,7 +144,38 @@ Layout {
             PaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
-                children: [],
+                children: [
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
                 split_size: None,
                 run: None,
                 borderless: false,

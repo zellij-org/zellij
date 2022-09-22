@@ -1,0 +1,24 @@
+---
+source: zellij-client/src/old_config_converter/./unit/convert_layout_tests.rs
+assertion_line: 46
+expression: "format!(\"{}\", kdl_config)"
+---
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:tab-bar"
+    }
+    pane
+    pane size=2 borderless=true {
+        plugin location="zellij:status-bar"
+    }
+}
+keybinds clear-defaults=true {
+    normal {
+        bind "Ctrl g" { SwitchToMode "locked"; }
+        bind "Ctrl p" { SwitchToMode "pane"; }
+        bind "Ctrl n" { SwitchToMode "resize"; }
+        bind "Ctrl t" { SwitchToMode "tab"; }
+    }
+}
+default_shell "fish"
+

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process;
 use zellij_utils::input::actions::Action;
 use zellij_client::start_client as start_client_impl;
-use zellij_client::old_config_converter::config_yaml_to_config_kdl;
+use zellij_client::old_config_converter::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl};
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
@@ -163,13 +163,8 @@ pub(crate) fn convert_old_config_file(old_config_file: PathBuf, output_location:
         Ok(mut handle) => {
             let mut raw_config_file = String::new();
             let _ = handle.read_to_string(&mut raw_config_file);
-            match config_yaml_to_config_kdl(&raw_config_file) {
+            match config_yaml_to_config_kdl(&raw_config_file, false) {
                 Ok(kdl_config) => {
-                    // TODO: CONTINUE HERE (18/09)
-                    // - print/error in the main function (main.rs?) - DONE
-                    // - add tests for Options + Keybinds - DONE
-                    // - write conversions + tests for everything else - DONE
-                    // - refactor and move on to converting layouts
                     println!("{}", kdl_config);
                     process::exit(0);
                 },
@@ -184,7 +179,52 @@ pub(crate) fn convert_old_config_file(old_config_file: PathBuf, output_location:
             process::exit(1);
         }
     }
+}
 
+pub(crate) fn convert_old_layout_file(old_layout_file: PathBuf, output_location: Option<PathBuf>) {
+    match File::open(&old_layout_file) {
+        Ok(mut handle) => {
+            let mut raw_layout_file = String::new();
+            let _ = handle.read_to_string(&mut raw_layout_file);
+            match layout_yaml_to_layout_kdl(&raw_layout_file) {
+                Ok(kdl_layout) => {
+                    println!("{}", kdl_layout);
+                    process::exit(0);
+                },
+                Err(e) => {
+                    eprintln!("Failed to convert layout: {}", e);
+                    process::exit(1);
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            process::exit(1);
+        }
+    }
+}
+
+pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf, output_location: Option<PathBuf>) {
+    match File::open(&old_theme_file) {
+        Ok(mut handle) => {
+            let mut raw_config_file = String::new();
+            let _ = handle.read_to_string(&mut raw_config_file);
+            match config_yaml_to_config_kdl(&raw_config_file, true) {
+                Ok(kdl_config) => {
+                    println!("{}", kdl_config);
+                    process::exit(0);
+                },
+                Err(e) => {
+                    eprintln!("Failed to convert config: {}", e);
+                    process::exit(1);
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            process::exit(1);
+        }
+    }
 }
 
 fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {

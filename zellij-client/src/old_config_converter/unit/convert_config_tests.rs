@@ -9,7 +9,7 @@ fn properly_convert_default_config() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -20,7 +20,7 @@ fn convert_config_with_custom_options() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -31,7 +31,7 @@ fn convert_config_with_keybind_unbinds_in_mode() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -42,7 +42,7 @@ fn convert_config_with_global_keybind_unbinds() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -53,7 +53,7 @@ fn convert_config_with_unbind_all_keys_per_mode() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -64,7 +64,7 @@ fn convert_config_with_env_variables() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -75,7 +75,7 @@ fn convert_config_with_ui_config() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
@@ -86,7 +86,7 @@ fn convert_config_with_themes_config() -> Result<(), String> {
     let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
     let mut raw_config_file = String::new();
     handle.read_to_string(&mut raw_config_file).map_err(|e| format!("{}", e))?;
-    let kdl_config = config_yaml_to_config_kdl(&raw_config_file)?;
+    let kdl_config = config_yaml_to_config_kdl(&raw_config_file, false)?;
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }

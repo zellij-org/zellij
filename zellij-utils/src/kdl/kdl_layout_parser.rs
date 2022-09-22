@@ -491,7 +491,15 @@ impl <'a>KdlLayoutParser <'a> {
             if !child_panes.is_empty() {
                 return Err(ConfigError::KdlParsingError("Cannot have both tabs and panes in the same node".into()));
             }
-            child_tabs.push(self.parse_tab_node(child)?);
+            match &self.default_tab_template {
+                Some(default_tab_template) => {
+                    let default_tab_template = default_tab_template.clone();
+                    child_tabs.push(self.parse_tab_node_with_template(child, default_tab_template)?);
+                },
+                None => {
+                    child_tabs.push(self.parse_tab_node(child)?);
+                }
+            }
         } else if let Some(tab_template) = self.tab_templates.get(child_name).cloned() {
             if !child_panes.is_empty() {
                 return Err(ConfigError::KdlParsingError("Cannot have both tabs and panes in the same node".into()));

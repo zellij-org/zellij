@@ -4,7 +4,6 @@
 // from it or changing it
 use std::fmt;
 use std::path::PathBuf;
-// use thiserror::Error;
 
 use url::Url;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -132,28 +131,36 @@ const THEME_DIR_DESCRIPTION: &'static str = "
 //
 ";
 
-fn options_yaml_to_options_kdl(options_yaml: &OldOptions) -> String {
+fn options_yaml_to_options_kdl(options_yaml: &OldOptions, no_comments: bool) -> String {
     let mut options_kdl = String::new();
 
     macro_rules! push_option {
         ($attribute_name:ident, $description_text:ident, $present_pattern:expr) => {
-            options_kdl.push_str($description_text);
+            if !no_comments {
+                options_kdl.push_str($description_text);
+            }
             if let Some($attribute_name) = &options_yaml.$attribute_name {
                 options_kdl.push_str(&format!($present_pattern, $attribute_name));
                 options_kdl.push('\n');
             };
         };
         ($attribute_name:ident, $description_text:ident, $present_pattern:expr, $absent_pattern:expr) => {
-            options_kdl.push_str($description_text);
+            if !no_comments {
+                options_kdl.push_str($description_text);
+            }
             match &options_yaml.$attribute_name {
                 Some($attribute_name) => {
                     options_kdl.push_str(&format!($present_pattern, $attribute_name));
                 },
                 None => {
-                    options_kdl.push_str(&format!($absent_pattern));
+                    if !no_comments {
+                        options_kdl.push_str(&format!($absent_pattern));
+                    }
                 }
             };
-            options_kdl.push('\n');
+            if !no_comments || options_yaml.$attribute_name.is_some() {
+                options_kdl.push('\n');
+            }
         }
     }
 
@@ -350,7 +357,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
     kdl_keybinds
 }
 
-pub fn config_yaml_to_config_kdl(raw_yaml_config: &str) -> Result<String, String> { // returns the raw kdl config
+pub fn config_yaml_to_config_kdl(raw_yaml_config: &str, no_comments: bool) -> Result<String, String> { // returns the raw kdl config
     let config_from_yaml: OldConfigFromYaml = serde_yaml::from_str(raw_yaml_config).map_err(|e| format!("Failed to parse yaml: {:?}", e))?;
     let mut kdl_config = String::new();
     if let Some(old_config_keybinds) = config_from_yaml.keybinds.as_ref() {
@@ -360,7 +367,7 @@ pub fn config_yaml_to_config_kdl(raw_yaml_config: &str) -> Result<String, String
     }
     if let Some(old_config_options) = config_from_yaml.options.as_ref() {
         kdl_config.push_str(
-            &options_yaml_to_options_kdl(old_config_options)
+            &options_yaml_to_options_kdl(old_config_options, no_comments)
         );
     }
     if let Some(old_config_env_variables) = config_from_yaml.env.as_ref() {
@@ -385,7 +392,7 @@ pub fn config_yaml_to_config_kdl(raw_yaml_config: &str) -> Result<String, String
 }
 
 #[derive(Clone, Default, Debug, Deserialize, Serialize, PartialEq)]
-struct OldConfigFromYaml {
+pub struct OldConfigFromYaml {
     #[serde(flatten)]
     pub options: Option<OldOptions>,
     pub keybinds: Option<OldKeybindsFromYaml>,
@@ -398,7 +405,7 @@ struct OldConfigFromYaml {
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-struct OldKeybindsFromYaml {
+pub struct OldKeybindsFromYaml {
     #[serde(flatten)]
     keybinds: HashMap<OldInputMode, Vec<OldKeyActionUnbind>>,
     #[serde(default)]
@@ -459,7 +466,7 @@ struct OldKeybinds(HashMap<OldInputMode, OldModeKeybinds>);
 struct OldModeKeybinds(BTreeMap<OldKey, Vec<OldAction>>);
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
-struct OldThemesFromYamlIntermediate(HashMap<String, OldTheme>);
+pub struct OldThemesFromYamlIntermediate(HashMap<String, OldTheme>);
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 struct OldPaletteFromYaml {
@@ -555,22 +562,22 @@ struct OldTheme {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-struct OldUiConfigFromYaml {
+pub struct OldUiConfigFromYaml {
     pub pane_frames: OldFrameConfigFromYaml,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-struct OldFrameConfigFromYaml {
+pub struct OldFrameConfigFromYaml {
     pub rounded_corners: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-struct OldEnvironmentVariablesFromYaml {
+pub struct OldEnvironmentVariablesFromYaml {
     env: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-struct OldPluginsConfigFromYaml(Vec<OldPluginConfigFromYaml>);
+pub struct OldPluginsConfigFromYaml(Vec<OldPluginConfigFromYaml>);
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 struct OldPluginConfigFromYaml {
@@ -632,7 +639,7 @@ enum OldPluginType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Deserialize, Serialize)]
-enum OldOnForceClose {
+pub enum OldOnForceClose {
     #[serde(alias = "quit")]
     Quit,
     #[serde(alias = "detach")]
@@ -655,7 +662,7 @@ impl Default for OldOnForceClose {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
-enum OldClipboard {
+pub enum OldClipboard {
     #[serde(alias = "system")]
     System,
     #[serde(alias = "primary")]
@@ -678,7 +685,7 @@ impl Default for OldClipboard {
 }
 
 #[derive(Clone, Default, Debug, PartialEq, Deserialize, Serialize)]
-struct OldOptions {
+pub struct OldOptions {
     #[serde(default)]
     pub simplified_ui: Option<bool>,
     pub theme: Option<String>,
@@ -707,7 +714,7 @@ struct OldOptions {
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
-enum OldInputMode {
+pub enum OldInputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
     #[serde(alias = "normal")]
@@ -1131,7 +1138,7 @@ struct OldRunPluginFromYaml {
 }
 
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
-struct OldRunCommand {
+pub struct OldRunCommand {
     #[serde(alias = "cmd")]
     pub command: PathBuf,
     #[serde(default)]

@@ -137,11 +137,18 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_missing_value("true"))]
         floating: Option<bool>,
     },
-    #[clap(visible_alias = "co")]
-    Convert {
+    ConvertConfig {
         old_config_file: PathBuf,
         output: Option<PathBuf>,
-    }
+    },
+    ConvertLayout {
+        old_layout_file: PathBuf,
+        output: Option<PathBuf>,
+    },
+    ConvertTheme {
+        old_theme_file: PathBuf,
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]

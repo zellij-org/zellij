@@ -30,8 +30,16 @@ fn main() {
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::Convert{ old_config_file, output })) = opts.command {
+        if let Some(Command::Sessions(Sessions::ConvertConfig { old_config_file, output })) = opts.command {
             commands::convert_old_config_file(old_config_file, output);
+            std::process::exit(0);
+        }
+        if let Some(Command::Sessions(Sessions::ConvertLayout { old_layout_file, output })) = opts.command {
+            commands::convert_old_layout_file(old_layout_file, output);
+            std::process::exit(0);
+        }
+        if let Some(Command::Sessions(Sessions::ConvertTheme { old_theme_file, output })) = opts.command {
+            commands::convert_old_theme_file(old_theme_file, output);
             std::process::exit(0);
         }
     }

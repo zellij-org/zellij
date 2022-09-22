@@ -1,0 +1,34 @@
+---
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      borderless: true
+      split_size:
+        Fixed: 1
+      run:
+        plugin:
+          location: "zellij:tab-bar"
+    - direction: Vertical
+      body: true
+    - direction: Vertical
+      borderless: true
+      split_size:
+        Fixed: 2
+      run:
+        plugin:
+          location: "zellij:status-bar"
+tabs:
+  - direction: Vertical
+default_shell: fish
+keybinds:
+    unbind: true
+    normal:
+        - action: [SwitchToMode: Locked,]
+          key: [Ctrl: 'g',]
+        - action: [SwitchToMode: Pane,]
+          key: [Ctrl: 'p',]
+        - action: [SwitchToMode: Resize,]
+          key: [Ctrl: 'n',]
+        - action: [SwitchToMode: Tab,]
+          key: [Ctrl: 't',]
