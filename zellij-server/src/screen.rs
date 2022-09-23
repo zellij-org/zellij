@@ -1170,8 +1170,7 @@ pub(crate) fn screen_thread_main(
         let (event, mut err_ctx) = screen
             .bus
             .recv()
-            .context("failed to receive event on channel")
-            .fatal();
+            .context("failed to receive event on channel")?;
         err_ctx.add_call(ContextType::Screen((&event).into()));
 
         match event {
@@ -1264,10 +1263,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::WriteCharacter(bytes, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| {
                     match tab.is_sync_panes_active() {
-                        true => tab.write_to_terminals_on_current_tab(bytes).fatal(),
-                        false => tab.write_to_active_terminal(bytes, client_id).fatal(),
+                        true => tab.write_to_terminals_on_current_tab(bytes),
+                        false => tab.write_to_active_terminal(bytes, client_id),
                     }
-                });
+                }, ?);
             },
             ScreenInstruction::ResizeLeft(client_id) => {
                 active_tab_and_connected_client_id!(
