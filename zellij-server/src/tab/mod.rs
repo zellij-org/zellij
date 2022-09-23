@@ -1101,7 +1101,12 @@ impl Tab {
             self.floating_panes
                 .get_active_pane_id(client_id)
                 .or_else(|| self.tiled_panes.get_active_pane_id(client_id))
-                .ok_or_else(|| anyhow!(err_context()))?
+                .ok_or_else(|| {
+                    anyhow!(format!(
+                        "failed to find active pane id for client {client_id}"
+                    ))
+                })
+                .with_context(err_context)?
         } else {
             self.tiled_panes
                 .get_active_pane_id(client_id)
@@ -1149,7 +1154,8 @@ impl Tab {
                     .get(&pane_id)
                     .or_else(|| self.tiled_panes.get_pane(pane_id))
                     .or_else(|| self.suppressed_panes.get(&pane_id))
-                    .ok_or_else(|| anyhow!(err_context()))?;
+                    .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
+                    .with_context(err_context)?;
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
 
                 self.senders
