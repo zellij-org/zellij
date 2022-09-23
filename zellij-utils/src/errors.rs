@@ -40,10 +40,18 @@ pub trait ErrorInstruction {
 struct Panic(String);
 
 impl Panic {
+    // We already capture a backtrace with `anyhow` using the `backtrace` crate in the background.
+    // The advantage is that this is the backtrace of the real errors source (i.e. where we first
+    // encountered the error and turned it into an `anyhow::Error`), whereas the backtrace recorded
+    // here is the backtrace leading to the call to any `panic`ing function. Since now we propagate
+    // errors up before `unwrap`ing them (e.g. in `zellij_server::screen::screen_thread_main`), the
+    // former is what we really want to diagnose.
+    // We still keep the second one around just in case the first backtrace isn't meaningful or
+    // non-existent in the first place (Which really shouldn't happen, but you never know).
     fn show_backtrace(&self) -> String {
         if let Ok(var) = std::env::var("RUST_BACKTRACE") {
             if !var.is_empty() && var != "0" {
-                return format!("\n{:?}", backtrace::Backtrace::new());
+                return format!("\n\nPanic backtrace:\n{:?}", backtrace::Backtrace::new());
             }
         }
         "".into()
