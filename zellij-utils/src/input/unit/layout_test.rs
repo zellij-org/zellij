@@ -4,8 +4,7 @@ use insta::assert_snapshot;
 #[test]
 fn empty_layout() {
     let kdl_layout = "layout";
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout::default()),
         ..Default::default()
@@ -20,8 +19,7 @@ fn layout_with_one_pane() {
             pane
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![PaneLayout::default()],
@@ -41,8 +39,7 @@ fn layout_with_multiple_panes() {
             pane
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -71,8 +68,7 @@ fn layout_with_nested_panes() {
             }
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -106,8 +102,7 @@ fn layout_with_tabs() {
             tab
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         tabs: vec![
             (None, PaneLayout::default()),
@@ -133,8 +128,7 @@ fn layout_with_nested_differing_tabs() {
             }
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         tabs: vec![
             (None, PaneLayout {
@@ -171,8 +165,7 @@ fn layout_with_panes_in_different_mixed_split_sizes() {
             pane size=2;
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -207,8 +200,7 @@ fn layout_with_command_panes() {
             pane command="htop"
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -234,8 +226,7 @@ fn layout_with_command_panes_and_cwd() {
             pane command="htop" cwd="/path/to/my/cwd"
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(
             PaneLayout {
@@ -266,8 +257,7 @@ fn layout_with_command_panes_and_cwd_and_args() {
             }
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(
             PaneLayout {
@@ -302,8 +292,7 @@ fn layout_with_plugin_panes() {
             }
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -336,8 +325,7 @@ fn layout_with_borderless_panes() {
             pane borderless=true
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -360,8 +348,7 @@ fn layout_with_focused_panes() {
             pane focus=true
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -384,8 +371,7 @@ fn layout_with_pane_names() {
             pane name="my awesome pane"
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![
@@ -409,8 +395,7 @@ fn layout_with_tab_names() {
             tab name="my cool tab name 2"
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         tabs: vec![
             (Some("my cool tab name 1".into()), PaneLayout {
@@ -437,8 +422,7 @@ fn layout_with_focused_tab() {
             tab
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         tabs: vec![
             (None, PaneLayout::default()),
@@ -472,8 +456,7 @@ fn layout_with_tab_templates() {
             one-above-one-below
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     let expected_layout = Layout {
         tabs: vec![
             (Some("my first tab".into()), PaneLayout {
@@ -544,8 +527,7 @@ fn layout_with_default_tab_template() {
             tab
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -572,8 +554,7 @@ fn layout_with_pane_templates() {
             left-and-right
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -594,8 +575,7 @@ fn layout_with_tab_and_pane_templates() {
             left-right-and-htop
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -616,8 +596,7 @@ fn layout_with_nested_pane_templates() {
             left-and-right
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -643,8 +622,7 @@ fn layout_with_nested_branched_pane_templates() {
             left-and-right
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -668,8 +646,7 @@ fn circular_dependency_pane_templates_error() {
             one
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "circular dependency detected");
 }
 
@@ -691,8 +668,7 @@ fn children_not_as_first_child_of_tab_template() {
             horizontal-with-vertical-top
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -715,8 +691,7 @@ fn error_on_more_than_one_children_block_in_tab_template() {
             horizontal-with-vertical-top
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided for more than one children block");
 }
 
@@ -738,8 +713,7 @@ fn children_not_as_first_child_of_pane_template() {
             horizontal-with-vertical-top
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -762,8 +736,7 @@ fn error_on_more_than_one_children_block_in_pane_template() {
             horizontal-with-vertical-top
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided for more than one children block");
 }
 
@@ -789,8 +762,7 @@ fn combined_tab_and_pane_template_both_with_children() {
             horizontal-with-vertical-top
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout).unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -806,8 +778,7 @@ fn cannot_define_tab_template_name_with_space() {
             pane
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided for tab name with space");
 }
 
@@ -823,8 +794,7 @@ fn cannot_define_pane_template_name_with_space() {
             pane
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided for tab name with space");
 }
 
@@ -838,8 +808,7 @@ fn cannot_define_panes_and_tabs_on_same_level() {
             }
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout = Layout::from_kdl(&kdl_layout);
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided for tab and pane on the same level");
 }
 
@@ -867,8 +836,7 @@ fn cannot_define_tab_template_names_as_keywords() {
                 pane
             }}
         ", keyword);
-        let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-        let layout = Layout::from_kdl(&kdl_layout);
+        let layout = Layout::from_kdl(&kdl_layout, "layout_file_name".into());
         assert!(layout.is_err(), "{}", format!("error provided for tab template name with keyword: {}", keyword));
     }
 }
@@ -896,8 +864,7 @@ fn cannot_define_pane_template_names_as_keywords() {
                 pane
             }}
         ", keyword);
-        let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-        let layout = Layout::from_kdl(&kdl_layout);
+        let layout = Layout::from_kdl(&kdl_layout, "layout_file_name".into());
         assert!(layout.is_err(), "{}", format!("error provided for pane template name with keyword: {}", keyword));
     }
 }
@@ -908,8 +875,7 @@ fn error_on_multiple_layout_nodes_in_file() {
         layout
         layout
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -922,8 +888,7 @@ fn error_on_unknown_layout_node() {
             pane
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -934,8 +899,7 @@ fn error_on_unknown_layout_pane_property() {
             pane spit_size=1
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -946,8 +910,7 @@ fn error_on_unknown_layout_pane_template_property() {
             pane_template name=\"my_cool_template\" spit_size=1
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -958,8 +921,7 @@ fn error_on_unknown_layout_tab_property() {
             tab spit_size=1
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -970,8 +932,7 @@ fn error_on_unknown_layout_tab_template_property() {
             tab_template name=\"my_cool_template\" spit_size=1
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -986,8 +947,7 @@ fn error_on_pane_templates_without_a_name() {
             }}
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -1002,8 +962,7 @@ fn error_on_tab_templates_without_a_name() {
             }}
         }}
     ");
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(&kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }
 
@@ -1016,7 +975,6 @@ fn error_on_more_than_one_focused_tab() {
             tab
         }
     "#;
-    let kdl_layout: KdlDocument = kdl_layout.parse().unwrap();
-    let layout_error = Layout::from_kdl(&kdl_layout).unwrap_err();
+    let layout_error = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
 }

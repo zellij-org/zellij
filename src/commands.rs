@@ -6,10 +6,11 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
-use miette::Result;
+use miette::{Result, Report};
 use std::path::PathBuf;
 use std::process;
 use zellij_utils::input::actions::Action;
+use zellij_utils::input::config::ConfigError;
 use zellij_client::start_client as start_client_impl;
 use zellij_client::old_config_converter::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl};
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
@@ -239,6 +240,7 @@ fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name
             std::process::exit(0);
         }
         Err(e) => {
+            eprintln!("{}", e);
             log::error!("Error sending action: {}", e);
             std::process::exit(2);
         }
@@ -314,7 +316,12 @@ pub(crate) fn start_client(opts: CliArgs) {
     let (config, layout, config_options) = match Setup::from_cli_args(&opts) {
         Ok(results) => results,
         Err(e) => {
-            eprintln!("{}", e);
+            if let ConfigError::KdlError(error) = e {
+                let report: Report = error.into();
+                eprintln!("{:?}", report);
+            } else {
+                eprintln!("{}", e);
+            }
             process::exit(1);
         },
     };

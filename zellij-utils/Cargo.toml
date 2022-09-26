@@ -35,8 +35,7 @@ unicode-width = "0.1.8"
 miette = { version = "3.3.0", features = ["fancy"] }
 regex = "1.5.5"
 tempfile = "3.2.0"
-knuffel = "2.0.0"
-kdl = "4.3.0"
+kdl = { version = "4.5.0", features = ["span"] }
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]

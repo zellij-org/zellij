@@ -5,7 +5,7 @@ use crate::envs::EnvironmentVariables;
 use crate::input::command::RunCommand;
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
-use crate::input::config::{Config, ConfigError};
+use crate::input::config::{Config, ConfigError, KdlError};
 use url::Url;
 use crate::data::{InputMode, Key, CharOrArrow, PaletteColor, Palette};
 use crate::input::options::{Options, OnForceClose, Clipboard};
@@ -15,7 +15,9 @@ use std::io::Read;
 use crate::input::plugins::{PluginsConfig, PluginConfig, PluginType, PluginTag};
 use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
 
-use kdl::{KdlDocument, KdlValue, KdlNode};
+use miette::NamedSource;
+
+use kdl::{KdlDocument, KdlValue, KdlNode, KdlEntry};
 
 use std::str::FromStr;
 use std::path::PathBuf;
@@ -25,10 +27,10 @@ use crate::input::command::RunCommandAction;
 
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
-    ( $action_name:expr, $action_arguments:expr ) => {
+    ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {
         {
             if !$action_arguments.is_empty() {
-                Err(format!("Failed to parse action: {}", $action_name).into())
+                Err(ConfigError::new_kdl_error(format!("Action '{}' must have arguments", $action_name), $action_node.span().offset(), $action_node.span().len()))
             } else {
                 match $action_name {
                     "Quit" => Ok(Action::Quit),
@@ -60,7 +62,7 @@ macro_rules! parse_kdl_action_arguments {
                     "Copy" => Ok(Action::Copy),
                     "Confirm" => Ok(Action::Confirm),
                     "Deny" => Ok(Action::Deny),
-                    _ => Err(format!("Error parsing enum variant: {:?}", $action_name).into())
+                    _ => Err(ConfigError::new_kdl_error(format!("Unsupported action: {:?}", $action_name), $action_node.span().offset(), $action_node.span().len()))
                 }
             }
         }
@@ -69,19 +71,32 @@ macro_rules! parse_kdl_action_arguments {
 
 #[macro_export]
 macro_rules! parse_kdl_action_u8_arguments {
-    ( $action_name:expr, $action_arguments:expr ) => {{
+    ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
         let mut bytes = vec![];
-        for kdl_value in $action_arguments.iter() {
-            match kdl_value.as_i64() {
+        for kdl_entry in $action_arguments.iter() {
+            match kdl_entry.value().as_i64() {
                 Some(int_value) => bytes.push(int_value as u8),
                 None => {
-                    return Err(format!("Failed to parse action: {}", $action_name).into());
+                    return Err(ConfigError::new_kdl_error(format!("Arguments for '{}' must be integers", $action_name), kdl_entry.span().offset(), kdl_entry.span().len()));
                 }
             }
         };
-        Action::new_from_bytes($action_name, bytes)
+        Action::new_from_bytes($action_name, bytes, $action_node)
     }}
 }
+
+
+#[macro_export]
+macro_rules! kdl_parsing_error {
+    ( $message:expr, $entry:expr ) => {
+        ConfigError::new_kdl_error(
+            $message,
+            $entry.span().offset(),
+            $entry.span().len()
+        )
+    }
+}
+
 #[macro_export]
 macro_rules! kdl_entries_as_i64 {
     ( $node:expr ) => {
@@ -112,31 +127,43 @@ macro_rules! entry_count {
 
 #[macro_export]
 macro_rules! parse_kdl_action_char_or_string_arguments {
-    ( $action_name:expr, $action_arguments:expr ) => {{
+    ( $action_name:expr, $action_arguments:expr, $action_node:expr ) => {{
         let mut chars_to_write = String::new();
-        for kdl_value in $action_arguments.iter() {
-            match kdl_value.as_string() {
+        for kdl_entry in $action_arguments.iter() {
+            match kdl_entry.value().as_string() {
                 Some(string_value) => chars_to_write.push_str(string_value),
                 None => {
-                    return Err(format!("Failed to parse action: {}", $action_name).into());
+                    return Err(ConfigError::new_kdl_error(format!("All entries for action '{}' must be strings", $action_name), kdl_entry.span().offset(), kdl_entry.span().len()))
                 }
             }
         };
-        Action::new_from_string($action_name, chars_to_write)
+        Action::new_from_string($action_name, chars_to_write, $action_node)
     }}
 }
 
 #[macro_export]
 macro_rules! kdl_arg_is_truthy {
     ( $kdl_node:expr, $arg_name:expr ) => {
-        $kdl_node.get($arg_name).and_then(|c| c.value().as_bool()).unwrap_or(false)
+        match $kdl_node.get($arg_name) {
+            Some(arg) => {
+                match arg.value().as_bool() {
+                    Some(value) => value,
+                    None => {
+                        return Err(ConfigError::new_kdl_error(format!("Argument must be true or false, found: {}", arg.value()), arg.span().offset(), arg.span().len()))
+                    }
+                }
+            },
+            None => {
+                false
+            }
+        }
     }
 }
 
 #[macro_export]
 macro_rules! kdl_children_nodes_or_error {
     ( $kdl_node:expr, $error:expr ) => {
-        $kdl_node.children().ok_or(ConfigError::KdlParsingError($error.into()))?.nodes()
+        $kdl_node.children().ok_or(ConfigError::new_kdl_error($error.into(), $kdl_node.span().offset(), $kdl_node.span().len()))?.nodes()
     }
 }
 
@@ -150,7 +177,7 @@ macro_rules! kdl_children_nodes {
 #[macro_export]
 macro_rules! kdl_children_or_error {
     ( $kdl_node:expr, $error:expr ) => {
-        $kdl_node.children().ok_or(ConfigError::KdlParsingError($error.into()))?
+        $kdl_node.children().ok_or(ConfigError::new_kdl_error($error.into(), $kdl_node.span().offset(), $kdl_node.span().len()))?
     }
 }
 
@@ -164,7 +191,7 @@ macro_rules! kdl_children {
 #[macro_export]
 macro_rules! kdl_string_arguments {
     ( $kdl_node:expr ) => {{
-        let res: Result<Vec<_>, _> = $kdl_node.entries().iter().map(|e| e.value().as_string().ok_or(ConfigError::KdlParsingError("Not a string".into()))).collect();
+        let res: Result<Vec<_>, _> = $kdl_node.entries().iter().map(|e| e.value().as_string().ok_or(ConfigError::new_kdl_error("Not a string".into(), e.span().offset(), e.span().len()))).collect();
         res?
     }}
 }
@@ -179,7 +206,8 @@ macro_rules! kdl_property_names {
 #[macro_export]
 macro_rules! kdl_argument_values {
     ( $kdl_node:expr ) => {
-        $kdl_node.entries().iter().map(|arg| arg.value()).collect()
+        $kdl_node.entries().iter().collect()
+        // $kdl_node.entries().iter().map(|arg| arg.value()).collect()
     }
 }
 
@@ -202,7 +230,7 @@ macro_rules! keys_from_kdl {
     ( $kdl_node:expr ) => {
         kdl_string_arguments!($kdl_node)
             .iter()
-            .map(|k| Key::from_str(k))
+            .map(|k| Key::from_str(k).map_err(|_| ConfigError::new_kdl_error(format!("Invalid key: '{}'", k), $kdl_node.span().offset(), $kdl_node.span().len())))
             .collect::<Result<_, _>>()?
     }
 }
@@ -218,13 +246,14 @@ macro_rules! actions_from_kdl {
 }
 
 
-pub fn kdl_arguments_that_are_strings <'a>(arguments: impl Iterator<Item=&'a KdlValue>) -> Result<Vec<String>, String> {
+pub fn kdl_arguments_that_are_strings <'a>(arguments: impl Iterator<Item=&'a KdlEntry>) -> Result<Vec<String>, ConfigError> {
+// pub fn kdl_arguments_that_are_strings <'a>(arguments: impl Iterator<Item=&'a KdlValue>) -> Result<Vec<String>, ConfigError> {
     let mut args: Vec<String> = vec![];
-    for kdl_value in arguments {
-        match kdl_value.as_string() {
+    for kdl_entry in arguments {
+        match kdl_entry.value().as_string() {
             Some(string_value) => args.push(string_value.to_string()),
             None => {
-                return Err(format!("Failed to parse kdl arguments"));
+                return Err(ConfigError::new_kdl_error(format!("Argument must be a string"), kdl_entry.span().offset(), kdl_entry.span().len()));
             }
         }
     }
@@ -239,7 +268,7 @@ pub fn kdl_child_string_value_for_entry <'a>(command_metadata: &'a KdlDocument, 
 }
 
 impl Action {
-    pub fn new_from_bytes(action_name: &str, bytes: Vec<u8>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new_from_bytes(action_name: &str, bytes: Vec<u8>, action_node: &KdlNode) -> Result<Self, ConfigError> {
         match action_name {
             "Write" => {
                 Ok(Action::Write(bytes))
@@ -256,39 +285,47 @@ impl Action {
             "GoToTab" => {
                 let tab_index = *bytes
                     .get(0)
-                    .ok_or_else(|| format!("Cannot create action: {} from bytes: {:?}", action_name, bytes))?
+                    .ok_or_else(|| ConfigError::new_kdl_error(format!("Missing tab index"), action_node.span().offset(), action_node.span().len()))?
                     as u32;
                 Ok(Action::GoToTab(tab_index))
             }
-            _ => Err(format!("Cannot create action: {} from bytes: {:?}", action_name, bytes).into()),
+            _ => Err(ConfigError::new_kdl_error("Failed to parse action".into(), action_node.span().offset(), action_node.span().len()))
         }
     }
-    pub fn new_from_string(action_name: &str, string: String) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new_from_string(action_name: &str, string: String, action_node: &KdlNode) -> Result<Self, ConfigError> {
         match action_name {
             "WriteChars" => Ok(Action::WriteChars(string)),
             "SwitchToMode" => {
                 match InputMode::from_str(string.as_str()) {
                     Ok(input_mode) => Ok(Action::SwitchToMode(input_mode)),
-                    Err(_e) => return Err(format!("Failed to parse SwitchToMode. Unknown InputMode: {}", string).into()),
+                    Err(_e) => return Err(ConfigError::new_kdl_error(format!("Unknown InputMode '{}'", string), action_node.span().offset(), action_node.span().len()))
                 }
             },
             "Resize" => {
-                let direction = ResizeDirection::from_str(string.as_str())?;
+                let direction = ResizeDirection::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                })?;
                 Ok(Action::Resize(direction))
             }
             "MoveFocus" => {
-                let direction = Direction::from_str(string.as_str())?;
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                })?;
                 Ok(Action::MoveFocus(direction))
             }
             "MoveFocusOrTab" => {
-                let direction = Direction::from_str(string.as_str())?;
+                let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                })?;
                 Ok(Action::MoveFocusOrTab(direction))
             }
             "MovePane" => {
                 if string.is_empty() {
                     return Ok(Action::MovePane(None));
                 } else {
-                    let direction = Direction::from_str(string.as_str())?;
+                    let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                        ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                    })?;
                     Ok(Action::MovePane(Some(direction)))
                 }
             }
@@ -299,28 +336,34 @@ impl Action {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None));
                 } else {
-                    let direction = Direction::from_str(string.as_str())?;
+                    let direction = Direction::from_str(string.as_str()).map_err(|_| {
+                        ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                    })?;
                     Ok(Action::NewPane(Some(direction)))
                 }
             }
             "SearchToggleOption" => {
-                let toggle_option = SearchOption::from_str(string.as_str())?;
+                let toggle_option = SearchOption::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                })?;
                 Ok(Action::SearchToggleOption(toggle_option))
             }
             "Search" => {
-                let search_direction = SearchDirection::from_str(string.as_str())?;
+                let search_direction = SearchDirection::from_str(string.as_str()).map_err(|_| {
+                    ConfigError::new_kdl_error(format!("Invalid direction: '{}'", string), action_node.span().offset(), action_node.span().len())
+                })?;
                 Ok(Action::Search(search_direction))
             }
-            _ => Err(format!("Cannot create action: '{}' from string: '{:?}'", action_name, string).into()),
+            _ => Err(ConfigError::new_kdl_error(format!("Unsupported action: {}", action_name), action_node.span().offset(), action_node.span().len()))
         }
     }
 }
 
 impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
-    type Error = Box<dyn std::error::Error>;
+    type Error = ConfigError;
 
     fn try_from((color_name, theme_colors): (&str, &KdlDocument)) -> Result<PaletteColor, Self::Error> {
-        let color = theme_colors.get(color_name).ok_or(format!("Failed to parse color"))?;
+        let color = theme_colors.get(color_name).ok_or(ConfigError::new_kdl_error(format!("Missing theme color: {}", color_name), theme_colors.span().offset(), theme_colors.span().len()))?;
         let entry_count = entry_count!(color);
         let is_rgb = || entry_count == 3;
         let is_three_digit_hex = || {
@@ -342,93 +385,95 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
         };
         if is_rgb() {
             let mut channels = kdl_entries_as_i64!(color);
-            let r = channels.next().unwrap().ok_or(format!("invalid color"))? as u8;
-            let g = channels.next().unwrap().ok_or(format!("invalid_color"))? as u8;
-            let b = channels.next().unwrap().ok_or(format!("invalid_color"))? as u8;
+            let r = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(format!("invalid rgb color"), color.span().offset(), color.span().len()))? as u8;
+            let g = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(format!("invalid rgb color"), color.span().offset(), color.span().len()))? as u8;
+            let b = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(format!("invalid rgb color"), color.span().offset(), color.span().len()))? as u8;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_three_digit_hex() {
             // eg. #fff (hex, will be converted to rgb)
             let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
             s.remove(0);
-            let r = u8::from_str_radix(&s[0..1], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
-            let g = u8::from_str_radix(&s[1..2], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
-            let b = u8::from_str_radix(&s[2..3], 16).map_err(|e| format!("Failed to parse color: {}", e))? * 0x11;
+            let r = u8::from_str_radix(&s[0..1], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))? * 0x11;
+            let g = u8::from_str_radix(&s[1..2], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))? * 0x11;
+            let b = u8::from_str_radix(&s[2..3], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))? * 0x11;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_six_digit_hex() {
             // eg. #ffffff (hex, will be converted to rgb)
             let mut s = String::from(kdl_first_entry_as_string!(color).unwrap());
             s.remove(0);
-            let r = u8::from_str_radix(&s[0..2], 16).map_err(|e| format!("Failed to parse color: {}", e))?;
-            let g = u8::from_str_radix(&s[2..4], 16).map_err(|e| format!("Failed to parse color: {}", e))?;
-            let b = u8::from_str_radix(&s[4..6], 16).map_err(|e| format!("Failed to parse color: {}", e))?;
+            let r = u8::from_str_radix(&s[0..2], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))?;
+            let g = u8::from_str_radix(&s[2..4], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))?;
+            let b = u8::from_str_radix(&s[4..6], 16).map_err(|_| ConfigError::new_kdl_error("Failed to parse hex color".into(), color.span().offset(), color.span().len()))?;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_eight_bit() {
-            let n = kdl_first_entry_as_i64!(color).ok_or(format!("Failed to parse color"))?;
+            let n = kdl_first_entry_as_i64!(color).ok_or(ConfigError::new_kdl_error("Failed to parse color".into(), color.span().offset(), color.span().len()))?;
             Ok(PaletteColor::EightBit(n as u8))
         } else {
-            Err("Failed to parse color".into())
+            Err(ConfigError::new_kdl_error("Failed to parse color".into(), color.span().offset(), color.span().len()))
         }
     }
 }
 
 impl TryFrom<&KdlNode> for Action {
-    type Error = Box<dyn std::error::Error>;
+    // type Error = Box<dyn std::error::Error>;
+    type Error = ConfigError;
     fn try_from(kdl_action: &KdlNode) -> Result<Self, Self::Error> {
 
         let action_name = kdl_name!(kdl_action);
-        let action_arguments: Vec<&KdlValue> = kdl_argument_values!(kdl_action);
+        let action_arguments: Vec<&KdlEntry> = kdl_argument_values!(kdl_action);
+        // let action_arguments: Vec<&KdlValue> = kdl_argument_values!(kdl_action);
         let action_children: Vec<&KdlDocument> = kdl_children!(kdl_action);
         match action_name {
-            "Quit" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "FocusNextPane" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "FocusPreviousPane" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "EditScrollback" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ScrollToBottom" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "PageScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "PageScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "HalfPageScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "HalfPageScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ToggleFocusFullscreen" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "TogglePaneFrames" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ToggleActiveSyncTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "TogglePaneEmbedOrFloating" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ToggleFloatingPanes" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "CloseFocus" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "UndoRenamePane" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "NoOp" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "GoToNextTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "GoToPreviousTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "CloseTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "ToggleTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "UndoRenameTab" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "Detach" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "Copy" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "Deny" => parse_kdl_action_arguments!(action_name, action_arguments),
-            "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "WriteChars" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "SwitchToMode" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "Search" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "Resize" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "MoveFocus" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "MoveFocusOrTab" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "MovePane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "DumpScreen" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "NewPane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
-            "PaneNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
+            "Quit" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "FocusNextPane" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "FocusPreviousPane" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "SwitchFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "EditScrollback" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ScrollToBottom" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "PageScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "PageScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "HalfPageScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "HalfPageScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ToggleFocusFullscreen" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "TogglePaneFrames" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ToggleActiveSyncTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "TogglePaneEmbedOrFloating" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ToggleFloatingPanes" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "CloseFocus" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "UndoRenamePane" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "NoOp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "GoToNextTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "GoToPreviousTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "CloseTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "ToggleTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "UndoRenameTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
+            "WriteChars" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "SwitchToMode" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "Search" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "Resize" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "MoveFocus" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "MoveFocusOrTab" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "MovePane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "DumpScreen" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "NewPane" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
+            "PaneNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "NewTab" => Ok(Action::NewTab(None, None)),
-            "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "TabNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "SearchInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments),
-            "SearchToggleOption" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments),
+            "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
+            "TabNameInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
+            "SearchInput" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
+            "SearchToggleOption" => parse_kdl_action_char_or_string_arguments!(action_name, action_arguments, kdl_action),
             "Run" => {
                 let arguments = action_arguments.iter().copied();
                 let mut args = kdl_arguments_that_are_strings(arguments)?;
                 if args.is_empty() {
-                    return Err("No command found in Run action".into());
+                    return Err(ConfigError::new_kdl_error("No command found in Run action".into(), kdl_action.span().offset(), kdl_action.span().len()));
                 }
                 let command = args.remove(0);
                 let command_metadata = action_children.iter().next();
@@ -444,107 +489,11 @@ impl TryFrom<&KdlNode> for Action {
                     cwd,
                     direction,
                 };
-                log::info!("run_command_action: {:?}", run_command_action);
                 Ok(Action::Run(run_command_action))
             }
             _ => {
-                Err(format!("Failed to parse action: {}", action_name).into())
+                Err(ConfigError::new_kdl_error(format!("Unsupported action: {}", action_name).into(), kdl_action.span().offset(), kdl_action.span().len()))
             }
-        }
-    }
-}
-
-impl TryFrom<&KdlValue> for Key {
-    type Error = String;
-    fn try_from(kdl_value: &KdlValue) -> Result<Self, String> {
-        let key_str = kdl_value.as_string();
-        if key_str.is_none() {
-            return Err(format!("Failed to parse key: {}", kdl_value));
-        }
-        let key_str = key_str.unwrap();
-        let mut modifier: Option<&str> = None;
-        let mut main_key: Option<&str> = None;
-        for (index, part) in key_str.split_ascii_whitespace().enumerate() {
-            // TODO: handle F(u8)
-            if index == 0 && (part == "Ctrl" || part == "Alt") {
-                modifier = Some(part);
-            } else if main_key.is_none() {
-                main_key = Some(part)
-            }
-        }
-        match (modifier, main_key) {
-            (Some("Ctrl"), Some(main_key)) => {
-                let mut key_chars = main_key.chars();
-                let key_count = main_key.chars().count();
-                if key_count == 1 {
-                    let key_char = key_chars.next().unwrap();
-                    Ok(Key::Ctrl(key_char))
-                } else {
-                    Err(format!("Failed to parse key: {}", key_str))
-                }
-            },
-            (Some("Alt"), Some(main_key)) => {
-                match main_key {
-                    // why crate::data::Direction and not just Direction?
-                    // Because it's a different type that we export in this wasm mandated soup - we
-                    // don't like it either! This will be solved as we chip away at our tech-debt
-                    "Left" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Left))),
-                    "Right" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Right))),
-                    "Up" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Up))),
-                    "Down" => Ok(Key::Alt(CharOrArrow::Direction(crate::data::Direction::Down))),
-                    _ => {
-                        let mut key_chars = main_key.chars();
-                        let key_count = main_key.chars().count();
-                        if key_count == 1 {
-                            let key_char = key_chars.next().unwrap();
-                            Ok(Key::Alt(CharOrArrow::Char(key_char)))
-                        } else {
-                            Err(format!("Failed to parse key: {}", key_str))
-                        }
-                    }
-                }
-            },
-            (None, Some(main_key)) => {
-                match main_key {
-                    "Backspace" => Ok(Key::Backspace),
-                    "Left" => Ok(Key::Left),
-                    "Right" => Ok(Key::Right),
-                    "Up" => Ok(Key::Up),
-                    "Down" => Ok(Key::Down),
-                    "Home" => Ok(Key::Home),
-                    "End" => Ok(Key::End),
-                    "PageUp" => Ok(Key::PageUp),
-                    "PageDown" => Ok(Key::PageDown),
-                    "Tab" => Ok(Key::BackTab),
-                    "Delete" => Ok(Key::Delete),
-                    "Insert" => Ok(Key::Insert),
-                    "Space" => Ok(Key::Char(' ')),
-                    "Enter" => Ok(Key::Char('\n')),
-                    "Esc" => Ok(Key::Esc),
-                    _ => {
-                        let mut key_chars = main_key.chars();
-                        let key_count = main_key.chars().count();
-                        if key_count == 1 {
-                            let key_char = key_chars.next().unwrap();
-                            Ok(Key::Char(key_char))
-                        } else if key_count > 1 {
-                            if let Some(first_char) = key_chars.next() {
-                                if first_char == 'F' {
-                                    let f_index: String = key_chars.collect();
-                                    let f_index: u8 = f_index.parse().map_err(|e| format!("Failed to parse F index: {}", e))?;
-                                    if f_index >= 1 && f_index <= 12 {
-                                        return Ok(Key::F(f_index));
-                                    }
-                                }
-                            }
-                            Err(format!("Failed to parse key: {}", key_str))
-                        } else {
-                            Err(format!("Failed to parse key: {}", key_str))
-                        }
-                    }
-                }
-            }
-            _ => Err(format!("Failed to parse key: {}", key_str))
         }
     }
 }
@@ -556,6 +505,78 @@ macro_rules! kdl_property_first_arg_as_string {
             .and_then(|p| p.entries().iter().next())
             .and_then(|p| p.value().as_string())
     }
+}
+
+#[macro_export]
+macro_rules! kdl_property_first_arg_as_string_or_error {
+    ( $kdl_node:expr, $property_name:expr ) => {{
+        match $kdl_node.get($property_name) {
+            Some(property) => {
+                match property.entries().iter().next() {
+                    Some(first_entry) => {
+                        match first_entry.value().as_string() {
+                            Some(string_entry) => Some((string_entry, first_entry)),
+                            None => {
+                                return Err(ConfigError::new_kdl_error(format!("Property {} must be a string, found: {}", $property_name, first_entry.value()), property.span().offset(), property.span().len()));
+                            }
+                        }
+                    },
+                    None => {
+                        return Err(ConfigError::new_kdl_error(format!("Property {} must have a value", $property_name), property.span().offset(), property.span().len()));
+                    }
+                }
+            },
+            None => None
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! kdl_property_first_arg_as_bool_or_error {
+    ( $kdl_node:expr, $property_name:expr ) => {{
+        match $kdl_node.get($property_name) {
+            Some(property) => {
+                match property.entries().iter().next() {
+                    Some(first_entry) => {
+                        match first_entry.value().as_bool() {
+                            Some(bool_entry) => Some((bool_entry, first_entry)),
+                            None => {
+                                return Err(ConfigError::new_kdl_error(format!("Property {} must be true or false, found {}", $property_name, first_entry.value()), property.span().offset(), property.span().len()));
+                            }
+                        }
+                    },
+                    None => {
+                        return Err(ConfigError::new_kdl_error(format!("Property {} must have a value", $property_name), property.span().offset(), property.span().len()));
+                    }
+                }
+            },
+            None => None
+        }
+    }}
+}
+
+#[macro_export]
+macro_rules! kdl_property_first_arg_as_i64_or_error {
+    ( $kdl_node:expr, $property_name:expr ) => {{
+        match $kdl_node.get($property_name) {
+            Some(property) => {
+                match property.entries().iter().next() {
+                    Some(first_entry) => {
+                        match first_entry.value().as_i64() {
+                            Some(int_entry) => Some((int_entry, first_entry)),
+                            None => {
+                                return Err(ConfigError::new_kdl_error(format!("Property {} must be numeric, found {}", $property_name, first_entry.value()), property.span().offset(), property.span().len()));
+                            }
+                        }
+                    },
+                    None => {
+                        return Err(ConfigError::new_kdl_error(format!("Property {} must have a value", $property_name), property.span().offset(), property.span().len()));
+                    }
+                }
+            },
+            None => None
+        }
+    }}
 }
 
 #[macro_export]
@@ -645,6 +666,52 @@ macro_rules! kdl_get_bool_property_or_child_value {
 }
 
 #[macro_export]
+macro_rules! kdl_get_bool_property_or_child_value_with_error {
+    ( $kdl_node:expr, $name:expr ) => {
+        match $kdl_node.get($name) {
+            Some(e) => {
+                match e.value().as_bool() {
+                    Some(bool_value) => Some(bool_value),
+                    None => {
+                        return Err(kdl_parsing_error!(
+                            format!("{} should be either true or false, found {}", $name, e.value()),
+                            e
+                        ))
+                    }
+                }
+            },
+            None => {
+                let child_value = $kdl_node.children()
+                    .and_then(|c| c.get($name))
+                    .and_then(|c| c.get(0));
+                match child_value {
+                    Some(e) => {
+                        match e.value().as_bool() {
+                            Some(bool_value) => Some(bool_value),
+                            None => {
+                                return Err(kdl_parsing_error!(
+                                    format!("{} should be either true or false, found {}", $name, e.value()),
+                                    e
+                                ))
+                            }
+                        }
+                    },
+                    None => {
+                        if let Some(child_node) = kdl_child_with_name!($kdl_node, $name) {
+                            return Err(kdl_parsing_error!(
+                                format!("{} must have a value, eg. '{} true'", child_node.name().value(), child_node.name().value()),
+                                child_node
+                            ))
+                        }
+                        None
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[macro_export]
 macro_rules! kdl_get_string_property_or_child_value {
     ( $kdl_node:expr, $name:expr ) => {
         $kdl_node.get($name)
@@ -653,6 +720,87 @@ macro_rules! kdl_get_string_property_or_child_value {
                 .and_then(|c| c.get($name))
                 .and_then(|c| c.get(0))
                 .and_then(|c| c.value().as_string())
+            )
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_property_or_child_value_node {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node.get($name)
+            .or_else(|| $kdl_node.children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
+            )
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_child_with_name {
+    ( $kdl_node:expr, $name:expr ) => {{
+        $kdl_node.children()
+            .and_then(|children| children.nodes()
+                .iter()
+                .find(|c| c.name().value() == $name)
+            )
+
+    }}
+}
+
+#[macro_export]
+macro_rules! kdl_get_string_property_or_child_value_with_error {
+    ( $kdl_node:expr, $name:expr ) => {
+        match $kdl_node.get($name) {
+            Some(e) => {
+                match e.value().as_string() {
+                    Some(string_value) => Some(string_value),
+                    None => {
+                        return Err(kdl_parsing_error!(
+                            format!("{} should be a string, found {} - not a string", $name, e.value()),
+                            e
+                        ))
+                    }
+                }
+            },
+            None => {
+                let child_value = $kdl_node.children()
+                    .and_then(|c| c.get($name))
+                    .and_then(|c| c.get(0));
+                match child_value {
+                    Some(e) => {
+                        match e.value().as_string() {
+                            Some(string_value) => Some(string_value),
+                            None => {
+                                return Err(kdl_parsing_error!(
+                                    format!("{} should be a string, found {} - not a string", $name, e.value()),
+                                    e
+                                ))
+                            }
+                        }
+                    },
+                    None => {
+                        if let Some(child_node) = kdl_child_with_name!($kdl_node, $name) {
+                            return Err(kdl_parsing_error!(
+                                format!("{} must have a value, eg. '{} \"foo\"'", child_node.name().value(), child_node.name().value()),
+                                child_node
+                            ))
+                        }
+                        None
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! kdl_get_property_or_child {
+    ( $kdl_node:expr, $name:expr ) => {
+        $kdl_node.get($name)
+            // .and_then(|e| e.value().as_string())
+            .or_else(|| $kdl_node.children()
+                .and_then(|c| c.get($name))
+                .and_then(|c| c.get(0))
             )
     }
 }
@@ -688,37 +836,50 @@ macro_rules! kdl_get_int_entry {
 
 
 impl Options {
-    pub fn from_kdl(kdl_options: &KdlDocument) -> Self {
-        let on_force_close = kdl_property_first_arg_as_string!(kdl_options, "on_force_close")
-            .and_then(|arg| OnForceClose::from_str(arg).ok());
-        let simplified_ui = kdl_property_first_arg_as_bool!(kdl_options, "simplified_ui");
-        let default_shell = kdl_property_first_arg_as_string!(kdl_options, "default_shell")
-            .map(|default_shell| PathBuf::from(default_shell));
-        let pane_frames = kdl_property_first_arg_as_bool!(kdl_options, "pane_frames");
-        let theme = kdl_property_first_arg_as_string!(kdl_options, "theme")
-            .map(|theme| theme.to_string());
-        let default_mode = kdl_property_first_arg_as_string!(kdl_options, "default_mode")
-            .and_then(|default_mode| InputMode::from_str(default_mode).ok());
-        let default_layout = kdl_property_first_arg_as_string!(kdl_options, "default_layout")
-            .map(|default_layout| PathBuf::from(default_layout));
-        let layout_dir = kdl_property_first_arg_as_string!(kdl_options, "layout_dir")
-            .map(|layout_dir| PathBuf::from(layout_dir));
-        let theme_dir = kdl_property_first_arg_as_string!(kdl_options, "theme_dir")
-            .map(|theme_dir| PathBuf::from(theme_dir));
-        let mouse_mode = kdl_property_first_arg_as_bool!(kdl_options, "mouse_mode");
-        let scroll_buffer_size = kdl_property_first_arg_as_i64!(kdl_options, "scroll_buffer_size")
-            .map(|scroll_buffer_size| scroll_buffer_size as usize);
-        let copy_command = kdl_property_first_arg_as_string!(kdl_options, "copy_command")
-            .map(|copy_command| copy_command.to_string());
-        let copy_clipboard = kdl_property_first_arg_as_string!(kdl_options, "copy_clipboard")
-            .and_then(|on_force_close| Clipboard::from_str(on_force_close).ok());
-        let copy_on_select = kdl_property_first_arg_as_bool!(kdl_options, "copy_on_select");
-        let scrollback_editor = kdl_property_first_arg_as_string!(kdl_options, "scrollback_editor")
-            .map(|scrollback_editor| PathBuf::from(scrollback_editor));
-        let mirror_session = kdl_property_first_arg_as_bool!(kdl_options, "mirror_session");
-        let session_name = kdl_property_first_arg_as_string!(kdl_options, "session_name").map(|s| s.into());
-        let attach_to_session = kdl_property_first_arg_as_bool!(kdl_options, "attach_to_session");
-        Options {
+    pub fn from_kdl(kdl_options: &KdlDocument) -> Result<Self, ConfigError> {
+        let on_force_close = match kdl_property_first_arg_as_string_or_error!(kdl_options, "on_force_close") {
+            Some((string, entry)) => Some(OnForceClose::from_str(string).map_err(|_| {
+                kdl_parsing_error!(format!("Invalid value for on_force_close: '{}'", string), entry)
+            })?),
+            None => None
+        };
+        let simplified_ui = kdl_property_first_arg_as_bool_or_error!(kdl_options, "simplified_ui").map(|(v, _)| v);
+        let default_shell = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
+            .map(|(string, _entry)| PathBuf::from(string));
+        let pane_frames = kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
+            .map(|(theme, _entry)| theme.to_string());
+        let default_mode = match kdl_property_first_arg_as_string_or_error!(kdl_options, "default_mode") {
+            Some((string, entry)) => Some(InputMode::from_str(string).map_err(|_| {
+                kdl_parsing_error!(format!("Invalid input mode: '{}'", string), entry)
+            })?),
+            None => None
+        };
+        let default_layout = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_layout")
+            .map(|(string, _entry)| PathBuf::from(string));
+        let layout_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "layout_dir")
+            .map(|(string, _entry)| PathBuf::from(string));
+        let theme_dir = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme_dir")
+            .map(|(string, _entry)| PathBuf::from(string));
+        let mouse_mode = kdl_property_first_arg_as_bool_or_error!(kdl_options, "mouse_mode").map(|(v, _)| v);
+        let scroll_buffer_size = kdl_property_first_arg_as_i64_or_error!(kdl_options, "scroll_buffer_size")
+            .map(|(scroll_buffer_size, _entry)| scroll_buffer_size as usize);
+        let copy_command = kdl_property_first_arg_as_string_or_error!(kdl_options, "copy_command")
+            .map(|(copy_command, _entry)| copy_command.to_string());
+        let copy_clipboard = match kdl_property_first_arg_as_string_or_error!(kdl_options, "copy_clipboard") {
+            Some((string, entry)) => Some(Clipboard::from_str(string).map_err(|_| {
+                kdl_parsing_error!(format!("Invalid value for copy_clipboard: '{}'", string), entry)
+            })?),
+            None => None
+        };
+        let copy_on_select = kdl_property_first_arg_as_bool_or_error!(kdl_options, "copy_on_select").map(|(v, _)| v);
+        let scrollback_editor = kdl_property_first_arg_as_string_or_error!(kdl_options, "scrollback_editor")
+            .map(|(string, _entry)| PathBuf::from(string));
+        let mirror_session = kdl_property_first_arg_as_bool_or_error!(kdl_options, "mirror_session").map(|(v, _)| v);
+        let session_name = kdl_property_first_arg_as_string_or_error!(kdl_options, "session_name")
+            .map(|(session_name, _entry)| session_name.to_string());
+        let attach_to_session = kdl_property_first_arg_as_bool_or_error!(kdl_options, "attach_to_session").map(|(v, _)| v);
+        Ok(Options {
             simplified_ui,
             theme,
             default_mode,
@@ -737,15 +898,26 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
-        }
+        })
     }
 }
 
 impl RunPlugin {
     pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
         let _allow_exec_host_cmd = kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
-        let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(ConfigError::KdlParsingError("Plugins must have a location".into()))?;
-        let url = Url::parse(string_url).map_err(|e| ConfigError::KdlParsingError(format!("Failed to aprse url: {:?}", e)))?;
+        let string_url = kdl_get_child_entry_string_value!(kdl_node, "location")
+            .ok_or(
+                ConfigError::new_kdl_error(
+                    "Plugins must have a location".into(),
+                    kdl_node.span().offset(),
+                    kdl_node.span().len()
+                )
+            )?;
+        let url = Url::parse(string_url).map_err(|e| ConfigError::new_kdl_error(
+            format!("Failed to parse url: {:?}", e),
+            kdl_node.span().offset(),
+            kdl_node.span().len(),
+        ))?;
         let location = RunPluginLocation::try_from(url)?;
         Ok(RunPlugin {
             _allow_exec_host_cmd,
@@ -754,8 +926,28 @@ impl RunPlugin {
     }
 }
 impl Layout {
-    pub fn from_kdl(kdl_layout: &KdlDocument) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(&kdl_layout).parse()
+    pub fn from_kdl(raw_layout: &str, file_name: String) -> Result<Self, ConfigError> {
+        KdlLayoutParser::new(raw_layout, file_name.clone()).parse().map_err(|e| {
+            match e {
+                ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
+                ConfigError::KdlDeserializationError(kdl_error) => {
+                    let error_message = match kdl_error.kind {
+                        kdl::KdlErrorKind::Context("valid node terminator") => {
+                            format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
+                        },
+                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                    };
+                    let kdl_error = KdlError {
+                        error_message,
+                        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
+                        offset: Some(kdl_error.span.offset()),
+                        len: Some(kdl_error.span.len()),
+                    };
+                    ConfigError::KdlError(kdl_error)
+                },
+                e => e
+            }
+        })
     }
 }
 impl EnvironmentVariables {
@@ -767,7 +959,7 @@ impl EnvironmentVariables {
             let env_var_int_value = kdl_first_entry_as_i64!(env_var).map(|s| format!("{}", s.to_string()));
             let env_var_value = env_var_str_value
                 .or(env_var_int_value)
-                .ok_or::<Box<dyn std::error::Error>>(format!("Failed to parse env var: {:?}", env_var_name).into())?;
+                .ok_or(ConfigError::new_kdl_error(format!("Failed to parse env var: {:?}", env_var_name), env_var.span().offset(), env_var.span().len()))?;
             env.insert(env_var_name.into(), env_var_value);
         }
         Ok(EnvironmentVariables::from_data(env))
@@ -788,7 +980,11 @@ impl Keybinds {
         }
         for key_block in all_nodes {
             if kdl_name!(key_block) != "bind" && kdl_name!(key_block) != "unbind" {
-                return Err(ConfigError::KdlParsingError(format!("Unknown keybind instruction: '{}'", kdl_name!(key_block))));
+                return Err(ConfigError::new_kdl_error(
+                    format!("Unknown keybind instruction: '{}'", kdl_name!(key_block)),
+                    key_block.span().offset(),
+                    key_block.span().len(),
+                ));
             }
         }
         Ok(())
@@ -800,7 +996,7 @@ impl Keybinds {
             if kdl_name!(block) == "shared_except" || kdl_name!(block) == "shared" {
                 let mut modes_to_exclude = vec![];
                 for mode_name in kdl_string_arguments!(block) {
-                    modes_to_exclude.push(InputMode::from_str(mode_name)?);
+                    modes_to_exclude.push(InputMode::from_str(mode_name).map_err(|_| ConfigError::new_kdl_error(format!("Invalid mode: '{}'", mode_name), block.name().span().offset(), block.name().span().len()))?);
                 }
                 for mode in InputMode::iter() {
                     if modes_to_exclude.contains(&mode) {
@@ -862,7 +1058,7 @@ impl Keybinds {
     }
     fn input_mode_keybindings <'a>(mode: &KdlNode, keybinds_from_config: &'a mut Keybinds) -> Result<&'a mut HashMap<Key, Vec<Action>>, ConfigError> {
         let mode_name = kdl_name!(mode);
-        let input_mode = InputMode::from_str(mode_name)?;
+        let input_mode = InputMode::from_str(mode_name).map_err(|_| ConfigError::new_kdl_error(format!("Invalid mode: '{}'", mode_name), mode.name().span().offset(), mode.name().span().len()))?;
         let input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&input_mode);
         let clear_defaults_for_mode = kdl_arg_is_truthy!(mode, "clear-defaults");
         if clear_defaults_for_mode {
@@ -874,7 +1070,9 @@ impl Keybinds {
 
 impl RunCommand {
     pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
-        let command = PathBuf::from(kdl_get_child_entry_string_value!(kdl_node, "cmd").ok_or(ConfigError::KdlParsingError("Command must have a cmd value".into()))?);
+        let command = PathBuf::from(kdl_get_child_entry_string_value!(kdl_node, "cmd")
+            .ok_or(ConfigError::new_kdl_error("Command must have a cmd value".into(), kdl_node.span().offset(), kdl_node.span().len()))?
+        );
         let cwd = kdl_get_child_entry_string_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
         let args = match kdl_get_child!(kdl_node, "args") {
             Some(kdl_args) => {
@@ -899,7 +1097,7 @@ impl Config {
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
             config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds)?;
         }
-        let config_options = Options::from_kdl(&kdl_config);
+        let config_options = Options::from_kdl(&kdl_config)?;
         config.options = config.options.merge(config_options);
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let config_themes = Themes::from_kdl(kdl_themes)?;
@@ -929,7 +1127,7 @@ impl PluginsConfig {
             let plugin_tag = PluginTag::new(plugin_name);
             let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
                 .map(|path| PathBuf::from(path))
-                .ok_or::<Box<dyn std::error::Error>>("Plugin path not found".into())?;
+                .ok_or(ConfigError::new_kdl_error("Plugin path not found or invalid".into(), plugin_config.span().offset(), plugin_config.span().len()))?;
             let allow_exec_host_cmd = kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
                 .unwrap_or(false);
             let plugin_config = PluginConfig {
@@ -991,7 +1189,7 @@ impl Theme {
         let mut kdl_config = String::new();
         file.read_to_string(&mut kdl_config)?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
-        let kdl_config = kdl_config.nodes().get(0).ok_or(ConfigError::KdlParsingError("No theme found in file".into()))?;
+        let kdl_config = kdl_config.nodes().get(0).ok_or(ConfigError::new_kdl_error("No theme found in file".into(), kdl_config.span().offset(), kdl_config.span().len()))?;
         let theme_name = kdl_name!(kdl_config);
         let theme_colors = kdl_children_or_error!(kdl_config, "empty theme");
         Ok((theme_name.into(), Theme {

@@ -3,6 +3,7 @@ use std::io::{self, Read};
 use std::path::PathBuf;
 use thiserror::Error;
 use crate::data::Palette;
+use miette::{Diagnostic, NamedSource, SourceCode, LabeledSpan};
 
 use std::convert::TryFrom;
 
@@ -30,12 +31,63 @@ pub struct Config {
 }
 
 #[derive(Error, Debug)]
+pub struct KdlError {
+    pub error_message: String,
+    pub src: Option<NamedSource>,
+    pub offset: Option<usize>,
+    pub len: Option<usize>,
+}
+
+impl KdlError {
+    pub fn new_with_location(error_message: String, offset: usize, len: usize) -> Self {
+        KdlError {
+            error_message,
+            src: None,
+            offset: Some(offset),
+            len: Some(len),
+        }
+    }
+    pub fn add_src(mut self, src_name: String, src_input: String) -> Self {
+        self.src = Some(NamedSource::new(src_name, src_input));
+        self
+    }
+}
+
+impl std::fmt::Display for KdlError{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "Failed to parse Zellij configuration")
+    }
+}
+use std::fmt::Display;
+
+impl Diagnostic for KdlError {
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        match self.src.as_ref() {
+            Some(src) => Some(src),
+            None => None
+        }
+    }
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        // TODO: link to specific relevant sections
+        Some(Box::new(format!("For more information, please see our configuration guide: https://zellij.dev/documentation/configuration.html")))
+    }
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
+        if let (Some(offset), Some(len)) = (self.offset, self.len) {
+            let label = LabeledSpan::new(Some(self.error_message.clone()), offset, len);
+            Some(Box::new(std::iter::once(label)))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Error, Debug, Diagnostic)]
 pub enum ConfigError {
     // Deserialization error
     #[error("Deserialization error: {0}")]
     KdlDeserializationError(#[from] kdl::KdlError),
     #[error("KdlDeserialization error: {0}")]
-    KdlParsingError(String),
+    KdlError(KdlError), // TODO: consolidate these
     // Io error
     #[error("IoError: {0}")]
     Io(#[from] io::Error),
@@ -52,6 +104,17 @@ pub enum ConfigError {
     PluginsError(#[from] PluginsConfigError),
     #[error("{0}")]
     ConversionError(#[from] ConversionError),
+}
+
+impl ConfigError {
+    pub fn new_kdl_error(error_message: String, offset: usize, len: usize) -> Self {
+        ConfigError::KdlError(KdlError {
+            error_message,
+            src: None,
+            offset: Some(offset),
+            len: Some(len),
+        })
+    }
 }
 
 #[derive(Debug, Error)]
@@ -104,7 +167,11 @@ impl Config {
     /// Gets default configuration from assets
     pub fn from_default_assets() -> ConfigResult {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
-        Self::from_kdl(&cfg, None)
+        match Self::from_kdl(&cfg, None) {
+            Ok(config) => Ok(config),
+            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(kdl_error.add_src("Default built-in-configuration".into(), cfg))),
+            Err(e) => Err(e)
+        }
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {
         match File::open(path) {
@@ -112,7 +179,27 @@ impl Config {
                 let mut kdl_config = String::new();
                 file.read_to_string(&mut kdl_config)
                     .map_err(|e| ConfigError::IoPath(e, path.to_path_buf()))?;
-                Config::from_kdl(&kdl_config, default_config)
+                match Config::from_kdl(&kdl_config, default_config) {
+                    Ok(config) => Ok(config),
+                    Err(ConfigError::KdlDeserializationError(kdl_error)) => {
+                        println!("kdl_error.code: {:?}", kdl_error.kind);
+                        let error_message = match kdl_error.kind {
+                            kdl::KdlErrorKind::Context("valid node terminator") => {
+                                format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
+                            },
+                            _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                        };
+                        let kdl_error = KdlError {
+                            error_message,
+                            src: Some(NamedSource::new(path.as_path().as_os_str().to_string_lossy(), kdl_config)),
+                            offset: Some(kdl_error.span.offset()),
+                            len: Some(kdl_error.span.len()),
+                        };
+                        Err(ConfigError::KdlError(kdl_error))
+                    }
+                    Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(kdl_error.add_src(path.as_path().as_os_str().to_string_lossy().to_string(), kdl_config))),
+                    Err(e) => Err(e)
+                }
             },
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
         }

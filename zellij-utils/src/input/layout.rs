@@ -171,7 +171,6 @@ impl PaneLayout {
         run_instructions
     }
     pub fn with_one_pane() -> Self {
-        // TODO: do we need this?
         let mut default_layout = PaneLayout::default();
         default_layout.children = vec![PaneLayout::default()];
         default_layout
@@ -202,7 +201,7 @@ impl LayoutParts {
                 Ok(())
             },
             LayoutParts::Tabs(_tabs) => {
-                Err(ConfigError::KdlParsingError("Trying to insert a pane into a tab layout".into()))
+                Err(ConfigError::new_kdl_error("Trying to insert a pane into a tab layout".into(), 0, 0))
             }
         }
     }
@@ -215,7 +214,7 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    pub fn stringified_from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<String, ConfigError> {
+    pub fn stringified_from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
         match layout_path {
             Some(layout_path) => {
                 // The way we determine where to look for the layout is similar to
@@ -238,20 +237,18 @@ impl Layout {
         }
     }
     pub fn from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>, config: Config) -> Result<(Layout, Config), ConfigError> {
-        let raw_layout = Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let kdl_layout: KdlDocument = raw_layout.parse()?;
-        let layout = Layout::from_kdl(&kdl_layout)?;
+        let (path_to_raw_layout, raw_layout) = Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
-    pub fn from_str(raw: &str) -> Result<Layout, ConfigError> {
-        let kdl_layout: KdlDocument = raw.parse()?;
-        Layout::from_kdl(&kdl_layout)
+    pub fn from_str(raw: &str, path_to_raw_layout: String) -> Result<Layout, ConfigError> {
+        Layout::from_kdl(raw, path_to_raw_layout)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
         layout_dir: Option<&PathBuf>,
-    ) -> Result<String, ConfigError> {
+    ) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
@@ -264,24 +261,24 @@ impl Layout {
             None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn stringified_from_path(layout_path: &Path) -> Result<String, ConfigError> {
+    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
 
         let mut kdl_layout = String::new();
         layout_file.read_to_string(&mut kdl_layout)?;
-        Ok(kdl_layout)
+        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout))
     }
-    pub fn stringified_from_default_assets(path: &Path) -> Result<String, ConfigError> {
+    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
         match path.to_str() {
-            Some("default") => Self::stringified_default_from_assets(),
-            Some("strider") => Self::stringified_strider_from_assets(),
-            Some("disable-status-bar") => Self::stringified_disable_status_from_assets(),
-            Some("compact") => Self::stringified_compact_from_assets(),
+            Some("default") => Ok(("Default layout".into(), Self::stringified_default_from_assets()?)),
+            Some("strider") => Ok(("Strider layout".into(), Self::stringified_strider_from_assets()?)),
+            Some("disable-status-bar") => Ok(("Disable Status Bar layout".into(), Self::stringified_disable_status_from_assets()?)),
+            Some("compact") => Ok(("Compact layout".into(), Self::stringified_compact_from_assets()?)),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),

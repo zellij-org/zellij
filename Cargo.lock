@@ -360,12 +360,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chumsky"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d02796e4586c6c41aeb68eae9bfb4558a522c35f1430c14b40136c3706e09e4"
-
-[[package]]
 name = "clap"
 version = "3.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1233,40 +1227,13 @@ dependencies = [
 
 [[package]]
 name = "kdl"
-version = "4.3.0"
+version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0170e808d03465c564754ac497fe718aae33146b135a0f882a7ca4066257e0b"
+checksum = "a8388a371e0e2ede18bbd94e476fcd45b4ac65cefcedf0c06fd13bd8389574a6"
 dependencies = [
- "miette 4.7.1",
+ "miette 5.3.0",
  "nom 7.1.1",
  "thiserror",
-]
-
-[[package]]
-name = "knuffel"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f9f7a07459e9dc5d07f5dabfc2c2a965bf39195451eb785b61460c65f386eef"
-dependencies = [
- "base64",
- "chumsky",
- "knuffel-derive",
- "miette 4.7.1",
- "thiserror",
- "unicode-width",
-]
-
-[[package]]
-name = "knuffel-derive"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbcbdb0b6f26a4e5ecb0dd9074a430398a41b2c1624c205bcc202541ddc15488"
-dependencies = [
- "heck 0.4.0",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -1469,11 +1436,11 @@ dependencies = [
 
 [[package]]
 name = "miette"
-version = "4.7.1"
+version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c90329e44f9208b55f45711f9558cec15d7ef8295cc65ecd6d4188ae8edc58c"
+checksum = "a28d6092d7e94a90bb9ea8e6c26c99d5d112d49dda2afdb4f7ea8cf09e1a5a6d"
 dependencies = [
- "miette-derive 4.7.1",
+ "miette-derive 5.3.0",
  "once_cell",
  "thiserror",
  "unicode-width",
@@ -1492,9 +1459,9 @@ dependencies = [
 
 [[package]]
 name = "miette-derive"
-version = "4.7.1"
+version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b5bc45b761bcf1b5e6e6c4128cd93b84c218721a8d9b894aa0aff4ed180174c"
+checksum = "4f2485ed7d1fe80704928e3eb86387439609bd0c6bb96db8208daa364cfd1e09"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3400,6 +3367,7 @@ dependencies = [
  "rand 0.8.5",
  "ssh2",
  "suggest",
+ "thiserror",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -3482,7 +3450,6 @@ dependencies = [
  "insta",
  "interprocess",
  "kdl",
- "knuffel",
  "lazy_static",
  "libc",
  "log",

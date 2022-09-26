@@ -454,11 +454,11 @@ impl Setup {
         let chosen_layout = cli_args
             .layout
             .clone()
-            .or_else(|| cli_config_options.as_ref().and_then(|cli_options| cli_options.default_layout.clone()));
+            .or_else(|| cli_config_options.as_ref().and_then(|cli_options| cli_options.default_layout.clone()))
+            .or_else(|| config.options.default_layout.clone());
         // we merge-override the config here because the layout might contain configuration
         // that needs to take precedence
-        let (layout, config) = Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)?;
-        Ok((layout, config))
+        Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
         if let Some(Command::Setup(ref setup)) = &cli_args.command {

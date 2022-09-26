@@ -1979,7 +1979,14 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     send_cli_action_to_server(&session_metadata, new_tab_action, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![pty_thread, screen_thread]);
-    assert_snapshot!(format!("{:#?}", *received_pty_instructions.lock().unwrap()));
+    let new_tab_instruction = received_pty_instructions.lock().unwrap().iter().find(|i| {
+        if let PtyInstruction::NewTab(..) = i {
+            return true
+        } else {
+            return false
+        }
+    }).unwrap().clone();
+    assert_snapshot!(format!("{:#?}", new_tab_instruction));
 }
 
 #[test]

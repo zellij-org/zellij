@@ -5,6 +5,8 @@ use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::input::options::OnForceClose;
+use crate::input::config::{ConfigError, KdlError};
+use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
 use std::str::FromStr;
@@ -304,8 +306,35 @@ impl Action {
             CliAction::SearchPrevious => Ok(vec![Action::Search(SearchDirection::Up)]),
             CliAction::NewTab { name, layout } => {
                 if let Some(layout_path) = layout {
-                    let raw_layout = Layout::stringified_from_path_or_default(Some(&layout_path), None).map_err(|e| format!("Failed to load layout: {}", e))?;
-                    let layout = Layout::from_str(&raw_layout).map_err(|e| format!("Failed to parse layout: {}", e))?;
+                    let (path_to_raw_layout, raw_layout) = Layout::stringified_from_path_or_default(Some(&layout_path), None).map_err(|e| format!("Failed to load layout: {}", e))?;
+                    // let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| format!("Failed to parse layout: {}", e))?;
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| {
+                        let stringified_error = match e {
+                            ConfigError::KdlError(kdl_error) => {
+                                let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
+                                let report: Report = error.into();
+                                format!("{:?}", report)
+                            }
+                            ConfigError::KdlDeserializationError(kdl_error) => {
+                                let error_message = match kdl_error.kind {
+                                    kdl::KdlErrorKind::Context("valid node terminator") => {
+                                        format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
+                                    },
+                                    _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                                };
+                                let kdl_error = KdlError {
+                                    error_message,
+                                    src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
+                                    offset: Some(kdl_error.span.offset()),
+                                    len: Some(kdl_error.span.len()),
+                                };
+                                let report: Report = kdl_error.into();
+                                format!("{:?}", report)
+                            },
+                            e => format!("{}", e)
+                        };
+                        stringified_error
+                    })?;
                     let mut tabs = layout.tabs();
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
