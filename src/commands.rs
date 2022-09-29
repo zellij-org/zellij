@@ -12,7 +12,7 @@ use std::process;
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::config::ConfigError;
 use zellij_client::start_client as start_client_impl;
-use zellij_client::old_config_converter::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl};
+use zellij_client::old_config_converter::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl, convert_old_yaml_files};
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
@@ -313,6 +313,8 @@ fn attach_with_session_name(
 }
 
 pub(crate) fn start_client(opts: CliArgs) {
+    // look for old YAML config/layout/theme files and convert them to KDL
+    convert_old_yaml_files(&opts);
     let (config, layout, config_options) = match Setup::from_cli_args(&opts) {
         Ok(results) => results,
         Err(e) => {

@@ -182,7 +182,6 @@ impl Config {
                 match Config::from_kdl(&kdl_config, default_config) {
                     Ok(config) => Ok(config),
                     Err(ConfigError::KdlDeserializationError(kdl_error)) => {
-                        println!("kdl_error.code: {:?}", kdl_error.kind);
                         let error_message = match kdl_error.kind {
                             kdl::KdlErrorKind::Context("valid node terminator") => {
                                 format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
