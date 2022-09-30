@@ -6,16 +6,18 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
-use miette::{Result, Report};
+use miette::{Report, Result};
 use std::path::PathBuf;
 use std::process;
-use zellij_utils::input::actions::Action;
-use zellij_utils::input::config::ConfigError;
+use zellij_client::old_config_converter::{
+    config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
+};
 use zellij_client::start_client as start_client_impl;
-use zellij_client::old_config_converter::{config_yaml_to_config_kdl, layout_yaml_to_layout_kdl, convert_old_yaml_files};
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
+use zellij_utils::input::actions::Action;
+use zellij_utils::input::config::ConfigError;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::{
@@ -25,11 +27,6 @@ use zellij_utils::{
 };
 
 use std::{fs::File, io::prelude::*};
-
-#[cfg(feature = "unstable")]
-use miette::IntoDiagnostic;
-#[cfg(feature = "unstable")]
-use zellij_utils::input::actions::ActionsFromYaml;
 
 pub(crate) use crate::sessions::list_sessions;
 
@@ -123,7 +120,10 @@ fn find_indexed_session(
     }
 }
 
-pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, requested_session_name: Option<String>) {
+pub(crate) fn send_action_to_session(
+    cli_action: zellij_utils::cli::CliAction,
+    requested_session_name: Option<String>,
+) {
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
@@ -132,7 +132,10 @@ pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, r
         ActiveSession::One(session_name) => {
             if let Some(requested_session_name) = requested_session_name {
                 if requested_session_name != session_name {
-                    eprintln!("Session '{}' not found. The following sessions are active:", requested_session_name);
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        requested_session_name
+                    );
                     eprintln!("{}", session_name);
                     std::process::exit(1);
                 }
@@ -145,7 +148,10 @@ pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, r
                 if existing_sessions.contains(&session_name) {
                     attach_with_cli_client(cli_action, &session_name);
                 } else {
-                    eprintln!("Session '{}' not found. The following sessions are active:", session_name);
+                    eprintln!(
+                        "Session '{}' not found. The following sessions are active:",
+                        session_name
+                    );
                     print_sessions(existing_sessions);
                     std::process::exit(1);
                 }
@@ -159,7 +165,7 @@ pub(crate) fn send_action_to_session(cli_action: zellij_utils::cli::CliAction, r
         },
     };
 }
-pub(crate) fn convert_old_config_file(old_config_file: PathBuf, output_location: Option<PathBuf>) {
+pub(crate) fn convert_old_config_file(old_config_file: PathBuf) {
     match File::open(&old_config_file) {
         Ok(mut handle) => {
             let mut raw_config_file = String::new();
@@ -172,17 +178,17 @@ pub(crate) fn convert_old_config_file(old_config_file: PathBuf, output_location:
                 Err(e) => {
                     eprintln!("Failed to convert config: {}", e);
                     process::exit(1);
-                }
+                },
             }
         },
         Err(e) => {
             eprintln!("Failed to open file: {}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
-pub(crate) fn convert_old_layout_file(old_layout_file: PathBuf, output_location: Option<PathBuf>) {
+pub(crate) fn convert_old_layout_file(old_layout_file: PathBuf) {
     match File::open(&old_layout_file) {
         Ok(mut handle) => {
             let mut raw_layout_file = String::new();
@@ -195,17 +201,17 @@ pub(crate) fn convert_old_layout_file(old_layout_file: PathBuf, output_location:
                 Err(e) => {
                     eprintln!("Failed to convert layout: {}", e);
                     process::exit(1);
-                }
+                },
             }
         },
         Err(e) => {
             eprintln!("Failed to open file: {}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
-pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf, output_location: Option<PathBuf>) {
+pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
     match File::open(&old_theme_file) {
         Ok(mut handle) => {
             let mut raw_config_file = String::new();
@@ -218,13 +224,13 @@ pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf, output_location: O
                 Err(e) => {
                     eprintln!("Failed to convert config: {}", e);
                     process::exit(1);
-                }
+                },
             }
         },
         Err(e) => {
             eprintln!("Failed to open file: {}", e);
             process::exit(1);
-        }
+        },
     }
 }
 
@@ -232,18 +238,14 @@ fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name
     let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
     match Action::actions_from_cli(cli_action) {
         Ok(actions) => {
-            zellij_client::cli_client::start_cli_client(
-                Box::new(os_input),
-                session_name,
-                actions,
-            );
+            zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
             std::process::exit(0);
-        }
+        },
         Err(e) => {
             eprintln!("{}", e);
             log::error!("Error sending action: {}", e);
             std::process::exit(2);
-        }
+        },
     }
 }
 
@@ -420,7 +422,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                             ClientInfo::New(session_name.clone()),
                             Some(layout),
                         );
-                    }
+                    },
                 }
                 process::exit(0); // TODO: why is this here?
             }

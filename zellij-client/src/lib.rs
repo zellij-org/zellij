@@ -1,12 +1,11 @@
 pub mod os_input_output;
 
-mod command_is_executing;
 pub mod cli_client;
+mod command_is_executing;
 mod input_handler;
-mod sessions;
+pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
-pub mod old_config_converter;
 
 use log::info;
 use std::env::current_exe;
@@ -144,13 +143,13 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-//     let palette = config.themes.clone().map_or_else(
-//         || os_input.load_palette(),
-//         |t| {
-//             t.theme_config(&config_options)
-//                 .unwrap_or_else(|| os_input.load_palette())
-//         },
-//     );
+    //     let palette = config.themes.clone().map_or_else(
+    //         || os_input.load_palette(),
+    //         |t| {
+    //             t.theme_config(&config_options)
+    //                 .unwrap_or_else(|| os_input.load_palette())
+    //         },
+    //     );
     let palette = config
         .theme_config(&config_options)
         .unwrap_or_else(|| os_input.load_palette());

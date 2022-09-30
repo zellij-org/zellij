@@ -1,5 +1,5 @@
-use crate::input::config::ConversionError;
 use crate::input::actions::Action;
+use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -65,7 +65,6 @@ impl FromStr for Key {
         let mut modifier: Option<&str> = None;
         let mut main_key: Option<&str> = None;
         for (index, part) in key_str.split_ascii_whitespace().enumerate() {
-            // TODO: handle F(u8)
             if index == 0 && (part == "Ctrl" || part == "Alt") {
                 modifier = Some(part);
             } else if main_key.is_none() {
@@ -101,50 +100,50 @@ impl FromStr for Key {
                         } else {
                             Err(format!("Failed to parse key: {}", key_str).into())
                         }
-                    }
+                    },
                 }
             },
-            (None, Some(main_key)) => {
-                match main_key {
-                    "Backspace" => Ok(Key::Backspace),
-                    "Left" => Ok(Key::Left),
-                    "Right" => Ok(Key::Right),
-                    "Up" => Ok(Key::Up),
-                    "Down" => Ok(Key::Down),
-                    "Home" => Ok(Key::Home),
-                    "End" => Ok(Key::End),
-                    "PageUp" => Ok(Key::PageUp),
-                    "PageDown" => Ok(Key::PageDown),
-                    "Tab" => Ok(Key::BackTab),
-                    "Delete" => Ok(Key::Delete),
-                    "Insert" => Ok(Key::Insert),
-                    "Space" => Ok(Key::Char(' ')),
-                    "Enter" => Ok(Key::Char('\n')),
-                    "Esc" => Ok(Key::Esc),
-                    _ => {
-                        let mut key_chars = main_key.chars();
-                        let key_count = main_key.chars().count();
-                        if key_count == 1 {
-                            let key_char = key_chars.next().unwrap();
-                            Ok(Key::Char(key_char))
-                        } else if key_count > 1 {
-                            if let Some(first_char) = key_chars.next() {
-                                if first_char == 'F' {
-                                    let f_index: String = key_chars.collect();
-                                    let f_index: u8 = f_index.parse().map_err(|e| format!("Failed to parse F index: {}", e))?;
-                                    if f_index >= 1 && f_index <= 12 {
-                                        return Ok(Key::F(f_index));
-                                    }
+            (None, Some(main_key)) => match main_key {
+                "Backspace" => Ok(Key::Backspace),
+                "Left" => Ok(Key::Left),
+                "Right" => Ok(Key::Right),
+                "Up" => Ok(Key::Up),
+                "Down" => Ok(Key::Down),
+                "Home" => Ok(Key::Home),
+                "End" => Ok(Key::End),
+                "PageUp" => Ok(Key::PageUp),
+                "PageDown" => Ok(Key::PageDown),
+                "Tab" => Ok(Key::BackTab),
+                "Delete" => Ok(Key::Delete),
+                "Insert" => Ok(Key::Insert),
+                "Space" => Ok(Key::Char(' ')),
+                "Enter" => Ok(Key::Char('\n')),
+                "Esc" => Ok(Key::Esc),
+                _ => {
+                    let mut key_chars = main_key.chars();
+                    let key_count = main_key.chars().count();
+                    if key_count == 1 {
+                        let key_char = key_chars.next().unwrap();
+                        Ok(Key::Char(key_char))
+                    } else if key_count > 1 {
+                        if let Some(first_char) = key_chars.next() {
+                            if first_char == 'F' {
+                                let f_index: String = key_chars.collect();
+                                let f_index: u8 = f_index
+                                    .parse()
+                                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
+                                if f_index >= 1 && f_index <= 12 {
+                                    return Ok(Key::F(f_index));
                                 }
                             }
-                            Err(format!("Failed to parse key: {}", key_str).into())
-                        } else {
-                            Err(format!("Failed to parse key: {}", key_str).into())
                         }
+                        Err(format!("Failed to parse key: {}", key_str).into())
+                    } else {
+                        Err(format!("Failed to parse key: {}", key_str).into())
                     }
-                }
-            }
-            _ => Err(format!("Failed to parse key: {}", key_str).into())
+                },
+            },
+            _ => Err(format!("Failed to parse key: {}", key_str).into()),
         }
     }
 }
@@ -245,7 +244,20 @@ pub enum Event {
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum, PartialOrd, Ord)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Copy,
+    Clone,
+    EnumIter,
+    Serialize,
+    Deserialize,
+    ArgEnum,
+    PartialOrd,
+    Ord,
+)]
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes

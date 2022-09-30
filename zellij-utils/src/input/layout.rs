@@ -17,13 +17,9 @@ use crate::{
     setup,
 };
 
-use kdl::*;
-
 use std::str::FromStr;
 
-use super::{
-    plugins::{PluginTag, PluginsConfigError},
-};
+use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::vec::Vec;
@@ -128,11 +124,15 @@ pub struct PaneLayout {
 }
 
 impl PaneLayout {
-    pub fn insert_children_layout(&mut self, children_layout: &mut PaneLayout) -> Result<bool, ConfigError> {
+    pub fn insert_children_layout(
+        &mut self,
+        children_layout: &mut PaneLayout,
+    ) -> Result<bool, ConfigError> {
         // returns true if successfully inserted and false otherwise
         match self.external_children_index {
             Some(external_children_index) => {
-                self.children.insert(external_children_index, children_layout.clone());
+                self.children
+                    .insert(external_children_index, children_layout.clone());
                 self.external_children_index = None;
                 Ok(true)
             },
@@ -143,7 +143,7 @@ impl PaneLayout {
                     }
                 }
                 Ok(false)
-            }
+            },
         }
     }
     pub fn children_block_count(&self) -> usize {
@@ -186,12 +186,8 @@ pub enum LayoutParts {
 impl LayoutParts {
     pub fn is_empty(&self) -> bool {
         match self {
-            LayoutParts::Panes(panes) => {
-                panes.is_empty()
-            },
-            LayoutParts::Tabs(tabs) => {
-                tabs.is_empty()
-            }
+            LayoutParts::Panes(panes) => panes.is_empty(),
+            LayoutParts::Tabs(tabs) => tabs.is_empty(),
         }
     }
     pub fn insert_pane(&mut self, index: usize, layout: Layout) -> Result<(), ConfigError> {
@@ -200,9 +196,11 @@ impl LayoutParts {
                 panes.insert(index, layout);
                 Ok(())
             },
-            LayoutParts::Tabs(_tabs) => {
-                Err(ConfigError::new_kdl_error("Trying to insert a pane into a tab layout".into(), 0, 0))
-            }
+            LayoutParts::Tabs(_tabs) => Err(ConfigError::new_kdl_error(
+                "Trying to insert a pane into a tab layout".into(),
+                0,
+                0,
+            )),
         }
     }
 }
@@ -214,7 +212,11 @@ impl Default for LayoutParts {
 }
 
 impl Layout {
-    pub fn stringified_from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
         match layout_path {
             Some(layout_path) => {
                 // The way we determine where to look for the layout is similar to
@@ -228,16 +230,19 @@ impl Layout {
                     Layout::stringified_from_dir(layout_path, layout_dir.as_ref())
                 }
             },
-            None => {
-                Layout::stringified_from_dir(
-                    &std::path::PathBuf::from("default"),
-                    layout_dir.as_ref(),
-                )
-            }
+            None => Layout::stringified_from_dir(
+                &std::path::PathBuf::from("default"),
+                layout_dir.as_ref(),
+            ),
         }
     }
-    pub fn from_path_or_default(layout_path: Option<&PathBuf>, layout_dir: Option<PathBuf>, config: Config) -> Result<(Layout, Config), ConfigError> {
-        let (path_to_raw_layout, raw_layout) = Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+    pub fn from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
         let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
@@ -248,7 +253,8 @@ impl Layout {
     pub fn stringified_from_dir(
         layout: &PathBuf,
         layout_dir: Option<&PathBuf>,
-    ) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
+    ) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
@@ -261,7 +267,8 @@ impl Layout {
             None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
@@ -270,15 +277,28 @@ impl Layout {
         layout_file.read_to_string(&mut kdl_layout)?;
         Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout))
     }
-    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> { // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
         match path.to_str() {
-            Some("default") => Ok(("Default layout".into(), Self::stringified_default_from_assets()?)),
-            Some("strider") => Ok(("Strider layout".into(), Self::stringified_strider_from_assets()?)),
-            Some("disable-status-bar") => Ok(("Disable Status Bar layout".into(), Self::stringified_disable_status_from_assets()?)),
-            Some("compact") => Ok(("Compact layout".into(), Self::stringified_compact_from_assets()?)),
+            Some("default") => Ok((
+                "Default layout".into(),
+                Self::stringified_default_from_assets()?,
+            )),
+            Some("strider") => Ok((
+                "Strider layout".into(),
+                Self::stringified_strider_from_assets()?,
+            )),
+            Some("disable-status-bar") => Ok((
+                "Disable Status Bar layout".into(),
+                Self::stringified_disable_status_from_assets()?,
+            )),
+            Some("compact") => Ok((
+                "Compact layout".into(),
+                Self::stringified_compact_from_assets()?,
+            )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
                 path.into(),
@@ -304,7 +324,7 @@ impl Layout {
     pub fn new_tab(&self) -> PaneLayout {
         match &self.template {
             Some(template) => template.clone(),
-            None => PaneLayout::default()
+            None => PaneLayout::default(),
         }
     }
 
@@ -316,26 +336,45 @@ impl Layout {
         !self.tabs.is_empty()
     }
 
-    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout)> { // String is the tab name
+    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout)> {
+        // String is the tab name
         self.tabs.clone()
     }
 
     pub fn focused_tab_index(&self) -> Option<usize> {
         self.focused_tab_index
     }
-
 }
 
-fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_split: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
+fn split_space(
+    space_to_split: &PaneGeom,
+    layout: &PaneLayout,
+    total_space_to_split: &PaneGeom,
+) -> Vec<(PaneLayout, PaneGeom)> {
     let mut pane_positions = Vec::new();
-    let sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|part| part.split_size).collect();
+    let sizes: Vec<Option<SplitSize>> =
+        layout.children.iter().map(|part| part.split_size).collect();
 
     let mut split_geom = Vec::new();
-    let (mut current_position, split_dimension_space, inherited_dimension, total_split_dimension_space) =
-        match layout.children_split_direction {
-            SplitDirection::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows, total_space_to_split.cols),
-            SplitDirection::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols, total_space_to_split.rows),
-        };
+    let (
+        mut current_position,
+        split_dimension_space,
+        inherited_dimension,
+        total_split_dimension_space,
+    ) = match layout.children_split_direction {
+        SplitDirection::Vertical => (
+            space_to_split.x,
+            space_to_split.cols,
+            space_to_split.rows,
+            total_space_to_split.cols,
+        ),
+        SplitDirection::Horizontal => (
+            space_to_split.y,
+            space_to_split.rows,
+            space_to_split.cols,
+            total_space_to_split.rows,
+        ),
+    };
 
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
@@ -348,11 +387,9 @@ fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_sp
                 let free_percent = if let Some(p) = split_dimension_space.as_percent() {
                     p - sizes
                         .iter()
-                        .map(|&s| {
-                            match s {
-                                Some(SplitSize::Percent(ip)) => ip as f64,
-                                _ => 0.0,
-                            }
+                        .map(|&s| match s {
+                            Some(SplitSize::Percent(ip)) => ip as f64,
+                            _ => 0.0,
                         })
                         .sum::<f64>()
                 } else {
@@ -395,7 +432,8 @@ fn split_space(space_to_split: &PaneGeom, layout: &PaneLayout, total_space_to_sp
     for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
-            let mut part_positions = split_space(part_position_and_size, part, total_space_to_split);
+            let mut part_positions =
+                split_space(part_position_and_size, part, total_space_to_split);
             pane_positions.append(&mut part_positions);
         } else {
             pane_positions.push((part.clone(), *part_position_and_size));

@@ -1,16 +1,16 @@
+use crate::data::Palette;
+use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::PathBuf;
 use thiserror::Error;
-use crate::data::Palette;
-use miette::{Diagnostic, NamedSource, SourceCode, LabeledSpan};
 
 use std::convert::TryFrom;
 
 use super::keybinds::Keybinds;
 use super::options::Options;
 use super::plugins::{PluginsConfig, PluginsConfigError};
-use super::theme::{UiConfig, Themes};
+use super::theme::{Themes, UiConfig};
 use crate::cli::{CliArgs, Command};
 use crate::envs::EnvironmentVariables;
 use crate::setup;
@@ -53,7 +53,7 @@ impl KdlError {
     }
 }
 
-impl std::fmt::Display for KdlError{
+impl std::fmt::Display for KdlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "Failed to parse Zellij configuration")
     }
@@ -64,7 +64,7 @@ impl Diagnostic for KdlError {
     fn source_code(&self) -> Option<&dyn SourceCode> {
         match self.src.as_ref() {
             Some(src) => Some(src),
-            None => None
+            None => None,
         }
     }
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
@@ -161,7 +161,7 @@ impl Config {
     pub fn theme_config(&self, opts: &Options) -> Option<Palette> {
         match &opts.theme {
             Some(theme_name) => self.themes.get_theme(theme_name).map(|theme| theme.palette),
-            None => self.themes.get_theme("default").map(|theme| theme.palette)
+            None => self.themes.get_theme("default").map(|theme| theme.palette),
         }
     }
     /// Gets default configuration from assets
@@ -169,8 +169,10 @@ impl Config {
         let cfg = String::from_utf8(setup::DEFAULT_CONFIG.to_vec())?;
         match Self::from_kdl(&cfg, None) {
             Ok(config) => Ok(config),
-            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(kdl_error.add_src("Default built-in-configuration".into(), cfg))),
-            Err(e) => Err(e)
+            Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(
+                kdl_error.add_src("Default built-in-configuration".into(), cfg),
+            )),
+            Err(e) => Err(e),
         }
     }
     pub fn from_path(path: &PathBuf, default_config: Option<Config>) -> ConfigResult {
@@ -186,18 +188,28 @@ impl Config {
                             kdl::KdlErrorKind::Context("valid node terminator") => {
                                 format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
                             },
-                            _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+                            _ => {
+                                String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error"))
+                            },
                         };
                         let kdl_error = KdlError {
                             error_message,
-                            src: Some(NamedSource::new(path.as_path().as_os_str().to_string_lossy(), kdl_config)),
+                            src: Some(NamedSource::new(
+                                path.as_path().as_os_str().to_string_lossy(),
+                                kdl_config,
+                            )),
                             offset: Some(kdl_error.span.offset()),
                             len: Some(kdl_error.span.len()),
                         };
                         Err(ConfigError::KdlError(kdl_error))
-                    }
-                    Err(ConfigError::KdlError(kdl_error)) => Err(ConfigError::KdlError(kdl_error.add_src(path.as_path().as_os_str().to_string_lossy().to_string(), kdl_config))),
-                    Err(e) => Err(e)
+                    },
+                    Err(ConfigError::KdlError(kdl_error)) => {
+                        Err(ConfigError::KdlError(kdl_error.add_src(
+                            path.as_path().as_os_str().to_string_lossy().to_string(),
+                            kdl_config,
+                        )))
+                    },
+                    Err(e) => Err(e),
                 }
             },
             Err(e) => Err(ConfigError::IoPath(e, path.into())),
@@ -207,15 +219,15 @@ impl Config {
 
 #[cfg(test)]
 mod config_test {
-    use std::io::Write;
-    use std::collections::HashMap;
-    use crate::data::{Palette, PaletteColor, PluginTag, InputMode};
-    use tempfile::tempdir;
-    use crate::input::layout::RunPluginLocation;
-    use crate::input::options::{OnForceClose, Clipboard};
-    use crate::input::theme::{UiConfig, Theme, Themes, FrameConfig};
-    use crate::input::plugins::{PluginsConfig, PluginConfig, PluginType};
     use super::*;
+    use crate::data::{InputMode, Palette, PaletteColor, PluginTag};
+    use crate::input::layout::RunPluginLocation;
+    use crate::input::options::{Clipboard, OnForceClose};
+    use crate::input::plugins::{PluginConfig, PluginType, PluginsConfig};
+    use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+    use std::collections::HashMap;
+    use std::io::Write;
+    use tempfile::tempdir;
 
     #[test]
     fn try_from_cli_args_with_config() {
@@ -297,24 +309,96 @@ mod config_test {
             attach_to_session true
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
-        assert_eq!(config.options.simplified_ui, Some(true), "Option set in config");
-        assert_eq!(config.options.theme, Some(String::from("my cool theme")), "Option set in config");
-        assert_eq!(config.options.default_mode, Some(InputMode::Locked), "Option set in config");
-        assert_eq!(config.options.default_shell, Some(PathBuf::from("/path/to/my/shell")), "Option set in config");
-        assert_eq!(config.options.default_layout, Some(PathBuf::from("/path/to/my/layout.kdl")), "Option set in config");
-        assert_eq!(config.options.layout_dir, Some(PathBuf::from("/path/to/my/layout-dir")), "Option set in config");
-        assert_eq!(config.options.theme_dir, Some(PathBuf::from("/path/to/my/theme-dir")), "Option set in config");
-        assert_eq!(config.options.mouse_mode, Some(false), "Option set in config");
-        assert_eq!(config.options.pane_frames, Some(false), "Option set in config");
-        assert_eq!(config.options.mirror_session, Some(true), "Option set in config");
-        assert_eq!(config.options.on_force_close, Some(OnForceClose::Quit), "Option set in config");
-        assert_eq!(config.options.scroll_buffer_size, Some(100000), "Option set in config");
-        assert_eq!(config.options.copy_command, Some(String::from("/path/to/my/copy-command")), "Option set in config");
-        assert_eq!(config.options.copy_clipboard, Some(Clipboard::Primary), "Option set in config");
-        assert_eq!(config.options.copy_on_select, Some(false), "Option set in config");
-        assert_eq!(config.options.scrollback_editor, Some(PathBuf::from("/path/to/my/scrollback-editor")), "Option set in config");
-        assert_eq!(config.options.session_name, Some(String::from("my awesome session")), "Option set in config");
-        assert_eq!(config.options.attach_to_session, Some(true), "Option set in config");
+        assert_eq!(
+            config.options.simplified_ui,
+            Some(true),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.theme,
+            Some(String::from("my cool theme")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.default_mode,
+            Some(InputMode::Locked),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.default_shell,
+            Some(PathBuf::from("/path/to/my/shell")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.default_layout,
+            Some(PathBuf::from("/path/to/my/layout.kdl")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.layout_dir,
+            Some(PathBuf::from("/path/to/my/layout-dir")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.theme_dir,
+            Some(PathBuf::from("/path/to/my/theme-dir")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.mouse_mode,
+            Some(false),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.pane_frames,
+            Some(false),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.mirror_session,
+            Some(true),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.on_force_close,
+            Some(OnForceClose::Quit),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.scroll_buffer_size,
+            Some(100000),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.copy_command,
+            Some(String::from("/path/to/my/copy-command")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.copy_clipboard,
+            Some(Clipboard::Primary),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.copy_on_select,
+            Some(false),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.scrollback_editor,
+            Some(PathBuf::from("/path/to/my/scrollback-editor")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.session_name,
+            Some(String::from("my awesome session")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.attach_to_session,
+            Some(true),
+            "Option set in config"
+        );
     }
 
     #[test]
@@ -338,22 +422,25 @@ mod config_test {
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
         let mut expected_themes = HashMap::new();
-        expected_themes.insert("dracula".into(), Theme {
-            palette: Palette {
-                fg: PaletteColor::Rgb((248, 248, 242)),
-                bg: PaletteColor::Rgb((40, 42, 54)),
-                red: PaletteColor::Rgb((255, 85, 85)),
-                green: PaletteColor::Rgb((80, 250, 123)),
-                yellow: PaletteColor::Rgb((241, 250, 140)),
-                blue: PaletteColor::Rgb((98, 114, 164)),
-                magenta: PaletteColor::Rgb((255, 121, 198)),
-                orange: PaletteColor::Rgb((255, 184, 108)),
-                cyan: PaletteColor::Rgb((139, 233, 253)),
-                black: PaletteColor::Rgb((0, 0, 0)),
-                white: PaletteColor::Rgb((255, 255, 255)),
-                ..Default::default()
-            }
-        });
+        expected_themes.insert(
+            "dracula".into(),
+            Theme {
+                palette: Palette {
+                    fg: PaletteColor::Rgb((248, 248, 242)),
+                    bg: PaletteColor::Rgb((40, 42, 54)),
+                    red: PaletteColor::Rgb((255, 85, 85)),
+                    green: PaletteColor::Rgb((80, 250, 123)),
+                    yellow: PaletteColor::Rgb((241, 250, 140)),
+                    blue: PaletteColor::Rgb((98, 114, 164)),
+                    magenta: PaletteColor::Rgb((255, 121, 198)),
+                    orange: PaletteColor::Rgb((255, 184, 108)),
+                    cyan: PaletteColor::Rgb((139, 233, 253)),
+                    black: PaletteColor::Rgb((0, 0, 0)),
+                    white: PaletteColor::Rgb((255, 255, 255)),
+                    ..Default::default()
+                },
+            },
+        );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config");
     }
@@ -392,38 +479,44 @@ mod config_test {
         "##;
         let config = Config::from_kdl(config_contents, None).unwrap();
         let mut expected_themes = HashMap::new();
-        expected_themes.insert("dracula".into(), Theme {
-            palette: Palette {
-                fg: PaletteColor::Rgb((248, 248, 242)),
-                bg: PaletteColor::Rgb((40, 42, 54)),
-                red: PaletteColor::Rgb((255, 85, 85)),
-                green: PaletteColor::Rgb((80, 250, 123)),
-                yellow: PaletteColor::Rgb((241, 250, 140)),
-                blue: PaletteColor::Rgb((98, 114, 164)),
-                magenta: PaletteColor::Rgb((255, 121, 198)),
-                orange: PaletteColor::Rgb((255, 184, 108)),
-                cyan: PaletteColor::Rgb((139, 233, 253)),
-                black: PaletteColor::Rgb((0, 0, 0)),
-                white: PaletteColor::Rgb((255, 255, 255)),
-                ..Default::default()
-            }
-        });
-        expected_themes.insert("nord".into(), Theme {
-            palette: Palette {
-                fg: PaletteColor::Rgb((216, 222, 233)),
-                bg: PaletteColor::Rgb((46, 52, 64)),
-                black: PaletteColor::Rgb((59, 66, 82)),
-                red: PaletteColor::Rgb((191, 97, 106)),
-                green: PaletteColor::Rgb((163, 190, 140)),
-                yellow: PaletteColor::Rgb((235, 203, 139)),
-                blue: PaletteColor::Rgb((129, 161, 193)),
-                magenta: PaletteColor::Rgb((180, 142, 173)),
-                cyan: PaletteColor::Rgb((136, 192, 208)),
-                white: PaletteColor::Rgb((229, 233, 240)),
-                orange: PaletteColor::Rgb((208, 135, 112)),
-                ..Default::default()
-            }
-        });
+        expected_themes.insert(
+            "dracula".into(),
+            Theme {
+                palette: Palette {
+                    fg: PaletteColor::Rgb((248, 248, 242)),
+                    bg: PaletteColor::Rgb((40, 42, 54)),
+                    red: PaletteColor::Rgb((255, 85, 85)),
+                    green: PaletteColor::Rgb((80, 250, 123)),
+                    yellow: PaletteColor::Rgb((241, 250, 140)),
+                    blue: PaletteColor::Rgb((98, 114, 164)),
+                    magenta: PaletteColor::Rgb((255, 121, 198)),
+                    orange: PaletteColor::Rgb((255, 184, 108)),
+                    cyan: PaletteColor::Rgb((139, 233, 253)),
+                    black: PaletteColor::Rgb((0, 0, 0)),
+                    white: PaletteColor::Rgb((255, 255, 255)),
+                    ..Default::default()
+                },
+            },
+        );
+        expected_themes.insert(
+            "nord".into(),
+            Theme {
+                palette: Palette {
+                    fg: PaletteColor::Rgb((216, 222, 233)),
+                    bg: PaletteColor::Rgb((46, 52, 64)),
+                    black: PaletteColor::Rgb((59, 66, 82)),
+                    red: PaletteColor::Rgb((191, 97, 106)),
+                    green: PaletteColor::Rgb((163, 190, 140)),
+                    yellow: PaletteColor::Rgb((235, 203, 139)),
+                    blue: PaletteColor::Rgb((129, 161, 193)),
+                    magenta: PaletteColor::Rgb((180, 142, 173)),
+                    cyan: PaletteColor::Rgb((136, 192, 208)),
+                    white: PaletteColor::Rgb((229, 233, 240)),
+                    orange: PaletteColor::Rgb((208, 135, 112)),
+                    ..Default::default()
+                },
+            },
+        );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config");
     }
@@ -449,22 +542,25 @@ mod config_test {
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
         let mut expected_themes = HashMap::new();
-        expected_themes.insert("eight_bit_theme".into(), Theme {
-            palette: Palette {
-                fg: PaletteColor::EightBit(248),
-                bg: PaletteColor::EightBit(40),
-                red: PaletteColor::EightBit(255),
-                green: PaletteColor::EightBit(80),
-                yellow: PaletteColor::EightBit(241),
-                blue: PaletteColor::EightBit(98),
-                magenta: PaletteColor::EightBit(255),
-                orange: PaletteColor::EightBit(255),
-                cyan: PaletteColor::EightBit(139),
-                black: PaletteColor::EightBit(1),
-                white: PaletteColor::EightBit(255),
-                ..Default::default()
-            }
-        });
+        expected_themes.insert(
+            "eight_bit_theme".into(),
+            Theme {
+                palette: Palette {
+                    fg: PaletteColor::EightBit(248),
+                    bg: PaletteColor::EightBit(40),
+                    red: PaletteColor::EightBit(255),
+                    green: PaletteColor::EightBit(80),
+                    yellow: PaletteColor::EightBit(241),
+                    blue: PaletteColor::EightBit(98),
+                    magenta: PaletteColor::EightBit(255),
+                    orange: PaletteColor::EightBit(255),
+                    cyan: PaletteColor::EightBit(139),
+                    black: PaletteColor::EightBit(1),
+                    white: PaletteColor::EightBit(255),
+                    ..Default::default()
+                },
+            },
+        );
         let expected_themes = Themes::from_data(expected_themes);
         assert_eq!(config.themes, expected_themes, "Theme defined in config");
     }
@@ -484,31 +580,47 @@ mod config_test {
         "#;
         let config = Config::from_kdl(config_contents, None).unwrap();
         let mut expected_plugin_configuration = HashMap::new();
-        expected_plugin_configuration.insert(PluginTag::new("tab-bar"), PluginConfig {
-            path: PathBuf::from("tab-bar"),
-            run: PluginType::Pane(None),
-            location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
-            _allow_exec_host_cmd: false
-        });
-        expected_plugin_configuration.insert(PluginTag::new("status-bar"), PluginConfig {
-            path: PathBuf::from("status-bar"),
-            run: PluginType::Pane(None),
-            location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
-            _allow_exec_host_cmd: false
-        });
-        expected_plugin_configuration.insert(PluginTag::new("strider"), PluginConfig {
-            path: PathBuf::from("strider"),
-            run: PluginType::Pane(None),
-            location: RunPluginLocation::Zellij(PluginTag::new("strider")),
-            _allow_exec_host_cmd: true
-        });
-        expected_plugin_configuration.insert(PluginTag::new("compact-bar"), PluginConfig {
-            path: PathBuf::from("compact-bar"),
-            run: PluginType::Pane(None),
-            location: RunPluginLocation::Zellij(PluginTag::new("compact-bar")),
-            _allow_exec_host_cmd: false
-        });
-        assert_eq!(config.plugins, PluginsConfig::from_data(expected_plugin_configuration), "Plugins defined in config");
+        expected_plugin_configuration.insert(
+            PluginTag::new("tab-bar"),
+            PluginConfig {
+                path: PathBuf::from("tab-bar"),
+                run: PluginType::Pane(None),
+                location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                _allow_exec_host_cmd: false,
+            },
+        );
+        expected_plugin_configuration.insert(
+            PluginTag::new("status-bar"),
+            PluginConfig {
+                path: PathBuf::from("status-bar"),
+                run: PluginType::Pane(None),
+                location: RunPluginLocation::Zellij(PluginTag::new("status-bar")),
+                _allow_exec_host_cmd: false,
+            },
+        );
+        expected_plugin_configuration.insert(
+            PluginTag::new("strider"),
+            PluginConfig {
+                path: PathBuf::from("strider"),
+                run: PluginType::Pane(None),
+                location: RunPluginLocation::Zellij(PluginTag::new("strider")),
+                _allow_exec_host_cmd: true,
+            },
+        );
+        expected_plugin_configuration.insert(
+            PluginTag::new("compact-bar"),
+            PluginConfig {
+                path: PathBuf::from("compact-bar"),
+                run: PluginType::Pane(None),
+                location: RunPluginLocation::Zellij(PluginTag::new("compact-bar")),
+                _allow_exec_host_cmd: false,
+            },
+        );
+        assert_eq!(
+            config.plugins,
+            PluginsConfig::from_data(expected_plugin_configuration),
+            "Plugins defined in config"
+        );
     }
 
     #[test]
@@ -523,8 +635,8 @@ mod config_test {
         let config = Config::from_kdl(config_contents, None).unwrap();
         let expected_ui_config = UiConfig {
             pane_frames: FrameConfig {
-                rounded_corners: true
-            }
+                rounded_corners: true,
+            },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");
     }
@@ -541,7 +653,10 @@ mod config_test {
         let mut expected_env_config = HashMap::new();
         expected_env_config.insert("RUST_BACKTRACE".into(), "1".into());
         expected_env_config.insert("SOME_OTHER_VAR".into(), "foo".into());
-        assert_eq!(config.env, EnvironmentVariables::from_data(expected_env_config), "Env variables defined in config");
+        assert_eq!(
+            config.env,
+            EnvironmentVariables::from_data(expected_env_config),
+            "Env variables defined in config"
+        );
     }
-
 }

@@ -4,13 +4,13 @@ use super::command::RunCommandAction;
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
-use crate::input::options::OnForceClose;
 use crate::input::config::{ConfigError, KdlError};
+use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
-use std::str::FromStr;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use crate::position::Position;
 
@@ -30,7 +30,10 @@ impl FromStr for Direction {
             "Right" | "right" => Ok(Direction::Right),
             "Up" | "up" => Ok(Direction::Up),
             "Down" | "down" => Ok(Direction::Down),
-            _ => Err(format!("Failed to parse Direction. Unknown Direction: {}", s)),
+            _ => Err(format!(
+                "Failed to parse Direction. Unknown Direction: {}",
+                s
+            )),
         }
     }
 }
@@ -54,7 +57,10 @@ impl FromStr for ResizeDirection {
             "Down" | "down" => Ok(ResizeDirection::Down),
             "Increase" | "increase" | "+" => Ok(ResizeDirection::Increase),
             "Decrease" | "decrease" | "-" => Ok(ResizeDirection::Decrease),
-            _ => Err(format!("Failed to parse ResizeDirection. Unknown ResizeDirection: {}", s)),
+            _ => Err(format!(
+                "Failed to parse ResizeDirection. Unknown ResizeDirection: {}",
+                s
+            )),
         }
     }
 }
@@ -71,7 +77,10 @@ impl FromStr for SearchDirection {
         match s {
             "Down" | "down" => Ok(SearchDirection::Down),
             "Up" | "up" => Ok(SearchDirection::Up),
-            _ => Err(format!("Failed to parse SearchDirection. Unknown SearchDirection: {}", s)),
+            _ => Err(format!(
+                "Failed to parse SearchDirection. Unknown SearchDirection: {}",
+                s
+            )),
         }
     }
 }
@@ -87,16 +96,22 @@ impl FromStr for SearchOption {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "CaseSensitivity" | "casesensitivity" | "Casesensitivity" => Ok(SearchOption::CaseSensitivity),
+            "CaseSensitivity" | "casesensitivity" | "Casesensitivity" => {
+                Ok(SearchOption::CaseSensitivity)
+            },
             "WholeWord" | "wholeword" | "Wholeword" => Ok(SearchOption::WholeWord),
             "Wrap" | "wrap" => Ok(SearchOption::Wrap),
-            _ => Err(format!("Failed to parse SearchOption. Unknown SearchOption: {}", s)),
+            _ => Err(format!(
+                "Failed to parse SearchOption. Unknown SearchOption: {}",
+                s
+            )),
         }
     }
 }
 
 fn split_escaped_whitespace(s: &str) -> Vec<String> {
-    s.split_ascii_whitespace().map(|s| String::from(s))
+    s.split_ascii_whitespace()
+        .map(|s| String::from(s))
         .fold(vec![], |mut acc, part| {
             if let Some(previous_part) = acc.last_mut() {
                 if previous_part.ends_with('\\') {
@@ -255,7 +270,9 @@ impl Action {
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(Some(direction))]),
-            CliAction::DumpScreen { path } => Ok(vec![Action::DumpScreen(path.as_os_str().to_string_lossy().into())]),
+            CliAction::DumpScreen { path } => Ok(vec![Action::DumpScreen(
+                path.as_os_str().to_string_lossy().into(),
+            )]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),
@@ -267,30 +284,54 @@ impl Action {
             CliAction::ToggleFullscreen => Ok(vec![Action::ToggleFocusFullscreen]),
             CliAction::TogglePaneFrames => Ok(vec![Action::TogglePaneFrames]),
             CliAction::ToggleActiveSyncTab => Ok(vec![Action::ToggleActiveSyncTab]),
-            CliAction::NewPane { direction, command, cwd, args, floating } => {
-                match command {
-                    Some(command) => {
-                        let (command, args) = split_command_and_args(command, args);
-                        let run_command_action = RunCommandAction { command, args, cwd, direction };
-                        match floating {
-                            Some(true) => Ok(vec![Action::NewFloatingPane(Some(run_command_action))]),
-                            _ => Ok(vec![Action::NewTiledPane(direction, Some(run_command_action))]),
-                        }
-                    },
-                    None => {
-                        match floating {
-                            Some(true) => Ok(vec![Action::NewFloatingPane(None)]),
-                            _ => Ok(vec![Action::NewTiledPane(direction, None)]),
-                        }
+            CliAction::NewPane {
+                direction,
+                command,
+                cwd,
+                args,
+                floating,
+            } => match command {
+                Some(command) => {
+                    let (command, args) = split_command_and_args(command, args);
+                    let run_command_action = RunCommandAction {
+                        command,
+                        args,
+                        cwd,
+                        direction,
+                    };
+                    match floating {
+                        Some(true) => Ok(vec![Action::NewFloatingPane(Some(run_command_action))]),
+                        _ => Ok(vec![Action::NewTiledPane(
+                            direction,
+                            Some(run_command_action),
+                        )]),
                     }
-                }
-            }
-            CliAction::Edit { direction, file, line_number, floating } => Ok(vec![Action::EditFile(file, line_number, direction, floating)]),
-            CliAction::SwitchMode { input_mode } => Ok(vec![Action::SwitchModeForAllClients(input_mode)]),
+                },
+                None => match floating {
+                    Some(true) => Ok(vec![Action::NewFloatingPane(None)]),
+                    _ => Ok(vec![Action::NewTiledPane(direction, None)]),
+                },
+            },
+            CliAction::Edit {
+                direction,
+                file,
+                line_number,
+                floating,
+            } => Ok(vec![Action::EditFile(
+                file,
+                line_number,
+                direction,
+                floating,
+            )]),
+            CliAction::SwitchMode { input_mode } => {
+                Ok(vec![Action::SwitchModeForAllClients(input_mode)])
+            },
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
-            CliAction::RenamePane { name }=> Ok(vec![Action::PaneNameInput(name.as_bytes().to_vec())]),
+            CliAction::RenamePane { name } => {
+                Ok(vec![Action::PaneNameInput(name.as_bytes().to_vec())])
+            },
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
@@ -298,15 +339,19 @@ impl Action {
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
             CliAction::RenameTab { name } => Ok(vec![
                 Action::TabNameInput(vec![0]),
-                Action::TabNameInput(name.as_bytes().to_vec())
+                Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::SearchInput { input } => Ok(vec![Action::SearchInput(input.as_bytes().to_vec())]),
+            CliAction::SearchInput { input } => {
+                Ok(vec![Action::SearchInput(input.as_bytes().to_vec())])
+            },
             CliAction::SearchNext => Ok(vec![Action::Search(SearchDirection::Down)]),
             CliAction::SearchPrevious => Ok(vec![Action::Search(SearchDirection::Up)]),
             CliAction::NewTab { name, layout } => {
                 if let Some(layout_path) = layout {
-                    let (path_to_raw_layout, raw_layout) = Layout::stringified_from_path_or_default(Some(&layout_path), None).map_err(|e| format!("Failed to load layout: {}", e))?;
+                    let (path_to_raw_layout, raw_layout) =
+                        Layout::stringified_from_path_or_default(Some(&layout_path), None)
+                            .map_err(|e| format!("Failed to load layout: {}", e))?;
                     // let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| format!("Failed to parse layout: {}", e))?;
                     let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| {
                         let stringified_error = match e {
@@ -349,7 +394,7 @@ impl Action {
                 } else {
                     Ok(vec![Action::NewTab(None, name)])
                 }
-            }
+            },
         }
     }
 }

@@ -224,7 +224,7 @@ impl TiledPanes {
             },
             SplitDirection::Vertical => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).rows)
-            }
+            },
         };
         if let Err(e) = &result {
             log::error!("{:?} relayout of the tab failed: {}", direction, e);
@@ -298,7 +298,9 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if let Some((top_winsize, bottom_winsize)) = split(SplitDirection::Horizontal, &full_pane_size) {
+        if let Some((top_winsize, bottom_winsize)) =
+            split(SplitDirection::Horizontal, &full_pane_size)
+        {
             active_pane.set_geom(top_winsize);
             new_pane.set_geom(bottom_winsize);
             self.panes.insert(pid, new_pane);
@@ -314,7 +316,9 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if let Some((left_winsize, right_winsize)) = split(SplitDirection::Vertical, &full_pane_size) {
+        if let Some((left_winsize, right_winsize)) =
+            split(SplitDirection::Vertical, &full_pane_size)
+        {
             active_pane.set_geom(left_winsize);
             new_pane.set_geom(right_winsize);
             self.panes.insert(pid, new_pane);
@@ -466,7 +470,7 @@ impl TiledPanes {
                 },
                 Err(e) => {
                     log::error!("Failed to horizontally resize the tab: {:?}", e);
-                }
+                },
             };
             if pane_grid.layout(SplitDirection::Vertical, rows).is_ok() {
                 let row_difference = rows as isize - display_area.rows as isize;

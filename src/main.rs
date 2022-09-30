@@ -6,7 +6,7 @@ mod tests;
 
 use zellij_utils::{
     clap::Parser,
-    cli::{CliArgs, CliAction, Command, Sessions},
+    cli::{CliAction, CliArgs, Command, Sessions},
     logging::*,
 };
 
@@ -19,7 +19,14 @@ fn main() {
             commands::send_action_to_session(cli_action, opts.session);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::Command{ command, direction, cwd, args, floating })) = opts.command {
+        if let Some(Command::Sessions(Sessions::Command {
+            command,
+            direction,
+            cwd,
+            args,
+            floating,
+        })) = opts.command
+        {
             let command_cli_action = CliAction::NewPane {
                 command,
                 direction,
@@ -30,16 +37,32 @@ fn main() {
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::ConvertConfig { old_config_file, output })) = opts.command {
-            commands::convert_old_config_file(old_config_file, output);
+        if let Some(Command::Sessions(Sessions::Edit {
+            file,
+            direction,
+            line_number,
+            floating,
+        })) = opts.command
+        {
+            let command_cli_action = CliAction::Edit {
+                file,
+                direction,
+                line_number,
+                floating,
+            };
+            commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::ConvertLayout { old_layout_file, output })) = opts.command {
-            commands::convert_old_layout_file(old_layout_file, output);
+        if let Some(Command::Sessions(Sessions::ConvertConfig { old_config_file })) = opts.command {
+            commands::convert_old_config_file(old_config_file);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::ConvertTheme { old_theme_file, output })) = opts.command {
-            commands::convert_old_theme_file(old_theme_file, output);
+        if let Some(Command::Sessions(Sessions::ConvertLayout { old_layout_file })) = opts.command {
+            commands::convert_old_layout_file(old_layout_file);
+            std::process::exit(0);
+        }
+        if let Some(Command::Sessions(Sessions::ConvertTheme { old_theme_file })) = opts.command {
+            commands::convert_old_theme_file(old_theme_file);
             std::process::exit(0);
         }
     }

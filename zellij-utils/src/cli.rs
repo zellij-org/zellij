@@ -1,10 +1,10 @@
+use crate::data::InputMode;
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
+    input::actions::{Direction, ResizeDirection},
     input::options::CliOptions,
-    input::actions::{Action, ResizeDirection, Direction},
 };
-use crate::data::InputMode;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -137,17 +137,25 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_missing_value("true"))]
         floating: Option<bool>,
     },
+    /// Edit file with default $EDITOR / $VISUAL in a specific session
+    #[clap(visible_alias = "e")]
+    Edit {
+        file: PathBuf,
+        #[clap(short, long, value_parser)]
+        line_number: Option<usize>,
+        #[clap(short, long, value_parser, conflicts_with("floating"))]
+        direction: Option<Direction>,
+        #[clap(short, long, value_parser, default_missing_value("true"))]
+        floating: Option<bool>,
+    },
     ConvertConfig {
         old_config_file: PathBuf,
-        output: Option<PathBuf>,
     },
     ConvertLayout {
         old_layout_file: PathBuf,
-        output: Option<PathBuf>,
     },
     ConvertTheme {
         old_theme_file: PathBuf,
-        output: Option<PathBuf>,
     },
 }
 
@@ -256,6 +264,6 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         layout: Option<PathBuf>,
         #[clap(short, long, value_parser)]
-        name: Option<String>
+        name: Option<String>,
     },
 }

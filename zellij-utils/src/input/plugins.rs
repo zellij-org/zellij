@@ -11,8 +11,8 @@ use url::Url;
 use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
 
-use std::fmt;
 use std::collections::BTreeMap;
+use std::fmt;
 
 /// Used in the config struct for plugin metadata
 #[derive(Clone, PartialEq, Deserialize, Serialize)]

@@ -1,21 +1,15 @@
 //! The `[cli_client]` is used to attach to a running server session
 //! and dispatch actions, that are specified through the command line.
-use std::{fs, path::PathBuf};
 use std::process;
+use std::{fs, path::PathBuf};
 
-use crate::{
-    os_input_output::ClientOsApi,
-};
+use crate::os_input_output::ClientOsApi;
 use zellij_utils::{
     input::actions::Action,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
 
-pub fn start_cli_client(
-    os_input: Box<dyn ClientOsApi>,
-    session_name: &str,
-    actions: Vec<Action>,
-) {
+pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, actions: Vec<Action>) {
     let zellij_ipc_pipe: PathBuf = {
         let mut sock_dir = zellij_utils::consts::ZELLIJ_SOCK_DIR.clone();
         fs::create_dir_all(&sock_dir).unwrap();
@@ -34,7 +28,7 @@ pub fn start_cli_client(
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                 process::exit(0);
             },
-            _ => {}
+            _ => {},
         }
     }
 }

@@ -178,11 +178,9 @@ impl<'a> PaneResizer<'a> {
             .filter(|p| {
                 let s = self.get_span(!direction, p.as_ref());
                 let span_bounds = (s.pos, s.pos + s.size.as_usize());
-                bwn(span_bounds.0, boundary) || (
-                    bwn(boundary.0, span_bounds) && (
-                        bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1
-                    )
-                )
+                bwn(span_bounds.0, boundary)
+                    || (bwn(boundary.0, span_bounds)
+                        && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
             })
             .map(|p| self.get_span(direction, p.as_ref()))
             .collect();

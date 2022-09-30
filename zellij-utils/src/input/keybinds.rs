@@ -26,16 +26,21 @@ impl fmt::Debug for Keybinds {
 
 impl Keybinds {
     pub fn get_actions_for_key_in_mode(&self, mode: &InputMode, key: &Key) -> Option<&Vec<Action>> {
-        self.0.get(mode)
+        self.0
+            .get(mode)
             .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key))
     }
-    pub fn get_actions_for_key_in_mode_or_default_action(&self, mode: &InputMode, key: &Key, raw_bytes: Vec<u8>) -> Vec<Action> {
-        self.0.get(mode)
+    pub fn get_actions_for_key_in_mode_or_default_action(
+        &self,
+        mode: &InputMode,
+        key: &Key,
+        raw_bytes: Vec<u8>,
+    ) -> Vec<Action> {
+        self.0
+            .get(mode)
             .and_then(|normal_mode_keybindings| normal_mode_keybindings.get(key))
             .cloned()
-            .unwrap_or_else(|| {
-                vec![self.default_action_for_mode(mode, raw_bytes)]
-            })
+            .unwrap_or_else(|| vec![self.default_action_for_mode(mode, raw_bytes)])
     }
     pub fn get_input_mode_mut(&mut self, input_mode: &InputMode) -> &mut HashMap<Key, Vec<Action>> {
         self.0.entry(*input_mode).or_insert_with(HashMap::new)

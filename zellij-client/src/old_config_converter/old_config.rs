@@ -5,10 +5,10 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use url::Url;
-use serde::{Deserialize, Deserializer, Serialize};
 use serde::de::{Error, Visitor};
-use std::collections::{HashMap, BTreeMap};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use url::Url;
 
 const ON_FORCE_CLOSE_DESCRIPTION: &'static str = "
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
@@ -125,7 +125,6 @@ const LAYOUT_DIR_DESCRIPTION: &'static str = "
 //
 ";
 
-
 const THEME_DIR_DESCRIPTION: &'static str = "
 // The folder in which Zellij will look for themes
 //
@@ -156,37 +155,116 @@ fn options_yaml_to_options_kdl(options_yaml: &OldOptions, no_comments: bool) -> 
                     if !no_comments {
                         options_kdl.push_str(&format!($absent_pattern));
                     }
-                }
+                },
             };
             if !no_comments || options_yaml.$attribute_name.is_some() {
                 options_kdl.push('\n');
             }
-        }
+        };
     }
 
-    push_option!(on_force_close, ON_FORCE_CLOSE_DESCRIPTION, "on_force_close \"{}\"", "// on_force_close \"quit\"");
-    push_option!(simplified_ui, SIMPLIFIED_UI_DESCRIPTION, "simplified_ui {}", "// simplified_ui true");
-    push_option!(default_shell, DEFAULT_SHELL_DESCRIPTION, "default_shell {:?}", "// default_shell \"fish\"");
-    push_option!(pane_frames, PANE_FRAMES_DESCRIPTION, "pane_frames {}", "// pane_frames true");
-    push_option!(theme, DEFAULT_THEME_DESCRIPTION, "theme {:?} ", "// theme \"default\"");
-    push_option!(default_layout, DEFAULT_LAYOUT_DESCRIPTION, "default_layout {:?}", "// default_layout \"compact\"");
-    push_option!(default_mode, DEFAULT_MODE_DESCRIPTION, "default_mode \"{}\"", "// default_mode \"locked\"");
-    push_option!(mouse_mode, MOUSE_MODE_DESCRIPTION, "mouse_mode {}", "// mouse_mode false");
-    push_option!(scroll_buffer_size, SCROLL_BUFFER_SIZE_DESCRIPTION, "scroll_buffer_size {}", "// scroll_buffer_size 10000");
+    push_option!(
+        on_force_close,
+        ON_FORCE_CLOSE_DESCRIPTION,
+        "on_force_close \"{}\"",
+        "// on_force_close \"quit\""
+    );
+    push_option!(
+        simplified_ui,
+        SIMPLIFIED_UI_DESCRIPTION,
+        "simplified_ui {}",
+        "// simplified_ui true"
+    );
+    push_option!(
+        default_shell,
+        DEFAULT_SHELL_DESCRIPTION,
+        "default_shell {:?}",
+        "// default_shell \"fish\""
+    );
+    push_option!(
+        pane_frames,
+        PANE_FRAMES_DESCRIPTION,
+        "pane_frames {}",
+        "// pane_frames true"
+    );
+    push_option!(
+        theme,
+        DEFAULT_THEME_DESCRIPTION,
+        "theme {:?} ",
+        "// theme \"default\""
+    );
+    push_option!(
+        default_layout,
+        DEFAULT_LAYOUT_DESCRIPTION,
+        "default_layout {:?}",
+        "// default_layout \"compact\""
+    );
+    push_option!(
+        default_mode,
+        DEFAULT_MODE_DESCRIPTION,
+        "default_mode \"{}\"",
+        "// default_mode \"locked\""
+    );
+    push_option!(
+        mouse_mode,
+        MOUSE_MODE_DESCRIPTION,
+        "mouse_mode {}",
+        "// mouse_mode false"
+    );
+    push_option!(
+        scroll_buffer_size,
+        SCROLL_BUFFER_SIZE_DESCRIPTION,
+        "scroll_buffer_size {}",
+        "// scroll_buffer_size 10000"
+    );
     push_option!(copy_command, COPY_COMMAND_DESCRIPTION, "copy_command {:?}");
-    push_option!(copy_clipboard, COPY_CLIPBOARD_DESCRIPTION, "copy_clipboard \"{}\"", "// copy_clipboard \"primary\"");
-    push_option!(copy_on_select, COPY_ON_SELECT_DESCRIPTION, "copy_on_select {}", "// copy_on_select false");
-    push_option!(scrollback_editor, SCROLLBACK_EDITOR_DESCRIPTION, "scrollback_editor {:?}", "// scrollback_editor \"/usr/bin/vim\"");
-    push_option!(mirror_session, MIRROR_SESSION_DESCRIPTION, "mirror_session {}", "// mirror_session true");
-    push_option!(layout_dir, LAYOUT_DIR_DESCRIPTION, "layout_dir {:?}", "// layout_dir /path/to/my/layout_dir");
-    push_option!(theme_dir, THEME_DIR_DESCRIPTION, "theme_dir {:?}", "// theme_dir \"/path/to/my/theme_dir\"");
+    push_option!(
+        copy_clipboard,
+        COPY_CLIPBOARD_DESCRIPTION,
+        "copy_clipboard \"{}\"",
+        "// copy_clipboard \"primary\""
+    );
+    push_option!(
+        copy_on_select,
+        COPY_ON_SELECT_DESCRIPTION,
+        "copy_on_select {}",
+        "// copy_on_select false"
+    );
+    push_option!(
+        scrollback_editor,
+        SCROLLBACK_EDITOR_DESCRIPTION,
+        "scrollback_editor {:?}",
+        "// scrollback_editor \"/usr/bin/vim\""
+    );
+    push_option!(
+        mirror_session,
+        MIRROR_SESSION_DESCRIPTION,
+        "mirror_session {}",
+        "// mirror_session true"
+    );
+    push_option!(
+        layout_dir,
+        LAYOUT_DIR_DESCRIPTION,
+        "layout_dir {:?}",
+        "// layout_dir /path/to/my/layout_dir"
+    );
+    push_option!(
+        theme_dir,
+        THEME_DIR_DESCRIPTION,
+        "theme_dir {:?}",
+        "// theme_dir \"/path/to/my/theme_dir\""
+    );
 
     options_kdl
 }
 
 fn env_yaml_to_env_kdl(env_yaml: &OldEnvironmentVariablesFromYaml) -> String {
     let mut env_kdl = String::new();
-    let mut env_vars: Vec<(String, String)> = env_yaml.env.iter().map(|(name, val)| (name.clone(), val.clone())).collect();
+    let mut env_vars: Vec<(String, String)> = env_yaml
+        .env
+        .iter()
+        .map(|(name, val)| (name.clone(), val.clone()))
+        .collect();
     env_vars.sort_unstable();
     env_kdl.push_str("env {\n");
     for (name, val) in env_vars {
@@ -204,9 +282,15 @@ fn plugins_yaml_to_plugins_kdl(plugins_yaml_to_plugins_kdl: &OldPluginsConfigFro
     }
     for plugin_config in &plugins_yaml_to_plugins_kdl.0 {
         if plugin_config._allow_exec_host_cmd {
-            plugins_kdl.push_str(&format!("    {} {{ path {:?}; _allow_exec_host_cmd true; }}\n", plugin_config.tag.0, plugin_config.path));
+            plugins_kdl.push_str(&format!(
+                "    {} {{ path {:?}; _allow_exec_host_cmd true; }}\n",
+                plugin_config.tag.0, plugin_config.path
+            ));
         } else {
-            plugins_kdl.push_str(&format!("    {} {{ path {:?}; }}\n", plugin_config.tag.0, plugin_config.path));
+            plugins_kdl.push_str(&format!(
+                "    {} {{ path {:?}; }}\n",
+                plugin_config.tag.0, plugin_config.path
+            ));
         }
     }
     if !&plugins_yaml_to_plugins_kdl.0.is_empty() {
@@ -236,28 +320,37 @@ fn ui_config_yaml_to_ui_config_kdl(ui_config_yaml: &OldUiConfigFromYaml) -> Stri
     kdl_ui_config
 }
 
-fn theme_config_yaml_to_theme_config_kdl(theme_config_yaml: &OldThemesFromYamlIntermediate) -> String {
+fn theme_config_yaml_to_theme_config_kdl(
+    theme_config_yaml: &OldThemesFromYamlIntermediate,
+) -> String {
     macro_rules! theme_color {
         ($theme:ident, $color:ident, $color_name:expr, $kdl_theme_config:expr) => {
             match $theme.palette.$color {
                 OldPaletteColorFromYaml::Rgb((r, g, b)) => {
-                    $kdl_theme_config.push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
-                }
+                    $kdl_theme_config
+                        .push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
+                },
                 OldPaletteColorFromYaml::EightBit(eight_bit_color) => {
-                    $kdl_theme_config.push_str(&format!("        {} {}\n", $color_name, eight_bit_color));
-                }
+                    $kdl_theme_config
+                        .push_str(&format!("        {} {}\n", $color_name, eight_bit_color));
+                },
                 OldPaletteColorFromYaml::Hex(OldHexColor(r, g, b)) => {
-                    $kdl_theme_config.push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
-                }
+                    $kdl_theme_config
+                        .push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
+                },
             }
-        }
+        };
     }
 
     let mut kdl_theme_config = String::new();
     if !theme_config_yaml.0.is_empty() {
         kdl_theme_config.push_str("themes {\n")
     }
-    let mut themes: Vec<(String, OldTheme)> = theme_config_yaml.0.iter().map(|(theme_name, theme)| (theme_name.clone(), theme.clone())).collect();
+    let mut themes: Vec<(String, OldTheme)> = theme_config_yaml
+        .0
+        .iter()
+        .map(|(theme_name, theme)| (theme_name.clone(), theme.clone()))
+        .collect();
     themes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     for (theme_name, theme) in themes {
         kdl_theme_config.push_str(&format!("    {} {{\n", theme_name));
@@ -304,16 +397,20 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
     match &keybinds_yaml.unbind {
         OldUnbind::Keys(keys_to_unbind) => {
             kdl_keybinds.push_str("keybinds {\n");
-            let key_string: String = keys_to_unbind.iter().map(|k| format!("\"{}\"", k)).collect::<Vec<String>>().join(" ");
+            let key_string: String = keys_to_unbind
+                .iter()
+                .map(|k| format!("\"{}\"", k))
+                .collect::<Vec<String>>()
+                .join(" ");
             kdl_keybinds.push_str(&format!("    unbind {}\n", key_string));
-        }
+        },
         OldUnbind::All(should_unbind_all_defaults) => {
             if *should_unbind_all_defaults {
                 kdl_keybinds.push_str("keybinds clear-defaults=true {\n");
             } else {
                 kdl_keybinds.push_str("keybinds {\n");
             }
-        }
+        },
     }
 
     for mode in modes {
@@ -325,23 +422,36 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                     OldKeyActionUnbind::KeyAction(key_action) => {
                         let keys = &key_action.key;
                         let actions = &key_action.action;
-                        let key_string: String = keys.iter().map(|k| format!("\"{}\"", k)).collect::<Vec<String>>().join(" ");
-                        let actions_string: String = actions.iter().map(|a| format!("{};", a)).collect::<Vec<String>>().join(" ");
-                        kdl_mode_keybinds.push_str(&format!("        bind {} {{ {} }}\n", key_string, actions_string));
-                    }
-                    OldKeyActionUnbind::Unbind(unbind) => {
-                        match &unbind.unbind {
-                            OldUnbind::Keys(keys_to_unbind) => {
-                                let key_string: String = keys_to_unbind.iter().map(|k| format!("\"{}\"", k)).collect::<Vec<String>>().join(" ");
-                                kdl_mode_keybinds.push_str(&format!("        unbind {}\n", key_string));
-                            },
-                            OldUnbind::All(unbind_all) => {
-                                if *unbind_all {
-                                    should_clear_mode_defaults = true;
-                                }
+                        let key_string: String = keys
+                            .iter()
+                            .map(|k| format!("\"{}\"", k))
+                            .collect::<Vec<String>>()
+                            .join(" ");
+                        let actions_string: String = actions
+                            .iter()
+                            .map(|a| format!("{};", a))
+                            .collect::<Vec<String>>()
+                            .join(" ");
+                        kdl_mode_keybinds.push_str(&format!(
+                            "        bind {} {{ {} }}\n",
+                            key_string, actions_string
+                        ));
+                    },
+                    OldKeyActionUnbind::Unbind(unbind) => match &unbind.unbind {
+                        OldUnbind::Keys(keys_to_unbind) => {
+                            let key_string: String = keys_to_unbind
+                                .iter()
+                                .map(|k| format!("\"{}\"", k))
+                                .collect::<Vec<String>>()
+                                .join(" ");
+                            kdl_mode_keybinds.push_str(&format!("        unbind {}\n", key_string));
+                        },
+                        OldUnbind::All(unbind_all) => {
+                            if *unbind_all {
+                                should_clear_mode_defaults = true;
                             }
-                        }
-                    }
+                        },
+                    },
                 }
             }
             if should_clear_mode_defaults {
@@ -357,36 +467,32 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
     kdl_keybinds
 }
 
-pub fn config_yaml_to_config_kdl(raw_yaml_config: &str, no_comments: bool) -> Result<String, String> { // returns the raw kdl config
-    let config_from_yaml: OldConfigFromYaml = serde_yaml::from_str(raw_yaml_config).map_err(|e| format!("Failed to parse yaml: {:?}", e))?;
+pub fn config_yaml_to_config_kdl(
+    raw_yaml_config: &str,
+    no_comments: bool,
+) -> Result<String, String> {
+    // returns the raw kdl config
+    let config_from_yaml: OldConfigFromYaml = serde_yaml::from_str(raw_yaml_config)
+        .map_err(|e| format!("Failed to parse yaml: {:?}", e))?;
     let mut kdl_config = String::new();
     if let Some(old_config_keybinds) = config_from_yaml.keybinds.as_ref() {
-        kdl_config.push_str(
-            &keybinds_yaml_to_keybinds_kdl(old_config_keybinds)
-        );
+        kdl_config.push_str(&keybinds_yaml_to_keybinds_kdl(old_config_keybinds));
     }
     if let Some(old_config_options) = config_from_yaml.options.as_ref() {
-        kdl_config.push_str(
-            &options_yaml_to_options_kdl(old_config_options, no_comments)
-        );
+        kdl_config.push_str(&options_yaml_to_options_kdl(
+            old_config_options,
+            no_comments,
+        ));
     }
     if let Some(old_config_env_variables) = config_from_yaml.env.as_ref() {
-        kdl_config.push_str(
-            &env_yaml_to_env_kdl(old_config_env_variables)
-        );
+        kdl_config.push_str(&env_yaml_to_env_kdl(old_config_env_variables));
     }
-    kdl_config.push_str(
-        &plugins_yaml_to_plugins_kdl(&config_from_yaml.plugins)
-    );
+    kdl_config.push_str(&plugins_yaml_to_plugins_kdl(&config_from_yaml.plugins));
     if let Some(old_ui_config) = config_from_yaml.ui.as_ref() {
-        kdl_config.push_str(
-            &ui_config_yaml_to_ui_config_kdl(old_ui_config)
-        );
+        kdl_config.push_str(&ui_config_yaml_to_ui_config_kdl(old_ui_config));
     }
     if let Some(old_themes_config) = config_from_yaml.themes.as_ref() {
-        kdl_config.push_str(
-            &theme_config_yaml_to_theme_config_kdl(old_themes_config)
-        );
+        kdl_config.push_str(&theme_config_yaml_to_theme_config_kdl(old_themes_config));
     }
     Ok(kdl_config)
 }
@@ -711,7 +817,6 @@ pub struct OldOptions {
     pub scrollback_editor: Option<PathBuf>,
 }
 
-
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
 #[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize)]
 pub enum OldInputMode {
@@ -823,20 +928,18 @@ impl std::fmt::Display for OldKey {
                 '\n' => write!(f, "Enter"),
                 '\t' => write!(f, "Tab"),
                 '\"' => write!(f, "\\\""), // make sure it is escaped because otherwise it will be
-                                           // seen as a KDL string starter/terminator
+                // seen as a KDL string starter/terminator
                 ' ' => write!(f, "Space"),
                 _ => write!(f, "{}", c),
             },
             Self::Alt(char_or_arrow) => match char_or_arrow {
                 OldCharOrArrow::Char(c) => write!(f, "Alt {}", c),
-                OldCharOrArrow::Direction(direction) => {
-                    match direction {
-                        OldDirection::Left => write!(f, "Alt Left"),
-                        OldDirection::Right => write!(f, "Alt Right"),
-                        OldDirection::Up => write!(f, "Alt Up"),
-                        OldDirection::Down => write!(f, "Alt Down"),
-                    }
-                }
+                OldCharOrArrow::Direction(direction) => match direction {
+                    OldDirection::Left => write!(f, "Alt Left"),
+                    OldDirection::Right => write!(f, "Alt Right"),
+                    OldDirection::Up => write!(f, "Alt Up"),
+                    OldDirection::Down => write!(f, "Alt Down"),
+                },
             },
             Self::Ctrl(c) => write!(f, "Ctrl {}", c),
             Self::BackTab => write!(f, "Tab"),
@@ -945,9 +1048,17 @@ impl std::fmt::Display for OldAction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
         match self {
             Self::Quit => write!(f, "Quit"),
-            Self::Write(bytes) => write!(f, "Write {}", bytes.iter().map(|c| format!("{}", *c)).collect::<Vec<String>>().join(" ")),
+            Self::Write(bytes) => write!(
+                f,
+                "Write {}",
+                bytes
+                    .iter()
+                    .map(|c| format!("{}", *c))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             Self::WriteChars(chars) => write!(f, "WriteChars \"{}\"", chars),
-            Self::SwitchToMode(input_mode) => write!(f, "SwitchToMode \"{}\"",  input_mode),
+            Self::SwitchToMode(input_mode) => write!(f, "SwitchToMode \"{}\"", input_mode),
             Self::Resize(resize_direction) => write!(f, "Resize \"{}\"", resize_direction),
             Self::FocusNextPane => write!(f, "FocusNextPane"),
             Self::FocusPreviousPane => write!(f, "FocusPreviousPane"),
@@ -977,7 +1088,15 @@ impl std::fmt::Display for OldAction {
             Self::TogglePaneEmbedOrFloating => write!(f, "TogglePaneEmbedOrFloating"),
             Self::ToggleFloatingPanes => write!(f, "ToggleFloatingPanes"),
             Self::CloseFocus => write!(f, "CloseFocus"),
-            Self::PaneNameInput(bytes) => write!(f, "PaneNameInput {}", bytes.iter().map(|c| format!("{}", *c)).collect::<Vec<String>>().join(" ")),
+            Self::PaneNameInput(bytes) => write!(
+                f,
+                "PaneNameInput {}",
+                bytes
+                    .iter()
+                    .map(|c| format!("{}", *c))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             Self::UndoRenamePane => write!(f, "UndoRenamePane"),
             Self::NewTab(_) => write!(f, "NewTab"),
             Self::NoOp => write!(f, "NoOp"),
@@ -987,35 +1106,55 @@ impl std::fmt::Display for OldAction {
             Self::GoToTab(index) => write!(f, "GoToTab {}", index),
             Self::ToggleTab => write!(f, "ToggleTab"),
             // Self::TabNameInput(bytes) => write!(f, "TabNameInput {}", format!("{}", bytes.iter().map(|c| format!("{}", *c)).collect::<Vec<String>>().join(" "))),
-            Self::TabNameInput(bytes) => write!(f, "TabNameInput {}", bytes.iter().map(|c| format!("{}", *c)).collect::<Vec<String>>().join(" ")),
+            Self::TabNameInput(bytes) => write!(
+                f,
+                "TabNameInput {}",
+                bytes
+                    .iter()
+                    .map(|c| format!("{}", *c))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             Self::UndoRenameTab => write!(f, "UndoRenameTab"),
-            Self::Run(run_command_action) =>  {
+            Self::Run(run_command_action) => {
                 let mut run_block_serialized = format!("Run {:?}", run_command_action.command);
                 for arg in &run_command_action.args {
                     run_block_serialized.push_str(&format!(" \"{}\"", arg));
                 }
                 match (&run_command_action.cwd, run_command_action.direction) {
                     (Some(cwd), Some(direction)) => {
-                        run_block_serialized.push_str(&format!("{{ cwd {:?}; direction \"{}\"; }}", cwd, direction));
-                    }
+                        run_block_serialized.push_str(&format!(
+                            "{{ cwd {:?}; direction \"{}\"; }}",
+                            cwd, direction
+                        ));
+                    },
                     (None, Some(direction)) => {
-                        run_block_serialized.push_str(&format!("{{ direction \"{}\"; }}", direction));
-                    }
+                        run_block_serialized
+                            .push_str(&format!("{{ direction \"{}\"; }}", direction));
+                    },
                     (Some(cwd), None) => {
                         run_block_serialized.push_str(&format!("{{ cwd {:?}; }}", cwd));
-                    }
-                    (None, None) => {}
+                    },
+                    (None, None) => {},
                 }
                 write!(f, "{}", run_block_serialized)
-            }
+            },
             Self::Detach => write!(f, "Detach"),
             Self::Copy => write!(f, "Copy"),
             Self::Confirm => write!(f, "Confirm"),
             Self::Deny => write!(f, "Deny"),
-            Self::SearchInput(bytes) => write!(f, "SearchInput {}", bytes.iter().map(|c| format!("{}", *c)).collect::<Vec<String>>().join(" ")),
+            Self::SearchInput(bytes) => write!(
+                f,
+                "SearchInput {}",
+                bytes
+                    .iter()
+                    .map(|c| format!("{}", *c))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
             Self::Search(direction) => write!(f, "Search \"{}\"", direction),
             Self::SearchToggleOption(option) => write!(f, "SearchToggleOption \"{}\"", option),
-            _ => Err(std::fmt::Error)
+            _ => Err(std::fmt::Error),
         }
     }
 }

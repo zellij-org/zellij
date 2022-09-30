@@ -2,7 +2,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, BTreeMap},
+    collections::{BTreeMap, HashMap},
     env::{set_var, var},
 };
 
@@ -59,9 +59,7 @@ impl EnvironmentVariables {
         env
     }
     pub fn from_data(data: HashMap<String, String>) -> Self {
-        EnvironmentVariables {
-            env: data
-        }
+        EnvironmentVariables { env: data }
     }
     /// Set all the ENVIRONMENT VARIABLES, that are configured
     /// in the configuration and layout files

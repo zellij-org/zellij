@@ -79,7 +79,9 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
             &[Action::Resize(ResizeDirection::Decrease)],
         ],
     );
-    if resize_keys.contains(&Key::Alt(CharOrArrow::Char('='))) && resize_keys.contains(&Key::Alt(CharOrArrow::Char('+'))) {
+    if resize_keys.contains(&Key::Alt(CharOrArrow::Char('=')))
+        && resize_keys.contains(&Key::Alt(CharOrArrow::Char('+')))
+    {
         resize_keys.retain(|k| k != &Key::Alt(CharOrArrow::Char('=')));
     }
     let resize = if resize_keys.is_empty() {

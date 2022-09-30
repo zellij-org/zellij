@@ -171,9 +171,7 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
-        let session_name = other
-            .session_name
-            .or_else(|| self.session_name.clone());
+        let session_name = other.session_name.or_else(|| self.session_name.clone());
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());
@@ -234,9 +232,7 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
-        let session_name = other
-            .session_name
-            .or_else(|| self.session_name.clone());
+        let session_name = other.session_name.or_else(|| self.session_name.clone());
         let attach_to_session = other
             .attach_to_session
             .or_else(|| self.attach_to_session.clone());

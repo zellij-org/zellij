@@ -1568,7 +1568,12 @@ impl<'a> TiledPaneGrid<'a> {
 
         None
     }
-    fn grow_panes(&mut self, panes: &[PaneId], direction: SplitDirection, (width, height): (f64, f64)) {
+    fn grow_panes(
+        &mut self,
+        panes: &[PaneId],
+        direction: SplitDirection,
+        (width, height): (f64, f64),
+    ) {
         match direction {
             SplitDirection::Horizontal => {
                 for pane_id in panes {

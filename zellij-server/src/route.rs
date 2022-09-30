@@ -255,7 +255,6 @@ pub(crate) fn route_action(
                         .senders
                         .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
                         .unwrap();
-
                 },
                 Some(false) => {
                     session
@@ -263,19 +262,28 @@ pub(crate) fn route_action(
                         .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
                         .unwrap();
                 },
-                None => {}
+                None => {},
             };
 
             let open_file = TerminalAction::OpenFile(path_to_file, line_number);
             let pty_instr = match (split_direction, should_float.unwrap_or(false)) {
-                (Some(Direction::Left), false) => PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id),
-                (Some(Direction::Right), false) => PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id),
-                (Some(Direction::Up), false) => PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id),
+                (Some(Direction::Left), false) => {
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                },
+                (Some(Direction::Right), false) => {
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                },
+                (Some(Direction::Up), false) => {
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                },
                 (Some(Direction::Down), false) => {
                     PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
                 },
                 // No direction specified or should float - defer placement to screen
-                (None, _) | (_, true) => PtyInstruction::SpawnTerminal(Some(open_file), ClientOrTabIndex::ClientId(client_id)),
+                (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
+                    Some(open_file),
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
@@ -291,9 +299,11 @@ pub(crate) fn route_action(
                 .unwrap();
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(
-                    get_mode_info(input_mode, attrs, session.capabilities)
-                ))
+                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(get_mode_info(
+                    input_mode,
+                    attrs,
+                    session.capabilities,
+                )))
                 .unwrap();
         },
         Action::NewFloatingPane(run_command) => {
@@ -301,19 +311,25 @@ pub(crate) fn route_action(
                 .senders
                 .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
                 .unwrap();
-            let run_cmd = run_command.map(|cmd| TerminalAction::RunCommand(cmd.into())).or_else(|| {
-                session.default_shell.clone()
-            });
-            session.senders.send_to_pty(PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))).unwrap();
+            let run_cmd = run_command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| session.default_shell.clone());
+            session
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    ClientOrTabIndex::ClientId(client_id),
+                ))
+                .unwrap();
         },
         Action::NewTiledPane(direction, run_command) => {
             session
                 .senders
                 .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
                 .unwrap();
-            let run_cmd = run_command.map(|cmd| TerminalAction::RunCommand(cmd.into())).or_else(|| {
-                session.default_shell.clone()
-            });
+            let run_cmd = run_command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| session.default_shell.clone());
             let pty_instr = match direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
@@ -393,7 +409,9 @@ pub(crate) fn route_action(
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, tab_name, client_id))
+                .send_to_pty(PtyInstruction::NewTab(
+                    shell, tab_layout, tab_name, client_id,
+                ))
                 .unwrap();
         },
         Action::GoToNextTab => {
