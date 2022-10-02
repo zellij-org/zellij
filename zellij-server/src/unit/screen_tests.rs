@@ -19,9 +19,9 @@ use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
 use crate::pty_writer::PtyWriteInstruction;
+use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
-use std::env::set_var;
 
 use crate::{pty::PtyInstruction, wasm_vm::PluginInstruction};
 use zellij_utils::ipc::PixelDimensions;
