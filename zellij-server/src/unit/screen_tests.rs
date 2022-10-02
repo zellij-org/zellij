@@ -21,6 +21,7 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use crate::pty_writer::PtyWriteInstruction;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
+use std::env::set_var;
 
 use crate::{pty::PtyInstruction, wasm_vm::PluginInstruction};
 use zellij_utils::ipc::PixelDimensions;
@@ -205,7 +206,8 @@ fn create_new_screen(size: Size) -> Screen {
         ..Default::default()
     };
     let max_panes = None;
-    let mode_info = ModeInfo::default();
+    let mut mode_info = ModeInfo::default();
+    mode_info.session_name = Some("zellij-test".into());
     let draw_pane_frames = false;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
@@ -256,6 +258,7 @@ impl MockScreen {
         let screen_thread = std::thread::Builder::new()
             .name("screen_thread".to_string())
             .spawn(move || {
+                set_var("ZELLIJ_SESSION_NAME", "zellij-test");
                 screen_thread_main(
                     screen_bus,
                     None,

@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2190
+assertion_line: 2571
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -89,7 +89,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     arrow_fonts: false,
                 },
                 session_name: Some(
-                    "zellij",
+                    "zellij-test",
                 ),
             },
         ),
@@ -165,7 +165,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     arrow_fonts: false,
                 },
                 session_name: Some(
-                    "zellij",
+                    "zellij-test",
                 ),
             },
         ),
@@ -261,7 +261,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     arrow_fonts: false,
                 },
                 session_name: Some(
-                    "zellij",
+                    "zellij-test",
                 ),
             },
         ),
@@ -337,7 +337,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     arrow_fonts: false,
                 },
                 session_name: Some(
-                    "zellij",
+                    "zellij-test",
                 ),
             },
         ),
