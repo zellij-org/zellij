@@ -411,7 +411,8 @@ macro_rules! log_actions_in_thread {
 
 fn new_tab(screen: &mut Screen, pid: i32) {
     let client_id = 1;
-    screen.new_tab(PaneLayout::default(), vec![pid], client_id)
+    screen
+        .new_tab(PaneLayout::default(), vec![pid], client_id)
         .expect("TEST");
 }
 

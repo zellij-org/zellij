@@ -12,8 +12,8 @@ use crate::{
 use std::path::PathBuf;
 use zellij_utils::channels::Receiver;
 use zellij_utils::envs::set_session_name;
-use zellij_utils::input::layout::{Layout, PaneLayout};
 use zellij_utils::errors::ErrorContext;
+use zellij_utils::input::layout::{Layout, PaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;

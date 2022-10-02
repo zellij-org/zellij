@@ -603,9 +603,7 @@ impl Screen {
                 self.close_tab_at_index(active_tab_index)
                     .with_context(err_context)
             },
-            None => {
-                Ok(())
-            }
+            None => Ok(()),
         }
     }
 
@@ -744,7 +742,12 @@ impl Screen {
 
     /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
     /// and switching to it.
-    pub fn new_tab(&mut self, layout: PaneLayout, new_pids: Vec<RawFd>, client_id: ClientId) -> Result<()> {
+    pub fn new_tab(
+        &mut self,
+        layout: PaneLayout,
+        new_pids: Vec<RawFd>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let client_id = if self.get_active_tab(client_id).is_some() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
@@ -937,9 +940,7 @@ impl Screen {
                     Ok(())
                 }
             },
-            None => {
-                Ok(())
-            }
+            None => Ok(()),
         }
     }
     pub fn undo_active_rename_tab(&mut self, client_id: ClientId) -> Result<()> {
@@ -961,10 +962,7 @@ impl Screen {
                 }
                 Ok(())
             },
-            None => {
-                Ok(())
-
-            }
+            None => Ok(()),
         }
     }
 
@@ -1186,8 +1184,8 @@ pub(crate) fn screen_thread_main(
                         .toggle_floating_panes(client_id, default_shell)
                 );
                 screen.unblock_input();
-                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
-                screen.render();
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.render()?;
             },
             ScreenInstruction::ShowFloatingPanes(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1196,8 +1194,8 @@ pub(crate) fn screen_thread_main(
                     |tab: &mut Tab, _client_id: ClientId| tab.show_floating_panes()
                 );
                 screen.unblock_input();
-                screen.update_tabs(); // update tabs so that the ui indication will be send to the plugins
-                screen.render();
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.render()?;
             },
             ScreenInstruction::HideFloatingPanes(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -1553,7 +1551,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.undo_active_rename_pane(client_id)
                 );
-                screen.render();
+                screen.render()?;
                 screen.render()?;
             },
             ScreenInstruction::ToggleActiveTerminalFullscreen(client_id) => {
@@ -1637,7 +1635,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ChangeModeForAllClients(mode_info) => {
                 screen.change_mode_for_all_clients(mode_info);
-                screen.render();
+                screen.render()?;
             },
             ScreenInstruction::ToggleActiveSyncTab(client_id) => {
                 active_tab_and_connected_client_id!(
