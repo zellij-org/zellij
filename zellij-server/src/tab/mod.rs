@@ -1040,7 +1040,9 @@ impl Tab {
                 let active_terminal = self
                     .floating_panes
                     .get(&pane_id)
-                    .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
+                    .or_else(|| self.tiled_panes.get_pane(pane_id))
+                    .or_else(|| self.suppressed_panes.get(&pane_id))
+                    .unwrap();
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
 
                 self.senders

@@ -182,6 +182,25 @@ fn create_new_tab_with_cell_size(
 }
 
 #[test]
+fn write_to_suppressed_pane() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut tab = create_new_tab(size);
+    tab.vertical_split(PaneId::Terminal(2), 1);
+
+    // Suppress pane 2 and remove it from active panes
+    tab.suppress_active_pane(PaneId::Terminal(2), 1);
+    tab.tiled_panes.remove_pane(PaneId::Terminal(2));
+
+    // Make sure it's suppressed now
+    tab.suppressed_panes.get(&PaneId::Terminal(2)).unwrap();
+    // Write content to it
+    tab.write_to_pane_id(vec![34, 127, 31, 82, 17, 182], PaneId::Terminal(2));
+}
+
+#[test]
 fn split_panes_vertically() {
     let size = Size {
         cols: 121,
