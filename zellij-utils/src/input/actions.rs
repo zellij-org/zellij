@@ -324,12 +324,10 @@ impl Action {
             CliAction::TogglePaneEmbedOrFloating => Ok(vec![Action::TogglePaneEmbedOrFloating]),
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
-            CliAction::RenamePane { name } => {
-                Ok(vec![
-                   Action::UndoRenamePane,
-                   Action::PaneNameInput(name.as_bytes().to_vec())
-                ])
-            },
+            CliAction::RenamePane { name } => Ok(vec![
+                Action::UndoRenamePane,
+                Action::PaneNameInput(name.as_bytes().to_vec()),
+            ]),
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
