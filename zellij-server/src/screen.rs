@@ -395,12 +395,18 @@ impl Screen {
         destination_tab_index: usize,
         clients_to_move: Option<Vec<ClientId>>,
     ) -> Result<()> {
+        let err_context = || {
+            format!("failed to move clients from tab {source_tab_index} to tab {destination_tab_index}")
+        };
+        
         // None ==> move all clients
         let drained_clients = self
             .get_indexed_tab_mut(source_tab_index)
             .map(|t| t.drain_connected_clients(clients_to_move));
         if let Some(client_mode_info_in_source_tab) = drained_clients {
-            let destination_tab = self.get_indexed_tab_mut(destination_tab_index).context("failed to get destination tab by index: {destination_tab_index}")?;
+            let destination_tab = self.get_indexed_tab_mut(destination_tab_index)
+                .context("failed to get destination tab by index")
+                .with_context(err_context)?;
             destination_tab.add_multiple_clients(client_mode_info_in_source_tab);
             destination_tab.update_input_modes();
             destination_tab.set_force_render();
@@ -440,7 +446,8 @@ impl Screen {
                 let current_tab_index = current_tab.index;
                 let new_tab_index = new_tab.index;
                 if self.session_is_mirrored {
-                    self.move_clients_between_tabs(current_tab_index, new_tab_index, None).with_context(err_context)?;
+                    self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
+                        .with_context(err_context)?;
                     let all_connected_clients: Vec<ClientId> =
                         self.connected_clients.borrow().iter().copied().collect();
                     for client_id in all_connected_clients {
@@ -451,7 +458,8 @@ impl Screen {
                         current_tab_index,
                         new_tab_index,
                         Some(vec![client_id]),
-                    ).with_context(err_context)?;
+                    )
+                    .with_context(err_context)?;
                     self.update_client_tab_focus(client_id, new_tab_index);
                 }
 
@@ -560,7 +568,7 @@ impl Screen {
             tab.set_force_render();
         }
         self.render()
-            .context("failed to resize to screen size: {new_screen_size:#?}")
+            .with_context(|| format!("failed to resize to screen size: {new_screen_size:#?}"))
     }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
@@ -605,7 +613,7 @@ impl Screen {
 
     /// Renders this [`Screen`], which amounts to rendering its active [`Tab`].
     pub fn render(&mut self) -> Result<()> {
-        let err_context = || "failed to render screen".to_string();
+        let err_context = "failed to render screen";
 
         let mut output = Output::new(
             self.sixel_image_store.clone(),
@@ -623,14 +631,13 @@ impl Screen {
             }
         }
         for tab_index in tabs_to_close {
-            self.close_tab_at_index(tab_index)
-                .with_context(err_context)?;
+            self.close_tab_at_index(tab_index).context(err_context)?;
         }
         let serialized_output = output.serialize();
         self.bus
             .senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-            .with_context(err_context)
+            .context(err_context)
     }
 
     /// Returns a mutable reference to this [`Screen`]'s tabs.
@@ -690,7 +697,7 @@ impl Screen {
         new_pids: Vec<RawFd>,
         client_id: ClientId,
     ) -> Result<()> {
-        let err_context = || format!("failed to create new tab for client {client_id:?}",);
+        let err_context = || format!("failed to create new tab for client {client_id:?}");
 
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
@@ -704,7 +711,7 @@ impl Screen {
             self.bus
                 .os_input
                 .as_ref()
-                .with_context(|| format!("failed to create new tab for client {client_id:?}"))?
+                .with_context(err_context)?
                 .clone(),
             self.bus.senders.clone(),
             self.max_panes,
@@ -796,7 +803,7 @@ impl Screen {
         }
         self.connected_clients.borrow_mut().remove(&client_id);
         self.update_tabs()
-            .with_context(|| format!("failed to remote client {client_id:?}"))
+            .with_context(|| format!("failed to remove client {client_id:?}"))
     }
 
     pub fn update_tabs(&self) -> Result<()> {
@@ -844,7 +851,8 @@ impl Screen {
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
-        let s = str::from_utf8(&buf).context("failed to construct tab name from buf: {buf:?}")?;
+        let s = str::from_utf8(&buf)
+            .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))?;
         if let Some(active_tab) = self.get_active_tab_mut(client_id) {
             match s {
                 "\0" => {
@@ -861,8 +869,9 @@ impl Screen {
                     }
                 },
             }
-            self.update_tabs()
-                .context("failed to update active tabs name for client id: {client_id:?}")
+            self.update_tabs().with_context(|| {
+                format!("failed to update active tabs name for client id: {client_id:?}")
+            })
         } else {
             log::error!("Active tab not found for client id: {client_id:?}");
             Ok(())
@@ -971,6 +980,7 @@ impl Screen {
             .senders
             .send_to_server(ServerInstruction::UnblockInputThread)
             .context("failed to send message to server")
+            .context("failed to unblock input")
     }
 }
 
@@ -1460,7 +1470,12 @@ pub(crate) fn screen_thread_main(
                 let overlay = screen.get_active_overlays_mut().pop();
                 let instruction = overlay.and_then(|o| o.prompt_confirm());
                 if let Some(instruction) = instruction {
-                    screen.bus.senders.send_to_server(*instruction).context("failed to send message to server")?;
+                    screen
+                        .bus
+                        .senders
+                        .send_to_server(*instruction)
+                        .context("failed to send message to server")
+                        .context("failed to confirm prompt")?;
                 }
                 screen.unblock_input()?;
             },
