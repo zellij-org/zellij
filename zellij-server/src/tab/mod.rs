@@ -346,6 +346,10 @@ pub trait Pane {
     fn clear_search(&mut self) {
         // No-op by default (only terminal-panes currently have search capability)
     }
+    fn is_alternate_mode_active(&self) -> bool {
+        // False by default (only terminal-panes support alternate mode)
+        false
+    }
 }
 
 impl Tab {
@@ -1028,7 +1032,9 @@ impl Tab {
                 let active_terminal = self
                     .floating_panes
                     .get(&pane_id)
-                    .unwrap_or_else(|| self.tiled_panes.get_pane(pane_id).unwrap());
+                    .or_else(|| self.tiled_panes.get_pane(pane_id))
+                    .or_else(|| self.suppressed_panes.get(&pane_id))
+                    .unwrap();
                 let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
 
                 self.senders
@@ -1690,21 +1696,33 @@ impl Tab {
             }
         }
     }
-    pub fn scroll_terminal_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
+    pub fn handle_scrollwheel_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
+            } else if pane.is_alternate_mode_active() {
+                // faux scrolling, send UP n times
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point)
+                }
             } else {
                 pane.scroll_up(lines, client_id);
             }
         }
     }
-    pub fn scroll_terminal_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
+    pub fn handle_scrollwheel_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
         if let Some(pane) = self.get_pane_at(point, false) {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
                 self.write_to_terminal_at(mouse_event.into_bytes(), point);
+            } else if pane.is_alternate_mode_active() {
+                // faux scrolling, send DOWN n times
+                // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
+                for _ in 0..lines {
+                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point)
+                }
             } else {
                 pane.scroll_down(lines, client_id);
                 if !pane.is_scrolled() {

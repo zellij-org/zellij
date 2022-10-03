@@ -7,7 +7,11 @@ use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+<<<<<<< HEAD
+use zellij_utils::input::actions::MoveTabDirection;
+=======
 use zellij_utils::errors::prelude::*;
+>>>>>>> 716f606b44f5014ef92b3896b0849143cd237891
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position};
@@ -672,6 +676,11 @@ impl Screen {
 
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
     /// Consumes the last entry in tab history.
+<<<<<<< HEAD
+    pub fn get_previous_tab(&mut self, client_id: ClientId) -> Option<&Tab> {
+        self.tab_history.get_mut(&client_id).unwrap().pop()
+            .and_then(|index| self.tabs.get(&index))
+=======
     pub fn get_previous_tab(&mut self, client_id: ClientId) -> Result<Option<&Tab>> {
         Ok(
             match self
@@ -686,14 +695,13 @@ impl Screen {
                 None => None,
             },
         )
+>>>>>>> 716f606b44f5014ef92b3896b0849143cd237891
     }
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Option<&mut Tab> {
-        match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get_mut(tab),
-            None => None,
-        }
+        self.active_tab_indices.get(&client_id)
+            .and_then(|index| self.tabs.get_mut(&index))
     }
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Overlays`].

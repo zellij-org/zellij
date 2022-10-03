@@ -40,7 +40,7 @@ use zellij_utils::{
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
-    errors::{ContextType, ErrorInstruction, ServerContext},
+    errors::{ContextType, ErrorInstruction, FatalError, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -691,7 +691,8 @@ fn init_session(
                     max_panes,
                     client_attributes_clone,
                     config_options,
-                );
+                )
+                .fatal();
             }
         })
         .unwrap();

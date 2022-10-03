@@ -9,7 +9,12 @@
 //! hesitate to get in touch with us. Additional information can be found in [the docs about error
 //! handling](https://github.com/zellij-org/zellij/tree/main/docs/ERROR_HANDLING.md).
 
+<<<<<<< HEAD
+use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
+use crate::input::actions::MoveTabDirection;
+=======
 use anyhow::Context;
+>>>>>>> 716f606b44f5014ef92b3896b0849143cd237891
 use colored::*;
 use log::error;
 use serde::{Deserialize, Serialize};

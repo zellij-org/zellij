@@ -26,7 +26,7 @@ use zellij_utils::{
     data::{ClientId, InputMode, Style},
     envs,
     errors::{ClientContext, ContextType, ErrorInstruction},
-    input::{actions::Action, config::Config, options::Options},
+    input::{config::Config, options::Options},
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
@@ -356,7 +356,6 @@ pub fn start_client(
                 break;
             },
             ClientInstruction::Error(backtrace) => {
-                let _ = os_input.send_to_server(ClientToServerMsg::Action(Action::Quit, None));
                 handle_error(backtrace);
             },
             ClientInstruction::Render(output) => {

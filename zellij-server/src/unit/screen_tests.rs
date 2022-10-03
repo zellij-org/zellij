@@ -114,11 +114,13 @@ fn create_new_screen(size: Size) -> Screen {
 
 fn new_tab(screen: &mut Screen, pid: i32) {
     let client_id = 1;
-    screen.new_tab(
-        LayoutTemplate::default().try_into().unwrap(),
-        vec![pid],
-        client_id,
-    );
+    screen
+        .new_tab(
+            LayoutTemplate::default().try_into().unwrap(),
+            vec![pid],
+            client_id,
+        )
+        .expect("TEST");
 }
 
 #[test]
@@ -150,7 +152,7 @@ pub fn switch_to_prev_tab() {
 
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
-    screen.switch_tab_prev(1);
+    screen.switch_tab_prev(1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -169,8 +171,8 @@ pub fn switch_to_next_tab() {
 
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
-    screen.switch_tab_prev(1);
-    screen.switch_tab_next(1);
+    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_next(1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -189,7 +191,7 @@ pub fn close_tab() {
 
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
-    screen.close_tab(1);
+    screen.close_tab(1).expect("TEST");
 
     assert_eq!(screen.tabs.len(), 1, "Only one tab left");
     assert_eq!(
@@ -210,8 +212,8 @@ pub fn close_the_middle_tab() {
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
     new_tab(&mut screen, 3);
-    screen.switch_tab_prev(1);
-    screen.close_tab(1);
+    screen.switch_tab_prev(1).expect("TEST");
+    screen.close_tab(1).expect("TEST");
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(
@@ -232,8 +234,8 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
     new_tab(&mut screen, 3);
-    screen.switch_tab_prev(1);
-    screen.move_focus_left_or_previous_tab(1);
+    screen.switch_tab_prev(1).expect("TEST");
+    screen.move_focus_left_or_previous_tab(1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -253,8 +255,8 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
     new_tab(&mut screen, 3);
-    screen.switch_tab_prev(1);
-    screen.move_focus_right_or_next_tab(1);
+    screen.switch_tab_prev(1).expect("TEST");
+    screen.move_focus_right_or_next_tab(1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -273,17 +275,17 @@ pub fn toggle_to_previous_tab_simple() {
 
     new_tab(&mut screen, 1);
     new_tab(&mut screen, 2);
-    screen.go_to_tab(1, 1);
-    screen.go_to_tab(2, 1);
+    screen.go_to_tab(1, 1).expect("TEST");
+    screen.go_to_tab(2, 1).expect("TEST");
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         0,
         "Active tab toggler to previous tab"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         1,
@@ -309,7 +311,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         "Tab history is invalid"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         1,
@@ -321,7 +323,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         "Tab history is invalid"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         2,
@@ -333,7 +335,7 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
         "Tab history is invalid"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         1,
@@ -365,7 +367,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 1, 3],
@@ -377,7 +379,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 1, 2],
@@ -389,7 +391,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.switch_tab_prev(1);
+    screen.switch_tab_prev(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 1, 3],
@@ -400,7 +402,7 @@ pub fn toggle_to_previous_tab_delete() {
         2,
         "Active tab toggler to previous tab"
     );
-    screen.switch_tab_prev(1);
+    screen.switch_tab_prev(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 3, 2],
@@ -412,7 +414,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.close_tab(1);
+    screen.close_tab(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 3],
@@ -424,7 +426,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.toggle_tab(1);
+    screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         2,
@@ -453,7 +455,7 @@ fn switch_to_tab_with_fullscreen() {
     }
     new_tab(&mut screen, 2);
 
-    screen.switch_tab_prev(1);
+    screen.switch_tab_prev(1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -566,7 +568,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2);
 
-    screen.close_tab_at_index(0);
-    screen.remove_client(1);
-    screen.add_client(1);
+    screen.close_tab_at_index(0).expect("TEST");
+    screen.remove_client(1).expect("TEST");
+    screen.add_client(1).expect("TEST");
 }
