@@ -67,6 +67,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "split_direction"
+            || property_name == "pane"
+            || property_name == "children"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus" || property_name == "name" || property_name == "split_direction"
@@ -362,6 +364,18 @@ impl<'a> KdlLayoutParser<'a> {
                     pane_template,
                     &pane_template_kdl_node,
                 )?);
+            } else if self.is_a_valid_tab_property(kdl_name!(child)) {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Tab property '{}' must be placed on the tab title line and not in the child braces", kdl_name!(child)),
+                    child.span().offset(),
+                    child.span().len()
+                ));
+            } else {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Invalid tab property: {}", kdl_name!(child)),
+                    child.span().offset(),
+                    child.span().len()
+                ));
             }
         }
         if nodes.is_empty() {
@@ -389,6 +403,12 @@ impl<'a> KdlLayoutParser<'a> {
                     pane_template,
                     &pane_template_kdl_node,
                 )?);
+            } else if !self.is_a_valid_pane_property(kdl_name!(child)) {
+                return Err(ConfigError::new_kdl_error(
+                    format!("Unknown pane property: {}", kdl_name!(child)),
+                    child.span().offset(),
+                    child.span().len(),
+                ));
             }
         }
         Ok((external_children_index, nodes))
@@ -405,14 +425,25 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn assert_valid_pane_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
-        let all_property_names = kdl_property_names!(pane_node);
-        for name in all_property_names {
-            if !self.is_a_valid_pane_property(name) {
-                return Err(ConfigError::new_kdl_error(
-                    format!("Invalid pane property '{}'", name),
-                    pane_node.span().offset(),
-                    pane_node.span().len(),
-                ));
+        for entry in pane_node.entries() {
+            match entry.name().map(|e| e.value()).or_else(|| entry.value().as_string()) {
+                Some(string_name) => {
+                    if !self.is_a_valid_pane_property(string_name) {
+                        return Err(ConfigError::new_kdl_error(
+                            format!("Unknown pane property: {}", string_name),
+                            entry.span().offset(),
+                            entry.span().len(),
+                        ));
+                    }
+                },
+                None => {
+                    return Err(ConfigError::new_kdl_error(
+                        "Unknown pane property".into(),
+                        entry.span().offset(),
+                        entry.span().len(),
+                    ));
+
+                }
             }
         }
         Ok(())
@@ -530,6 +561,18 @@ impl<'a> KdlLayoutParser<'a> {
                         pane_template,
                         &pane_template_kdl_node,
                     )?);
+                } else if self.is_a_valid_tab_property(kdl_name!(child)) {
+                    return Err(ConfigError::new_kdl_error(
+                        format!("Tab property '{}' must be placed on the tab_template title line and not in the child braces", kdl_name!(child)),
+                        child.span().offset(),
+                        child.span().len()
+                    ));
+                } else {
+                    return Err(ConfigError::new_kdl_error(
+                        format!("Invalid tab_template property: {}", kdl_name!(child)),
+                        child.span().offset(),
+                        child.span().len()
+                    ));
                 }
             }
         }
