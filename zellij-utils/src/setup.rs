@@ -235,7 +235,7 @@ impl Setup {
                                 },
                                 Err(e) => {
                                     log::error!("error loading theme file: {:?}", e);
-                                }
+                                },
                             }
                         }
                     }

@@ -1579,17 +1579,27 @@ impl Theme {
             kdl_config.span().len(),
         ))?;
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
-        let theme_file_name = path_to_theme_file.file_name().ok_or(ConfigError::new_kdl_error(
-            "Failed to find file name".into(),
-            kdl_config.span().offset(),
-            kdl_config.span().len(),
-        ))?.to_string_lossy().to_string();
-        if let Some(theme_name) = theme_file_name.strip_suffix(".kdl") {
-            let theme = all_themes_in_file.get_theme(theme_name).ok_or(ConfigError::new_kdl_error(
-                format!("Not theme with name {} found in file {:?}", theme_name, path_to_theme_file),
+        let theme_file_name = path_to_theme_file
+            .file_name()
+            .ok_or(ConfigError::new_kdl_error(
+                "Failed to find file name".into(),
                 kdl_config.span().offset(),
                 kdl_config.span().len(),
-            ))?;
+            ))?
+            .to_string_lossy()
+            .to_string();
+        if let Some(theme_name) = theme_file_name.strip_suffix(".kdl") {
+            let theme =
+                all_themes_in_file
+                    .get_theme(theme_name)
+                    .ok_or(ConfigError::new_kdl_error(
+                        format!(
+                            "Not theme with name {} found in file {:?}",
+                            theme_name, path_to_theme_file
+                        ),
+                        kdl_config.span().offset(),
+                        kdl_config.span().len(),
+                    ))?;
             Ok((theme_name.to_string(), theme.clone()))
         } else {
             Err(ConfigError::new_kdl_error(
