@@ -229,8 +229,13 @@ impl Setup {
                 for entry in (theme_dir.read_dir()?).flatten() {
                     if let Some(extension) = entry.path().extension() {
                         if extension == "kdl" {
-                            if let Ok((theme_name, theme)) = Theme::from_path(entry.path()) {
-                                config.themes.insert(theme_name, theme);
+                            match Theme::from_path(entry.path()) {
+                                Ok((theme_name, theme)) => {
+                                    config.themes.insert(theme_name, theme);
+                                },
+                                Err(e) => {
+                                    log::error!("error loading theme file: {:?}", e);
+                                }
                             }
                         }
                     }

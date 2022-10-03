@@ -1569,35 +1569,34 @@ impl Themes {
 impl Theme {
     pub fn from_path(path_to_theme_file: PathBuf) -> Result<(String, Self), ConfigError> {
         // String is the theme name
-        let mut file = File::open(path_to_theme_file)?;
+        let mut file = File::open(path_to_theme_file.clone())?;
         let mut kdl_config = String::new();
         file.read_to_string(&mut kdl_config)?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
-        let kdl_config = kdl_config.nodes().get(0).ok_or(ConfigError::new_kdl_error(
-            "No theme found in file".into(),
+        let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
+            "No theme node found in file".into(),
             kdl_config.span().offset(),
             kdl_config.span().len(),
         ))?;
-        let theme_name = kdl_name!(kdl_config);
-        let theme_colors = kdl_children_or_error!(kdl_config, "empty theme");
-        Ok((
-            theme_name.into(),
-            Theme {
-                palette: Palette {
-                    fg: PaletteColor::try_from(("fg", theme_colors))?,
-                    bg: PaletteColor::try_from(("bg", theme_colors))?,
-                    red: PaletteColor::try_from(("red", theme_colors))?,
-                    green: PaletteColor::try_from(("green", theme_colors))?,
-                    yellow: PaletteColor::try_from(("yellow", theme_colors))?,
-                    blue: PaletteColor::try_from(("blue", theme_colors))?,
-                    magenta: PaletteColor::try_from(("magenta", theme_colors))?,
-                    orange: PaletteColor::try_from(("orange", theme_colors))?,
-                    cyan: PaletteColor::try_from(("cyan", theme_colors))?,
-                    black: PaletteColor::try_from(("black", theme_colors))?,
-                    white: PaletteColor::try_from(("white", theme_colors))?,
-                    ..Default::default()
-                },
-            },
-        ))
+        let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
+        let theme_file_name = path_to_theme_file.file_name().ok_or(ConfigError::new_kdl_error(
+            "Failed to find file name".into(),
+            kdl_config.span().offset(),
+            kdl_config.span().len(),
+        ))?.to_string_lossy().to_string();
+        if let Some(theme_name) = theme_file_name.strip_suffix(".kdl") {
+            let theme = all_themes_in_file.get_theme(theme_name).ok_or(ConfigError::new_kdl_error(
+                format!("Not theme with name {} found in file {:?}", theme_name, path_to_theme_file),
+                kdl_config.span().offset(),
+                kdl_config.span().len(),
+            ))?;
+            Ok((theme_name.to_string(), theme.clone()))
+        } else {
+            Err(ConfigError::new_kdl_error(
+                "no theme file found".into(),
+                kdl_config.span().offset(),
+                kdl_config.span().len(),
+            ))
+        }
     }
 }
