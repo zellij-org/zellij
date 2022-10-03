@@ -146,6 +146,10 @@ fn route_action(
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         },
+        Action::MoveTab(direction) => {
+            let screen_instr = ScreenInstruction::MoveTab(client_id, direction);
+            session.senders.send_to_screen(screen_instr).unwrap();
+        },
         Action::MovePane(direction) => {
             let screen_instr = match direction {
                 Some(Direction::Left) => ScreenInstruction::MovePaneLeft(client_id),

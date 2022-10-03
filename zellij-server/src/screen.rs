@@ -2,10 +2,12 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::mem::swap;
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
+use zellij_utils::input::actions::MoveTabDirection;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position};
@@ -86,6 +88,7 @@ pub enum ScreenInstruction {
     MovePaneDown(ClientId),
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
+    MoveTab(ClientId, MoveTabDirection),
     Exit,
     DumpScreen(String, ClientId),
     EditScrollback(ClientId),
@@ -183,6 +186,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
+            ScreenInstruction::MoveTab(_, direction) => ScreenContext::MoveTab(direction),
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
@@ -473,6 +477,30 @@ impl Screen {
         }
     }
 
+    pub fn move_tab(&mut self, client_id: ClientId, direction: MoveTabDirection) {
+        if let Some(active_tab_index) = self.active_tab_indices.get(&client_id) {
+            let dest_tab_index = match direction {
+                MoveTabDirection::Right => if active_tab_index + 1 > self.tabs.len() - 1 {
+                    self.tabs.len() - 1
+                } else {
+                    active_tab_index + 1
+                },
+                MoveTabDirection::Left => active_tab_index.saturating_sub(1),
+                MoveTabDirection::Beginning => 0,
+                MoveTabDirection::End => self.tabs.len() - 1,
+            };
+
+            // start swapping
+            if let Some(mut active_tab) = self.tabs.remove(&active_tab_index) {
+                if let Some(mut dest_tab) = self.tabs.remove(&dest_tab_index) {
+                    swap(&mut active_tab.index, &mut dest_tab.index);
+                    self.tabs.insert(active_tab.index, active_tab);
+                    self.tabs.insert(dest_tab.index, dest_tab);
+                }
+            }
+        }
+    }
+
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
     pub fn switch_tab_prev(&mut self, client_id: ClientId) {
         if let Some(active_tab) = self.get_active_tab(client_id) {
@@ -613,27 +641,21 @@ impl Screen {
 
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Option<&Tab> {
-        match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get(tab),
-            None => None,
-        }
+        self.active_tab_indices.get(&client_id)
+            .and_then(|index| self.tabs.get(index))
     }
 
     /// Returns an immutable reference to this [`Screen`]'s previous active [`Tab`].
     /// Consumes the last entry in tab history.
     pub fn get_previous_tab(&mut self, client_id: ClientId) -> Option<&Tab> {
-        match self.tab_history.get_mut(&client_id).unwrap().pop() {
-            Some(tab) => self.tabs.get(&tab),
-            None => None,
-        }
+        self.tab_history.get_mut(&client_id).unwrap().pop()
+            .and_then(|index| self.tabs.get(&index))
     }
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Option<&mut Tab> {
-        match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get_mut(tab),
-            None => None,
-        }
+        self.active_tab_indices.get(&client_id)
+            .and_then(|index| self.tabs.get_mut(&index))
     }
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Overlays`].
@@ -1093,6 +1115,10 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::MoveFocusUp(client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab
                     .move_focus_up(client_id));
+                screen.render();
+            },
+            ScreenInstruction::MoveTab(client_id, direction) => {
+                screen.move_tab(client_id, direction);
                 screen.render();
             },
             ScreenInstruction::DumpScreen(file, client_id) => {

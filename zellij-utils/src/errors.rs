@@ -2,6 +2,7 @@
 //! the instructions that are sent between threads.
 
 use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
+use crate::input::actions::MoveTabDirection;
 use colored::*;
 use log::error;
 use serde::{Deserialize, Serialize};
@@ -256,6 +257,7 @@ pub enum ScreenContext {
     MovePaneUp,
     MovePaneRight,
     MovePaneLeft,
+    MoveTab(MoveTabDirection),
     Exit,
     DumpScreen,
     EditScrollback,

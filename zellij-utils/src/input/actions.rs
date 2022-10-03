@@ -40,6 +40,14 @@ pub enum SearchOption {
     Wrap,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub enum MoveTabDirection {
+    Left,
+    Right,
+    Beginning,
+    End,
+}
+
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -69,6 +77,8 @@ pub enum Action {
     MovePane(Option<Direction>),
     /// Dumps the screen to a file
     DumpScreen(String),
+    /// Move a tab forwards and backwards
+    MoveTab(MoveTabDirection),
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
