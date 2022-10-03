@@ -458,7 +458,7 @@ pub fn close_tab() {
             name: "Wait for tab to close",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.snapshot_contains("Tab #1")
                     && !remote_terminal.snapshot_contains("Tab #2")
                 {
                     // cursor is in the first tab again
@@ -474,7 +474,8 @@ pub fn close_tab() {
             break last_snapshot;
         }
     };
-    assert_snapshot!(last_snapshot);
+    assert!(last_snapshot.contains("Tab #1"));
+    assert!(!last_snapshot.contains("Tab #2"));
 }
 
 #[test]
