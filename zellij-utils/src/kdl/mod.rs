@@ -202,6 +202,17 @@ macro_rules! kdl_children_nodes {
 }
 
 #[macro_export]
+macro_rules! kdl_property_nodes {
+    ( $kdl_node:expr ) => {{
+        $kdl_node
+            .entries()
+            .iter()
+            .filter_map(|e| e.name())
+            .map(|e| e.value())
+    }};
+}
+
+#[macro_export]
 macro_rules! kdl_children_or_error {
     ( $kdl_node:expr, $error:expr ) => {
         $kdl_node.children().ok_or(ConfigError::new_kdl_error(
@@ -252,7 +263,6 @@ macro_rules! kdl_property_names {
 macro_rules! kdl_argument_values {
     ( $kdl_node:expr ) => {
         $kdl_node.entries().iter().collect()
-        // $kdl_node.entries().iter().map(|arg| arg.value()).collect()
     };
 }
 
@@ -1264,7 +1274,11 @@ impl Layout {
                 ConfigError::KdlDeserializationError(kdl_error) => {
                     let error_message = match kdl_error.kind {
                         kdl::KdlErrorKind::Context("valid node terminator") => {
-                            format!("Missing `;`, a valid line ending or an equal sign `=` between property and value (eg. foo=\"bar\")")
+                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+                            "- Missing `;` after a node name, eg. { node; another_node; }",
+                            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
                         },
                         _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
                     };

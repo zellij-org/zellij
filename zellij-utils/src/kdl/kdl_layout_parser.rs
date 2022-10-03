@@ -374,7 +374,7 @@ impl<'a> KdlLayoutParser<'a> {
                 return Err(ConfigError::new_kdl_error(
                     format!("Invalid tab property: {}", kdl_name!(child)),
                     child.span().offset(),
-                    child.span().len()
+                    child.span().len(),
                 ));
             }
         }
@@ -426,7 +426,11 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn assert_valid_pane_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
         for entry in pane_node.entries() {
-            match entry.name().map(|e| e.value()).or_else(|| entry.value().as_string()) {
+            match entry
+                .name()
+                .map(|e| e.value())
+                .or_else(|| entry.value().as_string())
+            {
                 Some(string_name) => {
                     if !self.is_a_valid_pane_property(string_name) {
                         return Err(ConfigError::new_kdl_error(
@@ -442,8 +446,7 @@ impl<'a> KdlLayoutParser<'a> {
                         entry.span().offset(),
                         entry.span().len(),
                     ));
-
-                }
+                },
             }
         }
         Ok(())
@@ -571,7 +574,7 @@ impl<'a> KdlLayoutParser<'a> {
                     return Err(ConfigError::new_kdl_error(
                         format!("Invalid tab_template property: {}", kdl_name!(child)),
                         child.span().offset(),
-                        child.span().len()
+                        child.span().len(),
                     ));
                 }
             }
