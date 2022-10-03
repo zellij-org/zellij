@@ -23,7 +23,6 @@ fn main() {
             command,
             direction,
             cwd,
-            args,
             floating,
         })) = opts.command
         {
@@ -31,7 +30,6 @@ fn main() {
                 command,
                 direction,
                 cwd,
-                args,
                 floating,
             };
             commands::send_action_to_session(command_cli_action, opts.session);

@@ -132,8 +132,6 @@ pub enum Sessions {
         direction: Option<Direction>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
-        #[clap(short, long, value_parser)]
-        args: Option<String>,
         #[clap(short, long, value_parser, default_missing_value("true"))]
         floating: Option<bool>,
     },
@@ -161,8 +159,6 @@ pub enum Sessions {
 
 #[derive(Debug, Subcommand, Clone, Serialize, Deserialize)]
 pub enum CliAction {
-    /// Quit Zellij.
-    Quit,
     /// Write bytes to the terminal.
     Write { bytes: Vec<u8> },
     /// Write characters to the terminal.
@@ -214,8 +210,6 @@ pub enum CliAction {
         command: Option<String>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
-        #[clap(short, long, value_parser)]
-        args: Option<String>,
         #[clap(short, long, value_parser, default_missing_value("true"))]
         floating: Option<bool>,
     },
@@ -253,12 +247,6 @@ pub enum CliAction {
     RenameTab { name: String },
     /// Remove a previously set tab name
     UndoRenameTab,
-    /// Search for String
-    SearchInput { input: String },
-    /// Focus on next search occurrence
-    SearchNext,
-    /// Focus on previous search occurrence
-    SearchPrevious,
     /// Create a new tab, optionally with a specified tab layout and name
     NewTab {
         #[clap(short, long, value_parser)]

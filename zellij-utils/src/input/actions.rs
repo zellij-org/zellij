@@ -125,7 +125,7 @@ fn split_escaped_whitespace(s: &str) -> Vec<String> {
         })
 }
 
-fn split_command_and_args(command: String, args: Option<String>) -> (PathBuf, Vec<String>) {
+fn split_command_and_args(command: String) -> (PathBuf, Vec<String>) {
     let mut full_command = split_escaped_whitespace(&command);
     let mut command = None;
     let mut command_args = vec![];
@@ -137,9 +137,6 @@ fn split_command_and_args(command: String, args: Option<String>) -> (PathBuf, Ve
         }
     }
     let command = PathBuf::from(command.unwrap());
-    if let Some(additional_args) = args.map(|args| split_escaped_whitespace(&args)).as_mut() {
-        command_args.append(additional_args);
-    }
     (command, command_args)
 }
 
@@ -261,7 +258,6 @@ pub enum Action {
 impl Action {
     pub fn actions_from_cli(cli_action: CliAction) -> Result<Vec<Action>, String> {
         match cli_action {
-            CliAction::Quit => Ok(vec![Action::Quit]),
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
             CliAction::Resize { resize_direction } => Ok(vec![Action::Resize(resize_direction)]),
@@ -288,11 +284,10 @@ impl Action {
                 direction,
                 command,
                 cwd,
-                args,
                 floating,
             } => match command {
                 Some(command) => {
-                    let (command, args) = split_command_and_args(command, args);
+                    let (command, args) = split_command_and_args(command);
                     let run_command_action = RunCommandAction {
                         command,
                         args,
@@ -330,7 +325,10 @@ impl Action {
             CliAction::ToggleFloatingPanes => Ok(vec![Action::ToggleFloatingPanes]),
             CliAction::ClosePane => Ok(vec![Action::CloseFocus]),
             CliAction::RenamePane { name } => {
-                Ok(vec![Action::PaneNameInput(name.as_bytes().to_vec())])
+                Ok(vec![
+                   Action::UndoRenamePane,
+                   Action::PaneNameInput(name.as_bytes().to_vec())
+                ])
             },
             CliAction::UndoRenamePane => Ok(vec![Action::UndoRenamePane]),
             CliAction::GoToNextTab => Ok(vec![Action::GoToNextTab]),
@@ -342,17 +340,11 @@ impl Action {
                 Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::SearchInput { input } => {
-                Ok(vec![Action::SearchInput(input.as_bytes().to_vec())])
-            },
-            CliAction::SearchNext => Ok(vec![Action::Search(SearchDirection::Down)]),
-            CliAction::SearchPrevious => Ok(vec![Action::Search(SearchDirection::Up)]),
             CliAction::NewTab { name, layout } => {
                 if let Some(layout_path) = layout {
                     let (path_to_raw_layout, raw_layout) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), None)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
-                    // let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| format!("Failed to parse layout: {}", e))?;
                     let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {

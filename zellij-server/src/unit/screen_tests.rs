@@ -1802,7 +1802,6 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         direction: None,
         command: None,
         cwd: None,
-        args: None,
         floating: None,
     };
     send_cli_action_to_server(
@@ -1840,7 +1839,6 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         direction: Some(Direction::Right),
         command: None,
         cwd: None,
-        args: None,
         floating: None,
     };
     send_cli_action_to_server(
@@ -1855,7 +1853,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
 }
 
 #[test]
-pub fn send_cli_new_pane_action_with_command_cwd_and_args() {
+pub fn send_cli_new_pane_action_with_command_and_cwd() {
     let size = Size {
         cols: 121,
         rows: 20,
@@ -1878,7 +1876,6 @@ pub fn send_cli_new_pane_action_with_command_cwd_and_args() {
         direction: Some(Direction::Right),
         command: Some("htop".into()),
         cwd: Some("/some/folder".into()),
-        args: Some("-h --something arg".into()),
         floating: None,
     };
     send_cli_action_to_server(
@@ -2170,95 +2167,6 @@ pub fn send_cli_close_pane_action() {
     );
     let snapshot_count = snapshots.len();
     for (_cursor_coordinates, snapshot) in snapshots {
-        assert_snapshot!(format!("{}", snapshot));
-    }
-    assert_snapshot!(format!("{}", snapshot_count));
-}
-
-#[test]
-pub fn send_cli_rename_pane_action() {
-    let size = Size { cols: 80, rows: 10 };
-    let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_instruction = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    let rename_pane_action = CliAction::RenamePane {
-        name: "my_new_pane_title".into(),
-    };
-    send_cli_action_to_server(
-        &session_metadata,
-        rename_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![server_instruction, screen_thread]);
-    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
-        received_server_instructions.lock().unwrap().iter(),
-        size,
-    );
-    let snapshot_count = snapshots.len();
-    for (_cursor_coordinates, snapshot) in snapshots {
-        assert_snapshot!(format!("{}", snapshot));
-    }
-    assert_snapshot!(format!("{}", snapshot_count));
-}
-
-#[test]
-pub fn send_cli_undo_rename_pane_action() {
-    let size = Size { cols: 80, rows: 10 };
-    let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_instruction = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    let rename_pane_action = CliAction::RenamePane {
-        name: "my_new_pane_title".into(),
-    };
-    let undo_rename_pane_action = CliAction::UndoRenamePane;
-    // first rename the pane
-    send_cli_action_to_server(
-        &session_metadata,
-        rename_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    // then undo the rename, returning to the default name
-    send_cli_action_to_server(
-        &session_metadata,
-        undo_rename_pane_action,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![server_instruction, screen_thread]);
-    let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(
-        received_server_instructions.lock().unwrap().iter(),
-        size,
-    );
-    let snapshot_count = snapshots.len();
-    for (_cursor_coordinates, snapshot) in snapshots {
-        println!("--- snapshot: {}", snapshot);
         assert_snapshot!(format!("{}", snapshot));
     }
     assert_snapshot!(format!("{}", snapshot_count));
@@ -2572,107 +2480,4 @@ pub fn send_cli_undo_rename_tab() {
         "{:#?}",
         *received_plugin_instructions.lock().unwrap()
     ))
-}
-
-#[test]
-pub fn send_cli_update_search_term() {
-    // the output (snapshot) in this test is unfortuantely not very Human readable
-    // this is because the search term only updates the styling, and we don't have a good way to
-    // snapshot styling (we usually strip them)
-    //
-    // if this test fails, it means something it wrong with searching through the CLI
-    let size = Size { cols: 80, rows: 10 };
-    let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
-    second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    mock_screen.new_tab(second_tab_layout);
-    let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_thread = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    let update_search_term = CliAction::SearchInput {
-        input: "my-search-term".into(),
-    };
-    send_cli_action_to_server(
-        &session_metadata,
-        update_search_term,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![server_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:?}",
-        *received_server_instructions.lock().unwrap()
-    ));
-}
-
-#[test]
-pub fn send_cli_go_to_next_and_previous_search_occurrence() {
-    // the output (snapshot) in this test is unfortuantely not very Human readable
-    // this is because the search term only updates the styling, and we don't have a good way to
-    // snapshot styling (we usually strip them)
-    //
-    // if this test fails, it means something it wrong with searching through the CLI
-    // specifically going to the previous/next search occurrence
-    let size = Size { cols: 80, rows: 10 };
-    let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
-    initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
-    second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut mock_screen = MockScreen::new(size);
-    mock_screen.new_tab(second_tab_layout);
-    let session_metadata = mock_screen.clone_session_metadata();
-    let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_server_instructions = Arc::new(Mutex::new(vec![]));
-    let server_receiver = mock_screen.server_receiver.take().unwrap();
-    let server_thread = log_actions_in_thread!(
-        received_server_instructions,
-        ServerInstruction::KillSession,
-        server_receiver
-    );
-    let update_search_term = CliAction::SearchInput {
-        input: "my-search-term".into(),
-    };
-    let go_to_previous_search = CliAction::SearchPrevious;
-    let go_to_next_search = CliAction::SearchNext;
-    send_cli_action_to_server(
-        &session_metadata,
-        update_search_term,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    send_cli_action_to_server(
-        &session_metadata,
-        go_to_previous_search,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    send_cli_action_to_server(
-        &session_metadata,
-        go_to_next_search,
-        &mut mock_screen,
-        client_id,
-    );
-    std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![server_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:?}",
-        *received_server_instructions.lock().unwrap()
-    ));
 }

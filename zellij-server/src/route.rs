@@ -142,7 +142,8 @@ pub(crate) fn route_action(
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id),
                 Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab(client_id),
-                _ => unreachable!(),
+                Direction::Up => ScreenInstruction::SwitchTabNext(client_id),
+                Direction::Down => ScreenInstruction::SwitchTabPrev(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         },
