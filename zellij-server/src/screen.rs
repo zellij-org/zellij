@@ -396,15 +396,18 @@ impl Screen {
         clients_to_move: Option<Vec<ClientId>>,
     ) -> Result<()> {
         let err_context = || {
-            format!("failed to move clients from tab {source_tab_index} to tab {destination_tab_index}")
+            format!(
+                "failed to move clients from tab {source_tab_index} to tab {destination_tab_index}"
+            )
         };
-        
+
         // None ==> move all clients
         let drained_clients = self
             .get_indexed_tab_mut(source_tab_index)
             .map(|t| t.drain_connected_clients(clients_to_move));
         if let Some(client_mode_info_in_source_tab) = drained_clients {
-            let destination_tab = self.get_indexed_tab_mut(destination_tab_index)
+            let destination_tab = self
+                .get_indexed_tab_mut(destination_tab_index)
                 .context("failed to get destination tab by index")
                 .with_context(err_context)?;
             destination_tab.add_multiple_clients(client_mode_info_in_source_tab);
