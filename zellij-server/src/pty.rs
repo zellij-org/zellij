@@ -33,7 +33,6 @@ pub(crate) enum PtyInstruction {
     SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
-    // NewTab(Option<TerminalAction>, Option<TabLayout>, ClientId),
     NewTab(
         Option<TerminalAction>,
         Option<PaneLayout>,
@@ -141,20 +140,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                     .unwrap();
             },
             PtyInstruction::NewTab(terminal_action, tab_layout, tab_name, client_id) => {
-                //                 let tab_name = tab_layout.as_ref().and_then(|layout| {
-                //                     if layout.name.is_empty() {
-                //                         None
-                //                     } else {
-                //                         Some(layout.name.clone())
-                //                     }
-                //                 });
-
-                // let merged_layout = layout.template.clone().insert_tab_layout(tab_layout);
-                //                 let mut layout = layout.clone();
-                //                 if let Some(tab_layout) = tab_layout {
-                //                     layout.insert_tab_layout(&tab_layout).expect("corrupted tab layout");
-                //                 }
-
                 pty.spawn_terminals_for_layout(
                     tab_layout.unwrap_or_else(|| layout.new_tab()),
                     terminal_action.clone(),

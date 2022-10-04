@@ -390,7 +390,6 @@ pub(crate) fn start_client(opts: CliArgs) {
                 Some(layout),
             );
         } else {
-            //             TODO: bring this back
             if let Some(session_name) = config_options.session_name.as_ref() {
                 match config_options.attach_to_session {
                     Some(true) => {
@@ -424,7 +423,10 @@ pub(crate) fn start_client(opts: CliArgs) {
                         );
                     },
                 }
-                process::exit(0); // TODO: why is this here?
+                // after we detach, this happens and so we need to exit before the rest of the
+                // function happens
+                // TODO: offload this to a different function
+                process::exit(0);
             }
 
             let session_name = names::Generator::default().next().unwrap();

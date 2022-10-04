@@ -143,13 +143,6 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    //     let palette = config.themes.clone().map_or_else(
-    //         || os_input.load_palette(),
-    //         |t| {
-    //             t.theme_config(&config_options)
-    //                 .unwrap_or_else(|| os_input.load_palette())
-    //         },
-    //     );
     let palette = config
         .theme_config(&config_options)
         .unwrap_or_else(|| os_input.load_palette());
