@@ -4,6 +4,7 @@ use crate::{
     os_input_output::ServerOsApi, pty::PtyInstruction, pty_writer::PtyWriteInstruction,
     screen::ScreenInstruction, wasm_vm::PluginInstruction, ServerInstruction,
 };
+use zellij_utils::errors::prelude::*;
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
 /// A container for senders to the different threads in zellij on the server side
@@ -20,10 +21,7 @@ pub(crate) struct ThreadSenders {
 }
 
 impl ThreadSenders {
-    pub fn send_to_screen(
-        &self,
-        instruction: ScreenInstruction,
-    ) -> Result<(), channels::SendError<(ScreenInstruction, ErrorContext)>> {
+    pub fn send_to_screen(&self, instruction: ScreenInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
                 .to_screen
@@ -32,14 +30,16 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_screen.as_ref().unwrap().send(instruction)
+            self.to_screen
+                .as_ref()
+                .unwrap()
+                .send(instruction)
+                .to_anyhow()
+                .context("failed to send message to screen")
         }
     }
 
-    pub fn send_to_pty(
-        &self,
-        instruction: PtyInstruction,
-    ) -> Result<(), channels::SendError<(PtyInstruction, ErrorContext)>> {
+    pub fn send_to_pty(&self, instruction: PtyInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
                 .to_pty
@@ -48,14 +48,16 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_pty.as_ref().unwrap().send(instruction)
+            self.to_pty
+                .as_ref()
+                .unwrap()
+                .send(instruction)
+                .to_anyhow()
+                .context("failed to send message to pty")
         }
     }
 
-    pub fn send_to_plugin(
-        &self,
-        instruction: PluginInstruction,
-    ) -> Result<(), channels::SendError<(PluginInstruction, ErrorContext)>> {
+    pub fn send_to_plugin(&self, instruction: PluginInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
                 .to_plugin
@@ -64,14 +66,16 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_plugin.as_ref().unwrap().send(instruction)
+            self.to_plugin
+                .as_ref()
+                .unwrap()
+                .send(instruction)
+                .to_anyhow()
+                .context("failed to send message to plugin")
         }
     }
 
-    pub fn send_to_server(
-        &self,
-        instruction: ServerInstruction,
-    ) -> Result<(), channels::SendError<(ServerInstruction, ErrorContext)>> {
+    pub fn send_to_server(&self, instruction: ServerInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
                 .to_server
@@ -80,13 +84,15 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_server.as_ref().unwrap().send(instruction)
+            self.to_server
+                .as_ref()
+                .unwrap()
+                .send(instruction)
+                .to_anyhow()
+                .context("failed to send message to server")
         }
     }
-    pub fn send_to_pty_writer(
-        &self,
-        instruction: PtyWriteInstruction,
-    ) -> Result<(), channels::SendError<(PtyWriteInstruction, ErrorContext)>> {
+    pub fn send_to_pty_writer(&self, instruction: PtyWriteInstruction) -> Result<()> {
         if self.should_silently_fail {
             let _ = self
                 .to_pty_writer
@@ -95,7 +101,12 @@ impl ThreadSenders {
                 .unwrap_or_else(|| Ok(()));
             Ok(())
         } else {
-            self.to_pty_writer.as_ref().unwrap().send(instruction)
+            self.to_pty_writer
+                .as_ref()
+                .unwrap()
+                .send(instruction)
+                .to_anyhow()
+                .context("failed to send message to pty writer")
         }
     }
 

@@ -971,7 +971,6 @@ impl Screen {
                     Some(*client_id),
                     Event::TabUpdate(tab_data),
                 ))
-                .to_anyhow()
                 .context("failed to update tabs")?;
         }
         Ok(())
@@ -1167,7 +1166,6 @@ impl Screen {
         self.bus
             .senders
             .send_to_server(ServerInstruction::UnblockInputThread)
-            .context("failed to send message to server")
             .context("failed to unblock input")
     }
 }
@@ -1871,7 +1869,6 @@ pub(crate) fn screen_thread_main(
                         .bus
                         .senders
                         .send_to_server(*instruction)
-                        .context("failed to send message to server")
                         .context("failed to confirm prompt")?;
                 }
                 screen.unblock_input()?;
