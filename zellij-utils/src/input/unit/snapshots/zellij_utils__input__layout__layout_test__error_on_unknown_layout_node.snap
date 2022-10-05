@@ -1,0 +1,6 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 892
+expression: "format!(\"{:?}\", layout_error)"
+---
+KdlError(KdlError { error_message: "Unknown layout node: 'i_am_not_a_proper_node'", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(47), len: Some(22) })

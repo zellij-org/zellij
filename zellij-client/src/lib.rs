@@ -1,9 +1,9 @@
 pub mod os_input_output;
 
+pub mod cli_client;
 mod command_is_executing;
-pub mod fake_client;
 mod input_handler;
-mod sessions;
+pub mod old_config_converter;
 mod stdin_ansi_parser;
 mod stdin_handler;
 
@@ -30,7 +30,7 @@ use zellij_utils::{
     ipc::{ClientAttributes, ClientToServerMsg, ExitReason, ServerToClientMsg},
     termwiz::input::InputEvent,
 };
-use zellij_utils::{cli::CliArgs, input::layout::LayoutFromYaml};
+use zellij_utils::{cli::CliArgs, input::layout::Layout};
 
 /// Instructions related to the client-side application
 #[derive(Debug, Clone)]
@@ -124,7 +124,7 @@ pub fn start_client(
     config: Config,
     config_options: Options,
     info: ClientInfo,
-    layout: Option<LayoutFromYaml>,
+    layout: Option<Layout>,
 ) {
     info!("Starting Zellij client!");
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
@@ -143,20 +143,16 @@ pub fn start_client(
     envs::set_zellij("0".to_string());
     config.env.set_vars();
 
-    let palette = config.themes.clone().map_or_else(
-        || os_input.load_palette(),
-        |t| {
-            t.theme_config(&config_options)
-                .unwrap_or_else(|| os_input.load_palette())
-        },
-    );
+    let palette = config
+        .theme_config(&config_options)
+        .unwrap_or_else(|| os_input.load_palette());
 
     let full_screen_ws = os_input.get_terminal_size_using_fd(0);
     let client_attributes = ClientAttributes {
         size: full_screen_ws,
         style: Style {
             colors: palette,
-            rounded_corners: config.ui.unwrap_or_default().pane_frames.rounded_corners,
+            rounded_corners: config.ui.pane_frames.rounded_corners,
         },
         keybinds: config.keybinds.clone(),
     };

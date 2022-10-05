@@ -106,6 +106,14 @@ pub struct Options {
     /// Explicit full path to open the scrollback editor (default is $EDITOR or $VISUAL)
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
+
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub session_name: Option<String>,
+
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub attach_to_session: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -122,6 +130,17 @@ impl Default for Clipboard {
     }
 }
 
+impl FromStr for Clipboard {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "System" | "system" => Ok(Self::System),
+            "Primary" | "primary" => Ok(Self::Primary),
+            _ => Err(format!("No such clipboard: {}", s)),
+        }
+    }
+}
+
 impl Options {
     pub fn from_yaml(from_yaml: Option<Options>) -> Options {
         if let Some(opts) = from_yaml {
@@ -130,7 +149,6 @@ impl Options {
             Options::default()
         }
     }
-
     /// Merges two [`Options`] structs, a `Some` in `other`
     /// will supersede a `Some` in `self`
     // TODO: Maybe a good candidate for a macro?
@@ -153,6 +171,10 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
+        let session_name = other.session_name.or_else(|| self.session_name.clone());
+        let attach_to_session = other
+            .attach_to_session
+            .or_else(|| self.attach_to_session.clone());
 
         Options {
             simplified_ui,
@@ -171,6 +193,8 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             scrollback_editor,
+            session_name,
+            attach_to_session,
         }
     }
 
@@ -208,6 +232,10 @@ impl Options {
         let scrollback_editor = other
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
+        let session_name = other.session_name.or_else(|| self.session_name.clone());
+        let attach_to_session = other
+            .attach_to_session
+            .or_else(|| self.attach_to_session.clone());
 
         Options {
             simplified_ui,
@@ -226,6 +254,8 @@ impl Options {
             copy_clipboard,
             copy_on_select,
             scrollback_editor,
+            session_name,
+            attach_to_session,
         }
     }
 
@@ -249,7 +279,7 @@ pub struct CliOptions {
     #[clap(long, conflicts_with("pane-frames"), value_parser)]
     pub no_pane_frames: bool,
     #[clap(flatten)]
-    options: Options,
+    pub options: Options,
 }
 
 impl From<CliOptions> for Options {
@@ -280,6 +310,7 @@ impl From<CliOptions> for Options {
             copy_clipboard: opts.copy_clipboard,
             copy_on_select: opts.copy_on_select,
             scrollback_editor: opts.scrollback_editor,
+            ..Default::default()
         }
     }
 }

@@ -40,7 +40,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{Layout, Run},
+        layout::{PaneLayout, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -454,7 +454,7 @@ impl Tab {
 
     pub fn apply_layout(
         &mut self,
-        layout: Layout,
+        layout: PaneLayout,
         new_pids: Vec<RawFd>,
         tab_index: usize,
         client_id: ClientId,
@@ -478,7 +478,7 @@ impl Tab {
         let mut new_pids = new_pids.iter();
 
         let mut focus_pane_id: Option<PaneId> = None;
-        let mut set_focus_pane_id = |layout: &Layout, pane_id: PaneId| {
+        let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
             if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
                 focus_pane_id = Some(pane_id);
             }
@@ -498,7 +498,7 @@ impl Tab {
                     *position_and_size,
                     self.senders.to_plugin.as_ref().unwrap().clone(),
                     pane_title,
-                    layout.pane_name.clone().unwrap_or_default(),
+                    layout.name.clone().unwrap_or_default(),
                 );
                 new_plugin.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -513,7 +513,7 @@ impl Tab {
                     *position_and_size,
                     self.style,
                     next_terminal_position,
-                    layout.pane_name.clone().unwrap_or_default(),
+                    layout.name.clone().unwrap_or_default(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.sixel_image_store.clone(),
@@ -732,6 +732,14 @@ impl Tab {
             }
             self.floating_panes.set_force_render();
         }
+        self.set_force_render();
+    }
+    pub fn show_floating_panes(&mut self) {
+        self.floating_panes.toggle_show_panes(true);
+        self.set_force_render();
+    }
+    pub fn hide_floating_panes(&mut self) {
+        self.floating_panes.toggle_show_panes(false);
         self.set_force_render();
     }
     pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
@@ -2036,7 +2044,6 @@ impl Tab {
         position_on_screen: &Position,
         client_id: ClientId,
     ) -> bool {
-        println!("mouse hold middle");
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
@@ -2044,13 +2051,11 @@ impl Tab {
         } else {
             false
         };
-        println!("is repeated: {:?}", is_repeated);
         self.last_mouse_hold_position = Some(*position_on_screen);
 
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
 
         if let Some(active_pane) = active_pane {
-            println!("can have active pane");
             let mut relative_position = active_pane.relative_position(position_on_screen);
             if !is_repeated {
                 relative_position.change_column(
@@ -2066,7 +2071,6 @@ impl Tab {
                 );
                 if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true)
                 {
-                    log::info!("can have mouse event: {:?}", mouse_event);
                     self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
                     return true; // we need to re-render in this case so the selection disappears
                 }

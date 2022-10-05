@@ -1,0 +1,16 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 1193
+expression: "format!(\"{}\", snapshot)"
+---
+00 (C): ┌ Pane #1 ────────────── SCROLL:  3/13 ┐
+01 (C): │fill pane up with something 10        │                                        
+02 (C): │fill pane up with something 11        │                                        
+03 (C): │fill pane up with something 12        │                                        
+04 (C): │fill pane up with something 13        │                                        
+05 (C): │fill pane up with something 14        │                                        
+06 (C): │fill pane up with something 15        │                                        
+07 (C): │fill pane up with something 16        │                                        
+08 (C): │fill pane up with something 17        │                                        
+09 (C): └──────────────────────────────────────┘                                        
+

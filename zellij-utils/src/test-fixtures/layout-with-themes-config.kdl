@@ -1,0 +1,30 @@
+layout
+themes {
+    theme-from-config {
+        bg 1 1 1
+        red 1 1 1
+        green 1 1 1
+        yellow 1 1 1
+        blue 1 1 1
+        magenta 1 1 1
+        orange 1 1 1
+        fg 1 1 1
+        cyan 1 1 1
+        black 1 1 1
+        white 1 1 1
+    }
+    theme-from-layout {
+        bg 1 1 1
+        red 1 1 1
+        green 1 1 1
+        yellow 1 1 1
+        blue 1 1 1
+        magenta 1 1 1
+        orange 1 1 1
+        fg 1 1 1
+        cyan 1 1 1
+        black 1 1 1
+        white 1 1 1
+    }
+}
+

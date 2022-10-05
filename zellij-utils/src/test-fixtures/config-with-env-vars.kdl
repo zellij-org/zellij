@@ -1,0 +1,4 @@
+env {
+    CONFIG_ENV_VAR "do not override me"
+    MY_ENV_VAR "from config"
+}

@@ -11,7 +11,6 @@ use zellij_utils::{
         actions::Action,
         cast_termwiz_key,
         config::Config,
-        keybinds::Keybinds,
         mouse::{MouseButton, MouseEvent},
         options::Options,
     },
@@ -133,7 +132,9 @@ impl InputHandler {
     }
     fn handle_key(&mut self, key: &Key, raw_bytes: Vec<u8>) {
         let keybinds = &self.config.keybinds;
-        for action in Keybinds::key_to_actions(key, raw_bytes, &self.mode, keybinds) {
+        for action in
+            keybinds.get_actions_for_key_in_mode_or_default_action(&self.mode, key, raw_bytes)
+        {
             let should_exit = self.dispatch_action(action, None);
             if should_exit {
                 self.should_exit = true;
@@ -230,65 +231,6 @@ impl InputHandler {
             },
         }
     }
-    fn handle_actions(&mut self, actions: Vec<Action>, session_name: &str, clients: Vec<ClientId>) {
-        let mut detached = false;
-        for action in actions {
-            match action {
-                Action::Quit => {
-                    crate::sessions::kill_session(session_name);
-                    break;
-                },
-                Action::Detach => {
-                    let first = clients.first().unwrap();
-                    let last = clients.last().unwrap();
-                    self.os_input
-                        .send_to_server(ClientToServerMsg::DetachSession(vec![*first, *last]));
-                    detached = true;
-                    break;
-                },
-                // Actions, that are independent from the specific client
-                // and not session idempotent should be specified here
-                Action::NewTab(_)
-                | Action::Run(_)
-                | Action::NewPane(_)
-                | Action::WriteChars(_)
-                | Action::EditScrollback
-                | Action::DumpScreen(_)
-                | Action::ToggleActiveSyncTab
-                | Action::ToggleFloatingPanes
-                | Action::TogglePaneEmbedOrFloating
-                | Action::TogglePaneFrames
-                | Action::ToggleFocusFullscreen
-                | Action::Write(_) => {
-                    let client_id = clients.first().unwrap();
-                    log::debug!("Sending action to client: {}", client_id);
-                    self.dispatch_action(action, Some(*client_id));
-                },
-                Action::CloseFocus | Action::CloseTab => {
-                    let client_id = clients.first().unwrap();
-                    log::debug!("Sending action to client: {}", client_id);
-                    log::warn!("Running this action from the focused pane, can lead to unexpected behaviour.");
-                    self.dispatch_action(action, Some(*client_id));
-                },
-                _ => {
-                    // FIXME: If a specific `session_id` is specified,
-                    // then only send the actions to that specific `client_id`
-                    for client_id in &clients {
-                        self.dispatch_action(action.clone(), Some(*client_id));
-                    }
-                },
-            }
-        }
-        self.dispatch_action(Action::Detach, None);
-        self.should_exit = true;
-        log::error!("Quitting Now. Dispatched the actions");
-        if detached {
-            self.exit(ExitReason::NormalDetached);
-        } else {
-            self.exit(ExitReason::Normal);
-        }
-    }
-
     /// Dispatches an [`Action`].
     ///
     /// This function's body dictates what each [`Action`] actually does when
@@ -329,7 +271,7 @@ impl InputHandler {
             | Action::Run(_)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
-            | Action::NewTab(_)
+            | Action::NewTab(..)
             | Action::GoToNextTab
             | Action::GoToPreviousTab
             | Action::CloseTab
@@ -380,30 +322,4 @@ pub(crate) fn input_loop(
         receive_input_instructions,
     )
     .handle_input();
-}
-/// Entry point to the module. Instantiates an [`InputHandler`] and starts
-/// its [`InputHandler::handle_input()`] loop.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn input_actions(
-    os_input: Box<dyn ClientOsApi>,
-    config: Config,
-    options: Options,
-    command_is_executing: CommandIsExecuting,
-    clients: Vec<ClientId>,
-    send_client_instructions: SenderWithContext<ClientInstruction>,
-    default_mode: InputMode,
-    receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
-    actions: Vec<Action>,
-    session_name: String,
-) {
-    let _handler = InputHandler::new(
-        os_input,
-        command_is_executing,
-        config,
-        options,
-        send_client_instructions,
-        default_mode,
-        receive_input_instructions,
-    )
-    .handle_actions(actions, &session_name, clients);
 }

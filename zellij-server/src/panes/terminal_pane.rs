@@ -427,6 +427,7 @@ impl Pane for TerminalPane {
                 self.pane_name.push_str(c);
             },
         }
+        self.set_should_render(true);
     }
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)

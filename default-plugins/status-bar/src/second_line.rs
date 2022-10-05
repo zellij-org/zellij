@@ -161,7 +161,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Embed pane"), s("Embed"), action_key(&km, &[A::TogglePaneEmbedOrFloating, TO_NORMAL])),
         (s("Next"), s("Next"), action_key(&km, &[A::SwitchFocus])),
         (s("Select pane"), s("Select"), to_normal_key),
-    ]} else if mi.mode == IM::Tab { 
+    ]} else if mi.mode == IM::Tab {
         // With the default bindings, "Move focus" for tabs is tricky: It binds all the arrow keys
         // to moving tabs focus (left/up go left, right/down go right). Since we sort the keys
         // above and then dedpulicate based on the actions, we will end up with LeftArrow for
@@ -180,9 +180,9 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
         vec![
         (s("Move focus"), s("Move"), focus_keys),
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
-        (s("Rename"), s("Rename"), 
+        (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Sync"), s("Sync"), action_key(&km, &[A::ToggleActiveSyncTab, TO_NORMAL])),
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
@@ -192,7 +192,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             &[A::Resize(RDir::Left)], &[A::Resize(RDir::Down)],
             &[A::Resize(RDir::Up)], &[A::Resize(RDir::Right)]])),
         (s("Increase/Decrease size"), s("Increase/Decrease"),
-            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])), 
+            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Move"), s("Move"), action_key_group(&km, &[
@@ -242,7 +242,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down)), TO_NORMAL])),
         (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right)), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),

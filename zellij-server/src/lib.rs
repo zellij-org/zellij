@@ -44,7 +44,7 @@ use zellij_utils::{
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::LayoutFromYaml,
+        layout::Layout,
         options::Options,
         plugins::PluginsConfig,
     },
@@ -61,7 +61,7 @@ pub enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Box<LayoutFromYaml>,
+        Box<Layout>,
         ClientId,
         Option<PluginsConfig>,
     ),
@@ -118,10 +118,18 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        let _ = self.screen_thread.take().unwrap().join();
-        let _ = self.pty_thread.take().unwrap().join();
-        let _ = self.wasm_thread.take().unwrap().join();
-        let _ = self.pty_writer_thread.take().unwrap().join();
+        if let Some(screen_thread) = self.screen_thread.take() {
+            let _ = screen_thread.join();
+        }
+        if let Some(pty_thread) = self.pty_thread.take() {
+            let _ = pty_thread.join();
+        }
+        if let Some(wasm_thread) = self.wasm_thread.take() {
+            let _ = wasm_thread.join();
+        }
+        if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
+            let _ = pty_writer_thread.join();
+        }
     }
 }
 
@@ -316,7 +324,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                let spawn_tabs = |tab_layout| {
+                let spawn_tabs = |tab_layout, tab_name| {
                     session_data
                         .read()
                         .unwrap()
@@ -326,33 +334,32 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .send_to_pty(PtyInstruction::NewTab(
                             default_shell.clone(),
                             tab_layout,
+                            tab_name,
                             client_id,
                         ))
                         .unwrap()
                 };
 
-                if !&layout.tabs.is_empty() {
-                    for tab_layout in layout.clone().tabs {
-                        spawn_tabs(Some(tab_layout.clone()));
+                if layout.has_tabs() {
+                    for (tab_name, tab_layout) in layout.tabs() {
+                        spawn_tabs(Some(tab_layout.clone()), tab_name);
                     }
 
-                    let focused_tab = layout
-                        .tabs
-                        .into_iter()
-                        .enumerate()
-                        .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
-                    if let Some((tab_index, _)) = focused_tab {
+                    if let Some(focused_tab_index) = layout.focused_tab_index() {
                         session_data
                             .read()
                             .unwrap()
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_pty(PtyInstruction::GoToTab((tab_index + 1) as u32, client_id))
+                            .send_to_pty(PtyInstruction::GoToTab(
+                                (focused_tab_index + 1) as u32,
+                                client_id,
+                            ))
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None);
+                    spawn_tabs(None, None);
                 }
                 session_data
                     .read()
@@ -594,7 +601,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
-    pub layout: Box<LayoutFromYaml>,
+    pub layout: Box<Layout>,
     pub plugins: Option<PluginsConfig>,
 }
 

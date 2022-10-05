@@ -4,6 +4,7 @@ pub mod data;
 pub mod envs;
 pub mod errors;
 pub mod input;
+pub mod kdl;
 pub mod pane_size;
 pub mod position;
 pub mod setup;
@@ -19,8 +20,6 @@ pub mod logging; // Requires log4rs
 
 #[cfg(not(target_family = "wasm"))]
 pub use ::{
-    async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, serde_yaml, signal_hook,
+    anyhow, async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, signal_hook,
     tempfile, termwiz, vte,
 };
-
-pub use anyhow;

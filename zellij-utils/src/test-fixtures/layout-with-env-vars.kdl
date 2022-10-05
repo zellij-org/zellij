@@ -1,0 +1,5 @@
+layout
+env {
+    LAYOUT_ENV_VAR "make sure I'm also here"
+    MY_ENV_VAR "from layout"
+}

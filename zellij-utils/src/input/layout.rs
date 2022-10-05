@@ -11,22 +11,20 @@
 use crate::{
     input::{
         command::RunCommand,
-        config::{ConfigError, LayoutNameInTabError},
+        config::{Config, ConfigError},
     },
     pane_size::{Dimension, PaneGeom},
     setup,
 };
 
-use super::{
-    config::ConfigFromYaml,
-    plugins::{PluginTag, PluginsConfigError},
-};
+use std::str::FromStr;
+
+use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{
-    cmp::max,
-    fmt, fs,
+    fmt,
     ops::Not,
     path::{Path, PathBuf},
 };
@@ -34,20 +32,18 @@ use std::{fs::File, io::prelude::*};
 use url::Url;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
-pub enum Direction {
-    #[serde(alias = "horizontal")]
+pub enum SplitDirection {
     Horizontal,
-    #[serde(alias = "vertical")]
     Vertical,
 }
 
-impl Not for Direction {
+impl Not for SplitDirection {
     type Output = Self;
 
     fn not(self) -> Self::Output {
         match self {
-            Direction::Horizontal => Direction::Vertical,
-            Direction::Vertical => Direction::Horizontal,
+            SplitDirection::Horizontal => SplitDirection::Vertical,
+            SplitDirection::Vertical => SplitDirection::Horizontal,
         }
     }
 }
@@ -55,7 +51,7 @@ impl Not for Direction {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum SplitSize {
     #[serde(alias = "percent")]
-    Percent(u64), // 1 to 100
+    Percent(usize), // 1 to 100
     #[serde(alias = "fixed")]
     Fixed(usize), // An absolute number of columns or rows
 }
@@ -66,21 +62,6 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub enum RunFromYaml {
-    #[serde(rename = "plugin")]
-    Plugin(RunPluginFromYaml),
-    #[serde(rename = "command")]
-    Command(RunCommand),
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct RunPluginFromYaml {
-    #[serde(default)]
-    pub _allow_exec_host_cmd: bool,
-    pub location: Url,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -123,487 +104,292 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
-// The layout struct ultimately used to build the layouts.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
-    pub direction: Direction,
-    #[serde(default)]
-    pub pane_name: Option<String>,
-    #[serde(default)]
-    pub parts: Vec<Layout>,
+    pub tabs: Vec<(Option<String>, PaneLayout)>,
+    pub focused_tab_index: Option<usize>,
+    pub template: Option<PaneLayout>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct PaneLayout {
+    pub children_split_direction: SplitDirection,
+    pub name: Option<String>,
+    pub children: Vec<PaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
-    #[serde(default)]
     pub borderless: bool,
     pub focus: Option<bool>,
+    pub external_children_index: Option<usize>,
 }
 
-// The struct that is used to deserialize the layout from
-// a yaml configuration file, is needed because of:
-// https://github.com/bincode-org/bincode/issues/245
-// flattened fields don't retain size information.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(default)]
-pub struct LayoutFromYamlIntermediate {
-    #[serde(default)]
-    pub template: LayoutTemplate,
-    #[serde(default)]
-    pub borderless: bool,
-    #[serde(default)]
-    pub tabs: Vec<TabLayout>,
-    #[serde(default)]
-    pub session: SessionFromYaml,
-    #[serde(flatten)]
-    pub config: Option<ConfigFromYaml>,
-}
-
-// The struct that is used to deserialize the layout from
-// a yaml configuration file
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
-#[serde(default)]
-pub struct LayoutFromYaml {
-    #[serde(default)]
-    pub session: SessionFromYaml,
-    #[serde(default)]
-    pub template: LayoutTemplate,
-    #[serde(default)]
-    pub borderless: bool,
-    #[serde(default)]
-    pub tabs: Vec<TabLayout>,
-}
-
-type LayoutFromYamlIntermediateResult = Result<LayoutFromYamlIntermediate, ConfigError>;
-
-impl LayoutFromYamlIntermediate {
-    pub fn from_path(layout_path: &Path) -> LayoutFromYamlIntermediateResult {
-        let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
-            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
-
-        let mut layout = String::new();
-        layout_file.read_to_string(&mut layout)?;
-        let layout: Option<LayoutFromYamlIntermediate> = match serde_yaml::from_str(&layout) {
-            Err(e) => {
-                // needs direct check, as `[ErrorImpl]` is private
-                // https://github.com/dtolnay/serde-yaml/issues/121
-                if layout.is_empty() {
-                    return Ok(LayoutFromYamlIntermediate::default());
-                }
-                return Err(ConfigError::Serde(e));
+impl PaneLayout {
+    pub fn insert_children_layout(
+        &mut self,
+        children_layout: &mut PaneLayout,
+    ) -> Result<bool, ConfigError> {
+        // returns true if successfully inserted and false otherwise
+        match self.external_children_index {
+            Some(external_children_index) => {
+                self.children
+                    .insert(external_children_index, children_layout.clone());
+                self.external_children_index = None;
+                Ok(true)
             },
-            Ok(config) => config,
-        };
-
-        match layout {
-            Some(layout) => {
-                for tab in layout.tabs.clone() {
-                    tab.check()?;
+            None => {
+                for pane in self.children.iter_mut() {
+                    if pane.insert_children_layout(children_layout)? {
+                        return Ok(true);
+                    }
                 }
-                Ok(layout)
+                Ok(false)
             },
-            None => Ok(LayoutFromYamlIntermediate::default()),
         }
     }
-
-    pub fn from_yaml(yaml: &str) -> LayoutFromYamlIntermediateResult {
-        let layout: LayoutFromYamlIntermediate = match serde_yaml::from_str(yaml) {
-            Err(e) => {
-                // needs direct check, as `[ErrorImpl]` is private
-                // https://github.com/dtolnay/serde-yaml/issues/121
-                if yaml.is_empty() {
-                    return Ok(LayoutFromYamlIntermediate::default());
-                }
-                return Err(ConfigError::Serde(e));
-            },
-            Ok(config) => config,
-        };
-        Ok(layout)
-    }
-
-    pub fn to_layout_and_config(&self) -> (LayoutFromYaml, Option<ConfigFromYaml>) {
-        let config = self.config.clone();
-        let layout = self.clone().into();
-        (layout, config)
-    }
-
-    pub fn from_path_or_default(
-        layout: Option<&PathBuf>,
-        layout_dir: Option<PathBuf>,
-    ) -> Option<LayoutFromYamlIntermediateResult> {
-        layout
-            .map(|layout| {
-                // The way we determine where to look for the layout is similar to
-                // how a path would look for an executable.
-                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
-                if layout.extension().is_some() || layout.components().count() > 1 {
-                    // We look localy!
-                    LayoutFromYamlIntermediate::from_path(layout)
-                } else {
-                    // We look in the default dir
-                    LayoutFromYamlIntermediate::from_dir(layout, layout_dir.as_ref())
-                }
-            })
-            .or_else(|| {
-                Some(LayoutFromYamlIntermediate::from_dir(
-                    &std::path::PathBuf::from("default"),
-                    layout_dir.as_ref(),
-                ))
-            })
-    }
-
-    // It wants to use Path here, but that doesn't compile.
-    #[allow(clippy::ptr_arg)]
-    pub fn from_dir(
-        layout: &PathBuf,
-        layout_dir: Option<&PathBuf>,
-    ) -> LayoutFromYamlIntermediateResult {
-        match layout_dir {
-            Some(dir) => {
-                let layout_path = &dir.join(layout);
-                if layout_path.with_extension("yaml").exists() {
-                    Self::from_path(layout_path)
-                } else {
-                    LayoutFromYamlIntermediate::from_default_assets(layout)
-                }
-            },
-            None => LayoutFromYamlIntermediate::from_default_assets(layout),
+    pub fn children_block_count(&self) -> usize {
+        let mut count = 0;
+        if self.external_children_index.is_some() {
+            count += 1;
         }
-    }
-    // Currently still needed but on nightly
-    // this is already possible:
-    // HashMap<&'static str, Vec<u8>>
-    pub fn from_default_assets(path: &Path) -> LayoutFromYamlIntermediateResult {
-        match path.to_str() {
-            Some("default") => Self::default_from_assets(),
-            Some("strider") => Self::strider_from_assets(),
-            Some("disable-status-bar") => Self::disable_status_from_assets(),
-            Some("compact") => Self::compact_from_assets(),
-            None | Some(_) => Err(ConfigError::IoPath(
-                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
-                path.into(),
-            )),
+        for pane in &self.children {
+            count += pane.children_block_count();
         }
+        count
     }
-
-    // TODO Deserialize the assets from bytes &[u8],
-    // once serde-yaml supports zero-copy
-    pub fn default_from_assets() -> LayoutFromYamlIntermediateResult {
-        let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
-        Ok(layout)
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
+        split_space(space, self, space)
     }
-
-    pub fn strider_from_assets() -> LayoutFromYamlIntermediateResult {
-        let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
-        Ok(layout)
+    pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
+        let mut run_instructions = vec![];
+        if self.children.is_empty() {
+            run_instructions.push(self.run.clone());
+        }
+        for child in &self.children {
+            let mut child_run_instructions = child.extract_run_instructions();
+            run_instructions.append(&mut child_run_instructions);
+        }
+        run_instructions
     }
-
-    pub fn disable_status_from_assets() -> LayoutFromYamlIntermediateResult {
-        let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
-        Ok(layout)
-    }
-
-    pub fn compact_from_assets() -> LayoutFromYamlIntermediateResult {
-        let layout: LayoutFromYamlIntermediate =
-            serde_yaml::from_str(&String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)?;
-        Ok(layout)
+    pub fn with_one_pane() -> Self {
+        let mut default_layout = PaneLayout::default();
+        default_layout.children = vec![PaneLayout::default()];
+        default_layout
     }
 }
 
-type LayoutFromYamlResult = Result<LayoutFromYaml, ConfigError>;
-
-impl LayoutFromYaml {
-    pub fn new(layout_path: &Path) -> LayoutFromYamlResult {
-        let mut layout_file = File::open(&layout_path)
-            .or_else(|_| File::open(&layout_path.with_extension("yaml")))
-            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
-
-        let mut layout = String::new();
-        layout_file.read_to_string(&mut layout)?;
-        let layout: Option<LayoutFromYaml> = match serde_yaml::from_str(&layout) {
-            Err(e) => {
-                // needs direct check, as `[ErrorImpl]` is private
-                // https://github.com/dtolnay/serde-yaml/issues/121
-                if layout.is_empty() {
-                    return Ok(LayoutFromYaml::default());
-                }
-                return Err(ConfigError::Serde(e));
-            },
-            Ok(config) => config,
-        };
-
-        match layout {
-            Some(layout) => {
-                for tab in layout.tabs.clone() {
-                    tab.check()?;
-                }
-                Ok(layout)
-            },
-            None => Ok(LayoutFromYaml::default()),
-        }
-    }
-
-    // It wants to use Path here, but that doesn't compile.
-    #[allow(clippy::ptr_arg)]
-    pub fn from_dir(layout: &PathBuf, layout_dir: Option<&PathBuf>) -> LayoutFromYamlResult {
-        match layout_dir {
-            Some(dir) => {
-                Self::new(&dir.join(layout)).or_else(|_| Self::from_default_assets(layout))
-            },
-            None => Self::from_default_assets(layout),
-        }
-    }
-
-    pub fn from_path_or_default(
-        layout: Option<&PathBuf>,
-        layout_path: Option<&PathBuf>,
-        layout_dir: Option<PathBuf>,
-    ) -> Option<LayoutFromYamlResult> {
-        layout
-            .map(|p| LayoutFromYaml::from_dir(p, layout_dir.as_ref()))
-            .or_else(|| layout_path.map(|p| LayoutFromYaml::new(p)))
-            .or_else(|| {
-                Some(LayoutFromYaml::from_dir(
-                    &std::path::PathBuf::from("default"),
-                    layout_dir.as_ref(),
-                ))
-            })
-    }
-
-    // Currently still needed but on nightly
-    // this is already possible:
-    // HashMap<&'static str, Vec<u8>>
-    pub fn from_default_assets(path: &Path) -> LayoutFromYamlResult {
-        match path.to_str() {
-            Some("default") => Self::default_from_assets(),
-            Some("strider") => Self::strider_from_assets(),
-            Some("disable-status-bar") => Self::disable_status_from_assets(),
-            None | Some(_) => Err(ConfigError::IoPath(
-                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
-                path.into(),
-            )),
-        }
-    }
-
-    // TODO Deserialize the assets from bytes &[u8],
-    // once serde-yaml supports zero-copy
-    pub fn default_from_assets() -> LayoutFromYamlResult {
-        let layout: LayoutFromYaml =
-            serde_yaml::from_str(&String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)?;
-        Ok(layout)
-    }
-
-    pub fn strider_from_assets() -> LayoutFromYamlResult {
-        let layout: LayoutFromYaml =
-            serde_yaml::from_str(&String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)?;
-        Ok(layout)
-    }
-
-    pub fn disable_status_from_assets() -> LayoutFromYamlResult {
-        let layout: LayoutFromYaml =
-            serde_yaml::from_str(&String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)?;
-        Ok(layout)
-    }
-}
-
-// The struct that is used to deserialize the session from
-// a yaml configuration file
-#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
-pub struct SessionFromYaml {
-    pub name: Option<String>,
-    #[serde(default = "default_as_some_true")]
-    pub attach: Option<bool>,
-}
-
-fn default_as_some_true() -> Option<bool> {
-    Some(true)
-}
-
-// The struct that carries the information template that is used to
-// construct the layout
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct LayoutTemplate {
-    pub direction: Direction,
-    #[serde(default)]
-    pub pane_name: Option<String>,
-    #[serde(default)]
-    pub borderless: bool,
-    #[serde(default)]
-    pub parts: Vec<LayoutTemplate>,
-    #[serde(default)]
-    pub body: bool,
-    pub split_size: Option<SplitSize>,
-    pub focus: Option<bool>,
-    pub run: Option<RunFromYaml>,
-}
-
-impl LayoutTemplate {
-    // Insert an optional `[TabLayout]` at the correct position
-    pub fn insert_tab_layout(mut self, tab_layout: Option<TabLayout>) -> Self {
-        if self.body {
-            return tab_layout.unwrap_or_default().into();
-        }
-        for (i, part) in self.parts.clone().iter().enumerate() {
-            if part.body {
-                self.parts.push(tab_layout.unwrap_or_default().into());
-                self.parts.swap_remove(i);
-                break;
-            }
-            // recurse
-            let new_part = part.clone().insert_tab_layout(tab_layout.clone());
-            self.parts.push(new_part);
-            self.parts.swap_remove(i);
-        }
-        self
-    }
-
-    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Vec<Self> {
-        tab_layout
-            .iter()
-            .map(|tab_layout| Self::from(tab_layout.to_owned()))
-            .collect()
-    }
-}
-
-// The tab-layout struct used to specify each individual tab.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-pub struct TabLayout {
-    #[serde(default)]
-    pub direction: Direction,
-    pub pane_name: Option<String>,
-    #[serde(default)]
-    pub borderless: bool,
-    #[serde(default)]
-    pub parts: Vec<TabLayout>,
-    pub split_size: Option<SplitSize>,
-    #[serde(default)]
-    pub name: String,
-    pub focus: Option<bool>,
-    pub run: Option<RunFromYaml>,
+pub enum LayoutParts {
+    Tabs(Vec<(Option<String>, Layout)>), // String is the tab name
+    Panes(Vec<Layout>),
 }
 
-impl TabLayout {
-    fn check(&self) -> Result<TabLayout, ConfigError> {
-        for part in &self.parts {
-            part.check()?;
-            if !part.name.is_empty() {
-                return Err(ConfigError::LayoutNameInTab(LayoutNameInTabError));
-            }
+impl LayoutParts {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            LayoutParts::Panes(panes) => panes.is_empty(),
+            LayoutParts::Tabs(tabs) => tabs.is_empty(),
         }
-        Ok(self.clone())
+    }
+    pub fn insert_pane(&mut self, index: usize, layout: Layout) -> Result<(), ConfigError> {
+        match self {
+            LayoutParts::Panes(panes) => {
+                panes.insert(index, layout);
+                Ok(())
+            },
+            LayoutParts::Tabs(_tabs) => Err(ConfigError::new_kdl_error(
+                "Trying to insert a pane into a tab layout".into(),
+                0,
+                0,
+            )),
+        }
+    }
+}
+
+impl Default for LayoutParts {
+    fn default() -> Self {
+        LayoutParts::Panes(vec![])
     }
 }
 
 impl Layout {
-    pub fn total_terminal_panes(&self) -> usize {
-        let mut total_panes = 0;
-        total_panes += self.parts.len();
-        for part in &self.parts {
-            match part.run {
-                Some(Run::Command(_)) | None => {
-                    total_panes += part.total_terminal_panes();
-                },
-                Some(Run::Plugin(_)) => {},
-            }
+    pub fn stringified_from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+    ) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
+        match layout_path {
+            Some(layout_path) => {
+                // The way we determine where to look for the layout is similar to
+                // how a path would look for an executable.
+                // See the gh issue for more: https://github.com/zellij-org/zellij/issues/1412#issuecomment-1131559720
+                if layout_path.extension().is_some() || layout_path.components().count() > 1 {
+                    // We look localy!
+                    Layout::stringified_from_path(layout_path)
+                } else {
+                    // We look in the default dir
+                    Layout::stringified_from_dir(layout_path, layout_dir.as_ref())
+                }
+            },
+            None => Layout::stringified_from_dir(
+                &std::path::PathBuf::from("default"),
+                layout_dir.as_ref(),
+            ),
         }
-        total_panes
     }
-
-    pub fn total_borderless_panes(&self) -> usize {
-        let mut total_borderless_panes = 0;
-        total_borderless_panes += self.parts.iter().filter(|p| p.borderless).count();
-        for part in &self.parts {
-            total_borderless_panes += part.total_borderless_panes();
+    pub fn from_path_or_default(
+        layout_path: Option<&PathBuf>,
+        layout_dir: Option<PathBuf>,
+        config: Config,
+    ) -> Result<(Layout, Config), ConfigError> {
+        let (path_to_raw_layout, raw_layout) =
+            Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
+        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout)?;
+        let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
+        Ok((layout, config))
+    }
+    pub fn from_str(raw: &str, path_to_raw_layout: String) -> Result<Layout, ConfigError> {
+        Layout::from_kdl(raw, path_to_raw_layout)
+    }
+    pub fn stringified_from_dir(
+        layout: &PathBuf,
+        layout_dir: Option<&PathBuf>,
+    ) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
+        match layout_dir {
+            Some(dir) => {
+                let layout_path = &dir.join(layout);
+                if layout_path.with_extension("kdl").exists() {
+                    Self::stringified_from_path(layout_path)
+                } else {
+                    Layout::stringified_from_default_assets(layout)
+                }
+            },
+            None => Layout::stringified_from_default_assets(layout),
         }
-        total_borderless_panes
     }
-    pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
-        let mut run_instructions = vec![];
-        if self.parts.is_empty() {
-            run_instructions.push(self.run.clone());
+    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
+        let mut layout_file = File::open(&layout_path)
+            .or_else(|_| File::open(&layout_path.with_extension("kdl")))
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
+
+        let mut kdl_layout = String::new();
+        layout_file.read_to_string(&mut kdl_layout)?;
+        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout))
+    }
+    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> {
+        // (path_to_layout as String, stringified_layout)
+        // TODO: ideally these should not be hard-coded
+        // we should load layouts by name from the config
+        // and load them from a hashmap or some such
+        match path.to_str() {
+            Some("default") => Ok((
+                "Default layout".into(),
+                Self::stringified_default_from_assets()?,
+            )),
+            Some("strider") => Ok((
+                "Strider layout".into(),
+                Self::stringified_strider_from_assets()?,
+            )),
+            Some("disable-status-bar") => Ok((
+                "Disable Status Bar layout".into(),
+                Self::stringified_disable_status_from_assets()?,
+            )),
+            Some("compact") => Ok((
+                "Compact layout".into(),
+                Self::stringified_compact_from_assets()?,
+            )),
+            None | Some(_) => Err(ConfigError::IoPath(
+                std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
+                path.into(),
+            )),
         }
-        for part in &self.parts {
-            let mut current_runnables = part.extract_run_instructions();
-            run_instructions.append(&mut current_runnables);
+    }
+    pub fn stringified_default_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_strider_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_disable_status_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_compact_from_assets() -> Result<String, ConfigError> {
+        Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
+    }
+
+    pub fn new_tab(&self) -> PaneLayout {
+        match &self.template {
+            Some(template) => template.clone(),
+            None => PaneLayout::default(),
         }
-        run_instructions
     }
 
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(Layout, PaneGeom)> {
-        split_space(space, self)
+    pub fn is_empty(&self) -> bool {
+        !self.tabs.is_empty()
+    }
+    // TODO: do we need both of these?
+    pub fn has_tabs(&self) -> bool {
+        !self.tabs.is_empty()
     }
 
-    pub fn merge_layout_parts(&mut self, mut parts: Vec<Layout>) {
-        self.parts.append(&mut parts);
+    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout)> {
+        // String is the tab name
+        self.tabs.clone()
     }
 
-    fn from_vec_tab_layout(tab_layout: Vec<TabLayout>) -> Result<Vec<Self>, ConfigError> {
-        tab_layout
-            .iter()
-            .map(|tab_layout| Layout::try_from(tab_layout.to_owned()))
-            .collect()
-    }
-
-    fn from_vec_template_layout(
-        layout_template: Vec<LayoutTemplate>,
-    ) -> Result<Vec<Self>, ConfigError> {
-        layout_template
-            .iter()
-            .map(|layout_template| Layout::try_from(layout_template.to_owned()))
-            .collect()
+    pub fn focused_tab_index(&self) -> Option<usize> {
+        self.focused_tab_index
     }
 }
 
-fn layout_size(direction: Direction, layout: &Layout) -> usize {
-    fn child_layout_size(
-        direction: Direction,
-        parent_direction: Direction,
-        layout: &Layout,
-    ) -> usize {
-        let size = if parent_direction == direction { 1 } else { 0 };
-        if layout.parts.is_empty() {
-            size
-        } else {
-            let children_size = layout
-                .parts
-                .iter()
-                .map(|p| child_layout_size(direction, layout.direction, p))
-                .sum();
-            max(size, children_size)
-        }
-    }
-    child_layout_size(direction, direction, layout)
-}
-
-fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneGeom)> {
+fn split_space(
+    space_to_split: &PaneGeom,
+    layout: &PaneLayout,
+    total_space_to_split: &PaneGeom,
+) -> Vec<(PaneLayout, PaneGeom)> {
     let mut pane_positions = Vec::new();
-    let sizes: Vec<Option<SplitSize>> = layout.parts.iter().map(|part| part.split_size).collect();
+    let sizes: Vec<Option<SplitSize>> =
+        layout.children.iter().map(|part| part.split_size).collect();
 
     let mut split_geom = Vec::new();
-    let (mut current_position, split_dimension_space, mut inherited_dimension) =
-        match layout.direction {
-            Direction::Vertical => (space_to_split.x, space_to_split.cols, space_to_split.rows),
-            Direction::Horizontal => (space_to_split.y, space_to_split.rows, space_to_split.cols),
-        };
+    let (
+        mut current_position,
+        split_dimension_space,
+        inherited_dimension,
+        total_split_dimension_space,
+    ) = match layout.children_split_direction {
+        SplitDirection::Vertical => (
+            space_to_split.x,
+            space_to_split.cols,
+            space_to_split.rows,
+            total_space_to_split.cols,
+        ),
+        SplitDirection::Horizontal => (
+            space_to_split.y,
+            space_to_split.rows,
+            space_to_split.cols,
+            total_space_to_split.rows,
+        ),
+    };
 
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
-    for (&size, part) in sizes.iter().zip(&layout.parts) {
-        let split_dimension = match size {
+    let mut total_pane_size = 0;
+    for (&size, _part) in sizes.iter().zip(&*layout.children) {
+        let mut split_dimension = match size {
             Some(SplitSize::Percent(percent)) => Dimension::percent(percent as f64),
             Some(SplitSize::Fixed(size)) => Dimension::fixed(size),
             None => {
                 let free_percent = if let Some(p) = split_dimension_space.as_percent() {
                     p - sizes
                         .iter()
-                        .map(|&s| {
-                            if let Some(SplitSize::Percent(ip)) = s {
-                                ip as f64
-                            } else {
-                                0.0
-                            }
+                        .map(|&s| match s {
+                            Some(SplitSize::Percent(ip)) => ip as f64,
+                            _ => 0.0,
                         })
                         .sum::<f64>()
                 } else {
@@ -612,22 +398,17 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
-        inherited_dimension.set_inner(
-            layout
-                .parts
-                .iter()
-                .map(|p| layout_size(!layout.direction, p))
-                .max()
-                .unwrap(),
-        );
-        let geom = match layout.direction {
-            Direction::Vertical => PaneGeom {
+        split_dimension.adjust_inner(total_split_dimension_space.as_usize());
+        total_pane_size += split_dimension.as_usize();
+
+        let geom = match layout.children_split_direction {
+            SplitDirection::Vertical => PaneGeom {
                 x: current_position,
                 y: space_to_split.y,
                 cols: split_dimension,
                 rows: inherited_dimension,
             },
-            Direction::Horizontal => PaneGeom {
+            SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
                 y: current_position,
                 cols: inherited_dimension,
@@ -635,17 +416,31 @@ fn split_space(space_to_split: &PaneGeom, layout: &Layout) -> Vec<(Layout, PaneG
             },
         };
         split_geom.push(geom);
-        current_position += layout_size(layout.direction, part);
+        current_position += split_dimension.as_usize();
     }
 
-    for (i, part) in layout.parts.iter().enumerate() {
+    // add extra space from rounding errors to the last pane
+    if total_pane_size < split_dimension_space.as_usize() {
+        let increase_by = split_dimension_space.as_usize() - total_pane_size;
+        if let Some(last_geom) = split_geom.last_mut() {
+            match layout.children_split_direction {
+                SplitDirection::Vertical => last_geom.cols.increase_inner(increase_by),
+                SplitDirection::Horizontal => last_geom.rows.increase_inner(increase_by),
+            }
+        }
+    }
+    for (i, part) in layout.children.iter().enumerate() {
         let part_position_and_size = split_geom.get(i).unwrap();
-        if !part.parts.is_empty() {
-            let mut part_positions = split_space(part_position_and_size, part);
+        if !part.children.is_empty() {
+            let mut part_positions =
+                split_space(part_position_and_size, part, total_space_to_split);
             pane_positions.append(&mut part_positions);
         } else {
             pane_positions.push((part.clone(), *part_position_and_size));
         }
+    }
+    if pane_positions.is_empty() {
+        pane_positions.push((layout.clone(), space_to_split.clone()));
     }
     pane_positions
 }
@@ -658,163 +453,45 @@ impl TryFrom<Url> for RunPluginLocation {
             "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
             "file" => {
                 let path = PathBuf::from(url.path());
-                let canonicalize = |p: &Path| {
-                    fs::canonicalize(p)
-                        .map_err(|_| PluginsConfigError::InvalidPluginLocation(p.to_owned()))
-                };
-                canonicalize(&path)
-                    .or_else(|_| match path.strip_prefix("/") {
-                        Ok(path) => canonicalize(path),
-                        Err(_) => Err(PluginsConfigError::InvalidPluginLocation(path.to_owned())),
-                    })
-                    .map(Self::File)
+                Ok(Self::File(path))
             },
             _ => Err(PluginsConfigError::InvalidUrl(url)),
         }
     }
 }
 
-impl TryFrom<RunFromYaml> for Run {
-    type Error = PluginsConfigError;
-
-    fn try_from(run: RunFromYaml) -> Result<Self, Self::Error> {
-        match run {
-            RunFromYaml::Command(command) => Ok(Run::Command(command)),
-            RunFromYaml::Plugin(plugin) => Ok(Run::Plugin(RunPlugin {
-                _allow_exec_host_cmd: plugin._allow_exec_host_cmd,
-                location: plugin.location.try_into()?,
-            })),
-        }
-    }
-}
-
-impl From<LayoutFromYamlIntermediate> for LayoutFromYaml {
-    fn from(layout_from_yaml_intermediate: LayoutFromYamlIntermediate) -> Self {
-        Self {
-            template: layout_from_yaml_intermediate.template,
-            borderless: layout_from_yaml_intermediate.borderless,
-            tabs: layout_from_yaml_intermediate.tabs,
-            session: layout_from_yaml_intermediate.session,
-        }
-    }
-}
-
-impl From<LayoutFromYaml> for LayoutFromYamlIntermediate {
-    fn from(layout_from_yaml: LayoutFromYaml) -> Self {
-        Self {
-            template: layout_from_yaml.template,
-            borderless: layout_from_yaml.borderless,
-            tabs: layout_from_yaml.tabs,
-            config: None,
-            session: layout_from_yaml.session,
-        }
-    }
-}
-
-impl Default for LayoutFromYamlIntermediate {
+impl Default for SplitDirection {
     fn default() -> Self {
-        LayoutFromYaml::default().into()
+        SplitDirection::Horizontal
     }
 }
 
-impl TryFrom<TabLayout> for Layout {
-    type Error = ConfigError;
-
-    fn try_from(tab: TabLayout) -> Result<Self, Self::Error> {
-        Ok(Layout {
-            direction: tab.direction,
-            pane_name: tab.pane_name,
-            borderless: tab.borderless,
-            parts: Self::from_vec_tab_layout(tab.parts)?,
-            split_size: tab.split_size,
-            focus: tab.focus,
-            run: tab.run.map(Run::try_from).transpose()?,
-        })
-    }
-}
-
-impl From<TabLayout> for LayoutTemplate {
-    fn from(tab: TabLayout) -> Self {
-        Self {
-            direction: tab.direction,
-            pane_name: tab.pane_name,
-            borderless: tab.borderless,
-            parts: Self::from_vec_tab_layout(tab.parts),
-            body: false,
-            split_size: tab.split_size,
-            focus: tab.focus,
-            run: tab.run,
+impl FromStr for SplitDirection {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "vertical" | "Vertical" => Ok(SplitDirection::Vertical),
+            "horizontal" | "Horizontal" => Ok(SplitDirection::Horizontal),
+            _ => Err("split direction must be either vertical or horizontal".into()),
         }
     }
 }
 
-impl TryFrom<LayoutTemplate> for Layout {
-    type Error = ConfigError;
-
-    fn try_from(template: LayoutTemplate) -> Result<Self, Self::Error> {
-        Ok(Layout {
-            direction: template.direction,
-            pane_name: template.pane_name,
-            borderless: template.borderless,
-            parts: Self::from_vec_template_layout(template.parts)?,
-            split_size: template.split_size,
-            focus: template.focus,
-            run: template
-                .run
-                .map(Run::try_from)
-                // FIXME: This is just Result::transpose but that method is unstable, when it
-                // stabalizes we should swap this out.
-                .map_or(Ok(None), |r| r.map(Some))?,
-        })
-    }
-}
-
-impl Default for TabLayout {
-    fn default() -> Self {
-        Self {
-            direction: Direction::Horizontal,
-            borderless: false,
-            parts: vec![],
-            split_size: None,
-            run: None,
-            name: String::new(),
-            pane_name: None,
-            focus: None,
+impl FromStr for SplitSize {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.chars().last() == Some('%') {
+            let char_count = s.chars().count();
+            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
+            Ok(SplitSize::Percent(percent_size))
+        } else {
+            let fixed_size = usize::from_str_radix(s, 10)?;
+            Ok(SplitSize::Fixed(fixed_size))
         }
-    }
-}
-
-impl Default for LayoutTemplate {
-    fn default() -> Self {
-        Self {
-            direction: Direction::Horizontal,
-            pane_name: None,
-            body: false,
-            borderless: false,
-            parts: vec![LayoutTemplate {
-                direction: Direction::Horizontal,
-                pane_name: None,
-                body: true,
-                borderless: false,
-                split_size: None,
-                focus: None,
-                run: None,
-                parts: vec![],
-            }],
-            split_size: None,
-            focus: None,
-            run: None,
-        }
-    }
-}
-
-impl Default for Direction {
-    fn default() -> Self {
-        Direction::Horizontal
     }
 }
 
 // The unit test location.
-#[cfg(test)]
 #[path = "./unit/layout_test.rs"]
+#[cfg(test)]
 mod layout_test;

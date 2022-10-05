@@ -1226,6 +1226,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "kdl"
+version = "4.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8388a371e0e2ede18bbd94e476fcd45b4ac65cefcedf0c06fd13bd8389574a6"
+dependencies = [
+ "miette 5.3.0",
+ "nom 7.1.1",
+ "thiserror",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1412,7 +1423,7 @@ checksum = "cd2adcfcced5d625bf90a958a82ae5b93231f57f3df1383fee28c9b5096d35ed"
 dependencies = [
  "atty",
  "backtrace",
- "miette-derive",
+ "miette-derive 3.3.0",
  "once_cell",
  "owo-colors",
  "supports-color",
@@ -1421,6 +1432,18 @@ dependencies = [
  "terminal_size",
  "textwrap 0.14.2",
  "thiserror",
+]
+
+[[package]]
+name = "miette"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a28d6092d7e94a90bb9ea8e6c26c99d5d112d49dda2afdb4f7ea8cf09e1a5a6d"
+dependencies = [
+ "miette-derive 5.3.0",
+ "once_cell",
+ "thiserror",
+ "unicode-width",
 ]
 
 [[package]]
@@ -1433,6 +1456,23 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "miette-derive"
+version = "5.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f2485ed7d1fe80704928e3eb86387439609bd0c6bb96db8208daa364cfd1e09"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "minimal-lexical"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
@@ -1501,6 +1541,16 @@ checksum = "ffb4262d26ed83a1c0a33a38fe2bb15797329c85770da05e6b828ddb782627af"
 dependencies = [
  "memchr",
  "version_check",
+]
+
+[[package]]
+name = "nom"
+version = "7.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8903e5a29a317527874d0402f867152a3d21c908bb0b933e416c65e301d4c36"
+dependencies = [
+ "memchr",
+ "minimal-lexical",
 ]
 
 [[package]]
@@ -2501,7 +2551,7 @@ checksum = "76971977e6121664ec1b960d1313aacfa75642adc93b9d4d53b247bd4cb1747e"
 dependencies = [
  "dirs",
  "fnv",
- "nom",
+ "nom 5.1.2",
  "phf",
  "phf_codegen",
 ]
@@ -3312,11 +3362,12 @@ dependencies = [
  "dialoguer",
  "insta",
  "log",
- "miette",
+ "miette 3.3.0",
  "names",
  "rand 0.8.5",
  "ssh2",
  "suggest",
+ "thiserror",
  "zellij-client",
  "zellij-server",
  "zellij-utils",
@@ -3329,6 +3380,9 @@ dependencies = [
  "insta",
  "log",
  "mio",
+ "serde",
+ "serde_yaml",
+ "url",
  "zellij-utils",
 ]
 
@@ -3393,19 +3447,20 @@ dependencies = [
  "colorsys",
  "crossbeam",
  "directories-next",
+ "insta",
  "interprocess",
+ "kdl",
  "lazy_static",
  "libc",
  "log",
  "log4rs",
- "miette",
+ "miette 3.3.0",
  "nix",
  "once_cell",
  "regex",
  "rmp-serde",
  "serde",
  "serde_json",
- "serde_yaml",
  "signal-hook 0.3.14",
  "strip-ansi-escapes",
  "strum",
