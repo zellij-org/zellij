@@ -1042,15 +1042,25 @@ impl Screen {
         }
         Ok(())
     }
-    pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) {
+
+    pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to change input mode to {:?} for all clients",
+                mode_info.mode
+            )
+        };
+
         let connected_client_ids: Vec<ClientId> = self.active_tab_indices.keys().copied().collect();
         for client_id in connected_client_ids {
-            self.change_mode(mode_info.clone(), client_id);
+            self.change_mode(mode_info.clone(), client_id)
+                .with_context(err_context)?;
             if let Some(os_input) = &mut self.bus.os_input {
                 let _ = os_input
                     .send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode_info.mode));
             }
         }
+        Ok(())
     }
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) -> Result<()> {
         let client_id = if self.get_active_tab(client_id).is_some() {
@@ -1564,7 +1574,7 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::ChangeModeForAllClients(mode_info) => {
-                screen.change_mode_for_all_clients(mode_info);
+                screen.change_mode_for_all_clients(mode_info)?;
                 screen.render()?;
                 screen.unblock_input()?;
             },
