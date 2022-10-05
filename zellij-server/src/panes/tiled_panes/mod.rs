@@ -993,6 +993,9 @@ impl TiledPanes {
             None
         }
     }
+    pub fn hold_pane(&mut self, pane_id: PaneId)  {
+        self.panes.get_mut(&pane_id).map(|p| p.hold());
+    }
     pub fn panes_to_hide_contains(&self, pane_id: PaneId) -> bool {
         self.panes_to_hide.contains(&pane_id)
     }

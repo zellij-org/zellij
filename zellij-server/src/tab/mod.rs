@@ -350,6 +350,9 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
+    fn hold(&mut self) {
+        // No-op by default, only terminal panes support holding
+    }
 }
 
 impl Tab {
@@ -1564,6 +1567,13 @@ impl Tab {
             self.set_force_render();
             self.tiled_panes.set_force_render();
             closed_pane
+        }
+    }
+    pub fn hold_pane(&mut self, id: PaneId) {
+        if self.floating_panes.panes_contain(&id) {
+            self.floating_panes.hold_pane(id);
+        } else {
+            self.tiled_panes.hold_pane(id);
         }
     }
     pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {

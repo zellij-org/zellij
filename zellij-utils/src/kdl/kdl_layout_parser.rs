@@ -177,6 +177,7 @@ impl<'a> KdlLayoutParser<'a> {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
+                hold_on_close: true,
             }))),
             _ => Ok(None),
         }

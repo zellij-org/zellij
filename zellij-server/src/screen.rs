@@ -129,6 +129,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
+    HoldPane(PaneId, Option<ClientId>),
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(PaneLayout, Vec<RawFd>, ClientId),
@@ -229,6 +230,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
+            ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
@@ -1567,6 +1569,24 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.update_tabs()?;
                 screen.unblock_input();
+            },
+            ScreenInstruction::HoldPane(id, client_id) => {
+                match client_id {
+                    Some(client_id) => {
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(id));
+                    },
+                    None => {
+                        for tab in screen.tabs.values_mut() {
+                            if tab.get_all_pane_ids().contains(&id) {
+                                tab.hold_pane(id);
+                                break;
+                            }
+                        }
+                    },
+                }
+                screen.update_tabs()?;
+                screen.unblock_input();
+                // TODO: render?
             },
             ScreenInstruction::UpdatePaneName(c, client_id) => {
                 active_tab_and_connected_client_id!(

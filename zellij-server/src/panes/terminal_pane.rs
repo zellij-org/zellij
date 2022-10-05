@@ -99,6 +99,8 @@ pub struct TerminalPane {
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
+    is_held: bool, // a "held" pane means that its command has exited and its waiting for a
+                   // possible user instruction to be re-run
 }
 
 impl Pane for TerminalPane {
@@ -307,7 +309,9 @@ impl Pane for TerminalPane {
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let pane_title = if self.pane_name.is_empty()
+        let pane_title = if self.is_held {
+            String::from("Command exited, press <ENTER> to re-run")
+        } else if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -654,6 +658,10 @@ impl Pane for TerminalPane {
     fn is_alternate_mode_active(&self) -> bool {
         self.grid.is_alternate_mode_active()
     }
+    fn hold(&mut self) {
+        self.is_held = true;
+        self.set_should_render(true);
+    }
 }
 
 impl TerminalPane {
@@ -698,6 +706,7 @@ impl TerminalPane {
             borderless: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
+            is_held: false,
         }
     }
     pub fn get_x(&self) -> usize {

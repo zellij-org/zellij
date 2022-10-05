@@ -77,7 +77,6 @@ impl TerminalBytes {
         let mut buf = [0u8; 65536];
         loop {
             match self.deadline_read(&mut buf).await {
-                // match deadline_read(async_reader.as_mut(), self.render_deadline, &mut buf).await {
                 ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                 ReadResult::Timeout => {
                     let time_to_send_render =

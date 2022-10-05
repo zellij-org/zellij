@@ -132,7 +132,6 @@ fn handle_openpty(
     std::thread::spawn(move || {
         child.wait().unwrap();
         handle_command_exit(child);
-        let _ = nix::unistd::close(pid_primary);
         let _ = nix::unistd::close(pid_secondary);
         quit_cb(PaneId::Terminal(pid_primary));
     });
@@ -239,6 +238,7 @@ pub fn spawn_terminal(
                 command,
                 args,
                 cwd: None,
+                hold_on_close: false,
             }
         },
         TerminalAction::RunCommand(command) => command,

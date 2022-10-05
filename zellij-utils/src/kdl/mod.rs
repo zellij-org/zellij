@@ -590,12 +590,10 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
 }
 
 impl TryFrom<&KdlNode> for Action {
-    // type Error = Box<dyn std::error::Error>;
     type Error = ConfigError;
     fn try_from(kdl_action: &KdlNode) -> Result<Self, Self::Error> {
         let action_name = kdl_name!(kdl_action);
         let action_arguments: Vec<&KdlEntry> = kdl_argument_values!(kdl_action);
-        // let action_arguments: Vec<&KdlValue> = kdl_argument_values!(kdl_action);
         let action_children: Vec<&KdlDocument> = kdl_children!(kdl_action);
         match action_name {
             "Quit" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
@@ -744,6 +742,7 @@ impl TryFrom<&KdlNode> for Action {
                     args,
                     cwd,
                     direction,
+                    hold_on_close: true,
                 };
                 Ok(Action::Run(run_command_action))
             },
@@ -1473,7 +1472,7 @@ impl RunCommand {
                 .collect(),
             None => vec![],
         };
-        Ok(RunCommand { command, args, cwd })
+        Ok(RunCommand { command, args, cwd, hold_on_close: true })
     }
 }
 

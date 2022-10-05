@@ -293,6 +293,7 @@ impl Action {
                         args,
                         cwd,
                         direction,
+                        hold_on_close: true,
                     };
                     match floating {
                         Some(true) => Ok(vec![Action::NewFloatingPane(Some(run_command_action))]),

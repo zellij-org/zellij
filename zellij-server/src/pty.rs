@@ -200,6 +200,7 @@ impl Pty {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
             cwd: None, // this should be filled by the calling function, eg. spawn_terminal
+            hold_on_close: false,
         })
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
@@ -237,10 +238,18 @@ impl Pty {
                 terminal_action.unwrap_or_else(|| self.get_default_terminal())
             },
         };
+        let hold_on_close = match &terminal_action {
+            TerminalAction::RunCommand(run_command) => run_command.hold_on_close,
+            _ => false
+        };
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id| {
-                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                if hold_on_close {
+                    let _ = senders.send_to_screen(ScreenInstruction::HoldPane(pane_id, None));
+                } else {
+                    let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                }
             }
         });
         let (pid_primary, child_fd): (RawFd, RawFd) = self

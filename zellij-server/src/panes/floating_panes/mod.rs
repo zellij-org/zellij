@@ -150,6 +150,9 @@ impl FloatingPanes {
         self.desired_pane_positions.remove(&pane_id);
         self.panes.remove(&pane_id)
     }
+    pub fn hold_pane(&mut self, pane_id: PaneId)  {
+        self.panes.get_mut(&pane_id).map(|p| p.hold());
+    }
     pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(pane_id)
     }
