@@ -1605,10 +1605,7 @@ impl<'a> TiledPaneGrid<'a> {
                     SplitDirection::Vertical => self.display_area.rows,
                     SplitDirection::Horizontal => self.display_area.cols,
                 };
-                {
-                    let mut panes = self.panes.borrow_mut();
-                    (*panes).remove(&id);
-                }
+                self.panes.borrow_mut().remove(&id);
                 let mut pane_resizer = PaneResizer::new(self.panes.clone());
                 let _ = pane_resizer.layout(direction, side_length);
                 return true;

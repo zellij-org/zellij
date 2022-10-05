@@ -981,9 +981,7 @@ impl TiledPanes {
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&pane_id);
             self.move_clients_out_of_pane(pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
-            }
+            self.set_pane_frames(self.draw_pane_frames); // recalculate pane frames and update size
             closed_pane
         } else {
             self.panes.remove(&pane_id);
