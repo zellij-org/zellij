@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::str;
 
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::actions::MoveTabDirection;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::Layout, position::Position};
@@ -486,7 +487,7 @@ impl Screen {
         }
     }
 
-    pub fn move_tab(&mut self, client_id: ClientId, direction: MoveTabDirection) {
+    pub fn move_tab(&mut self, client_id: ClientId, direction: MoveTabDirection) -> Result<()> {
         if let Some(active_tab_index) = self.active_tab_indices.get(&client_id) {
             let dest_tab_index = match direction {
                 MoveTabDirection::Right => if active_tab_index + 1 > self.tabs.len() - 1 {
@@ -508,6 +509,8 @@ impl Screen {
                 }
             }
         }
+        self.update_tabs()?;
+        Ok(())
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
@@ -1193,7 +1196,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::MoveTab(client_id, direction) => {
                 screen.move_tab(client_id, direction);
-                screen.render();
+                screen.render()?;
             },
             ScreenInstruction::DumpScreen(file, client_id) => {
                 active_tab!(screen, client_id, |tab: &mut Tab| tab

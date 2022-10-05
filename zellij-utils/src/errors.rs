@@ -367,6 +367,8 @@ pub enum PtyWriteContext {
 #[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
 
+use crate::input::actions::MoveTabDirection;
+
 #[cfg(not(target_family = "wasm"))]
 mod not_wasm {
     use super::*;
