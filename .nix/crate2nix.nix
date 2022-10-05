@@ -13,6 +13,10 @@
     (import "${crate2nix}/tools.nix" {inherit pkgs;})
     generatedCargoNix
     ;
+  darwinBuildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [
+      pkgs.darwin.apple_sdk.frameworks.DiskArbitration
+      pkgs.darwin.apple_sdk.frameworks.Foundation
+  ];
 
   project =
     import
@@ -29,6 +33,10 @@
               # Crate dependency overrides go here
               zellij = attrs: {
                 inherit postInstall desktopItems meta name nativeBuildInputs patchPhase;
+                buildInputs = darwinBuildInputs;
+              };
+              sysinfo = attrs: {
+                buildInputs = darwinBuildInputs;
               };
             };
         };
