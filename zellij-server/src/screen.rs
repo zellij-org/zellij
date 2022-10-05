@@ -40,8 +40,10 @@ use zellij_utils::{
 ///
 /// - screen: An instance of `Screen` to operate on
 /// - client_id: The client_id, usually taken from the `ScreenInstruction` that's being processed
-/// - closure: A closure satisfying `|tab: &mut Tab| -> ()`
-
+/// - closure: A closure satisfying `|tab: &mut Tab| -> ()` OR `|tab: &mut Tab| -> Result<T>` (see
+///   '?' below)
+/// - ?: A literal "?", to append a `?` to the closure when it returns a `Result` type. This
+///   argument is optional and not needed when the closure returns `()`
 macro_rules! active_tab {
     ($screen:ident, $client_id:ident, $closure:expr) => {
         if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
@@ -50,6 +52,14 @@ macro_rules! active_tab {
             // "&mut Tab" in all the closures below...
             // See: https://github.com/rust-lang/rust/issues/23416
             $closure(active_tab);
+        } else {
+            log::error!("Active tab not found for client id: {:?}", $client_id);
+        }
+    };
+    // Same as above, but with an added `?` for when the close returns a `Result` type.
+    ($screen:ident, $client_id:ident, $closure:expr, ?) => {
+        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
+            $closure(active_tab)?;
         } else {
             log::error!("Active tab not found for client id: {:?}", $client_id);
         }
