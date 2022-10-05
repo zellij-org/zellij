@@ -395,28 +395,6 @@ fn split_panes_horizontally() {
 }
 
 #[test]
-fn correctly_resize_frameless_panes_on_pane_close() {
-    let cols = 60;
-    let rows = 20;
-    let size = Size { cols, rows };
-    let mut tab = create_new_tab(size);
-    tab.set_pane_frames(false);
-
-    // a single frameless pane should take up all available space
-    let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();
-    let content_size = (pane.get_content_columns(), pane.get_content_rows());
-    assert_eq!(content_size, (cols, rows));
-
-    tab.new_pane(PaneId::Terminal(2), Some(1));
-    tab.close_pane(PaneId::Terminal(2), true);
-
-    // the size should be the same after adding and then removing a pane
-    let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();
-    let content_size = (pane.get_content_columns(), pane.get_content_rows());
-    assert_eq!(content_size, (cols, rows));
-}
-
-#[test]
 fn split_largest_pane() {
     let size = Size {
         cols: 121,
@@ -14036,4 +14014,27 @@ pub fn custom_cursor_height_width_ratio() {
         Some(3),
         "ratio updated successfully"
     ); // 10 / 4 == 2.5, rounded: 3
+}
+
+#[test]
+fn correctly_resize_frameless_panes_on_pane_close() {
+    // check that https://github.com/zellij-org/zellij/issues/1773 is fixed
+    let cols = 60;
+    let rows = 20;
+    let size = Size { cols, rows };
+    let mut tab = create_new_tab(size);
+    tab.set_pane_frames(false);
+
+    // a single frameless pane should take up all available space
+    let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();
+    let content_size = (pane.get_content_columns(), pane.get_content_rows());
+    assert_eq!(content_size, (cols, rows));
+
+    tab.new_pane(PaneId::Terminal(2), Some(1));
+    tab.close_pane(PaneId::Terminal(2), true);
+
+    // the size should be the same after adding and then removing a pane
+    let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();
+    let content_size = (pane.get_content_columns(), pane.get_content_rows());
+    assert_eq!(content_size, (cols, rows));
 }
