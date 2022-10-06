@@ -28,7 +28,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::time::Instant;
@@ -49,9 +48,9 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
         if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
             // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
+            $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
@@ -88,7 +87,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
-    pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse: bool, // this is only pub for the tests TODO: remove this once we combine write_text_to_clipboard with render
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
@@ -458,7 +457,7 @@ impl Tab {
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
-        new_pids: Vec<RawFd>,
+        new_ids: Vec<u32>,
         tab_index: usize,
         client_id: ClientId,
     ) {
@@ -478,7 +477,7 @@ impl Tab {
         let positions_in_layout = layout.position_panes_in_space(&free_space);
 
         let positions_and_size = positions_in_layout.iter();
-        let mut new_pids = new_pids.iter();
+        let mut new_ids = new_ids.iter();
 
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
@@ -509,7 +508,7 @@ impl Tab {
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
-                let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
+                let pid = new_ids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
                 let next_terminal_position = self.get_next_terminal_position();
                 let mut new_pane = TerminalPane::new(
                     *pid,
@@ -529,7 +528,7 @@ impl Tab {
                 set_focus_pane_id(layout, PaneId::Terminal(*pid));
             }
         }
-        for unused_pid in new_pids {
+        for unused_pid in new_ids {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
@@ -935,14 +934,14 @@ impl Tab {
             self.tiled_panes.get_active_pane_id(client_id)
         }
     }
-    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<RawFd> {
+    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<u32> {
         if let Some(PaneId::Terminal(pid)) = self.get_active_pane_id(client_id) {
             Some(pid)
         } else {
             None
         }
     }
-    pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
+    pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
             || self
@@ -950,7 +949,7 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
     }
-    pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+    pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) {
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -976,7 +975,7 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes);
     }
-    pub fn process_pending_vte_events(&mut self, pid: RawFd) {
+    pub fn process_pending_vte_events(&mut self, pid: u32) {
         if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
             let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
             for vte_event in vte_events {
@@ -984,7 +983,7 @@ impl Tab {
             }
         }
     }
-    fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+    fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) {
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{fs::File, io::Write};
 
 use crate::panes::PaneId;
@@ -39,7 +39,7 @@ pub use nix::unistd::Pid;
 
 use crate::ClientId;
 
-pub(crate) fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
+fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCSWINSZ;
@@ -103,6 +103,7 @@ fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
+    terminal_id: u32,
 ) -> (RawFd, RawFd) {
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
@@ -133,7 +134,7 @@ fn handle_openpty(
         child.wait().unwrap();
         handle_command_exit(child);
         let _ = nix::unistd::close(pid_secondary);
-        quit_cb(PaneId::Terminal(pid_primary));
+        quit_cb(PaneId::Terminal(terminal_id));
     });
 
     (pid_primary, child_id as RawFd)
@@ -147,13 +148,14 @@ fn handle_terminal(
     failover_cmd: Option<RunCommand>,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
+    terminal_id: u32,
 ) -> (RawFd, RawFd) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
     // parent.
     match openpty(None, Some(&orig_termios)) {
-        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb),
+        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
         Err(e) => match failover_cmd {
-            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb),
+            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id),
             None => {
                 panic!("failed to start pty{:?}", e);
             },
@@ -191,12 +193,14 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 ///
 /// This function will panic if both the `EDITOR` and `VISUAL` environment variables are not
 /// set.
-pub fn spawn_terminal(
+fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId) + Send>,
     default_editor: Option<PathBuf>,
-) -> Result<(RawFd, RawFd), &'static str> {
+    terminal_id: u32,
+) -> Result<(RawFd, RawFd), &'static str> { // returns the terminal_id, the primary fd and the
+                                                 // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {
@@ -251,13 +255,14 @@ pub fn spawn_terminal(
         None
     };
 
-    Ok(handle_terminal(cmd, failover_cmd, orig_termios, quit_cb))
+    Ok(handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id))
 }
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, IpcSenderWithContext<ServerToClientMsg>>>>,
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, RawFd>>>,
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -291,8 +296,7 @@ impl AsyncReader for RawFdAsyncReader {
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
-    /// Sets the size of the terminal associated to file descriptor `fd`.
-    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16);
+    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16);
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
@@ -301,15 +305,15 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
         default_editor: Option<PathBuf>,
-    ) -> Result<(RawFd, RawFd), &'static str>;
+    ) -> Result<(u32, RawFd, RawFd), &'static str>;
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
-    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error>;
+    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
-    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error>;
+    fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error>;
     /// Terminate the process with process ID `pid`. (SIGTERM)
     fn kill(&self, pid: Pid) -> Result<(), nix::Error>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
@@ -335,9 +339,16 @@ pub trait ServerOsApi: Send + Sync {
 }
 
 impl ServerOsApi for ServerOsInputOutput {
-    fn set_terminal_size_using_fd(&self, fd: RawFd, cols: u16, rows: u16) {
-        if cols > 0 && rows > 0 {
-            set_terminal_size_using_fd(fd, cols, rows);
+    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) {
+        match self.terminal_id_to_raw_fd.lock().unwrap().get(&id) {
+            Some(fd) => {
+                if cols > 0 && rows > 0 {
+                    set_terminal_size_using_fd(*fd, cols, rows);
+                }
+            },
+            None => {
+                log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
+            }
         }
     }
     fn spawn_terminal(
@@ -345,14 +356,39 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId) + Send>,
         default_editor: Option<PathBuf>,
-    ) -> Result<(RawFd, RawFd), &'static str> {
+    ) -> Result<(u32, RawFd, RawFd), &'static str> {
         let orig_termios = self.orig_termios.lock().unwrap();
-        spawn_terminal(
-            terminal_action,
-            orig_termios.clone(),
-            quit_cb,
-            default_editor,
-        )
+        let mut terminal_id = None;
+        {
+            let current_ids: HashSet<u32> = self.terminal_id_to_raw_fd.lock().unwrap().keys().copied().collect();
+            for i in 0..u32::MAX {
+                let i = i as u32;
+                if !current_ids.contains(&i) {
+                    terminal_id = Some(i);
+                    break;
+                }
+            };
+        }
+        match terminal_id {
+            Some(terminal_id) => {
+                match spawn_terminal(
+                    terminal_action,
+                    orig_termios.clone(),
+                    quit_cb,
+                    default_editor,
+                    terminal_id,
+                ) {
+                    Ok((pid_primary, pid_secondary)) => {
+                        self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, pid_primary);
+                        Ok((terminal_id, pid_primary, pid_secondary))
+                    },
+                    Err(e) => Err(e)
+                }
+            },
+            None => {
+                Err("No more termial ids left to allocate!")
+            }
+        }
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
         unistd::read(fd, buf)
@@ -360,11 +396,29 @@ impl ServerOsApi for ServerOsInputOutput {
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
         Box::new(RawFdAsyncReader::new(fd))
     }
-    fn write_to_tty_stdin(&self, fd: RawFd, buf: &[u8]) -> Result<usize, nix::Error> {
-        unistd::write(fd, buf)
+    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error> {
+        match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
+            Some(fd) => {
+                unistd::write(*fd, buf)
+            },
+            None => {
+                // TODO: propagate this error
+                log::error!("Failed to write to terminal with {terminal_id} - could not find its file descriptor");
+                Ok(0)
+            }
+        }
     }
-    fn tcdrain(&self, fd: RawFd) -> Result<(), nix::Error> {
-        termios::tcdrain(fd)
+    fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error> {
+        match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
+            Some(fd) => {
+                termios::tcdrain(*fd)
+            },
+            None => {
+                // TODO: propagate this error
+                log::error!("Failed to tcdrain to terminal with {terminal_id} - could not find its file descriptor");
+                Ok(())
+            }
+        }
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
@@ -444,6 +498,7 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
     Ok(ServerOsInputOutput {
         orig_termios,
         client_senders: Arc::new(Mutex::new(HashMap::new())),
+        terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
     })
 }
 

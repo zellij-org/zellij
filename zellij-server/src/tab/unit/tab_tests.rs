@@ -30,7 +30,7 @@ use zellij_utils::{
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
+    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) {
         // noop
     }
     fn spawn_terminal(
@@ -38,7 +38,7 @@ impl ServerOsApi for FakeInputOutput {
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(RawFd, RawFd), &'static str> {
+    ) -> Result<(u32, RawFd, RawFd), &'static str> {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -47,10 +47,10 @@ impl ServerOsApi for FakeInputOutput {
     fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _fd: RawFd, _buf: &[u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn tcdrain(&self, _fd: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, _id: u32) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {

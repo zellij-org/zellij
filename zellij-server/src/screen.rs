@@ -2,7 +2,6 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
@@ -80,7 +79,7 @@ macro_rules! active_tab_and_connected_client_id {
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
-    PtyBytes(RawFd, VteBytes),
+    PtyBytes(u32, VteBytes),
     Render,
     NewPane(PaneId, ClientOrTabIndex),
     OpenInPlaceEditor(PaneId, ClientId),
@@ -132,7 +131,7 @@ pub enum ScreenInstruction {
     HoldPane(PaneId, Option<ClientId>),
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(PaneLayout, Vec<RawFd>, ClientId),
+    NewTab(PaneLayout, Vec<u32>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
@@ -747,7 +746,7 @@ impl Screen {
     pub fn new_tab(
         &mut self,
         layout: PaneLayout,
-        new_pids: Vec<RawFd>,
+        new_ids: Vec<u32>,
         client_id: ClientId,
     ) -> Result<()> {
         let client_id = if self.get_active_tab(client_id).is_some() {
@@ -785,7 +784,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
-        tab.apply_layout(layout, new_pids, tab_index, client_id);
+        tab.apply_layout(layout, new_ids, tab_index, client_id);
         if self.session_is_mirrored {
             if let Some(active_tab) = self.get_active_tab_mut(client_id) {
                 let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
@@ -1640,8 +1639,8 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input();
                 screen.render()?;
             },
-            ScreenInstruction::NewTab(layout, new_pane_pids, client_id) => {
-                screen.new_tab(layout, new_pane_pids, client_id)?;
+            ScreenInstruction::NewTab(layout, new_pane_ids, client_id) => {
+                screen.new_tab(layout, new_pane_ids, client_id)?;
                 screen.unblock_input();
                 screen.render()?;
             },

@@ -23,9 +23,9 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
         if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
             // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
+            $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,

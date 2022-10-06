@@ -64,9 +64,9 @@ impl From<&PtyInstruction> for PtyContext {
 pub(crate) struct Pty {
     pub active_panes: HashMap<ClientId, PaneId>,
     pub bus: Bus<PtyInstruction>,
-    pub id_to_child_pid: HashMap<RawFd, RawFd>, // pty_primary => child raw fd
+    pub id_to_child_pid: HashMap<u32, RawFd>, // terminal_id => child raw fd
     debug_to_file: bool,
-    task_handles: HashMap<RawFd, JoinHandle<()>>,
+    task_handles: HashMap<u32, JoinHandle<()>>, // terminal_id to join-handle
     default_editor: Option<PathBuf>,
 }
 
@@ -226,7 +226,7 @@ impl Pty {
         &mut self,
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientOrTabIndex,
-    ) -> Result<RawFd, &'static str> {
+    ) -> Result<u32, &'static str> { // returns the terminal id
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =
@@ -252,7 +252,7 @@ impl Pty {
                 }
             }
         });
-        let (pid_primary, child_fd): (RawFd, RawFd) = self
+        let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
             .bus
             .os_input
             .as_mut()
@@ -263,15 +263,15 @@ impl Pty {
             let os_input = self.bus.os_input.as_ref().unwrap().clone();
             let debug_to_file = self.debug_to_file;
             async move {
-                TerminalBytes::new(pid_primary, senders, os_input, debug_to_file)
+                TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
                     .listen()
                     .await;
             }
         });
 
-        self.task_handles.insert(pid_primary, terminal_bytes);
-        self.id_to_child_pid.insert(pid_primary, child_fd);
-        Ok(pid_primary)
+        self.task_handles.insert(terminal_id, terminal_bytes);
+        self.id_to_child_pid.insert(terminal_id, child_fd);
+        Ok(terminal_id)
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
@@ -293,26 +293,26 @@ impl Pty {
             match run_instruction {
                 Some(Run::Command(command)) => {
                     let cmd = TerminalAction::RunCommand(command);
-                    let (pid_primary, child_fd): (RawFd, RawFd) = self
+                    let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
                         .unwrap(); // TODO: handle error here
-                    self.id_to_child_pid.insert(pid_primary, child_fd);
-                    new_pane_pids.push(pid_primary);
+                    self.id_to_child_pid.insert(terminal_id, child_fd);
+                    new_pane_pids.push((terminal_id, pid_primary));
                 },
                 None => {
-                    let (pid_primary, child_fd): (RawFd, RawFd) = self
+                    let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
                         .bus
                         .os_input
                         .as_mut()
                         .unwrap()
                         .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
                         .unwrap(); // TODO: handle error here
-                    self.id_to_child_pid.insert(pid_primary, child_fd);
-                    new_pane_pids.push(pid_primary);
+                    self.id_to_child_pid.insert(terminal_id, child_fd);
+                    new_pane_pids.push((terminal_id, pid_primary));
                 },
                 // Investigate moving plugin loading to here.
                 Some(Run::Plugin(_)) => {},
@@ -322,22 +322,22 @@ impl Pty {
             .senders
             .send_to_screen(ScreenInstruction::NewTab(
                 layout,
-                new_pane_pids.clone(),
+                new_pane_pids.iter().map(|(terminal_id, _pid_primary)| *terminal_id).collect(),
                 client_id,
             ))
             .unwrap();
-        for id in new_pane_pids {
+        for (terminal_id, pid_primary) in new_pane_pids {
             let terminal_bytes = task::spawn({
                 let senders = self.bus.senders.clone();
                 let os_input = self.bus.os_input.as_ref().unwrap().clone();
                 let debug_to_file = self.debug_to_file;
                 async move {
-                    TerminalBytes::new(id, senders, os_input, debug_to_file)
+                    TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
                         .listen()
                         .await;
                 }
             });
-            self.task_handles.insert(id, terminal_bytes);
+            self.task_handles.insert(terminal_id, terminal_bytes);
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
@@ -375,7 +375,7 @@ impl Pty {
 
 impl Drop for Pty {
     fn drop(&mut self) {
-        let child_ids: Vec<RawFd> = self.id_to_child_pid.keys().copied().collect();
+        let child_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {
             self.close_pane(PaneId::Terminal(id));
         }

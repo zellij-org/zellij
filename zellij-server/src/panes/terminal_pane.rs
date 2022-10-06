@@ -11,7 +11,6 @@ use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
@@ -74,7 +73,7 @@ impl AnsiEncoding {
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
-    Terminal(RawFd),
+    Terminal(u32),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
@@ -83,7 +82,7 @@ pub enum PaneId {
 #[allow(clippy::too_many_arguments)]
 pub struct TerminalPane {
     pub grid: Grid,
-    pub pid: RawFd,
+    pub pid: u32,
     pub selectable: bool,
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
@@ -667,7 +666,7 @@ impl Pane for TerminalPane {
 impl TerminalPane {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pid: RawFd,
+        pid: u32,
         position_and_size: PaneGeom,
         style: Style,
         pane_index: usize,
