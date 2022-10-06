@@ -7,6 +7,7 @@ use std::str;
 
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::options::Clipboard;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::PaneLayout, position::Position};
 
@@ -128,7 +129,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(PaneId, Option<ClientId>),
+    HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(PaneLayout, Vec<u32>, ClientId),
@@ -1569,15 +1570,15 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs()?;
                 screen.unblock_input();
             },
-            ScreenInstruction::HoldPane(id, client_id) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(id));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(id, exit_status, run_command));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.hold_pane(id);
+                                tab.hold_pane(id, exit_status, run_command);
                                 break;
                             }
                         }

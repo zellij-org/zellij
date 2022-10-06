@@ -21,6 +21,18 @@ pub struct RunCommand {
     pub hold_on_close: bool
 }
 
+impl std::fmt::Display for RunCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut command: String = self.command.as_path().as_os_str().to_string_lossy().to_string();
+        for arg in &self.args {
+            command.push(' ');
+            command.push_str(arg);
+        }
+        write!(f, "{}", command)
+    }
+}
+
+
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommandAction {

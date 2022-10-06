@@ -9,6 +9,7 @@ use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
+use zellij_utils::input::command::RunCommand;
 
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
@@ -349,7 +350,7 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
-    fn hold(&mut self) {
+    fn hold(&mut self, exit_status: Option<i32>, run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
 }
@@ -1568,11 +1569,11 @@ impl Tab {
             closed_pane
         }
     }
-    pub fn hold_pane(&mut self, id: PaneId) {
+    pub fn hold_pane(&mut self, id: PaneId, exit_status: Option<i32>, run_command: RunCommand) {
         if self.floating_panes.panes_contain(&id) {
-            self.floating_panes.hold_pane(id);
+            self.floating_panes.hold_pane(id, exit_status, run_command);
         } else {
-            self.tiled_panes.hold_pane(id);
+            self.tiled_panes.hold_pane(id, exit_status, run_command);
         }
     }
     pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {

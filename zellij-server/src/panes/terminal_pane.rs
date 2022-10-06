@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
 use zellij_utils::pane_size::Offset;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     pane_size::SizeInPixels,
@@ -98,7 +99,7 @@ pub struct TerminalPane {
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
-    is_held: bool, // a "held" pane means that its command has exited and its waiting for a
+    is_held: Option<(Option<i32>, RunCommand)>, // a "held" pane means that its command has exited and its waiting for a
                    // possible user instruction to be re-run
 }
 
@@ -308,8 +309,8 @@ impl Pane for TerminalPane {
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let pane_title = if self.is_held {
-            String::from("Command exited, press <ENTER> to re-run")
+        let pane_title = if let Some((exit_status, run_command)) = &self.is_held {
+            format!("{}", run_command)
         } else if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
@@ -349,12 +350,22 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
-        let frame = PaneFrame::new(
+        let mut frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
         );
+        if let Some((exit_status, run_command)) = &self.is_held {
+            if let Some(exit_status)  = exit_status {
+                if *exit_status != 0 {
+                    frame.color = Some(self.style.colors.red);
+                }
+                frame.add_undertitle(format!("Exit Code: {exit_status}, press <ENTER> to re-run"));
+            } else {
+                frame.add_undertitle(String::from("Exited, press <ENTER> to re-run"));
+            }
+        }
 
         match self.frame.get(&client_id) {
             // TODO: use and_then or something?
@@ -657,8 +668,8 @@ impl Pane for TerminalPane {
     fn is_alternate_mode_active(&self) -> bool {
         self.grid.is_alternate_mode_active()
     }
-    fn hold(&mut self) {
-        self.is_held = true;
+    fn hold(&mut self, exit_status: Option<i32>, run_command: RunCommand) {
+        self.is_held = Some((exit_status, run_command));
         self.set_should_render(true);
     }
 }
@@ -705,7 +716,7 @@ impl TerminalPane {
             borderless: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
-            is_held: false,
+            is_held: None,
         }
     }
     pub fn get_x(&self) -> usize {

@@ -81,6 +81,7 @@ pub struct PaneFrame {
     pub is_main_client: bool,
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
+    undertitle: Option<String>,
 }
 
 impl PaneFrame {
@@ -100,7 +101,11 @@ impl PaneFrame {
             is_main_client: frame_params.is_main_client,
             other_focused_clients: frame_params.other_focused_clients,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
+            undertitle: None,
         }
+    }
+    pub fn add_undertitle(&mut self, undertitle: String) {
+        self.undertitle = Some(undertitle);
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors);
@@ -594,6 +599,78 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .unwrap()
     }
+    fn render_undertitle(&self) -> Vec<TerminalCharacter> {
+        let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
+        let middle_truncated_sign = "[..]";
+        let middle_truncated_sign_long = "[...]";
+        let undertitle_text = &self.undertitle.as_ref().unwrap();
+        let full_text = format!(" {} ", undertitle_text);
+        let full_text_len = full_text.width();
+
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
+        if max_undertitle_length <= 6 {
+            let mut padding = String::new();
+            for _ in 0..max_undertitle_length {
+                padding.push_str(boundary_type::HORIZONTAL);
+            }
+            let mut ret = vec![];
+            ret.append(&mut left_boundary);
+            ret.append(&mut foreground_color(&padding, self.color));
+            ret.append(&mut right_boundary);
+            ret
+        } else if full_text_len <= max_undertitle_length {
+            let mut middle_padding = String::new();
+            for _ in full_text_len..max_undertitle_length {
+                middle_padding.push_str(boundary_type::HORIZONTAL);
+            }
+            let mut ret = vec![];
+            ret.append(&mut left_boundary);
+            ret.append(&mut foreground_color(&full_text, self.color));
+            ret.append(&mut foreground_color(&middle_padding, self.color));
+            ret.append(&mut right_boundary);
+            ret
+        } else {
+            let length_of_each_half = (max_undertitle_length - middle_truncated_sign.width()) / 2;
+            let mut first_part: String = String::with_capacity(length_of_each_half);
+            for char in full_text.chars() {
+                if first_part.width() + char.width().unwrap_or(0) > length_of_each_half {
+                    break;
+                } else {
+                    first_part.push(char);
+                }
+            }
+            let mut second_part: String = String::with_capacity(length_of_each_half);
+            for char in full_text.chars().rev() {
+                if second_part.width() + char.width().unwrap_or(0) > length_of_each_half {
+                    break;
+                } else {
+                    second_part.insert(0, char);
+                }
+            }
+
+            let undertitle_text = if first_part.width()
+                + middle_truncated_sign.width()
+                + second_part.width()
+                < max_undertitle_length
+            {
+                // this means we lost 1 character when dividing the total length into halves
+                format!(
+                    "{}{}{}",
+                    first_part, middle_truncated_sign_long, second_part
+                )
+            } else {
+                format!("{}{}{}", first_part, middle_truncated_sign, second_part)
+            };
+            let mut ret = vec![];
+            ret.append(&mut left_boundary);
+            ret.append(&mut foreground_color(&undertitle_text, self.color));
+            ret.append(&mut right_boundary);
+            ret
+        }
+    }
     pub fn render(&self) -> (Vec<CharacterChunk>, Option<String>) {
         let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
@@ -605,24 +682,30 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(title, x, y));
             } else if row == self.geom.rows - 1 {
                 // bottom row
-                let mut bottom_row = vec![];
-                for col in 0..self.geom.cols {
-                    let boundary = if col == 0 {
-                        // bottom left corner
-                        self.get_corner(boundary_type::BOTTOM_LEFT)
-                    } else if col == self.geom.cols - 1 {
-                        // bottom right corner
-                        self.get_corner(boundary_type::BOTTOM_RIGHT)
-                    } else {
-                        boundary_type::HORIZONTAL
-                    };
+                if self.undertitle.is_some() {
+                    let x = self.geom.x;
+                    let y = self.geom.y + row;
+                    character_chunks.push(CharacterChunk::new(self.render_undertitle(), x, y));
+                } else {
+                    let mut bottom_row = vec![];
+                    for col in 0..self.geom.cols {
+                        let boundary = if col == 0 {
+                            // bottom left corner
+                            self.get_corner(boundary_type::BOTTOM_LEFT)
+                        } else if col == self.geom.cols - 1 {
+                            // bottom right corner
+                            self.get_corner(boundary_type::BOTTOM_RIGHT)
+                        } else {
+                            boundary_type::HORIZONTAL
+                        };
 
-                    let mut boundary_character = foreground_color(boundary, self.color);
-                    bottom_row.append(&mut boundary_character);
+                        let mut boundary_character = foreground_color(boundary, self.color);
+                        bottom_row.append(&mut boundary_character);
+                    }
+                    let x = self.geom.x;
+                    let y = self.geom.y + row;
+                    character_chunks.push(CharacterChunk::new(bottom_row, x, y));
                 }
-                let x = self.geom.x;
-                let y = self.geom.y + row;
-                character_chunks.push(CharacterChunk::new(bottom_row, x, y));
             } else {
                 let boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
                 let boundary_character_right =

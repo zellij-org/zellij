@@ -61,18 +61,18 @@ fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
-fn handle_command_exit(mut child: Child) {
+fn handle_command_exit(mut child: Child) -> Option<i32> { // returns the exit status, if any
     let mut should_exit = false;
     let mut attempts = 3;
     let mut signals = signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).unwrap();
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {
-            Ok(Some(_status)) => {
+            Ok(Some(status)) => {
                 // if the child process has exited, break outside of the loop
                 // and exit this function
                 // TODO: handle errors?
-                break 'handle_exit;
+                break 'handle_exit status.code();
             },
             Ok(None) => {
                 ::std::thread::sleep(::std::time::Duration::from_millis(10));
@@ -94,7 +94,7 @@ fn handle_command_exit(mut child: Child) {
         } else {
             // when I say whoa, I mean WHOA!
             let _ = child.kill();
-            break 'handle_exit;
+            break 'handle_exit None;
         }
     }
 }
@@ -102,7 +102,7 @@ fn handle_command_exit(mut child: Child) {
 fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
-    quit_cb: Box<dyn Fn(PaneId) + Send>,
+    quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
 ) -> (RawFd, RawFd) {
     // primary side of pty and child fd
@@ -110,6 +110,7 @@ fn handle_openpty(
     let pid_secondary = open_pty_res.slave;
 
     let mut child = unsafe {
+        let cmd = cmd.clone();
         let command = &mut Command::new(cmd.command);
         if let Some(current_dir) = cmd.cwd {
             if current_dir.exists() {
@@ -132,9 +133,9 @@ fn handle_openpty(
     let child_id = child.id();
     std::thread::spawn(move || {
         child.wait().unwrap();
-        handle_command_exit(child);
+        let exit_status = handle_command_exit(child);
         let _ = nix::unistd::close(pid_secondary);
-        quit_cb(PaneId::Terminal(terminal_id));
+        quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
     });
 
     (pid_primary, child_id as RawFd)
@@ -147,7 +148,7 @@ fn handle_terminal(
     cmd: RunCommand,
     failover_cmd: Option<RunCommand>,
     orig_termios: termios::Termios,
-    quit_cb: Box<dyn Fn(PaneId) + Send>,
+    quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
 ) -> (RawFd, RawFd) {
     // Create a pipe to allow the child the communicate the shell's pid to it's
@@ -196,7 +197,7 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
 fn spawn_terminal(
     terminal_action: TerminalAction,
     orig_termios: termios::Termios,
-    quit_cb: Box<dyn Fn(PaneId) + Send>,
+    quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
 ) -> Result<(RawFd, RawFd), &'static str> { // returns the terminal_id, the primary fd and the
@@ -303,7 +304,7 @@ pub trait ServerOsApi: Send + Sync {
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
-        quit_cb: Box<dyn Fn(PaneId) + Send>,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd), &'static str>;
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -354,7 +355,7 @@ impl ServerOsApi for ServerOsInputOutput {
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
-        quit_cb: Box<dyn Fn(PaneId) + Send>,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd), &'static str> {
         let orig_termios = self.orig_termios.lock().unwrap();

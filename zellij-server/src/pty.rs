@@ -244,9 +244,9 @@ impl Pty {
         };
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
-            move |pane_id| {
+            move |pane_id, exit_status, command| {
                 if hold_on_close {
-                    let _ = senders.send_to_screen(ScreenInstruction::HoldPane(pane_id, None));
+                    let _ = senders.send_to_screen(ScreenInstruction::HoldPane(pane_id, exit_status, command, None));
                 } else {
                     let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
                 }
@@ -286,12 +286,23 @@ impl Pty {
         for run_instruction in extracted_run_instructions {
             let quit_cb = Box::new({
                 let senders = self.bus.senders.clone();
-                move |pane_id| {
+                move |pane_id, _exit_status, _command| {
                     let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
                 }
             });
             match run_instruction {
                 Some(Run::Command(command)) => {
+                    let hold_on_close = command.hold_on_close;
+                    let quit_cb = Box::new({
+                        let senders = self.bus.senders.clone();
+                        move |pane_id, exit_status, command| {
+                            if hold_on_close {
+                                let _ = senders.send_to_screen(ScreenInstruction::HoldPane(pane_id, exit_status, command, None));
+                            } else {
+                                let _ = senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                            }
+                        }
+                    });
                     let cmd = TerminalAction::RunCommand(command);
                     let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
                         .bus
