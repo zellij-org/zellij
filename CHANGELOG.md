@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: Server panics when writing to suppressed pane (https://github.com/zellij-org/zellij/pull/1749)
 * debugging: Improve error handling in screen thread private functions (https://github.com/zellij-org/zellij/pull/1770)
 * fix(nix): add DiskArbitration and Foundation to darwin builds (https://github.com/zellij-org/zellij/pull/1724)
+* debugging: Remove calls to `panic` in server/tab (https://github.com/zellij-org/zellij/pull/1748)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
