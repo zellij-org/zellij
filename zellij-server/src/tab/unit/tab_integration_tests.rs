@@ -212,7 +212,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id);
+    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id)
+        .unwrap();
     tab
 }
 
@@ -267,7 +268,8 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| i as i32)
         .collect();
-    tab.apply_layout(tab_layout, pane_ids, index, client_id);
+    tab.apply_layout(tab_layout, pane_ids, index, client_id)
+        .unwrap();
     tab
 }
 
@@ -2270,7 +2272,7 @@ fn tab_with_basic_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None);
+    tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
         size.rows,
@@ -2310,7 +2312,7 @@ fn tab_with_nested_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None);
+    tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
         size.rows,
@@ -2344,7 +2346,7 @@ fn tab_with_nested_uneven_layout() {
     let client_id = 1;
     let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
     let mut output = Output::default();
-    tab.render(&mut output, None);
+    tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
         size.rows,
