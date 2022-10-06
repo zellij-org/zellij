@@ -546,7 +546,7 @@ mod not_wasm {
                 Err(e) => {
                     let (msg, context) = e.into_inner();
                     Err(
-                        crate::anyhow::anyhow!("failed to send message to client: {:#?}", msg)
+                        crate::anyhow::anyhow!("failed to send message to channel: {:#?}", msg)
                             .context(context.to_string()),
                     )
                 },
