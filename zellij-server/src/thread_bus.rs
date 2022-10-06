@@ -32,7 +32,7 @@ impl ThreadSenders {
         } else {
             self.to_screen
                 .as_ref()
-                .unwrap()
+                .context("failed to get screen sender")?
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to screen")
@@ -50,7 +50,7 @@ impl ThreadSenders {
         } else {
             self.to_pty
                 .as_ref()
-                .unwrap()
+                .context("failed to get pty sender")?
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to pty")
@@ -68,7 +68,7 @@ impl ThreadSenders {
         } else {
             self.to_plugin
                 .as_ref()
-                .unwrap()
+                .context("failed to get plugin sender")?
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to plugin")
@@ -86,7 +86,7 @@ impl ThreadSenders {
         } else {
             self.to_server
                 .as_ref()
-                .unwrap()
+                .context("failed to get server sender")?
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to server")
@@ -103,7 +103,7 @@ impl ThreadSenders {
         } else {
             self.to_pty_writer
                 .as_ref()
-                .unwrap()
+                .context("failed to get pty writer sender")?
                 .send(instruction)
                 .to_anyhow()
                 .context("failed to send message to pty writer")
