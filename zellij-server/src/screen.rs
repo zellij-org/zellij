@@ -700,15 +700,41 @@ impl Screen {
                 .with_context(err_context)?;
             let visible_tab_indices: HashSet<usize> =
                 self.active_tab_indices.values().copied().collect();
+
+            let split_off_tabs = self.tabs.split_off(&tab_index);
             for t in self.tabs.values_mut() {
                 if visible_tab_indices.contains(&t.index) {
                     t.set_force_render();
                     t.visible(true).with_context(err_context)?;
                 }
-                if t.position > tab_to_close.position {
-                    t.position -= 1;
-                }
             }
+
+            for mut tab in split_off_tabs.into_values() {
+                let old_index = tab.index;
+
+                tab.position -= 1;
+                tab.index -= 1;
+                tab.name = format!("Tab #{}", tab.position + 1);
+
+                if visible_tab_indices.contains(&old_index) {
+                    tab.set_force_render();
+                    tab.visible(true).with_context(err_context)?;
+                }
+
+                self.tabs.insert(tab.index, tab);
+            }
+
+            let new_tab_index = if tab_index >= self.tabs.len() {
+                self.tabs.keys().last().copied()
+            } else {
+                Some(tab_index)
+            };
+
+            let current_active_tab_indices = self.active_tab_indices.clone();
+            for (client_id, _idx) in current_active_tab_indices {
+                self.update_client_tab_focus(client_id.clone(), new_tab_index.unwrap_or(0));
+            }
+
             self.update_tabs().with_context(err_context)?;
             self.render().with_context(err_context)
         }
