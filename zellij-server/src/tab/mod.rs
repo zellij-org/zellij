@@ -497,7 +497,6 @@ impl Tab {
                 let pane_title = run.location.to_string();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index, client_id))
-                    .to_anyhow()
                     .with_context(err_context)?;
                 let pid = pid_rx.recv().with_context(err_context)?;
                 let mut new_plugin = PluginPane::new(
@@ -588,7 +587,6 @@ impl Tab {
                     Some(*client_id),
                     Event::ModeUpdate(mode_info.clone()),
                 ))
-                .to_anyhow()
                 .with_context(|| {
                     format!(
                         "failed to update plugins with mode info {:?}",
@@ -1169,7 +1167,6 @@ impl Tab {
                 for key in parse_keys(&input_bytes) {
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
-                        .to_anyhow()
                         .with_context(err_context)?;
                 }
             },
@@ -2390,7 +2387,6 @@ impl Tab {
                     None,
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
                 ))
-                .to_anyhow()
                 .with_context(|| {
                     format!("failed to inform plugins about copy selection for client {client_id}")
                 })
@@ -2424,7 +2420,6 @@ impl Tab {
             };
         self.senders
             .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
-            .to_anyhow()
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
@@ -2466,7 +2461,6 @@ impl Tab {
                     None,
                     Event::Visible(visible),
                 ))
-                .to_anyhow()
                 .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         }
         Ok(())
