@@ -1,6 +1,0 @@
----
-source: zellij-utils/src/input/./unit/keybinds_test.rs
-assertion_line: 490
-expression: "format!(\"{:?}\", config_error)"
----
-KdlError(KdlError { error_message: "Unknown keybind instruction: 'i_am_not_bind_or_unbind'", src: None, offset: Some(55), len: Some(23) })

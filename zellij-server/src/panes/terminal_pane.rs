@@ -427,7 +427,6 @@ impl Pane for TerminalPane {
                 self.pane_name.push_str(c);
             },
         }
-        self.set_should_render(true);
     }
     fn pid(&self) -> PaneId {
         PaneId::Terminal(self.pid)
@@ -650,9 +649,6 @@ impl Pane for TerminalPane {
     fn clear_search(&mut self) {
         self.grid.clear_search();
         self.search_term.clear();
-    }
-    fn is_alternate_mode_active(&self) -> bool {
-        self.grid.is_alternate_mode_active()
     }
 }
 

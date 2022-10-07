@@ -14,7 +14,7 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
-    input::layout::SplitDirection,
+    input::layout::Direction,
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -211,7 +211,7 @@ impl TiledPanes {
     pub fn pane_ids(&self) -> impl Iterator<Item = &PaneId> {
         self.panes.keys()
     }
-    pub fn relayout(&mut self, direction: SplitDirection) {
+    pub fn relayout(&mut self, direction: Direction) {
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
@@ -219,12 +219,10 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         let result = match direction {
-            SplitDirection::Horizontal => {
+            Direction::Horizontal => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).cols)
             },
-            SplitDirection::Vertical => {
-                pane_grid.layout(direction, (*self.display_area.borrow()).rows)
-            },
+            Direction::Vertical => pane_grid.layout(direction, (*self.display_area.borrow()).rows),
         };
         if let Err(e) = &result {
             log::error!("{:?} relayout of the tab failed: {}", direction, e);
@@ -271,7 +269,7 @@ impl TiledPanes {
                 if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
                     return false;
                 } else {
-                    return split(SplitDirection::Horizontal, &full_pane_size).is_some();
+                    return split(Direction::Horizontal, &full_pane_size).is_some();
                 }
             }
         }
@@ -284,7 +282,7 @@ impl TiledPanes {
                 if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
                     return false;
                 }
-                return split(SplitDirection::Vertical, &full_pane_size).is_some();
+                return split(Direction::Vertical, &full_pane_size).is_some();
             }
         }
         false
@@ -298,13 +296,11 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if let Some((top_winsize, bottom_winsize)) =
-            split(SplitDirection::Horizontal, &full_pane_size)
-        {
+        if let Some((top_winsize, bottom_winsize)) = split(Direction::Horizontal, &full_pane_size) {
             active_pane.set_geom(top_winsize);
             new_pane.set_geom(bottom_winsize);
             self.panes.insert(pid, new_pane);
-            self.relayout(SplitDirection::Vertical);
+            self.relayout(Direction::Vertical);
         }
     }
     pub fn split_pane_vertically(
@@ -316,13 +312,11 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if let Some((left_winsize, right_winsize)) =
-            split(SplitDirection::Vertical, &full_pane_size)
-        {
+        if let Some((left_winsize, right_winsize)) = split(Direction::Vertical, &full_pane_size) {
             active_pane.set_geom(left_winsize);
             new_pane.set_geom(right_winsize);
             self.panes.insert(pid, new_pane);
-            self.relayout(SplitDirection::Horizontal);
+            self.relayout(Direction::Horizontal);
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
@@ -461,18 +455,15 @@ impl TiledPanes {
                 *display_area,
                 *viewport,
             );
-            match pane_grid.layout(SplitDirection::Horizontal, cols) {
-                Ok(_) => {
-                    let column_difference = cols as isize - display_area.cols as isize;
-                    // FIXME: Should the viewport be an Offset?
-                    viewport.cols = (viewport.cols as isize + column_difference) as usize;
-                    display_area.cols = cols;
-                },
-                Err(e) => {
-                    log::error!("Failed to horizontally resize the tab: {:?}", e);
-                },
-            };
-            if pane_grid.layout(SplitDirection::Vertical, rows).is_ok() {
+            if pane_grid.layout(Direction::Horizontal, cols).is_ok() {
+                let column_difference = cols as isize - display_area.cols as isize;
+                // FIXME: Should the viewport be an Offset?
+                viewport.cols = (viewport.cols as isize + column_difference) as usize;
+                display_area.cols = cols;
+            } else {
+                log::error!("Failed to horizontally resize the tab!!!");
+            }
+            if pane_grid.layout(Direction::Vertical, rows).is_ok() {
                 let row_difference = rows as isize - display_area.rows as isize;
                 viewport.rows = (viewport.rows as isize + row_difference) as usize;
                 display_area.rows = rows;

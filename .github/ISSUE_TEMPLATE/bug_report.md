@@ -9,9 +9,8 @@ Thank you for taking the time to file this issue! Please follow the instructions
 
 1. Delete the contents of `/tmp/zellij-1000/zellij-log`, ie with `cd /tmp/zellij-1000/` and `rm -fr zellij-log/`
 2. Run `zellij --debug`
-3. Run `stty size`, copy the result and attach it in the bug report
-4. Recreate your issue.
-5. Quit Zellij immediately with ctrl-q (your bug should ideally still be visible on screen)
+3. Recreate your issue.
+3. Quit Zellij immediately with ctrl-q (your bug should ideally still be visible on screen)
 
 Please attach the files that were created in `/tmp/zellij-1000/zellij-log/` to the extent you are comfortable with.
 

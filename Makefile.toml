@@ -83,7 +83,7 @@ args = [
 
 # Simple clippy tweak
 [tasks.clippy]
-args = ["clippy", "--all-targets", "--all-features", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+args = ["clippy", "--all-targets","--all-features","--","--deny","warnings", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Release building and installing Zellij
 [tasks.install]

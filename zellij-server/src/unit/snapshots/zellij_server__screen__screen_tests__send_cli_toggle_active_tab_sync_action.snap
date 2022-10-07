@@ -1,6 +1,0 @@
----
-source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1487
-expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
----
-[Write([102, 111, 111], 0), Write([102, 111, 111], 1), Exit]

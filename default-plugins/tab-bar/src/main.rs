@@ -13,7 +13,6 @@ use crate::tab::tab_style;
 pub struct LinePart {
     part: String,
     len: usize,
-    tab_index: Option<usize>,
 }
 
 #[derive(Default)]
@@ -89,10 +88,12 @@ impl ZellijPlugin for State {
             }
             let tab = tab_style(
                 tabname,
-                t,
+                t.active,
                 is_alternate_tab,
+                t.is_sync_panes_active,
                 self.mode_info.style.colors,
                 self.mode_info.capabilities,
+                t.other_focused_clients.as_slice(),
             );
             is_alternate_tab = !is_alternate_tab;
             all_tabs.push(tab);
@@ -107,17 +108,17 @@ impl ZellijPlugin for State {
         );
         let mut s = String::new();
         let mut len_cnt = 0;
-        for bar_part in tab_line {
+        for (idx, bar_part) in tab_line.iter().enumerate() {
             s = format!("{}{}", s, &bar_part.part);
 
             if self.should_render
-                && self.mouse_click_pos >= len_cnt
-                && self.mouse_click_pos < len_cnt + bar_part.len
-                && bar_part.tab_index.is_some()
+                && self.mouse_click_pos > len_cnt
+                && self.mouse_click_pos <= len_cnt + bar_part.len
+                && idx > 2
             {
-                // Tabs are indexed starting from 1, therefore we need add 1 to tab_index.
-                let tab_index: u32 = bar_part.tab_index.unwrap().try_into().unwrap();
-                switch_tab_to(tab_index + 1);
+                // First three elements of tab_line are "Zellij", session name and empty thing, hence the idx > 2 condition.
+                // Tabs are indexed starting from 1, therefore we need subtract 2 below.
+                switch_tab_to(TryInto::<u32>::try_into(idx).unwrap() - 2);
             }
             len_cnt += bar_part.len;
         }

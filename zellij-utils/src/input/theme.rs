@@ -2,75 +2,72 @@ use serde::{
     de::{Error, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt,
-};
 
-use crate::data::Palette;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::{collections::HashMap, fmt};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct UiConfig {
-    pub pane_frames: FrameConfig,
+use super::{config::ConfigError, options::Options};
+use crate::data::{Palette, PaletteColor};
+use crate::shared::detect_theme_hue;
+
+/// Intermediate deserialization of themes
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ThemesFromYamlIntermediate(HashMap<String, Theme>);
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ThemesFromYaml {
+    pub themes: ThemesFromYamlIntermediate,
 }
 
-impl UiConfig {
-    pub fn merge(&self, other: UiConfig) -> Self {
-        let mut merged = self.clone();
-        merged.pane_frames = merged.pane_frames.merge(other.pane_frames);
-        merged
-    }
+type ThemesFromYamlResult = Result<ThemesFromYaml, ConfigError>;
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct UiConfigFromYaml {
+    pub pane_frames: FrameConfigFromYaml,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct FrameConfig {
+pub struct FrameConfigFromYaml {
     pub rounded_corners: bool,
 }
 
-impl FrameConfig {
-    pub fn merge(&self, other: FrameConfig) -> Self {
-        let mut merged = self.clone();
-        merged.rounded_corners = other.rounded_corners;
-        merged
-    }
-}
-
-#[derive(Clone, PartialEq, Default)]
-pub struct Themes(HashMap<String, Theme>);
-
-impl fmt::Debug for Themes {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut stable_sorted = BTreeMap::new();
-        for (theme_name, theme) in self.0.iter() {
-            stable_sorted.insert(theme_name, theme);
-        }
-        write!(f, "{:#?}", stable_sorted)
-    }
-}
-
-impl Themes {
-    pub fn from_data(theme_data: HashMap<String, Theme>) -> Self {
-        Themes(theme_data)
-    }
-    pub fn insert(&mut self, theme_name: String, theme: Theme) {
-        self.0.insert(theme_name, theme);
-    }
-    pub fn merge(&self, mut other: Themes) -> Self {
-        let mut merged = self.clone();
-        for (name, theme) in other.0.drain() {
-            merged.0.insert(name, theme);
-        }
-        merged
-    }
-    pub fn get_theme(&self, theme_name: &str) -> Option<&Theme> {
-        self.0.get(theme_name)
-    }
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+struct ThemeFromYaml {
+    palette: PaletteFromYaml,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
     #[serde(flatten)]
-    pub palette: Palette,
+    palette: PaletteFromYaml,
+}
+
+/// Intermediate deserialization struct
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub struct PaletteFromYaml {
+    pub fg: PaletteColorFromYaml,
+    pub bg: PaletteColorFromYaml,
+    pub black: PaletteColorFromYaml,
+    pub red: PaletteColorFromYaml,
+    pub green: PaletteColorFromYaml,
+    pub yellow: PaletteColorFromYaml,
+    pub blue: PaletteColorFromYaml,
+    pub magenta: PaletteColorFromYaml,
+    pub cyan: PaletteColorFromYaml,
+    pub white: PaletteColorFromYaml,
+    pub orange: PaletteColorFromYaml,
+}
+
+/// Intermediate deserialization enum
+// This is here in order to make the untagged enum work
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum PaletteColorFromYaml {
+    Rgb((u8, u8, u8)),
+    EightBit(u8),
+    Hex(HexColor),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -137,6 +134,96 @@ impl Serialize for HexColor {
     }
 }
 
+impl Default for PaletteColorFromYaml {
+    fn default() -> Self {
+        PaletteColorFromYaml::EightBit(0)
+    }
+}
+
+impl ThemesFromYaml {
+    pub fn from_path(theme_path: &Path) -> ThemesFromYamlResult {
+        let mut theme_file = File::open(&theme_path)
+            .or_else(|_| File::open(&theme_path.with_extension("yaml")))
+            .map_err(|e| ConfigError::IoPath(e, theme_path.into()))?;
+
+        let mut theme = String::new();
+        theme_file.read_to_string(&mut theme)?;
+
+        let theme: ThemesFromYaml = match serde_yaml::from_str(&theme) {
+            Err(e) => return Err(ConfigError::Serde(e)),
+            Ok(theme) => theme,
+        };
+
+        Ok(theme)
+    }
+}
+
+impl From<ThemesFromYaml> for ThemesFromYamlIntermediate {
+    fn from(yaml: ThemesFromYaml) -> Self {
+        yaml.themes
+    }
+}
+
+impl ThemesFromYamlIntermediate {
+    pub fn theme_config(self, opts: &Options) -> Option<Palette> {
+        let mut from_yaml = self;
+        match &opts.theme {
+            Some(theme) => from_yaml.from_default_theme(theme.to_owned()),
+            None => from_yaml.from_default_theme("default".into()),
+        }
+    }
+
+    fn get_theme(&mut self, theme: String) -> Option<Theme> {
+        self.0.remove(&theme)
+    }
+
+    #[allow(clippy::wrong_self_convention)]
+    fn from_default_theme(&mut self, theme: String) -> Option<Palette> {
+        self.clone()
+            .get_theme(theme)
+            .map(|t| Palette::from(t.palette))
+    }
+
+    /// Merges two Theme structs into one Theme struct
+    /// `other` overrides the Theme of `self`.
+    pub fn merge(&self, other: Self) -> Self {
+        let mut theme = self.0.clone();
+        theme.extend(other.0);
+        Self(theme)
+    }
+}
+
+impl From<PaletteFromYaml> for Palette {
+    fn from(yaml: PaletteFromYaml) -> Self {
+        Palette {
+            fg: yaml.fg.into(),
+            bg: yaml.bg.into(),
+            black: yaml.black.into(),
+            red: yaml.red.into(),
+            green: yaml.green.into(),
+            yellow: yaml.yellow.into(),
+            blue: yaml.blue.into(),
+            magenta: yaml.magenta.into(),
+            cyan: yaml.cyan.into(),
+            white: yaml.white.into(),
+            orange: yaml.orange.into(),
+            theme_hue: detect_theme_hue(yaml.bg.into()),
+            ..Palette::default()
+        }
+    }
+}
+
+impl From<PaletteColorFromYaml> for PaletteColor {
+    fn from(yaml: PaletteColorFromYaml) -> Self {
+        match yaml {
+            PaletteColorFromYaml::Rgb(color) => PaletteColor::Rgb(color),
+            PaletteColorFromYaml::EightBit(color) => PaletteColor::EightBit(color),
+            PaletteColorFromYaml::Hex(color) => PaletteColor::Rgb(color.into()),
+        }
+    }
+}
+
+// The unit test location.
 #[cfg(test)]
 #[path = "./unit/theme_test.rs"]
 mod theme_test;

@@ -6,18 +6,13 @@ use crate::sessions::{
     session_exists, ActiveSession, SessionNameMatch,
 };
 use dialoguer::Confirm;
-use miette::{Report, Result};
+use miette::Result;
 use std::path::PathBuf;
 use std::process;
-use zellij_client::old_config_converter::{
-    config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
-};
 use zellij_client::start_client as start_client_impl;
 use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
 use zellij_server::os_input_output::get_server_os_input;
 use zellij_server::start_server as start_server_impl;
-use zellij_utils::input::actions::Action;
-use zellij_utils::input::config::ConfigError;
 use zellij_utils::input::options::Options;
 use zellij_utils::nix;
 use zellij_utils::{
@@ -26,7 +21,10 @@ use zellij_utils::{
     setup::{get_default_data_dir, Setup},
 };
 
-use std::{fs::File, io::prelude::*};
+#[cfg(feature = "unstable")]
+use miette::IntoDiagnostic;
+#[cfg(feature = "unstable")]
+use zellij_utils::input::actions::ActionsFromYaml;
 
 pub(crate) use crate::sessions::list_sessions;
 
@@ -120,133 +118,69 @@ fn find_indexed_session(
     }
 }
 
-pub(crate) fn send_action_to_session(
-    cli_action: zellij_utils::cli::CliAction,
-    requested_session_name: Option<String>,
-) {
+/// Send a vec of `[Action]` to a currently running session.
+#[cfg(feature = "unstable")]
+pub(crate) fn send_action_to_session(opts: zellij_utils::cli::CliArgs) {
     match get_active_session() {
         ActiveSession::None => {
             eprintln!("There is no active session!");
             std::process::exit(1);
         },
         ActiveSession::One(session_name) => {
-            if let Some(requested_session_name) = requested_session_name {
-                if requested_session_name != session_name {
-                    eprintln!(
-                        "Session '{}' not found. The following sessions are active:",
-                        requested_session_name
-                    );
-                    eprintln!("{}", session_name);
-                    std::process::exit(1);
-                }
-            }
-            attach_with_cli_client(cli_action, &session_name);
+            attach_with_fake_client(opts, &session_name);
         },
         ActiveSession::Many => {
-            let existing_sessions = get_sessions().unwrap();
-            if let Some(session_name) = requested_session_name {
-                if existing_sessions.contains(&session_name) {
-                    attach_with_cli_client(cli_action, &session_name);
-                } else {
-                    eprintln!(
-                        "Session '{}' not found. The following sessions are active:",
-                        session_name
-                    );
-                    print_sessions(existing_sessions);
-                    std::process::exit(1);
-                }
+            if let Some(session_name) = opts.session.clone() {
+                attach_with_fake_client(opts, &session_name);
             } else if let Ok(session_name) = envs::get_session_name() {
-                attach_with_cli_client(cli_action, &session_name);
+                attach_with_fake_client(opts, &session_name);
             } else {
-                eprintln!("Please specify the session name to send actions to. The following sessions are active:");
-                print_sessions(existing_sessions);
+                println!("Please specify the session name to send actions to. The following sessions are active:");
+                print_sessions(get_sessions().unwrap());
                 std::process::exit(1);
             }
         },
     };
 }
-pub(crate) fn convert_old_config_file(old_config_file: PathBuf) {
-    match File::open(&old_config_file) {
-        Ok(mut handle) => {
-            let mut raw_config_file = String::new();
-            let _ = handle.read_to_string(&mut raw_config_file);
-            match config_yaml_to_config_kdl(&raw_config_file, false) {
-                Ok(kdl_config) => {
-                    println!("{}", kdl_config);
-                    process::exit(0);
-                },
-                Err(e) => {
-                    eprintln!("Failed to convert config: {}", e);
-                    process::exit(1);
-                },
-            }
-        },
-        Err(e) => {
-            eprintln!("Failed to open file: {}", e);
-            process::exit(1);
-        },
-    }
-}
 
-pub(crate) fn convert_old_layout_file(old_layout_file: PathBuf) {
-    match File::open(&old_layout_file) {
-        Ok(mut handle) => {
-            let mut raw_layout_file = String::new();
-            let _ = handle.read_to_string(&mut raw_layout_file);
-            match layout_yaml_to_layout_kdl(&raw_layout_file) {
-                Ok(kdl_layout) => {
-                    println!("{}", kdl_layout);
-                    process::exit(0);
-                },
-                Err(e) => {
-                    eprintln!("Failed to convert layout: {}", e);
-                    process::exit(1);
-                },
-            }
-        },
-        Err(e) => {
-            eprintln!("Failed to open file: {}", e);
-            process::exit(1);
-        },
-    }
-}
+#[cfg(feature = "unstable")]
+fn attach_with_fake_client(opts: zellij_utils::cli::CliArgs, name: &str) {
+    if let Some(zellij_utils::cli::Command::Sessions(zellij_utils::cli::Sessions::Action {
+        action: Some(action),
+    })) = opts.command.clone()
+    {
+        let action = format!("[{}]", action);
+        match zellij_utils::serde_yaml::from_str::<ActionsFromYaml>(&action).into_diagnostic() {
+            Ok(parsed) => {
+                let (config, _, config_options) = match Setup::from_options(&opts) {
+                    Ok(results) => results,
+                    Err(e) => {
+                        eprintln!("{}", e);
+                        process::exit(1);
+                    },
+                };
+                let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
 
-pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
-    match File::open(&old_theme_file) {
-        Ok(mut handle) => {
-            let mut raw_config_file = String::new();
-            let _ = handle.read_to_string(&mut raw_config_file);
-            match config_yaml_to_config_kdl(&raw_config_file, true) {
-                Ok(kdl_config) => {
-                    println!("{}", kdl_config);
-                    process::exit(0);
-                },
-                Err(e) => {
-                    eprintln!("Failed to convert config: {}", e);
-                    process::exit(1);
-                },
-            }
-        },
-        Err(e) => {
-            eprintln!("Failed to open file: {}", e);
-            process::exit(1);
-        },
-    }
-}
-
-fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {
-    let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
-    match Action::actions_from_cli(cli_action) {
-        Ok(actions) => {
-            zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
-            std::process::exit(0);
-        },
-        Err(e) => {
-            eprintln!("{}", e);
-            log::error!("Error sending action: {}", e);
-            std::process::exit(2);
-        },
-    }
+                let actions = parsed.actions().to_vec();
+                log::debug!("Starting fake Zellij client!");
+                zellij_client::fake_client::start_fake_client(
+                    Box::new(os_input),
+                    opts,
+                    *Box::new(config),
+                    config_options,
+                    ClientInfo::New(name.to_string()),
+                    None,
+                    actions,
+                );
+                log::debug!("Quitting fake client now.");
+                std::process::exit(0);
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+                std::process::exit(1);
+            },
+        };
+    };
 }
 
 fn attach_with_session_index(config_options: Options, index: usize, create: bool) -> ClientInfo {
@@ -315,17 +249,10 @@ fn attach_with_session_name(
 }
 
 pub(crate) fn start_client(opts: CliArgs) {
-    // look for old YAML config/layout/theme files and convert them to KDL
-    convert_old_yaml_files(&opts);
-    let (config, layout, config_options) = match Setup::from_cli_args(&opts) {
+    let (config, layout, config_options) = match Setup::from_options(&opts) {
         Ok(results) => results,
         Err(e) => {
-            if let ConfigError::KdlError(error) = e {
-                let report: Report = error.into();
-                eprintln!("{:?}", report);
-            } else {
-                eprintln!("{}", e);
-            }
+            eprintln!("{}", e);
             process::exit(1);
         },
     };
@@ -358,7 +285,7 @@ pub(crate) fn start_client(opts: CliArgs) {
 
         let attach_layout = match client {
             ClientInfo::Attach(_, _) => None,
-            ClientInfo::New(_) => Some(layout),
+            ClientInfo::New(_) => layout,
         };
 
         if create {
@@ -387,21 +314,23 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config,
                 config_options,
                 ClientInfo::New(session_name),
-                Some(layout),
+                layout,
             );
         } else {
-            if let Some(session_name) = config_options.session_name.as_ref() {
-                match config_options.attach_to_session {
-                    Some(true) => {
+            if let Some(layout_some) = layout.clone() {
+                if let Some(session_name) = layout_some.session.name {
+                    if layout_some.session.attach.unwrap() {
                         let client = attach_with_session_name(
-                            Some(session_name.clone()),
+                            Some(session_name),
                             config_options.clone(),
                             true,
                         );
+
                         let attach_layout = match client {
                             ClientInfo::Attach(_, _) => None,
-                            ClientInfo::New(_) => Some(layout),
+                            ClientInfo::New(_) => layout,
                         };
+
                         start_client_impl(
                             Box::new(os_input),
                             opts,
@@ -410,23 +339,20 @@ pub(crate) fn start_client(opts: CliArgs) {
                             client,
                             attach_layout,
                         );
-                    },
-                    _ => {
+                    } else {
                         start_client_plan(session_name.clone());
                         start_client_impl(
                             Box::new(os_input),
                             opts,
                             config,
-                            config_options.clone(),
-                            ClientInfo::New(session_name.clone()),
-                            Some(layout),
+                            config_options,
+                            ClientInfo::New(session_name),
+                            layout,
                         );
-                    },
+                    }
+
+                    process::exit(0);
                 }
-                // after we detach, this happens and so we need to exit before the rest of the
-                // function happens
-                // TODO: offload this to a different function
-                process::exit(0);
             }
 
             let session_name = names::Generator::default().next().unwrap();
@@ -437,7 +363,7 @@ pub(crate) fn start_client(opts: CliArgs) {
                 config,
                 config_options,
                 ClientInfo::New(session_name),
-                Some(layout),
+                layout,
             );
         }
     }

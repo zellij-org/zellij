@@ -1,6 +1,0 @@
----
-source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1711
-expression: "format!(\"{:?}\", *\n    mock_screen.os_input.server_to_client_messages.lock().unwrap())"
----
-{1: [SwitchToMode(Locked)]}

@@ -1,3 +1,4 @@
+//! The way terminal input is handled.
 pub mod actions;
 pub mod command;
 pub mod config;

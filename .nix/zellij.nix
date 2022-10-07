@@ -74,12 +74,7 @@ flake-utils.lib.eachSystem [
   buildInputs = [
     # in order to run tests
     pkgs.openssl
-  ] ++ (
-    pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.darwin.apple_sdk.frameworks.DiskArbitration
-          pkgs.darwin.apple_sdk.frameworks.Foundation
-    ]
-   );
+  ];
 
   nativeBuildInputs = [
     # for openssl/openssl-sys

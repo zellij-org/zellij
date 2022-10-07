@@ -72,18 +72,13 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
         style_key_with_modifier(&new_pane_keys, &help.style.colors)
     };
 
-    let mut resize_keys = action_key_group(
+    let resize_keys = action_key_group(
         &normal_keymap,
         &[
             &[Action::Resize(ResizeDirection::Increase)],
             &[Action::Resize(ResizeDirection::Decrease)],
         ],
     );
-    if resize_keys.contains(&Key::Alt(CharOrArrow::Char('=')))
-        && resize_keys.contains(&Key::Alt(CharOrArrow::Char('+')))
-    {
-        resize_keys.retain(|k| k != &Key::Alt(CharOrArrow::Char('=')));
-    }
     let resize = if resize_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {

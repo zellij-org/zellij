@@ -1,6 +1,0 @@
----
-source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1074
-expression: "format!(\"{:?}\", * mock_screen.os_input.fake_filesystem.lock().unwrap())"
----
-{"/tmp/foo": "fill pane up with something"}

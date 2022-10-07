@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
-    input::layout::SplitDirection,
+    input::layout::Direction,
     pane_size::{Constraint, Dimension, PaneGeom},
 };
 
@@ -23,7 +23,7 @@ pub struct PaneResizer<'a> {
 #[derive(Debug, Clone, Copy)]
 struct Span {
     pid: PaneId,
-    direction: SplitDirection,
+    direction: Direction,
     pos: usize,
     size: Dimension,
     size_var: Variable,
@@ -44,7 +44,7 @@ impl<'a> PaneResizer<'a> {
         }
     }
 
-    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<(), String> {
+    pub fn layout(&mut self, direction: Direction, space: usize) -> Result<(), String> {
         self.solver.reset();
         let grid = self.solve(direction, space)?;
         let spans = self.discretize_spans(grid, space)?;
@@ -52,7 +52,7 @@ impl<'a> PaneResizer<'a> {
         Ok(())
     }
 
-    fn solve(&mut self, direction: SplitDirection, space: usize) -> Result<Grid, String> {
+    fn solve(&mut self, direction: Direction, space: usize) -> Result<Grid, String> {
         let grid: Grid = self
             .grid_boundaries(direction)
             .into_iter()
@@ -127,12 +127,12 @@ impl<'a> PaneResizer<'a> {
         for span in spans {
             let pane = panes.get_mut(&span.pid).unwrap();
             let new_geom = match span.direction {
-                SplitDirection::Horizontal => PaneGeom {
+                Direction::Horizontal => PaneGeom {
                     x: span.pos,
                     cols: span.size,
                     ..pane.current_geom()
                 },
-                SplitDirection::Vertical => PaneGeom {
+                Direction::Vertical => PaneGeom {
                     y: span.pos,
                     rows: span.size,
                     ..pane.current_geom()
@@ -147,7 +147,7 @@ impl<'a> PaneResizer<'a> {
     }
 
     // FIXME: Functions like this should have unit tests!
-    fn grid_boundaries(&self, direction: SplitDirection) -> Vec<(usize, usize)> {
+    fn grid_boundaries(&self, direction: Direction) -> Vec<(usize, usize)> {
         // Select the spans running *perpendicular* to the direction of resize
         let spans: Vec<Span> = self
             .panes
@@ -169,7 +169,7 @@ impl<'a> PaneResizer<'a> {
         bounds
     }
 
-    fn spans_in_boundary(&self, direction: SplitDirection, boundary: (usize, usize)) -> Vec<Span> {
+    fn spans_in_boundary(&self, direction: Direction, boundary: (usize, usize)) -> Vec<Span> {
         let bwn = |v, (s, e)| s <= v && v < e;
         let mut spans: Vec<_> = self
             .panes
@@ -188,19 +188,19 @@ impl<'a> PaneResizer<'a> {
         spans
     }
 
-    fn get_span(&self, direction: SplitDirection, pane: &dyn Pane) -> Span {
+    fn get_span(&self, direction: Direction, pane: &dyn Pane) -> Span {
         let pas = pane.current_geom();
         // let size_var = self.vars[&pane.pid()];
         let size_var = *self.vars.get(&pane.pid()).unwrap();
         match direction {
-            SplitDirection::Horizontal => Span {
+            Direction::Horizontal => Span {
                 pid: pane.pid(),
                 direction,
                 pos: pas.x,
                 size: pas.cols,
                 size_var,
             },
-            SplitDirection::Vertical => Span {
+            Direction::Vertical => Span {
                 pid: pane.pid(),
                 direction,
                 pos: pas.y,

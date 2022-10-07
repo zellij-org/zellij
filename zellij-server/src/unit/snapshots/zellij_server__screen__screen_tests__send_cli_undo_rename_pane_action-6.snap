@@ -1,6 +1,0 @@
----
-source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2260
-expression: "format!(\"{}\", snapshot_count)"
----
-5

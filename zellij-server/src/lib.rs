@@ -40,11 +40,11 @@ use zellij_utils::{
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
-    errors::{ContextType, ErrorInstruction, FatalError, ServerContext},
+    errors::{ContextType, ErrorInstruction, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
-        layout::Layout,
+        layout::LayoutFromYaml,
         options::Options,
         plugins::PluginsConfig,
     },
@@ -61,7 +61,7 @@ pub enum ServerInstruction {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Box<Layout>,
+        Box<LayoutFromYaml>,
         ClientId,
         Option<PluginsConfig>,
     ),
@@ -118,18 +118,10 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
-        if let Some(screen_thread) = self.screen_thread.take() {
-            let _ = screen_thread.join();
-        }
-        if let Some(pty_thread) = self.pty_thread.take() {
-            let _ = pty_thread.join();
-        }
-        if let Some(wasm_thread) = self.wasm_thread.take() {
-            let _ = wasm_thread.join();
-        }
-        if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
-            let _ = pty_writer_thread.join();
-        }
+        let _ = self.screen_thread.take().unwrap().join();
+        let _ = self.pty_thread.take().unwrap().join();
+        let _ = self.wasm_thread.take().unwrap().join();
+        let _ = self.pty_writer_thread.take().unwrap().join();
     }
 }
 
@@ -137,16 +129,6 @@ macro_rules! remove_client {
     ($client_id:expr, $os_input:expr, $session_state:expr) => {
         $os_input.remove_client($client_id);
         $session_state.write().unwrap().remove_client($client_id);
-    };
-}
-
-macro_rules! send_to_client {
-    ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
-        let send_to_client_res = $os_input.send_to_client($client_id, $msg);
-        if let Err(_) = send_to_client_res {
-            // failed to send to client, remove it
-            remove_client!($client_id, $os_input, $session_state);
-        }
     };
 }
 
@@ -324,7 +306,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                let spawn_tabs = |tab_layout, tab_name| {
+                let spawn_tabs = |tab_layout| {
                     session_data
                         .read()
                         .unwrap()
@@ -334,32 +316,33 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .send_to_pty(PtyInstruction::NewTab(
                             default_shell.clone(),
                             tab_layout,
-                            tab_name,
                             client_id,
                         ))
                         .unwrap()
                 };
 
-                if layout.has_tabs() {
-                    for (tab_name, tab_layout) in layout.tabs() {
-                        spawn_tabs(Some(tab_layout.clone()), tab_name);
+                if !&layout.tabs.is_empty() {
+                    for tab_layout in layout.clone().tabs {
+                        spawn_tabs(Some(tab_layout.clone()));
                     }
 
-                    if let Some(focused_tab_index) = layout.focused_tab_index() {
+                    let focused_tab = layout
+                        .tabs
+                        .into_iter()
+                        .enumerate()
+                        .find(|(_, tab_layout)| tab_layout.focus.unwrap_or(false));
+                    if let Some((tab_index, _)) = focused_tab {
                         session_data
                             .read()
                             .unwrap()
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_pty(PtyInstruction::GoToTab(
-                                (focused_tab_index + 1) as u32,
-                                client_id,
-                            ))
+                            .send_to_pty(PtyInstruction::GoToTab((tab_index + 1) as u32, client_id))
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, None);
+                    spawn_tabs(None);
                 }
                 session_data
                     .read()
@@ -409,26 +392,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Event::ModeUpdate(mode_info),
                     ))
                     .unwrap();
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::SwitchToMode(mode),
-                    session_state
-                );
+                os_input.send_to_client(client_id, ServerToClientMsg::SwitchToMode(mode));
             },
             ServerInstruction::UnblockInputThread => {
                 for client_id in session_state.read().unwrap().clients.keys() {
-                    send_to_client!(
-                        *client_id,
-                        os_input,
-                        ServerToClientMsg::UnblockInputThread,
-                        session_state
-                    );
+                    os_input.send_to_client(*client_id, ServerToClientMsg::UnblockInputThread);
                 }
             },
             ServerInstruction::ClientExit(client_id) => {
-                let _ =
-                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                 remove_client!(client_id, os_input, session_state);
                 if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size() {
                     session_data
@@ -493,16 +465,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::KillSession => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
-                    let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                     remove_client!(client_id, os_input, session_state);
                 }
                 break;
             },
             ServerInstruction::DetachSession(client_ids) => {
                 for client_id in client_ids {
-                    let _ = os_input
-                        .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
+                    os_input.send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                     remove_client!(client_id, os_input, session_state);
                     if let Some(min_size) = session_state.read().unwrap().min_client_terminal_size()
                     {
@@ -539,16 +509,14 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
                     for (client_id, client_render_instruction) in output.iter() {
-                        send_to_client!(
+                        os_input.send_to_client(
                             *client_id,
-                            os_input,
                             ServerToClientMsg::Render(client_render_instruction.clone()),
-                            session_state
                         );
                     }
                 } else {
                     for client_id in client_ids {
-                        let _ = os_input
+                        os_input
                             .send_to_client(client_id, ServerToClientMsg::Exit(ExitReason::Normal));
                         remove_client!(client_id, os_input, session_state);
                     }
@@ -558,7 +526,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             ServerInstruction::Error(backtrace) => {
                 let client_ids = session_state.read().unwrap().client_ids();
                 for client_id in client_ids {
-                    let _ = os_input.send_to_client(
+                    os_input.send_to_client(
                         client_id,
                         ServerToClientMsg::Exit(ExitReason::Error(backtrace.clone())),
                     );
@@ -567,7 +535,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 break;
             },
             ServerInstruction::ConnStatus(client_id) => {
-                let _ = os_input.send_to_client(client_id, ServerToClientMsg::Connected);
+                os_input.send_to_client(client_id, ServerToClientMsg::Connected);
                 remove_client!(client_id, os_input, session_state);
             },
             ServerInstruction::ActiveClients(client_id) => {
@@ -577,12 +545,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_ids,
                     client_id
                 );
-                send_to_client!(
-                    client_id,
-                    os_input,
-                    ServerToClientMsg::ActiveClients(client_ids),
-                    session_state
-                );
+                os_input.send_to_client(client_id, ServerToClientMsg::ActiveClients(client_ids));
             },
         }
     }
@@ -601,7 +564,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 pub struct SessionOptions {
     pub opts: Box<CliArgs>,
     pub config_options: Box<Options>,
-    pub layout: Box<Layout>,
+    pub layout: Box<LayoutFromYaml>,
     pub plugins: Option<PluginsConfig>,
 }
 
@@ -698,8 +661,7 @@ fn init_session(
                     max_panes,
                     client_attributes_clone,
                     config_options,
-                )
-                .fatal();
+                );
             }
         })
         .unwrap();

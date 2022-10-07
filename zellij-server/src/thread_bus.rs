@@ -147,12 +147,6 @@ impl<T> Bus<T> {
         }
     }
     #[allow(unused)]
-    pub fn should_silently_fail(mut self) -> Self {
-        // this is mostly used for the tests
-        self.senders.should_silently_fail = true;
-        self
-    }
-    #[allow(unused)]
     pub fn empty() -> Self {
         // this is mostly used for the tests
         Bus {

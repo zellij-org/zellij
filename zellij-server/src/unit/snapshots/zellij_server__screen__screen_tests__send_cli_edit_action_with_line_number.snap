@@ -1,6 +1,0 @@
----
-source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1650
-expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
----
-[SpawnTerminal(Some(OpenFile("/file/to/edit", Some(100))), ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]

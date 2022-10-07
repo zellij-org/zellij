@@ -1,6 +1,5 @@
 use super::super::theme::*;
-use insta::assert_snapshot;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn theme_test_dir(theme: String) -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -9,15 +8,15 @@ fn theme_test_dir(theme: String) -> PathBuf {
 }
 
 #[test]
-fn dracula_theme_from_file() {
-    let path = theme_test_dir("dracula.kdl".into());
-    let theme = Theme::from_path(path).unwrap();
-    assert_snapshot!(format!("{:#?}", theme));
+fn dracula_theme_is_ok() {
+    let path = theme_test_dir("dracula.yaml".into());
+    let theme = ThemesFromYaml::from_path(&path);
+    assert!(theme.is_ok());
 }
 
 #[test]
 fn no_theme_is_err() {
-    let path = theme_test_dir("nonexistent.kdl".into());
-    let theme = Theme::from_path(path);
+    let path = theme_test_dir("nonexistent.yaml".into());
+    let theme = ThemesFromYaml::from_path(&path);
     assert!(theme.is_err());
 }
