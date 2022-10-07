@@ -20,7 +20,7 @@ use zellij_utils::{
 
 use crate::ClientId;
 
-fn route_action(
+pub(crate) fn route_action(
     action: Action,
     session: &SessionMetaData,
     _os_input: &dyn ServerOsApi,
@@ -142,7 +142,8 @@ fn route_action(
             let screen_instr = match direction {
                 Direction::Left => ScreenInstruction::MoveFocusLeftOrPreviousTab(client_id),
                 Direction::Right => ScreenInstruction::MoveFocusRightOrNextTab(client_id),
-                _ => unreachable!(),
+                Direction::Up => ScreenInstruction::SwitchTabNext(client_id),
+                Direction::Down => ScreenInstruction::SwitchTabPrev(client_id),
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         },
@@ -254,6 +255,108 @@ fn route_action(
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
+        Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
+            match should_float {
+                Some(true) => {
+                    session
+                        .senders
+                        .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
+                        .unwrap();
+                },
+                Some(false) => {
+                    session
+                        .senders
+                        .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
+                        .unwrap();
+                },
+                None => {},
+            };
+
+            let open_file = TerminalAction::OpenFile(path_to_file, line_number);
+            let pty_instr = match (split_direction, should_float.unwrap_or(false)) {
+                (Some(Direction::Left), false) => {
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                },
+                (Some(Direction::Right), false) => {
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                },
+                (Some(Direction::Up), false) => {
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                },
+                (Some(Direction::Down), false) => {
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                },
+                // No direction specified or should float - defer placement to screen
+                (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
+                    Some(open_file),
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        },
+        Action::SwitchModeForAllClients(input_mode) => {
+            let attrs = &session.client_attributes;
+            session
+                .senders
+                .send_to_plugin(PluginInstruction::Update(
+                    None,
+                    None,
+                    Event::ModeUpdate(get_mode_info(input_mode, attrs, session.capabilities)),
+                ))
+                .unwrap();
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ChangeModeForAllClients(get_mode_info(
+                    input_mode,
+                    attrs,
+                    session.capabilities,
+                )))
+                .unwrap();
+        },
+        Action::NewFloatingPane(run_command) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
+                .unwrap();
+            let run_cmd = run_command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| session.default_shell.clone());
+            session
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    ClientOrTabIndex::ClientId(client_id),
+                ))
+                .unwrap();
+        },
+        Action::NewTiledPane(direction, run_command) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
+                .unwrap();
+            let run_cmd = run_command
+                .map(|cmd| TerminalAction::RunCommand(cmd.into()))
+                .or_else(|| session.default_shell.clone());
+            let pty_instr = match direction {
+                Some(Direction::Left) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                },
+                Some(Direction::Right) => {
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                },
+                Some(Direction::Up) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                },
+                Some(Direction::Down) => {
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                },
+                // No direction specified - try to put it in the biggest available spot
+                None => {
+                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
+                },
+            };
+            session.senders.send_to_pty(pty_instr).unwrap();
+        },
         Action::TogglePaneEmbedOrFloating => {
             session
                 .senders
@@ -309,11 +412,13 @@ fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .unwrap();
         },
-        Action::NewTab(tab_layout) => {
+        Action::NewTab(tab_layout, tab_name) => {
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(shell, tab_layout, client_id))
+                .send_to_pty(PtyInstruction::NewTab(
+                    shell, tab_layout, tab_name, client_id,
+                ))
                 .unwrap();
         },
         Action::GoToNextTab => {
@@ -480,6 +585,7 @@ fn route_action(
     should_break
 }
 
+// this should only be used for one-off startup instructions
 macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
@@ -519,10 +625,15 @@ pub(crate) fn route_thread_main(
                             let client_id = maybe_client_id.unwrap_or(client_id);
                             if let Some(rlocked_sessions) = rlocked_sessions.as_ref() {
                                 if let Action::SwitchToMode(input_mode) = action {
-                                    os_input.send_to_client(
+                                    let send_res = os_input.send_to_client(
                                         client_id,
                                         ServerToClientMsg::SwitchToMode(input_mode),
                                     );
+                                    if send_res.is_err() {
+                                        let _ = to_server
+                                            .send(ServerInstruction::RemoveClient(client_id));
+                                        return true;
+                                    }
                                 }
                                 if route_action(
                                     action,
@@ -553,7 +664,6 @@ pub(crate) fn route_thread_main(
                                 .unwrap();
                         },
                         ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
-                            // this is experimental, please be cautious implementing this elsewhere
                             send_to_screen_or_retry_queue!(
                                 rlocked_sessions,
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
@@ -561,35 +671,33 @@ pub(crate) fn route_thread_main(
                                 retry_queue
                             );
                         },
-                        ClientToServerMsg::BackgroundColor(background_color_instruction) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalBackgroundColor(
-                                    background_color_instruction,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::BackgroundColor(ref background_color_instruction) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalBackgroundColor(
+                                    background_color_instruction.clone()
+                                ),
+                                instruction,
+                                retry_queue
+                            );
                         },
-                        ClientToServerMsg::ForegroundColor(foreground_color_instruction) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalForegroundColor(
-                                    foreground_color_instruction,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::ForegroundColor(ref foreground_color_instruction) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalForegroundColor(
+                                    foreground_color_instruction.clone()
+                                ),
+                                instruction,
+                                retry_queue
+                            );
                         },
-                        ClientToServerMsg::ColorRegisters(color_registers) => {
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalColorRegisters(
-                                    color_registers,
-                                ))
-                                .unwrap();
+                        ClientToServerMsg::ColorRegisters(ref color_registers) => {
+                            send_to_screen_or_retry_queue!(
+                                rlocked_sessions,
+                                ScreenInstruction::TerminalColorRegisters(color_registers.clone()),
+                                instruction,
+                                retry_queue
+                            );
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,
@@ -650,7 +758,7 @@ pub(crate) fn route_thread_main(
             },
             None => {
                 log::error!("Received empty message from client");
-                os_input.send_to_client(
+                let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit(ExitReason::Error(
                         "Received empty message".to_string(),

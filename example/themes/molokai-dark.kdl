@@ -1,0 +1,16 @@
+themes {
+    molokai-dark {
+        fg 248 248 240
+        bg 27 29 30
+        black 0 0 0
+        red 255 0 0
+        green 0 140 0
+        yellow 255 255 0
+        blue 102 217 239
+        magenta 174 129 255
+        cyan 0 255 255
+        white 255 255 255
+        orange 253 151 31
+    }
+}
+

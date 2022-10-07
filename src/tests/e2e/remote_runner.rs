@@ -19,7 +19,6 @@ use std::rc::Rc;
 
 const ZELLIJ_EXECUTABLE_LOCATION: &str = "/usr/src/zellij/x86_64-unknown-linux-musl/release/zellij";
 const SET_ENV_VARIABLES: &str = "EDITOR=/usr/bin/vi";
-const ZELLIJ_LAYOUT_PATH: &str = "/usr/src/zellij/fixtures/layouts";
 const ZELLIJ_CONFIG_PATH: &str = "/usr/src/zellij/fixtures/configs";
 const ZELLIJ_DATA_DIR: &str = "/usr/src/zellij/e2e-data";
 const ZELLIJ_FIXTURE_PATH: &str = "/usr/src/zellij/fixtures";
@@ -137,25 +136,6 @@ fn start_zellij_without_frames(channel: &mut ssh2::Channel) {
             format!(
                 "{} {} --session {} --data-dir {} options --no-pane-frames\n",
                 SET_ENV_VARIABLES, ZELLIJ_EXECUTABLE_LOCATION, SESSION_NAME, ZELLIJ_DATA_DIR
-            )
-            .as_bytes(),
-        )
-        .unwrap();
-    channel.flush().unwrap();
-    std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
-}
-
-fn start_zellij_with_layout(channel: &mut ssh2::Channel, layout_path: &str) {
-    stop_zellij(channel);
-    channel
-        .write_all(
-            format!(
-                "{} {} --layout {} --session {} --data-dir {}\n",
-                SET_ENV_VARIABLES,
-                ZELLIJ_EXECUTABLE_LOCATION,
-                layout_path,
-                SESSION_NAME,
-                ZELLIJ_DATA_DIR
             )
             .as_bytes(),
         )
@@ -551,42 +531,6 @@ impl RemoteRunner {
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
-        let channel = Arc::new(Mutex::new(channel));
-        let last_snapshot = Arc::new(Mutex::new(String::new()));
-        let cursor_coordinates = Arc::new(Mutex::new((0, 0)));
-        sess.set_blocking(false);
-        let reader_thread =
-            read_from_channel(&channel, &last_snapshot, &cursor_coordinates, &pane_geom);
-        RemoteRunner {
-            steps: vec![],
-            channel,
-            currently_running_step: None,
-            current_step_index: 0,
-            retries_left: RETRIES,
-            retry_pause_ms: 100,
-            test_timed_out: false,
-            panic_on_no_retries_left: true,
-            last_snapshot,
-            cursor_coordinates,
-            reader_thread,
-        }
-    }
-    pub fn new_with_layout(win_size: Size, layout_file_name: &'static str) -> Self {
-        let remote_path = Path::new(ZELLIJ_LAYOUT_PATH).join(layout_file_name);
-        let sess = ssh_connect();
-        let mut channel = sess.channel_session().unwrap();
-        let mut rows = Dimension::fixed(win_size.rows);
-        let mut cols = Dimension::fixed(win_size.cols);
-        rows.set_inner(win_size.rows);
-        cols.set_inner(win_size.cols);
-        let pane_geom = PaneGeom {
-            x: 0,
-            y: 0,
-            rows,
-            cols,
-        };
-        setup_remote_environment(&mut channel, win_size);
-        start_zellij_with_layout(&mut channel, &remote_path.to_string_lossy());
         let channel = Arc::new(Mutex::new(channel));
         let last_snapshot = Arc::new(Mutex::new(String::new()));
         let cursor_coordinates = Arc::new(Mutex::new((0, 0)));

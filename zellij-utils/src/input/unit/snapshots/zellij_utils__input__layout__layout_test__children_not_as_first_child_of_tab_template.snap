@@ -1,0 +1,147 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 801
+expression: "format!(\"{:#?}\", layout)"
+---
+Layout {
+    tabs: [
+        (
+            Some(
+                "my tab",
+            ),
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Vertical,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [
+                                    PaneLayout {
+                                        children_split_direction: Horizontal,
+                                        name: None,
+                                        children: [],
+                                        split_size: None,
+                                        run: None,
+                                        borderless: false,
+                                        focus: None,
+                                        external_children_index: None,
+                                    },
+                                    PaneLayout {
+                                        children_split_direction: Horizontal,
+                                        name: None,
+                                        children: [],
+                                        split_size: None,
+                                        run: None,
+                                        borderless: false,
+                                        focus: None,
+                                        external_children_index: None,
+                                    },
+                                ],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+        (
+            None,
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Vertical,
+                        name: None,
+                        children: [
+                            PaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                            },
+                        ],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: Some(
+                            1,
+                        ),
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+    ],
+    focused_tab_index: None,
+    template: Some(
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [],
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+        },
+    ),
+}

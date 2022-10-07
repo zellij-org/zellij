@@ -1,0 +1,55 @@
+---
+source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 1989
+expression: "format!(\"{:#?}\", new_tab_instruction)"
+---
+NewTab(
+    None,
+    Some(
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                },
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                },
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: None,
+                    run: None,
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                },
+            ],
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+        },
+    ),
+    Some(
+        "my-awesome-tab-name",
+    ),
+    10,
+)

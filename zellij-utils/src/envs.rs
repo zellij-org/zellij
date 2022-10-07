@@ -2,9 +2,11 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env::{set_var, var},
 };
+
+use std::fmt;
 
 pub const ZELLIJ_ENV_KEY: &str = "ZELLIJ";
 pub fn get_zellij() -> Result<String> {
@@ -34,19 +36,31 @@ pub fn get_socket_dir() -> Result<String> {
 }
 
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
-#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EnvironmentVariablesFromYaml {
+#[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EnvironmentVariables {
     env: HashMap<String, String>,
 }
 
-impl EnvironmentVariablesFromYaml {
+impl fmt::Debug for EnvironmentVariables {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut stable_sorted = BTreeMap::new();
+        for (env_var_name, env_var_value) in self.env.iter() {
+            stable_sorted.insert(env_var_name, env_var_value);
+        }
+        write!(f, "{:#?}", stable_sorted)
+    }
+}
+
+impl EnvironmentVariables {
     /// Merges two structs, keys from `other` supersede keys from `self`
     pub fn merge(&self, other: Self) -> Self {
         let mut env = self.clone();
         env.env.extend(other.env);
         env
     }
-
+    pub fn from_data(data: HashMap<String, String>) -> Self {
+        EnvironmentVariables { env: data }
+    }
     /// Set all the ENVIRONMENT VARIABLES, that are configured
     /// in the configuration and layout files
     pub fn set_vars(&self) {

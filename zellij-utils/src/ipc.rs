@@ -3,10 +3,8 @@ use crate::{
     cli::CliArgs,
     data::{ClientId, InputMode, Style},
     errors::{get_current_ctx, ErrorContext},
-    input::{
-        actions::Action, keybinds::Keybinds, layout::LayoutFromYaml, options::Options,
-        plugins::PluginsConfig,
-    },
+    input::keybinds::Keybinds,
+    input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
     pane_size::{Size, SizeInPixels},
 };
 use interprocess::local_socket::LocalSocketStream;
@@ -87,7 +85,7 @@ pub enum ClientToServerMsg {
         ClientAttributes,
         Box<CliArgs>,
         Box<Options>,
-        Box<LayoutFromYaml>,
+        Box<Layout>,
         Option<PluginsConfig>,
     ),
     AttachClient(ClientAttributes, Options),
@@ -156,12 +154,16 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
-    pub fn send(&mut self, msg: T) {
+    pub fn send(&mut self, msg: T) -> Result<(), &'static str> {
         let err_ctx = get_current_ctx();
-        rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).unwrap();
-        // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
-        // do we need to handle errors here in other cases?
-        let _ = self.sender.flush();
+        if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
+            Err("Failed to send message to client")
+        } else {
+            // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
+            // do we need to handle errors here in other cases?
+            let _ = self.sender.flush();
+            Ok(())
+        }
     }
 
     /// Returns an [`IpcReceiverWithContext`] with the same socket as this sender.

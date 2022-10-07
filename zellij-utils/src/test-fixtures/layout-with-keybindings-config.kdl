@@ -1,0 +1,11 @@
+layout
+keybinds {
+    normal {
+        bind "b" { SwitchToMode "Session"; }
+        bind "Ctrl b" { SwitchToMode "Resize"; }
+    }
+    scroll {
+        bind "b" { SwitchToMode "Locked"; }
+        bind "Ctrl c" { SwitchToMode "Resize"; }
+    }
+}

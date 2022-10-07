@@ -1,0 +1,28 @@
+themes {
+    other-theme-from-config {
+        bg 2 2 2
+        red 2 2 2
+        green 2 2 2
+        yellow 2 2 2
+        blue 2 2 2
+        magenta 2 2 2
+        orange 2 2 2
+        fg 2 2 2
+        cyan 2 2 2
+        black 2 2 2
+        white 2 2 2
+    }
+    theme-from-config {
+        bg 2 2 2
+        red 2 2 2
+        green 2 2 2
+        yellow 2 2 2
+        blue 2 2 2
+        magenta 2 2 2
+        orange 2 2 2
+        fg 2 2 2
+        cyan 2 2 2
+        black 2 2 2
+        white 2 2 2
+    }
+}

@@ -1,0 +1,90 @@
+---
+template:
+  direction: Horizontal
+  parts:
+    - direction: Vertical
+      split_size:
+        Fixed: 1
+      run:
+        plugin:
+          location: "zellij:tab-bar"
+      borderless: true
+    - direction: Vertical
+      body: true
+    - direction: Vertical
+      split_size:
+        Fixed: 2
+      run:
+        plugin:
+          location: "zellij:status-bar"
+      borderless: true
+
+tabs:
+- direction: Vertical
+  parts:
+  - direction: Vertical
+    split_size:
+      Percent: 50
+  - direction: Vertical
+    split_size:
+      Percent: 50
+- direction: Vertical
+- direction: Vertical
+  parts:
+    - direction: Vertical
+      split_size:
+        Percent: 50
+    - direction: Vertical
+      split_size:
+        Percent: 50
+- direction: Vertical
+  parts:
+  - direction: Vertical
+    split_size:
+      Percent: 50
+  - direction: Horizontal
+    split_size:
+      Percent: 50
+    parts:
+      - direction: Vertical
+        split_size:
+          Percent: 50
+      - direction: Vertical
+        split_size:
+          Percent: 50
+- direction: Vertical
+- direction: Vertical
+- direction: Vertical
+- direction: Vertical
+  parts:
+  - direction: Vertical
+    split_size:
+      Percent: 20
+    run:
+      plugin:
+        location: "zellij:strider"
+  - direction: Horizontal
+    split_size:
+      Percent: 80
+    parts:
+      - direction: Vertical
+        split_size:
+          Percent: 50
+      - direction: Vertical
+        split_size:
+          Percent: 50
+- direction: Vertical
+  parts:
+  - direction: Vertical
+    split_size:
+      Percent: 40
+  - direction: Horizontal
+    split_size:
+      Percent: 60
+    parts:
+      - direction: Vertical
+        split_size:
+          Percent: 50
+      - direction: Vertical
+        split_size:
+          Percent: 50

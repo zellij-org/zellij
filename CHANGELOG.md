@@ -5,8 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+* BREAKING CHANGE: switch config/layout/theme language to KDL (https://github.com/zellij-org/zellij/pull/1759)
+* debugging: Improve error handling in screen thread (https://github.com/zellij-org/zellij/pull/1670)
+* fix: Server exits when client panics (https://github.com/zellij-org/zellij/pull/1731)
+* fix: Server panics when writing to suppressed pane (https://github.com/zellij-org/zellij/pull/1749)
+* debugging: Improve error handling in screen thread private functions (https://github.com/zellij-org/zellij/pull/1770)
+* fix(nix): add DiskArbitration and Foundation to darwin builds (https://github.com/zellij-org/zellij/pull/1724)
+* debugging: Remove calls to `panic` in server/tab (https://github.com/zellij-org/zellij/pull/1748)
+
+## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
 * fix: bracketed paste handling regression (https://github.com/zellij-org/zellij/pull/1689)
+* fix: occasional startup crashes (https://github.com/zellij-org/zellij/pull/1706)
+* fix: gracefully handle SSH disconnects (https://github.com/zellij-org/zellij/pull/1710)
+* fix: handle osc params larger than 1024 bytes (https://github.com/zellij-org/zellij/pull/1711)
+* Terminal compatibility: implement faux scrolling when in alternate screen mode(https://github.com/zellij-org/zellij/pull/1678)
+* fix: mouse-click on tab-bar in simplified-ui now always focuses the correct tab (https://github.com/zellij-org/zellij/pull/1658)
+* fix: sort UI cursors properly when multiple users are focused on the same pane (https://github.com/zellij-org/zellij/pull/1719)
 
 ## [0.31.3] - 2022-08-18
 * HOTFIX: fix up-arrow regression

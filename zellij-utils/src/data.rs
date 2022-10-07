@@ -1,4 +1,5 @@
 use crate::input::actions::Action;
+use crate::input::config::ConversionError;
 use clap::ArgEnum;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -56,6 +57,95 @@ pub enum Key {
     BackTab,
     Null,
     Esc,
+}
+
+impl FromStr for Key {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(key_str: &str) -> Result<Self, Self::Err> {
+        let mut modifier: Option<&str> = None;
+        let mut main_key: Option<&str> = None;
+        for (index, part) in key_str.split_ascii_whitespace().enumerate() {
+            if index == 0 && (part == "Ctrl" || part == "Alt") {
+                modifier = Some(part);
+            } else if main_key.is_none() {
+                main_key = Some(part)
+            }
+        }
+        match (modifier, main_key) {
+            (Some("Ctrl"), Some(main_key)) => {
+                let mut key_chars = main_key.chars();
+                let key_count = main_key.chars().count();
+                if key_count == 1 {
+                    let key_char = key_chars.next().unwrap();
+                    Ok(Key::Ctrl(key_char))
+                } else {
+                    Err(format!("Failed to parse key: {}", key_str).into())
+                }
+            },
+            (Some("Alt"), Some(main_key)) => {
+                match main_key {
+                    // why crate::data::Direction and not just Direction?
+                    // Because it's a different type that we export in this wasm mandated soup - we
+                    // don't like it either! This will be solved as we chip away at our tech-debt
+                    "Left" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Left))),
+                    "Right" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Right))),
+                    "Up" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Up))),
+                    "Down" => Ok(Key::Alt(CharOrArrow::Direction(Direction::Down))),
+                    _ => {
+                        let mut key_chars = main_key.chars();
+                        let key_count = main_key.chars().count();
+                        if key_count == 1 {
+                            let key_char = key_chars.next().unwrap();
+                            Ok(Key::Alt(CharOrArrow::Char(key_char)))
+                        } else {
+                            Err(format!("Failed to parse key: {}", key_str).into())
+                        }
+                    },
+                }
+            },
+            (None, Some(main_key)) => match main_key {
+                "Backspace" => Ok(Key::Backspace),
+                "Left" => Ok(Key::Left),
+                "Right" => Ok(Key::Right),
+                "Up" => Ok(Key::Up),
+                "Down" => Ok(Key::Down),
+                "Home" => Ok(Key::Home),
+                "End" => Ok(Key::End),
+                "PageUp" => Ok(Key::PageUp),
+                "PageDown" => Ok(Key::PageDown),
+                "Tab" => Ok(Key::BackTab),
+                "Delete" => Ok(Key::Delete),
+                "Insert" => Ok(Key::Insert),
+                "Space" => Ok(Key::Char(' ')),
+                "Enter" => Ok(Key::Char('\n')),
+                "Esc" => Ok(Key::Esc),
+                _ => {
+                    let mut key_chars = main_key.chars();
+                    let key_count = main_key.chars().count();
+                    if key_count == 1 {
+                        let key_char = key_chars.next().unwrap();
+                        Ok(Key::Char(key_char))
+                    } else if key_count > 1 {
+                        if let Some(first_char) = key_chars.next() {
+                            if first_char == 'F' {
+                                let f_index: String = key_chars.collect();
+                                let f_index: u8 = f_index
+                                    .parse()
+                                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
+                                if f_index >= 1 && f_index <= 12 {
+                                    return Ok(Key::F(f_index));
+                                }
+                            }
+                        }
+                        Err(format!("Failed to parse key: {}", key_str).into())
+                    } else {
+                        Err(format!("Failed to parse key: {}", key_str).into())
+                    }
+                },
+            },
+            _ => Err(format!("Failed to parse key: {}", key_str).into()),
+        }
+    }
 }
 
 impl fmt::Display for Key {
@@ -154,7 +244,20 @@ pub enum Event {
 }
 
 /// Describes the different input modes, which change the way that keystrokes will be interpreted.
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone, EnumIter, Serialize, Deserialize, ArgEnum)]
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Copy,
+    Clone,
+    EnumIter,
+    Serialize,
+    Deserialize,
+    ArgEnum,
+    PartialOrd,
+    Ord,
+)]
 pub enum InputMode {
     /// In `Normal` mode, input is always written to the terminal, except for the shortcuts leading
     /// to other modes
@@ -202,6 +305,27 @@ pub enum InputMode {
     Tmux,
 }
 
+// impl TryFrom<&str> for InputMode {
+//     type Error = String;
+//     fn try_from(mode: &str) -> Result<Self, String> {
+//         match mode {
+//             "normal" | "Normal" => Ok(InputMode::Normal),
+//             "locked" | "Locked" => Ok(InputMode::Locked),
+//             "resize" | "Resize" => Ok(InputMode::Resize),
+//             "pane" | "Pane" => Ok(InputMode::Pane),
+//             "tab" | "Tab" => Ok(InputMode::Tab),
+//             "search" | "Search" => Ok(InputMode::Search),
+//             "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
+//             "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+//             "session" | "Session" => Ok(InputMode::Session),
+//             "move" | "Move" => Ok(InputMode::Move),
+//             "prompt" | "Prompt" => Ok(InputMode::Prompt),
+//             "tmux" | "Tmux" => Ok(InputMode::Tmux),
+//             _ => Err(format!("Unrecognized mode: {}", mode)),
+//         }
+//     }
+// }
+
 impl Default for InputMode {
     fn default() -> InputMode {
         InputMode::Normal
@@ -231,25 +355,25 @@ impl Default for PaletteColor {
 }
 
 impl FromStr for InputMode {
-    type Err = Box<dyn std::error::Error>;
+    type Err = ConversionError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, ConversionError> {
         match s {
-            "normal" => Ok(InputMode::Normal),
-            "resize" => Ok(InputMode::Resize),
-            "locked" => Ok(InputMode::Locked),
-            "pane" => Ok(InputMode::Pane),
-            "tab" => Ok(InputMode::Tab),
-            "scroll" => Ok(InputMode::Scroll),
-            "search" => Ok(InputMode::Search),
-            "entersearch" => Ok(InputMode::EnterSearch),
-            "renametab" => Ok(InputMode::RenameTab),
-            "session" => Ok(InputMode::Session),
-            "move" => Ok(InputMode::Move),
-            "tmux" => Ok(InputMode::Tmux),
-            "prompt" => Ok(InputMode::Prompt),
-            "renamepane" => Ok(InputMode::RenamePane),
-            e => Err(e.to_string().into()),
+            "normal" | "Normal" => Ok(InputMode::Normal),
+            "locked" | "Locked" => Ok(InputMode::Locked),
+            "resize" | "Resize" => Ok(InputMode::Resize),
+            "pane" | "Pane" => Ok(InputMode::Pane),
+            "tab" | "Tab" => Ok(InputMode::Tab),
+            "search" | "Search" => Ok(InputMode::Search),
+            "scroll" | "Scroll" => Ok(InputMode::Scroll),
+            "renametab" | "RenameTab" => Ok(InputMode::RenameTab),
+            "renamepane" | "RenamePane" => Ok(InputMode::RenamePane),
+            "session" | "Session" => Ok(InputMode::Session),
+            "move" | "Move" => Ok(InputMode::Move),
+            "prompt" | "Prompt" => Ok(InputMode::Prompt),
+            "tmux" | "Tmux" => Ok(InputMode::Tmux),
+            "entersearch" | "Entersearch" | "EnterSearch" => Ok(InputMode::EnterSearch),
+            e => Err(ConversionError::UnknownInputMode(e.into())),
         }
     }
 }
@@ -343,7 +467,7 @@ pub struct PluginIds {
 }
 
 /// Tag used to identify the plugin in layout and config yaml files
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Deserialize, Serialize, PartialOrd, Ord)]
 pub struct PluginTag(String);
 
 impl PluginTag {

@@ -1,0 +1,16 @@
+---
+source: zellij-client/src/old_config_converter/./unit/convert_layout_tests.rs
+assertion_line: 35
+expression: "format!(\"{}\", kdl_config)"
+---
+layout {
+    pane size=1 borderless=true {
+        plugin location="zellij:tab-bar"
+    }
+    pane
+    pane size=2 borderless=true {
+        plugin location="zellij:status-bar"
+    }
+}
+session_name "foo"
+attach_to_session false

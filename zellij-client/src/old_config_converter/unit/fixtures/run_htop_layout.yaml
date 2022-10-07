@@ -1,0 +1,21 @@
+---
+tabs:
+  - direction: Vertical
+    parts:
+      - direction: Horizontal
+        split_size:
+          Percent: 50
+        parts:
+          - direction: Vertical
+            split_size:
+              Percent: 50
+          - direction: Vertical
+            split_size:
+              Percent: 50
+            run:
+              command: {cmd: htop}
+      - direction: Horizontal
+        split_size:
+          Percent: 50
+        run:
+          command: {cmd: htop}

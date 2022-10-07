@@ -1,0 +1,5 @@
+layout
+plugins {
+    some-other-plugin { path "i-am-defined-in-the-layout"; }
+    tab-bar { path "tab-bar-from-layout"; }
+}
