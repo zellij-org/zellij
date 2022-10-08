@@ -782,7 +782,7 @@ pub fn toggle_to_previous_tab_delete() {
     screen.close_tab(1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &[0, 3],
+        &[0, 3, 2],
         "Tab history is invalid"
     );
     assert_eq!(
@@ -799,7 +799,7 @@ pub fn toggle_to_previous_tab_delete() {
     );
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
-        &[0, 2],
+        &[0, 3, 1],
         "Tab history is invalid"
     );
 }
