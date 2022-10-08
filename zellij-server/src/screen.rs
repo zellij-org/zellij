@@ -714,7 +714,10 @@ impl Screen {
 
                 tab.position -= 1;
                 tab.index -= 1;
-                tab.name = format!("Tab #{}", tab.position + 1);
+
+                if tab.name.starts_with("Tab #") {
+                    tab.name = format!("Tab #{}", tab.position + 1);
+                }
 
                 if visible_tab_indices.contains(&old_index) {
                     tab.set_force_render();
