@@ -99,6 +99,7 @@ pub(crate) struct Tab {
     last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -126,7 +127,9 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
+    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+        None
+    }
     fn position_and_size(&self) -> PaneGeom;
     fn current_geom(&self) -> PaneGeom;
     fn geom_override(&self) -> Option<PaneGeom>;
@@ -355,6 +358,13 @@ pub trait Pane {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum AdjustedInput {
+    WriteBytesToTerminal(Vec<u8>),
+    ReRunCommandInThisPane(RunCommand),
+    CloseThisPane,
+}
+
 impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
@@ -452,6 +462,7 @@ impl Tab {
             last_mouse_hold_position: None,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            pids_waiting_resize: HashSet::new(),
         }
     }
 
@@ -995,6 +1006,9 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
             })
         {
+            if self.pids_waiting_resize.remove(&pid) {
+                resize_pty!(terminal_output, self.os_api);
+            }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
@@ -1042,18 +1056,33 @@ impl Tab {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self
                     .floating_panes
-                    .get(&pane_id)
-                    .or_else(|| self.tiled_panes.get_pane(pane_id))
-                    .or_else(|| self.suppressed_panes.get(&pane_id))
+                    .get_mut(&pane_id)
+                    .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+                    .or_else(|| self.suppressed_panes.get_mut(&pane_id))
                     .unwrap();
-                let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-
-                self.senders
-                    .send_to_pty_writer(PtyWriteInstruction::Write(
-                        adjusted_input,
-                        active_terminal_id,
-                    ))
-                    .unwrap();
+                match active_terminal.adjust_input_to_terminal(input_bytes) {
+                    Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        self.senders
+                            .send_to_pty_writer(PtyWriteInstruction::Write(
+                                adjusted_input,
+                                active_terminal_id,
+                            ))
+                            .unwrap();
+                    },
+                    Some(AdjustedInput::ReRunCommandInThisPane(command)) => {
+                        self.pids_waiting_resize.insert(active_terminal_id);
+                        self.senders
+                            .send_to_pty(PtyInstruction::ReRunCommandInPane(
+                                PaneId::Terminal(active_terminal_id),
+                                command,
+                            ))
+                            .unwrap();
+                    },
+                    Some(AdjustedInput::CloseThisPane) => {
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                    },
+                    None => {}
+                }
             },
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {

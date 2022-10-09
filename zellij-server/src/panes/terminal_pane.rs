@@ -6,7 +6,7 @@ use crate::panes::{
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
-use crate::tab::Pane;
+use crate::tab::{Pane, AdjustedInput};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -37,6 +37,8 @@ const HOME_KEY: &[u8] = &[27, 91, 72];
 const END_KEY: &[u8] = &[27, 91, 70];
 const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
 const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
+const ENTER: &[u8] = &[13]; // TODO: check this to be sure it fits all types of ENTER
+const CTRL_C: &[u8] = &[3]; // TODO: check this to be sure it fits all types of CTRL_C (with mac, etc)
 const TERMINATING_STRING: &str = "\0";
 const DELETE_KEY: &str = "\u{007F}";
 const BACKSPACE_KEY: &str = "\u{0008}";
@@ -159,53 +161,69 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
-        if self.grid.new_line_mode {
-            if let &[13] = input_bytes.as_slice() {
-                // LNM - carriage return is followed by linefeed
-                return "\u{0d}\u{0a}".as_bytes().to_vec();
-            };
-        }
-        if self.grid.cursor_key_mode {
+        if let Some((_exit_status, run_command)) = &self.is_held {
             match input_bytes.as_slice() {
-                LEFT_ARROW => {
-                    return AnsiEncoding::Left.as_vec_bytes();
-                },
-                RIGHT_ARROW => {
-                    return AnsiEncoding::Right.as_vec_bytes();
-                },
-                UP_ARROW => {
-                    return AnsiEncoding::Up.as_vec_bytes();
-                },
-                DOWN_ARROW => {
-                    return AnsiEncoding::Down.as_vec_bytes();
-                },
-
-                HOME_KEY => {
-                    return AnsiEncoding::Home.as_vec_bytes();
-                },
-                END_KEY => {
-                    return AnsiEncoding::End.as_vec_bytes();
-                },
-                _ => {},
-            };
-        }
-
-        if !self.grid.bracketed_paste_mode {
-            // Zellij itself operates in bracketed paste mode, so the terminal sends these
-            // instructions (bracketed paste start and bracketed paste end respectively)
-            // when pasting input. We only need to make sure not to send them to terminal
-            // panes who do not work in this mode
-            match input_bytes.as_slice() {
-                BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => return vec![],
-                _ => {},
+                ENTER => {
+                    let run_command = run_command.clone();
+                    self.is_held = None;
+                    self.grid.reset_terminal_state();
+                    self.set_should_render(true);
+                    Some(AdjustedInput::ReRunCommandInThisPane(run_command))
+                }
+                CTRL_C => {
+                    Some(AdjustedInput::CloseThisPane)
+                }
+                _ => None
             }
+        } else {
+            if self.grid.new_line_mode {
+                if let &[13] = input_bytes.as_slice() {
+                    // LNM - carriage return is followed by linefeed
+                    return Some(AdjustedInput::WriteBytesToTerminal("\u{0d}\u{0a}".as_bytes().to_vec()));
+                };
+            }
+            if self.grid.cursor_key_mode {
+                match input_bytes.as_slice() {
+                    LEFT_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Left.as_vec_bytes()));
+                    },
+                    RIGHT_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Right.as_vec_bytes()));
+                    },
+                    UP_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Up.as_vec_bytes()));
+                    },
+                    DOWN_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Down.as_vec_bytes()));
+                    },
+
+                    HOME_KEY => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Home.as_vec_bytes()));
+                    },
+                    END_KEY => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::End.as_vec_bytes()));
+                    },
+                    _ => {},
+                };
+            }
+
+            if !self.grid.bracketed_paste_mode {
+                // Zellij itself operates in bracketed paste mode, so the terminal sends these
+                // instructions (bracketed paste start and bracketed paste end respectively)
+                // when pasting input. We only need to make sure not to send them to terminal
+                // panes who do not work in this mode
+                match input_bytes.as_slice() {
+                    BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => return Some(AdjustedInput::WriteBytesToTerminal(vec![])),
+                    _ => {},
+                }
+            }
+            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
         }
-        input_bytes
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom

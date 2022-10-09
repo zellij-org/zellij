@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::{Action, Direction, ResizeDirection};
-use zellij_utils::input::command::TerminalAction;
+use zellij_utils::input::command::{TerminalAction, RunCommand};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -132,7 +132,7 @@ impl ServerOsApi for FakeInputOutput {
     fn spawn_terminal(
         &self,
         _file_to_open: TerminalAction,
-        _quit_db: Box<dyn Fn(PaneId) + Send>,
+        _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd), &'static str> {
         unimplemented!()
@@ -194,6 +194,14 @@ impl ServerOsApi for FakeInputOutput {
                 .unwrap()
                 .insert(filename, contents);
         }
+    }
+    fn re_run_command_in_terminal(
+        &self,
+        _terminal_id: u32,
+        _run_command: RunCommand,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+    ) -> Result<(RawFd, RawFd), &'static str> {
+        unimplemented!()
     }
 }
 

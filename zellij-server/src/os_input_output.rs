@@ -337,6 +337,13 @@ pub trait ServerOsApi: Send + Sync {
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Writes the given buffer to a string
     fn write_to_file(&mut self, buf: String, file: Option<String>);
+
+    fn re_run_command_in_terminal(
+        &self,
+        terminal_id: u32,
+        run_command: RunCommand,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+    ) -> Result<(RawFd, RawFd), &'static str>;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -483,6 +490,28 @@ impl ServerOsApi for ServerOsInputOutput {
         };
         if let Err(e) = write!(f, "{}", buf) {
             log::error!("could not write to file: {}", e);
+        }
+    }
+    fn re_run_command_in_terminal(
+        &self,
+        terminal_id: u32,
+        run_command: RunCommand,
+        quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+    ) -> Result<(RawFd, RawFd), &'static str> {
+        let orig_termios = self.orig_termios.lock().unwrap();
+        let default_editor = None; // no need for a default editor when running an explicit command
+        match spawn_terminal(
+            TerminalAction::RunCommand(run_command),
+            orig_termios.clone(),
+            quit_cb,
+            default_editor,
+            terminal_id,
+        ) {
+            Ok((pid_primary, pid_secondary)) => {
+                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, pid_primary);
+                Ok((pid_primary, pid_secondary))
+            },
+            Err(e) => Err(e)
         }
     }
 }

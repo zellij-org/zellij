@@ -21,7 +21,7 @@ use zellij_utils::nix;
 
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
-    input::command::TerminalAction,
+    input::command::{TerminalAction, RunCommand},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };
@@ -36,7 +36,7 @@ impl ServerOsApi for FakeInputOutput {
     fn spawn_terminal(
         &self,
         _file_to_open: TerminalAction,
-        _quit_cb: Box<dyn Fn(PaneId) + Send>,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd), &'static str> {
         unimplemented!()
@@ -87,6 +87,14 @@ impl ServerOsApi for FakeInputOutput {
     }
 
     fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
+        unimplemented!()
+    }
+    fn re_run_command_in_terminal(
+        &self,
+        _terminal_id: u32,
+        _run_command: RunCommand,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+    ) -> Result<(RawFd, RawFd), &'static str> {
         unimplemented!()
     }
 }

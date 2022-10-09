@@ -41,6 +41,7 @@ pub(crate) enum PtyInstruction {
     ), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
+    ReRunCommandInPane(PaneId, RunCommand),
     Exit,
 }
 
@@ -56,6 +57,7 @@ impl From<&PtyInstruction> for PtyContext {
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
             PtyInstruction::CloseTab(_) => PtyContext::CloseTab,
             PtyInstruction::NewTab(..) => PtyContext::NewTab,
+            PtyInstruction::ReRunCommandInPane(..) => PtyContext::ReRunCommandInPane,
             PtyInstruction::Exit => PtyContext::Exit,
         }
     }
@@ -175,6 +177,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                     .send_to_server(ServerInstruction::UnblockInputThread)
                     .unwrap();
             },
+            PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
+                if let Err(e) = pty.rerun_command_in_pane(pane_id, run_command) {
+                    log::error!("Failed to rerun command in pane: {:?}", e);
+                }
+            }
             PtyInstruction::Exit => break,
         }
     }
@@ -380,6 +387,45 @@ impl Pty {
     pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
         if let Some(pane_id) = pane_id {
             self.active_panes.insert(client_id, pane_id);
+        }
+    }
+    pub fn rerun_command_in_pane(&mut self, pane_id: PaneId, run_command: RunCommand) -> Result<(), &'static str> {
+        match pane_id {
+            PaneId::Terminal(id) => {
+                let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
+                let _ = self.id_to_child_pid.remove(&id); // if all is wlel, this shouldn't be here
+
+                let quit_cb = Box::new({
+                    let senders = self.bus.senders.clone();
+                    move |pane_id, exit_status, command| {
+                        // we only re-run held panes, so we'll never close them from Pty
+                        let _ = senders.send_to_screen(ScreenInstruction::HoldPane(pane_id, exit_status, command, None));
+                    }
+                });
+                let (pid_primary, child_fd): (RawFd, RawFd) = self
+                    .bus
+                    .os_input
+                    .as_mut()
+                    .unwrap()
+                    .re_run_command_in_terminal(id, run_command, quit_cb)?;
+                let terminal_bytes = task::spawn({
+                    let senders = self.bus.senders.clone();
+                    let os_input = self.bus.os_input.as_ref().unwrap().clone();
+                    let debug_to_file = self.debug_to_file;
+                    async move {
+                        TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, id)
+                            .listen()
+                            .await;
+                    }
+                });
+
+                self.task_handles.insert(id, terminal_bytes);
+                self.id_to_child_pid.insert(id, child_fd);
+                Ok(())
+            },
+            _ => {
+                Err("Tried to respawn a plugin pane - cannot respawn plugin panes")
+            }
         }
     }
 }

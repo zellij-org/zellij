@@ -113,10 +113,6 @@ impl Pane for PluginPane {
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
     }
-    fn adjust_input_to_terminal(&self, _input_bytes: Vec<u8>) -> Vec<u8> {
-        // noop
-        vec![]
-    }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
     }

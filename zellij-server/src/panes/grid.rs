@@ -1504,7 +1504,7 @@ impl Grid {
     pub fn mark_for_rerender(&mut self) {
         self.should_render = true;
     }
-    fn reset_terminal_state(&mut self) {
+    pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];

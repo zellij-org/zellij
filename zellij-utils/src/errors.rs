@@ -317,6 +317,7 @@ pub enum PtyContext {
     NewTab,
     ClosePane,
     CloseTab,
+    ReRunCommandInPane,
     Exit,
 }
 
