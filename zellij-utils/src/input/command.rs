@@ -18,12 +18,17 @@ pub struct RunCommand {
     #[serde(default)]
     pub cwd: Option<PathBuf>,
     #[serde(default)]
-    pub hold_on_close: bool
+    pub hold_on_close: bool,
 }
 
 impl std::fmt::Display for RunCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut command: String = self.command.as_path().as_os_str().to_string_lossy().to_string();
+        let mut command: String = self
+            .command
+            .as_path()
+            .as_os_str()
+            .to_string_lossy()
+            .to_string();
         for arg in &self.args {
             command.push(' ');
             command.push_str(arg);
@@ -31,7 +36,6 @@ impl std::fmt::Display for RunCommand {
         write!(f, "{}", command)
     }
 }
-
 
 /// Intermediate representation
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
@@ -45,7 +49,7 @@ pub struct RunCommandAction {
     #[serde(default)]
     pub direction: Option<Direction>,
     #[serde(default)]
-    pub hold_on_close: bool
+    pub hold_on_close: bool,
 }
 
 impl From<RunCommandAction> for RunCommand {

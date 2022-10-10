@@ -30,7 +30,7 @@ use zellij_utils::nix;
 
 use zellij_utils::{
     data::{InputMode, ModeInfo, Palette, Style},
-    input::command::{TerminalAction, RunCommand},
+    input::command::{RunCommand, TerminalAction},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientToServerMsg, ServerToClientMsg},
 };

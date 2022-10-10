@@ -113,7 +113,7 @@ impl PaneFrame {
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
         self.exit_status = match exit_status {
             Some(exit_status) => Some(ExitStatus::Code(exit_status)),
-            None => Some(ExitStatus::Exited)
+            None => Some(ExitStatus::Exited),
         };
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
@@ -718,20 +718,37 @@ impl PaneFrame {
         }
         (character_chunks, None)
     }
-    fn first_held_title_part_full(&self, exit_status: ExitStatus) -> (Vec<TerminalCharacter>, usize) { // (title part, length)
+    fn first_held_title_part_full(
+        &self,
+        exit_status: ExitStatus,
+    ) -> (Vec<TerminalCharacter>, usize) {
+        // (title part, length)
         match exit_status {
             ExitStatus::Code(exit_code) => {
                 let mut first_part = vec![];
                 let left_bracket = " [ ";
                 let exited_text = "EXIT CODE: ";
                 let exit_code_text = format!("{}", exit_code);
-                let exit_code_color = if exit_code == 0 { self.style.colors.green } else { self.style.colors.red };
+                let exit_code_color = if exit_code == 0 {
+                    self.style.colors.green
+                } else {
+                    self.style.colors.red
+                };
                 let right_bracket = " ] ";
                 first_part.append(&mut foreground_color(left_bracket, self.color));
                 first_part.append(&mut foreground_color(exited_text, self.color));
-                first_part.append(&mut foreground_color(&exit_code_text, Some(exit_code_color)));
+                first_part.append(&mut foreground_color(
+                    &exit_code_text,
+                    Some(exit_code_color),
+                ));
                 first_part.append(&mut foreground_color(right_bracket, self.color));
-                (first_part, left_bracket.len() + exited_text.len() + exit_code_text.len() + right_bracket.len())
+                (
+                    first_part,
+                    left_bracket.len()
+                        + exited_text.len()
+                        + exit_code_text.len()
+                        + right_bracket.len(),
+                )
             },
             ExitStatus::Exited => {
                 let mut first_part = vec![];
@@ -739,13 +756,20 @@ impl PaneFrame {
                 let exited_text = "EXITED";
                 let right_bracket = " ] ";
                 first_part.append(&mut foreground_color(left_bracket, self.color));
-                first_part.append(&mut foreground_color(exited_text, Some(self.style.colors.red)));
+                first_part.append(&mut foreground_color(
+                    exited_text,
+                    Some(self.style.colors.red),
+                ));
                 first_part.append(&mut foreground_color(right_bracket, self.color));
-                (first_part, left_bracket.len() + exited_text.len() + right_bracket.len())
-            }
+                (
+                    first_part,
+                    left_bracket.len() + exited_text.len() + right_bracket.len(),
+                )
+            },
         }
     }
-    fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) { // (title part, length)
+    fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
+        // (title part, length)
         let mut second_part = vec![];
         let left_enter_bracket = "<";
         let enter_text = "ENTER";
@@ -756,23 +780,29 @@ impl PaneFrame {
         let right_break_bracket = ">";
         let break_tip = " to exit ";
         second_part.append(&mut foreground_color(left_enter_bracket, self.color));
-        second_part.append(&mut foreground_color(enter_text, Some(self.style.colors.orange)));
+        second_part.append(&mut foreground_color(
+            enter_text,
+            Some(self.style.colors.orange),
+        ));
         second_part.append(&mut foreground_color(right_enter_bracket, self.color));
         second_part.append(&mut foreground_color(enter_tip, self.color));
         second_part.append(&mut foreground_color(left_break_bracket, self.color));
-        second_part.append(&mut foreground_color(break_text, Some(self.style.colors.orange)));
+        second_part.append(&mut foreground_color(
+            break_text,
+            Some(self.style.colors.orange),
+        ));
         second_part.append(&mut foreground_color(right_break_bracket, self.color));
         second_part.append(&mut foreground_color(break_tip, self.color));
         (
             second_part,
-                left_enter_bracket.len() +
-                enter_text.len() +
-                right_enter_bracket.len() +
-                enter_tip.len() +
-                left_break_bracket.len() +
-                break_text.len() +
-                right_break_bracket.len() +
-                break_tip.len()
+            left_enter_bracket.len()
+                + enter_text.len()
+                + right_enter_bracket.len()
+                + enter_tip.len()
+                + left_break_bracket.len()
+                + break_text.len()
+                + right_break_bracket.len()
+                + break_tip.len(),
         )
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {

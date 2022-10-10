@@ -6,15 +6,15 @@ use crate::panes::{
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
-use crate::tab::{Pane, AdjustedInput};
+use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::time::{self, Instant};
-use zellij_utils::pane_size::Offset;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     pane_size::SizeInPixels,
@@ -102,7 +102,7 @@ pub struct TerminalPane {
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
     is_held: Option<(Option<i32>, RunCommand)>, // a "held" pane means that its command has exited and its waiting for a
-                   // possible user instruction to be re-run
+                                                // possible user instruction to be re-run
 }
 
 impl Pane for TerminalPane {
@@ -174,39 +174,51 @@ impl Pane for TerminalPane {
                     self.grid.reset_terminal_state();
                     self.set_should_render(true);
                     Some(AdjustedInput::ReRunCommandInThisPane(run_command))
-                }
-                CTRL_C => {
-                    Some(AdjustedInput::CloseThisPane)
-                }
-                _ => None
+                },
+                CTRL_C => Some(AdjustedInput::CloseThisPane),
+                _ => None,
             }
         } else {
             if self.grid.new_line_mode {
                 if let &[13] = input_bytes.as_slice() {
                     // LNM - carriage return is followed by linefeed
-                    return Some(AdjustedInput::WriteBytesToTerminal("\u{0d}\u{0a}".as_bytes().to_vec()));
+                    return Some(AdjustedInput::WriteBytesToTerminal(
+                        "\u{0d}\u{0a}".as_bytes().to_vec(),
+                    ));
                 };
             }
             if self.grid.cursor_key_mode {
                 match input_bytes.as_slice() {
                     LEFT_ARROW => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Left.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Left.as_vec_bytes(),
+                        ));
                     },
                     RIGHT_ARROW => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Right.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Right.as_vec_bytes(),
+                        ));
                     },
                     UP_ARROW => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Up.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Up.as_vec_bytes(),
+                        ));
                     },
                     DOWN_ARROW => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Down.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Down.as_vec_bytes(),
+                        ));
                     },
 
                     HOME_KEY => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::Home.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Home.as_vec_bytes(),
+                        ));
                     },
                     END_KEY => {
-                        return Some(AdjustedInput::WriteBytesToTerminal(AnsiEncoding::End.as_vec_bytes()));
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::End.as_vec_bytes(),
+                        ));
                     },
                     _ => {},
                 };
@@ -218,7 +230,9 @@ impl Pane for TerminalPane {
                 // when pasting input. We only need to make sure not to send them to terminal
                 // panes who do not work in this mode
                 match input_bytes.as_slice() {
-                    BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => return Some(AdjustedInput::WriteBytesToTerminal(vec![])),
+                    BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(vec![]))
+                    },
                     _ => {},
                 }
             }
@@ -700,7 +714,8 @@ impl TerminalPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
     ) -> TerminalPane {
-        let initial_pane_title = initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
+        let initial_pane_title =
+            initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),

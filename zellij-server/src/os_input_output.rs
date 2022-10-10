@@ -61,7 +61,8 @@ fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
-fn handle_command_exit(mut child: Child) -> Option<i32> { // returns the exit status, if any
+fn handle_command_exit(mut child: Child) -> Option<i32> {
+    // returns the exit status, if any
     let mut should_exit = false;
     let mut attempts = 3;
     let mut signals = signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).unwrap();
@@ -111,7 +112,7 @@ fn command_exists(cmd: &RunCommand) -> bool {
             if command.exists() {
                 return true;
             }
-        }
+        },
     }
 
     if let Some(paths) = env::var_os("PATH") {
@@ -185,7 +186,9 @@ fn handle_terminal(
     match openpty(None, Some(&orig_termios)) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
         Err(e) => match failover_cmd {
-            Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id),
+            Some(failover_cmd) => {
+                handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
+            },
             None => {
                 log::error!("Failed to start pty: {:?}", e);
                 Err(SpawnTerminalError::FailedToStartPty)
@@ -230,8 +233,9 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd), SpawnTerminalError> { // returns the terminal_id, the primary fd and the
-                                                 // secondary fd
+) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+    // returns the terminal_id, the primary fd and the
+    // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {
@@ -301,25 +305,25 @@ impl std::fmt::Display for SpawnTerminalError {
         match self {
             SpawnTerminalError::CommandNotFound(terminal_id) => {
                 write!(f, "Command not found for terminal_id: {}", terminal_id)
-            }
+            },
             SpawnTerminalError::NoEditorFound => {
-                write!(f, "No Editor found, consider setting a path to one in $EDITOR or $VISUAL")
-            }
+                write!(
+                    f,
+                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL"
+                )
+            },
             SpawnTerminalError::NoMoreTerminalIds => {
                 write!(f, "No more terminal ids left to allocate.")
-            }
+            },
             SpawnTerminalError::FailedToStartPty => {
                 write!(f, "Failed to start pty")
-            }
+            },
             SpawnTerminalError::GenericSpawnError(msg) => {
                 write!(f, "{}", msg)
-            }
+            },
         }
-
     }
 }
-
-
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
@@ -423,7 +427,7 @@ impl ServerOsApi for ServerOsInputOutput {
             },
             _ => {
                 log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
-            }
+            },
         }
     }
     fn spawn_terminal(
@@ -435,18 +439,27 @@ impl ServerOsApi for ServerOsInputOutput {
         let orig_termios = self.orig_termios.lock().unwrap();
         let mut terminal_id = None;
         {
-            let current_ids: HashSet<u32> = self.terminal_id_to_raw_fd.lock().unwrap().keys().copied().collect();
+            let current_ids: HashSet<u32> = self
+                .terminal_id_to_raw_fd
+                .lock()
+                .unwrap()
+                .keys()
+                .copied()
+                .collect();
             for i in 0..u32::MAX {
                 let i = i as u32;
                 if !current_ids.contains(&i) {
                     terminal_id = Some(i);
                     break;
                 }
-            };
+            }
         }
         match terminal_id {
             Some(terminal_id) => {
-                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, None);
+                self.terminal_id_to_raw_fd
+                    .lock()
+                    .unwrap()
+                    .insert(terminal_id, None);
                 match spawn_terminal(
                     terminal_action,
                     orig_termios.clone(),
@@ -455,15 +468,16 @@ impl ServerOsApi for ServerOsInputOutput {
                     terminal_id,
                 ) {
                     Ok((pid_primary, pid_secondary)) => {
-                        self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, Some(pid_primary));
+                        self.terminal_id_to_raw_fd
+                            .lock()
+                            .unwrap()
+                            .insert(terminal_id, Some(pid_primary));
                         Ok((terminal_id, pid_primary, pid_secondary))
                     },
-                    Err(e) => Err(e)
+                    Err(e) => Err(e),
                 }
             },
-            None => {
-                Err(SpawnTerminalError::NoMoreTerminalIds)
-            }
+            None => Err(SpawnTerminalError::NoMoreTerminalIds),
         }
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -474,26 +488,22 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error> {
         match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(Some(fd)) => {
-                unistd::write(*fd, buf)
-            },
+            Some(Some(fd)) => unistd::write(*fd, buf),
             _ => {
                 // TODO: propagate this error
                 log::error!("Failed to write to terminal with {terminal_id} - could not find its file descriptor");
                 Ok(0)
-            }
+            },
         }
     }
     fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error> {
         match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(Some(fd)) => {
-                termios::tcdrain(*fd)
-            },
+            Some(Some(fd)) => termios::tcdrain(*fd),
             _ => {
                 // TODO: propagate this error
                 log::error!("Failed to tcdrain to terminal with {terminal_id} - could not find its file descriptor");
                 Ok(())
-            }
+            },
         }
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
@@ -576,14 +586,20 @@ impl ServerOsApi for ServerOsInputOutput {
             terminal_id,
         ) {
             Ok((pid_primary, pid_secondary)) => {
-                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, Some(pid_primary));
+                self.terminal_id_to_raw_fd
+                    .lock()
+                    .unwrap()
+                    .insert(terminal_id, Some(pid_primary));
                 Ok((pid_primary, pid_secondary))
             },
-            Err(e) => Err(e)
+            Err(e) => Err(e),
         }
     }
     fn clear_terminal_id(&self, terminal_id: u32) {
-        self.terminal_id_to_raw_fd.lock().unwrap().remove(&terminal_id);
+        self.terminal_id_to_raw_fd
+            .lock()
+            .unwrap()
+            .remove(&terminal_id);
     }
 }
 

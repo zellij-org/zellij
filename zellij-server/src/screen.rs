@@ -6,8 +6,8 @@ use std::rc::Rc;
 use std::str;
 
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::options::Clipboard;
 use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::PaneLayout, position::Position};
 
@@ -89,7 +89,7 @@ pub enum ScreenInstruction {
     ShowFloatingPanes(ClientId),
     HideFloatingPanes(ClientId),
     HorizontalSplit(PaneId, Option<String>, ClientId), // String is initial title
-    VerticalSplit(PaneId, Option<String>, ClientId), // String is initial title
+    VerticalSplit(PaneId, Option<String>, ClientId),   // String is initial title
     WriteCharacter(Vec<u8>, ClientId),
     ResizeLeft(ClientId),
     ResizeRight(ClientId),
@@ -1143,7 +1143,11 @@ pub(crate) fn screen_thread_main(
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
-                            |tab: &mut Tab, client_id: ClientId| tab.new_pane(pid, initial_pane_title, Some(client_id))
+                            |tab: &mut Tab, client_id: ClientId| tab.new_pane(
+                                pid,
+                                initial_pane_title,
+                                Some(client_id)
+                            )
                         );
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
@@ -1213,7 +1217,11 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(
+                        pid,
+                        initial_pane_title,
+                        client_id
+                    )
                 );
                 screen.unblock_input();
                 screen.update_tabs()?;
@@ -1223,7 +1231,11 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(
+                        pid,
+                        initial_pane_title,
+                        client_id
+                    )
                 );
                 screen.unblock_input();
                 screen.update_tabs()?;
@@ -1573,7 +1585,11 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(id, exit_status, run_command));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
+                            id,
+                            exit_status,
+                            run_command
+                        ));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {

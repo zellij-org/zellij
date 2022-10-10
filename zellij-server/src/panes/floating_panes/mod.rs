@@ -17,8 +17,8 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
-    pane_size::{Offset, PaneGeom, Size, Viewport},
     input::command::RunCommand,
+    pane_size::{Offset, PaneGeom, Size, Viewport},
 };
 
 macro_rules! resize_pty {
@@ -151,8 +151,15 @@ impl FloatingPanes {
         self.desired_pane_positions.remove(&pane_id);
         self.panes.remove(&pane_id)
     }
-    pub fn hold_pane(&mut self, pane_id: PaneId, exit_status: Option<i32>, run_command: RunCommand)  {
-        self.panes.get_mut(&pane_id).map(|p| p.hold(exit_status, run_command));
+    pub fn hold_pane(
+        &mut self,
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_command: RunCommand,
+    ) {
+        self.panes
+            .get_mut(&pane_id)
+            .map(|p| p.hold(exit_status, run_command));
     }
     pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(pane_id)

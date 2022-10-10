@@ -1472,7 +1472,12 @@ impl RunCommand {
                 .collect(),
             None => vec![],
         };
-        Ok(RunCommand { command, args, cwd, hold_on_close: true })
+        Ok(RunCommand {
+            command,
+            args,
+            cwd,
+            hold_on_close: true,
+        })
     }
 }
 

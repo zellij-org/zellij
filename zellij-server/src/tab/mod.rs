@@ -7,9 +7,9 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
-use zellij_utils::input::command::RunCommand;
 
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
@@ -761,7 +761,12 @@ impl Tab {
         self.floating_panes.toggle_show_panes(false);
         self.set_force_render();
     }
-    pub fn new_pane(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: Option<ClientId>) {
+    pub fn new_pane(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: Option<ClientId>,
+    ) {
         self.close_down_to_max_terminals();
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
@@ -862,7 +867,12 @@ impl Tab {
             },
         }
     }
-    pub fn horizontal_split(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: ClientId) {
+    pub fn horizontal_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) {
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -893,7 +903,12 @@ impl Tab {
             }
         }
     }
-    pub fn vertical_split(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: ClientId) {
+    pub fn vertical_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) {
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -1094,7 +1109,7 @@ impl Tab {
                     Some(AdjustedInput::CloseThisPane) => {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false);
                     },
-                    None => {}
+                    None => {},
                 }
             },
             PaneId::Plugin(pid) => {

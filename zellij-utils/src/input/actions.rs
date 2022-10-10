@@ -305,10 +305,12 @@ impl Action {
                         )])
                     }
                 },
-                None => if floating {
-                    Ok(vec![Action::NewFloatingPane(None)])
-                } else {
-                    Ok(vec![Action::NewTiledPane(direction, None)])
+                None => {
+                    if floating {
+                        Ok(vec![Action::NewFloatingPane(None)])
+                    } else {
+                        Ok(vec![Action::NewTiledPane(direction, None)])
+                    }
                 },
             },
             CliAction::Edit {

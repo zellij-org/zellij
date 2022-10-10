@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::{Action, Direction, ResizeDirection};
-use zellij_utils::input::command::{TerminalAction, RunCommand};
+use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;

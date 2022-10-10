@@ -14,8 +14,8 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
-    input::layout::SplitDirection,
     input::command::RunCommand,
+    input::layout::SplitDirection,
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -994,8 +994,15 @@ impl TiledPanes {
             None
         }
     }
-    pub fn hold_pane(&mut self, pane_id: PaneId, exit_status: Option<i32>, run_command: RunCommand)  {
-        self.panes.get_mut(&pane_id).map(|p| p.hold(exit_status, run_command));
+    pub fn hold_pane(
+        &mut self,
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_command: RunCommand,
+    ) {
+        self.panes
+            .get_mut(&pane_id)
+            .map(|p| p.hold(exit_status, run_command));
     }
     pub fn panes_to_hide_contains(&self, pane_id: PaneId) -> bool {
         self.panes_to_hide.contains(&pane_id)
