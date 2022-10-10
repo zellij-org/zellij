@@ -288,6 +288,7 @@ impl Action {
             } => match command {
                 Some(command) => {
                     let (command, args) = split_command_and_args(command);
+                    let cwd = cwd.or_else(|| std::env::current_dir().ok());
                     let run_command_action = RunCommandAction {
                         command,
                         args,

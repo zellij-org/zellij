@@ -379,9 +379,9 @@ impl Pane for TerminalPane {
                 if *exit_status != 0 {
                     frame.color = Some(self.style.colors.red);
                 }
-                frame.add_undertitle(format!("Exit Code: {exit_status}, press <ENTER> to re-run"));
+                frame.add_undertitle(format!("[ Exit Code: {exit_status} ] <ENTER> to re-run, <Ctrl-c> to exit"));
             } else {
-                frame.add_undertitle(String::from("Exited, press <ENTER> to re-run"));
+                frame.add_undertitle(String::from("[ Exited ] <ENTER> to re-run, <Ctrl-c> to exit"));
             }
         }
 

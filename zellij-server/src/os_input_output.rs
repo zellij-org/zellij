@@ -99,46 +99,75 @@ fn handle_command_exit(mut child: Child) -> Option<i32> { // returns the exit st
     }
 }
 
+fn command_exists(cmd: &RunCommand) -> bool {
+    let command = &cmd.command;
+    match cmd.cwd.as_ref() {
+        Some(cwd) => {
+            if cwd.join(&command).exists() {
+                return true;
+            }
+        },
+        None => {
+            if command.exists() {
+                return true;
+            }
+        }
+    }
+
+    if let Some(paths) = env::var_os("PATH") {
+        for path in env::split_paths(&paths) {
+            if path.join(command).exists() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn handle_openpty(
     open_pty_res: OpenptyResult,
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
-) -> (RawFd, RawFd) {
+) -> Result<(RawFd, RawFd), SpawnTerminalError> {
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
     let pid_secondary = open_pty_res.slave;
 
-    let mut child = unsafe {
-        let cmd = cmd.clone();
-        let command = &mut Command::new(cmd.command);
-        if let Some(current_dir) = cmd.cwd {
-            if current_dir.exists() {
-                command.current_dir(current_dir);
-            }
-        }
-        command
-            .args(&cmd.args)
-            .pre_exec(move || -> std::io::Result<()> {
-                if libc::login_tty(pid_secondary) != 0 {
-                    panic!("failed to set controlling terminal");
+    if command_exists(&cmd) {
+        let mut child = unsafe {
+            let cmd = cmd.clone();
+            let command = &mut Command::new(cmd.command);
+            if let Some(current_dir) = cmd.cwd {
+                if current_dir.exists() {
+                    command.current_dir(current_dir);
                 }
-                close_fds::close_open_fds(3, &[]);
-                Ok(())
-            })
-            .spawn()
-            .expect("failed to spawn")
-    };
+            }
+            command
+                .args(&cmd.args)
+                .pre_exec(move || -> std::io::Result<()> {
+                    if libc::login_tty(pid_secondary) != 0 {
+                        panic!("failed to set controlling terminal");
+                    }
+                    close_fds::close_open_fds(3, &[]);
+                    Ok(())
+                })
+                .spawn()
+                .expect("failed to spawn")
+        };
 
-    let child_id = child.id();
-    std::thread::spawn(move || {
-        child.wait().unwrap();
-        let exit_status = handle_command_exit(child);
-        let _ = nix::unistd::close(pid_secondary);
-        quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
-    });
+        let child_id = child.id();
+        std::thread::spawn(move || {
+            child.wait().unwrap();
+            let exit_status = handle_command_exit(child);
+            let _ = nix::unistd::close(pid_secondary);
+            quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
+        });
 
-    (pid_primary, child_id as RawFd)
+        Ok((pid_primary, child_id as RawFd))
+    } else {
+        Err(SpawnTerminalError::CommandNotFound(terminal_id))
+    }
 }
 
 /// Spawns a new terminal from the parent terminal with [`termios`](termios::Termios)
@@ -150,15 +179,16 @@ fn handle_terminal(
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> (RawFd, RawFd) {
-    // Create a pipe to allow the child the communicate the shell's pid to it's
+) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+    // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
     match openpty(None, Some(&orig_termios)) {
         Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
         Err(e) => match failover_cmd {
             Some(failover_cmd) => handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id),
             None => {
-                panic!("failed to start pty{:?}", e);
+                log::error!("Failed to start pty: {:?}", e);
+                Err(SpawnTerminalError::FailedToStartPty)
             },
         },
     }
@@ -200,7 +230,7 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd), &'static str> { // returns the terminal_id, the primary fd and the
+) -> Result<(RawFd, RawFd), SpawnTerminalError> { // returns the terminal_id, the primary fd and the
                                                  // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
@@ -209,9 +239,7 @@ fn spawn_terminal(
                 && env::var("EDITOR").is_err()
                 && env::var("VISUAL").is_err()
             {
-                return Err(
-                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL",
-                );
+                return Err(SpawnTerminalError::NoEditorFound);
             }
 
             let mut command = default_editor.unwrap_or_else(|| {
@@ -256,8 +284,42 @@ fn spawn_terminal(
         None
     };
 
-    Ok(handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id))
+    handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum SpawnTerminalError {
+    CommandNotFound(u32), // u32 is the terminal id
+    NoEditorFound,
+    NoMoreTerminalIds,
+    FailedToStartPty,
+    GenericSpawnError(&'static str),
+}
+
+impl std::fmt::Display for SpawnTerminalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            SpawnTerminalError::CommandNotFound(terminal_id) => {
+                write!(f, "Command not found for terminal_id: {}", terminal_id)
+            }
+            SpawnTerminalError::NoEditorFound => {
+                write!(f, "No Editor found, consider setting a path to one in $EDITOR or $VISUAL")
+            }
+            SpawnTerminalError::NoMoreTerminalIds => {
+                write!(f, "No more terminal ids left to allocate.")
+            }
+            SpawnTerminalError::FailedToStartPty => {
+                write!(f, "Failed to start pty")
+            }
+            SpawnTerminalError::GenericSpawnError(msg) => {
+                write!(f, "{}", msg)
+            }
+        }
+
+    }
+}
+
+
 
 #[derive(Clone)]
 pub struct ServerOsInputOutput {
@@ -306,7 +368,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd), &'static str>;
+    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError>;
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -343,7 +405,7 @@ pub trait ServerOsApi: Send + Sync {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd), &'static str>;
+    ) -> Result<(RawFd, RawFd), SpawnTerminalError>;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -364,7 +426,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd), &'static str> {
+    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError> {
         let orig_termios = self.orig_termios.lock().unwrap();
         let mut terminal_id = None;
         {
@@ -394,7 +456,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 }
             },
             None => {
-                Err("No more termial ids left to allocate!")
+                Err(SpawnTerminalError::NoMoreTerminalIds)
             }
         }
     }
@@ -497,7 +559,7 @@ impl ServerOsApi for ServerOsInputOutput {
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd), &'static str> {
+    ) -> Result<(RawFd, RawFd), SpawnTerminalError> {
         let orig_termios = self.orig_termios.lock().unwrap();
         let default_editor = None; // no need for a default editor when running an explicit command
         match spawn_terminal(
