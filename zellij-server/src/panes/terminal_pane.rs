@@ -375,14 +375,7 @@ impl Pane for TerminalPane {
             frame_params,
         );
         if let Some((exit_status, run_command)) = &self.is_held {
-            if let Some(exit_status)  = exit_status {
-                if *exit_status != 0 {
-                    frame.color = Some(self.style.colors.red);
-                }
-                frame.add_undertitle(format!("[ Exit Code: {exit_status} ] <ENTER> to re-run, <Ctrl-c> to exit"));
-            } else {
-                frame.add_undertitle(String::from("[ Exited ] <ENTER> to re-run, <Ctrl-c> to exit"));
-            }
+            frame.add_exit_status(exit_status.as_ref().copied());
         }
 
         match self.frame.get(&client_id) {

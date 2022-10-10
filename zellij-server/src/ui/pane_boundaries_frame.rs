@@ -61,6 +61,12 @@ fn background_color(characters: &str, color: Option<PaletteColor>) -> Vec<Termin
     colored_string
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ExitStatus {
+    Code(i32),
+    Exited,
+}
+
 pub struct FrameParams {
     pub focused_client: Option<ClientId>,
     pub is_main_client: bool,
@@ -81,7 +87,7 @@ pub struct PaneFrame {
     pub is_main_client: bool,
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
-    undertitle: Option<String>,
+    exit_status: Option<ExitStatus>,
 }
 
 impl PaneFrame {
@@ -101,11 +107,14 @@ impl PaneFrame {
             is_main_client: frame_params.is_main_client,
             other_focused_clients: frame_params.other_focused_clients,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
-            undertitle: None,
+            exit_status: None,
         }
     }
-    pub fn add_undertitle(&mut self, undertitle: String) {
-        self.undertitle = Some(undertitle);
+    pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
+        self.exit_status = match exit_status {
+            Some(exit_status) => Some(ExitStatus::Code(exit_status)),
+            None => Some(ExitStatus::Exited)
+        };
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors);
@@ -599,76 +608,66 @@ impl PaneFrame {
             .or_else(|| Some(self.title_line_without_middle()))
             .unwrap()
     }
-    fn render_undertitle(&self) -> Vec<TerminalCharacter> {
+    fn render_held_undertitle(&self) -> Vec<TerminalCharacter> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let middle_truncated_sign = "[..]";
         let middle_truncated_sign_long = "[...]";
-        let undertitle_text = &self.undertitle.as_ref().unwrap();
-        let full_text = format!(" {} ", undertitle_text);
-        let full_text_len = full_text.width();
+        let exit_status = self.exit_status.unwrap(); // unwrap is safe because we only call this if
+                                                     // exit_status is some
 
+        let (mut first_part, first_part_len) = self.first_held_title_part_full(exit_status);
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
-        if max_undertitle_length <= 6 {
-            let mut padding = String::new();
-            for _ in 0..max_undertitle_length {
-                padding.push_str(boundary_type::HORIZONTAL);
-            }
-            let mut ret = vec![];
-            ret.append(&mut left_boundary);
-            ret.append(&mut foreground_color(&padding, self.color));
-            ret.append(&mut right_boundary);
-            ret
-        } else if full_text_len <= max_undertitle_length {
-            let mut middle_padding = String::new();
-            for _ in full_text_len..max_undertitle_length {
-                middle_padding.push_str(boundary_type::HORIZONTAL);
-            }
-            let mut ret = vec![];
-            ret.append(&mut left_boundary);
-            ret.append(&mut foreground_color(&full_text, self.color));
-            ret.append(&mut foreground_color(&middle_padding, self.color));
-            ret.append(&mut right_boundary);
-            ret
-        } else {
-            let length_of_each_half = (max_undertitle_length - middle_truncated_sign.width()) / 2;
-            let mut first_part: String = String::with_capacity(length_of_each_half);
-            for char in full_text.chars() {
-                if first_part.width() + char.width().unwrap_or(0) > length_of_each_half {
-                    break;
-                } else {
-                    first_part.push(char);
+        if self.is_main_client {
+            let (mut second_part, second_part_len) = self.second_held_title_part_full();
+            let full_text_len = first_part_len + second_part_len;
+            if full_text_len <= max_undertitle_length {
+                // render exit status and tips
+                let mut padding = String::new();
+                for _ in full_text_len..max_undertitle_length {
+                    padding.push_str(boundary_type::HORIZONTAL);
                 }
-            }
-            let mut second_part: String = String::with_capacity(length_of_each_half);
-            for char in full_text.chars().rev() {
-                if second_part.width() + char.width().unwrap_or(0) > length_of_each_half {
-                    break;
-                } else {
-                    second_part.insert(0, char);
+                let mut ret = vec![];
+                ret.append(&mut left_boundary);
+                ret.append(&mut first_part);
+                ret.append(&mut second_part);
+                ret.append(&mut foreground_color(&padding, self.color));
+                ret.append(&mut right_boundary);
+                ret
+            } else if first_part_len <= max_undertitle_length {
+                // render only exit status
+                let mut padding = String::new();
+                for _ in first_part_len..max_undertitle_length {
+                    padding.push_str(boundary_type::HORIZONTAL);
                 }
-            }
-
-            let undertitle_text = if first_part.width()
-                + middle_truncated_sign.width()
-                + second_part.width()
-                < max_undertitle_length
-            {
-                // this means we lost 1 character when dividing the total length into halves
-                format!(
-                    "{}{}{}",
-                    first_part, middle_truncated_sign_long, second_part
-                )
+                let mut ret = vec![];
+                ret.append(&mut left_boundary);
+                ret.append(&mut first_part);
+                ret.append(&mut foreground_color(&padding, self.color));
+                ret.append(&mut right_boundary);
+                ret
             } else {
-                format!("{}{}{}", first_part, middle_truncated_sign, second_part)
-            };
-            let mut ret = vec![];
-            ret.append(&mut left_boundary);
-            ret.append(&mut foreground_color(&undertitle_text, self.color));
-            ret.append(&mut right_boundary);
-            ret
+                self.empty_undertitle(max_undertitle_length)
+            }
+        } else {
+            if first_part_len <= max_undertitle_length {
+                // render first part
+                let full_text_len = first_part_len;
+                let mut padding = String::new();
+                for _ in full_text_len..max_undertitle_length {
+                    padding.push_str(boundary_type::HORIZONTAL);
+                }
+                let mut ret = vec![];
+                ret.append(&mut left_boundary);
+                ret.append(&mut first_part);
+                ret.append(&mut foreground_color(&padding, self.color));
+                ret.append(&mut right_boundary);
+                ret
+            } else {
+                self.empty_undertitle(max_undertitle_length)
+            }
         }
     }
     pub fn render(&self) -> (Vec<CharacterChunk>, Option<String>) {
@@ -682,10 +681,10 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(title, x, y));
             } else if row == self.geom.rows - 1 {
                 // bottom row
-                if self.undertitle.is_some() {
+                if self.exit_status.is_some() {
                     let x = self.geom.x;
                     let y = self.geom.y + row;
-                    character_chunks.push(CharacterChunk::new(self.render_undertitle(), x, y));
+                    character_chunks.push(CharacterChunk::new(self.render_held_undertitle(), x, y));
                 } else {
                     let mut bottom_row = vec![];
                     for col in 0..self.geom.cols {
@@ -721,5 +720,77 @@ impl PaneFrame {
             }
         }
         (character_chunks, None)
+    }
+    fn first_held_title_part_full(&self, exit_status: ExitStatus) -> (Vec<TerminalCharacter>, usize) { // (title part, length)
+        match exit_status {
+            ExitStatus::Code(exit_code) => {
+                let mut first_part = vec![];
+                let left_bracket = " [ ";
+                let exited_text = "Exit Code: ";
+                let exit_code_text = format!("{}", exit_code);
+                let exit_code_color = if exit_code == 0 { self.style.colors.green } else { self.style.colors.red };
+                let right_bracket = " ] ";
+                first_part.append(&mut foreground_color(left_bracket, self.color));
+                first_part.append(&mut foreground_color(exited_text, self.color));
+                first_part.append(&mut foreground_color(&exit_code_text, Some(exit_code_color)));
+                first_part.append(&mut foreground_color(right_bracket, self.color));
+                (first_part, left_bracket.len() + exited_text.len() + exit_code_text.len() + right_bracket.len())
+            },
+            ExitStatus::Exited => {
+                let mut first_part = vec![];
+                let left_bracket = " [ ";
+                let exited_text = "Exited";
+                let right_bracket = " ] ";
+                first_part.append(&mut foreground_color(left_bracket, self.color));
+                first_part.append(&mut foreground_color(exited_text, Some(self.style.colors.red)));
+                first_part.append(&mut foreground_color(right_bracket, self.color));
+                (first_part, left_bracket.len() + exited_text.len() + right_bracket.len())
+            }
+        }
+    }
+    fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) { // (title part, length)
+        let mut second_part = vec![];
+        let left_enter_bracket = "<";
+        let enter_text = "ENTER";
+        let right_enter_bracket = ">";
+        let enter_tip = " to re-run, ";
+        let left_break_bracket = "<";
+        let break_text = "Ctrl-c";
+        let right_break_bracket = ">";
+        let break_tip = " to exit ";
+        second_part.append(&mut foreground_color(left_enter_bracket, self.color));
+        second_part.append(&mut foreground_color(enter_text, Some(self.style.colors.orange)));
+        second_part.append(&mut foreground_color(right_enter_bracket, self.color));
+        second_part.append(&mut foreground_color(enter_tip, self.color));
+        second_part.append(&mut foreground_color(left_break_bracket, self.color));
+        second_part.append(&mut foreground_color(break_text, Some(self.style.colors.orange)));
+        second_part.append(&mut foreground_color(right_break_bracket, self.color));
+        second_part.append(&mut foreground_color(break_tip, self.color));
+        (
+            second_part,
+                left_enter_bracket.len() +
+                enter_text.len() +
+                right_enter_bracket.len() +
+                enter_tip.len() +
+                left_break_bracket.len() +
+                break_text.len() +
+                right_break_bracket.len() +
+                break_tip.len()
+        )
+    }
+    fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {
+        let mut left_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
+        let mut right_boundary =
+            foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
+        let mut ret = vec![];
+        let mut padding = String::new();
+        for _ in 0..max_undertitle_length {
+            padding.push_str(boundary_type::HORIZONTAL);
+        }
+        ret.append(&mut left_boundary);
+        ret.append(&mut foreground_color(&padding, self.color));
+        ret.append(&mut right_boundary);
+        ret
     }
 }
