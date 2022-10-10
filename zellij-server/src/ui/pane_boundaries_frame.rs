@@ -726,7 +726,7 @@ impl PaneFrame {
             ExitStatus::Code(exit_code) => {
                 let mut first_part = vec![];
                 let left_bracket = " [ ";
-                let exited_text = "Exit Code: ";
+                let exited_text = "EXIT CODE: ";
                 let exit_code_text = format!("{}", exit_code);
                 let exit_code_color = if exit_code == 0 { self.style.colors.green } else { self.style.colors.red };
                 let right_bracket = " ] ";
@@ -739,7 +739,7 @@ impl PaneFrame {
             ExitStatus::Exited => {
                 let mut first_part = vec![];
                 let left_bracket = " [ ";
-                let exited_text = "Exited";
+                let exited_text = "EXITED";
                 let right_bracket = " ] ";
                 first_part.append(&mut foreground_color(left_bracket, self.color));
                 first_part.append(&mut foreground_color(exited_text, Some(self.style.colors.red)));
