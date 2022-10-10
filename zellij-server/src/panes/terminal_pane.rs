@@ -698,8 +698,9 @@ impl TerminalPane {
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+        initial_pane_title: Option<String>,
     ) -> TerminalPane {
-        let initial_pane_title = format!("Pane #{}", pane_index);
+        let initial_pane_title = initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),

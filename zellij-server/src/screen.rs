@@ -82,14 +82,14 @@ macro_rules! active_tab_and_connected_client_id {
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     Render,
-    NewPane(PaneId, ClientOrTabIndex),
+    NewPane(PaneId, Option<String>, ClientOrTabIndex), // String is initial title
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
     ShowFloatingPanes(ClientId),
     HideFloatingPanes(ClientId),
-    HorizontalSplit(PaneId, ClientId),
-    VerticalSplit(PaneId, ClientId),
+    HorizontalSplit(PaneId, Option<String>, ClientId), // String is initial title
+    VerticalSplit(PaneId, Option<String>, ClientId), // String is initial title
     WriteCharacter(Vec<u8>, ClientId),
     ResizeLeft(ClientId),
     ResizeRight(ClientId),
@@ -1137,18 +1137,18 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Render => {
                 screen.render()?;
             },
-            ScreenInstruction::NewPane(pid, client_or_tab_index) => {
+            ScreenInstruction::NewPane(pid, initial_pane_title, client_or_tab_index) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(
                             screen,
                             client_id,
-                            |tab: &mut Tab, client_id: ClientId| tab.new_pane(pid, Some(client_id))
+                            |tab: &mut Tab, client_id: ClientId| tab.new_pane(pid, initial_pane_title, Some(client_id))
                         );
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, None);
+                            active_tab.new_pane(pid, initial_pane_title, None);
                         } else {
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
@@ -1209,21 +1209,21 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
             },
-            ScreenInstruction::HorizontalSplit(pid, client_id) => {
+            ScreenInstruction::HorizontalSplit(pid, initial_pane_title, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id)
                 );
                 screen.unblock_input();
                 screen.update_tabs()?;
                 screen.render()?;
             },
-            ScreenInstruction::VerticalSplit(pid, client_id) => {
+            ScreenInstruction::VerticalSplit(pid, initial_pane_title, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id)
                 );
                 screen.unblock_input();
                 screen.update_tabs()?;

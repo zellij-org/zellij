@@ -522,6 +522,10 @@ impl Tab {
                 // there are still panes left to fill, use the pids we received in this method
                 let pid = new_ids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
                 let next_terminal_position = self.get_next_terminal_position();
+                let initial_title = match &layout.run {
+                    Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                    _ => None,
+                };
                 let mut new_pane = TerminalPane::new(
                     *pid,
                     *position_and_size,
@@ -533,6 +537,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_title,
                 );
                 new_pane.set_borderless(layout.borderless);
                 self.tiled_panes
@@ -756,7 +761,7 @@ impl Tab {
         self.floating_panes.toggle_show_panes(false);
         self.set_force_render();
     }
-    pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
+    pub fn new_pane(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: Option<ClientId>) {
         self.close_down_to_max_terminals();
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
@@ -773,6 +778,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -798,6 +804,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -815,7 +822,7 @@ impl Tab {
         match pid {
             PaneId::Terminal(pid) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let new_pane = TerminalPane::new(
+                let mut new_pane = TerminalPane::new(
                     pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -826,7 +833,11 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    None,
                 );
+                new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
+                                                            // constructor so it won't be overrided
+                                                            // by the editor
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
@@ -851,7 +862,7 @@ impl Tab {
             },
         }
     }
-    pub fn horizontal_split(&mut self, pid: PaneId, client_id: ClientId) {
+    pub fn horizontal_split(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -873,6 +884,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -881,7 +893,7 @@ impl Tab {
             }
         }
     }
-    pub fn vertical_split(&mut self, pid: PaneId, client_id: ClientId) {
+    pub fn vertical_split(&mut self, pid: PaneId, initial_pane_title: Option<String>, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             return;
         }
@@ -903,6 +915,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);

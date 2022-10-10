@@ -79,9 +79,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
             PtyInstruction::SpawnTerminal(terminal_action, client_or_tab_index) => {
-                let (hold_on_close, run_command) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (run_command.hold_on_close, Some(run_command.clone())),
-                    _ => (false, None)
+                let (hold_on_close, run_command, pane_title) = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => (run_command.hold_on_close, Some(run_command.clone()), Some(run_command.to_string())),
+                    _ => (false, None, None)
                 };
                 match pty.spawn_terminal(terminal_action, client_or_tab_index) {
                     Ok(pid) => {
@@ -89,6 +89,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                             .senders
                             .send_to_screen(ScreenInstruction::NewPane(
                                 PaneId::Terminal(pid),
+                                pane_title,
                                 client_or_tab_index,
                             ))
                             .unwrap();
@@ -99,6 +100,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 .senders
                                 .send_to_screen(ScreenInstruction::NewPane(
                                     PaneId::Terminal(pid),
+                                    pane_title,
                                     client_or_tab_index,
                                 ))
                                 .unwrap();
@@ -111,11 +113,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                             }
                         }
-
-                        // TODO
-                        // * else: atomicaly close the pane somehow (basically get rid of our and
-                        // os_input_output's state)
-
                     },
                     Err(e) => {
                         log::error!("Failed to spawn terminal: {}", e);
@@ -142,28 +139,86 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                 }
             },
             PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
-                let pid = pty
-                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
-                    .unwrap(); // TODO: handle error here
-                pty.bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::VerticalSplit(
-                        PaneId::Terminal(pid),
-                        client_id,
-                    ))
-                    .unwrap();
+                let (hold_on_close, run_command, pane_title) = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => (run_command.hold_on_close, Some(run_command.clone()), Some(run_command.to_string())),
+                    _ => (false, None, None)
+                };
+                match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
+                    Ok(pid) => {
+                        pty.bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::VerticalSplit(
+                                PaneId::Terminal(pid),
+                                pane_title,
+                                client_id,
+                            ))
+                            .unwrap();
+                    }
+                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
+                        if hold_on_close {
+                            pty.bus
+                                .senders
+                                .send_to_screen(ScreenInstruction::VerticalSplit(
+                                    PaneId::Terminal(pid),
+                                    pane_title,
+                                    client_id,
+                                ))
+                                .unwrap();
+                            if let Some(run_command) = run_command {
+                                pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
+                                    pid,
+                                    format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
+                                ));
+                                pty.bus.senders
+                                    .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to spawn terminal: {}", e);
+                    }
+                }
             },
             PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
-                let pid = pty
-                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
-                    .unwrap(); // TODO: handle error here
-                pty.bus
-                    .senders
-                    .send_to_screen(ScreenInstruction::HorizontalSplit(
-                        PaneId::Terminal(pid),
-                        client_id,
-                    ))
-                    .unwrap();
+                let (hold_on_close, run_command, pane_title) = match &terminal_action {
+                    Some(TerminalAction::RunCommand(run_command)) => (run_command.hold_on_close, Some(run_command.clone()), Some(run_command.to_string())),
+                    _ => (false, None, None)
+                };
+                match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
+                    Ok(pid) => {
+                        pty.bus
+                            .senders
+                            .send_to_screen(ScreenInstruction::HorizontalSplit(
+                                PaneId::Terminal(pid),
+                                pane_title,
+                                client_id,
+                            ))
+                            .unwrap();
+                    },
+                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
+                        if hold_on_close {
+                            pty.bus
+                                .senders
+                                .send_to_screen(ScreenInstruction::HorizontalSplit(
+                                    PaneId::Terminal(pid),
+                                    pane_title,
+                                    client_id,
+                                ))
+                                .unwrap();
+                            if let Some(run_command) = run_command {
+                                pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
+                                    pid,
+                                    format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
+                                ));
+                                pty.bus.senders
+                                    .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        log::error!("Failed to spawn terminal: {}", e);
+                    }
+                }
             },
             PtyInstruction::UpdateActivePane(pane_id, client_id) => {
                 pty.set_active_pane(pane_id, client_id);
