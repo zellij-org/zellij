@@ -200,7 +200,7 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>),
     /// Open the file in a new pane using the default editor
-    EditFile(PathBuf, Option<usize>, Option<Direction>, Option<bool>), // usize is an optional line number, bool is floating true/false
+    EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>),
     /// Open a new tiled (embedded, non-floating) pane
@@ -296,17 +296,19 @@ impl Action {
                         direction,
                         hold_on_close: true,
                     };
-                    match floating {
-                        Some(true) => Ok(vec![Action::NewFloatingPane(Some(run_command_action))]),
-                        _ => Ok(vec![Action::NewTiledPane(
+                    if floating {
+                        Ok(vec![Action::NewFloatingPane(Some(run_command_action))])
+                    } else {
+                        Ok(vec![Action::NewTiledPane(
                             direction,
                             Some(run_command_action),
-                        )]),
+                        )])
                     }
                 },
-                None => match floating {
-                    Some(true) => Ok(vec![Action::NewFloatingPane(None)]),
-                    _ => Ok(vec![Action::NewTiledPane(direction, None)]),
+                None => if floating {
+                    Ok(vec![Action::NewFloatingPane(None)])
+                } else {
+                    Ok(vec![Action::NewTiledPane(direction, None)])
                 },
             },
             CliAction::Edit {

@@ -250,24 +250,20 @@ pub(crate) fn route_action(
             session.senders.send_to_pty(pty_instr).unwrap();
         },
         Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
-            match should_float {
-                Some(true) => {
-                    session
-                        .senders
-                        .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
-                        .unwrap();
-                },
-                Some(false) => {
-                    session
-                        .senders
-                        .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
-                        .unwrap();
-                },
-                None => {},
+            if should_float {
+                session
+                    .senders
+                    .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
+                    .unwrap();
+            } else {
+                session
+                    .senders
+                    .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
+                    .unwrap();
             };
 
             let open_file = TerminalAction::OpenFile(path_to_file, line_number);
-            let pty_instr = match (split_direction, should_float.unwrap_or(false)) {
+            let pty_instr = match (split_direction, should_float) {
                 (Some(Direction::Left), false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
                 },
