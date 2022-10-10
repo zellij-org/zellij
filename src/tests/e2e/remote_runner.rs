@@ -198,6 +198,7 @@ fn read_from_channel(
                     sixel_image_store,
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

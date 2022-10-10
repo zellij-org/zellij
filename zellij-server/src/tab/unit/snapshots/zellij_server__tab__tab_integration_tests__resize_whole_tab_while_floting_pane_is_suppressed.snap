@@ -1,9 +1,9 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
-assertion_line: 1474
+assertion_line: 1801
 expression: snapshot
 ---
-00 (C): ┌ Pane #1 ────────────────────┌ Pane #3 ─────────────────────────────────────────────────┐─────────┐                     
+00 (C): ┌ Pane #1 ────────────────────┌ EDITING SCROLLBACK ──────────────────────────────────────┐─────────┐                     
 01 (C): │                             │                                                          │         │                     
 02 (C): │                             │                                                          │         │                     
 03 (C): │                             │                                                          │         │                     

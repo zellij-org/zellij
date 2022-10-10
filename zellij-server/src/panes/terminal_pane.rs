@@ -327,7 +327,7 @@ impl Pane for TerminalPane {
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let pane_title = if let Some((exit_status, run_command)) = &self.is_held {
+        let pane_title = if let Some((_exit_status, run_command)) = &self.is_held {
             format!("{}", run_command)
         } else if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
@@ -374,7 +374,7 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
-        if let Some((exit_status, run_command)) = &self.is_held {
+        if let Some((exit_status, _run_command)) = &self.is_held {
             frame.add_exit_status(exit_status.as_ref().copied());
         }
 

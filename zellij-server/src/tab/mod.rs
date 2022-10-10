@@ -127,7 +127,7 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+    fn adjust_input_to_terminal(&mut self, _input_bytes: Vec<u8>) -> Option<AdjustedInput> {
         None
     }
     fn position_and_size(&self) -> PaneGeom;
@@ -353,7 +353,7 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
-    fn hold(&mut self, exit_status: Option<i32>, run_command: RunCommand) {
+    fn hold(&mut self, _exit_status: Option<i32>, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
 }

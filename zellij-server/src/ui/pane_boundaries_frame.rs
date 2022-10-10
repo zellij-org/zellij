@@ -610,10 +610,7 @@ impl PaneFrame {
     }
     fn render_held_undertitle(&self) -> Vec<TerminalCharacter> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let middle_truncated_sign = "[..]";
-        let middle_truncated_sign_long = "[...]";
         let exit_status = self.exit_status.unwrap(); // unwrap is safe because we only call this if
-                                                     // exit_status is some
 
         let (mut first_part, first_part_len) = self.first_held_title_part_full(exit_status);
         let mut left_boundary =

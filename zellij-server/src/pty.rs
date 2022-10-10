@@ -108,7 +108,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
                                     pid,
                                     format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
-                                ));
+                                )).unwrap();
                                 pty.bus.senders
                                     .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                             }
@@ -170,7 +170,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
                                     pid,
                                     format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
-                                ));
+                                )).unwrap();
                                 pty.bus.senders
                                     .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                             }
@@ -211,7 +211,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
                                     pid,
                                     format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
-                                ));
+                                )).unwrap();
                                 pty.bus.senders
                                     .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                             }
@@ -275,7 +275,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                             pty.bus.senders.send_to_screen(ScreenInstruction::PtyBytes(
                                 pid,
                                 format!("Command not found: {}", run_command.command.display()).as_bytes().to_vec(),
-                            ));
+                            )).unwrap();
                             pty.bus.senders
                                 .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                         }
