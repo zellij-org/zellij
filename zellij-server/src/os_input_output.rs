@@ -325,7 +325,11 @@ impl std::fmt::Display for SpawnTerminalError {
 pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, IpcSenderWithContext<ServerToClientMsg>>>>,
-    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, RawFd>>>,
+    terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
+                                                                     // terminal_id exists but is
+                                                                     // not connected to an fd (eg.
+                                                                     // a command pane with a
+                                                                     // non-existing command)
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -411,12 +415,12 @@ pub trait ServerOsApi: Send + Sync {
 impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) {
         match self.terminal_id_to_raw_fd.lock().unwrap().get(&id) {
-            Some(fd) => {
+            Some(Some(fd)) => {
                 if cols > 0 && rows > 0 {
                     set_terminal_size_using_fd(*fd, cols, rows);
                 }
             },
-            None => {
+            _ => {
                 log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
             }
         }
@@ -441,6 +445,7 @@ impl ServerOsApi for ServerOsInputOutput {
         }
         match terminal_id {
             Some(terminal_id) => {
+                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, None);
                 match spawn_terminal(
                     terminal_action,
                     orig_termios.clone(),
@@ -449,7 +454,7 @@ impl ServerOsApi for ServerOsInputOutput {
                     terminal_id,
                 ) {
                     Ok((pid_primary, pid_secondary)) => {
-                        self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, pid_primary);
+                        self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, Some(pid_primary));
                         Ok((terminal_id, pid_primary, pid_secondary))
                     },
                     Err(e) => Err(e)
@@ -468,10 +473,10 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error> {
         match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(fd) => {
+            Some(Some(fd)) => {
                 unistd::write(*fd, buf)
             },
-            None => {
+            _ => {
                 // TODO: propagate this error
                 log::error!("Failed to write to terminal with {terminal_id} - could not find its file descriptor");
                 Ok(0)
@@ -480,10 +485,10 @@ impl ServerOsApi for ServerOsInputOutput {
     }
     fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error> {
         match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(fd) => {
+            Some(Some(fd)) => {
                 termios::tcdrain(*fd)
             },
-            None => {
+            _ => {
                 // TODO: propagate this error
                 log::error!("Failed to tcdrain to terminal with {terminal_id} - could not find its file descriptor");
                 Ok(())
@@ -570,7 +575,7 @@ impl ServerOsApi for ServerOsInputOutput {
             terminal_id,
         ) {
             Ok((pid_primary, pid_secondary)) => {
-                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, pid_primary);
+                self.terminal_id_to_raw_fd.lock().unwrap().insert(terminal_id, Some(pid_primary));
                 Ok((pid_primary, pid_secondary))
             },
             Err(e) => Err(e)
