@@ -410,6 +410,7 @@ pub trait ServerOsApi: Send + Sync {
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     ) -> Result<(RawFd, RawFd), SpawnTerminalError>;
+    fn clear_terminal_id(&self, terminal_id: u32);
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -580,6 +581,9 @@ impl ServerOsApi for ServerOsInputOutput {
             },
             Err(e) => Err(e)
         }
+    }
+    fn clear_terminal_id(&self, terminal_id: u32) {
+        self.terminal_id_to_raw_fd.lock().unwrap().remove(&terminal_id);
     }
 }
 

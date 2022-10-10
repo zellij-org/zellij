@@ -112,6 +112,8 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pty.bus.senders
                                     .send_to_screen(ScreenInstruction::HoldPane(PaneId::Terminal(pid), Some(2), run_command, None)).unwrap();
                             }
+                        } else {
+                            pty.close_pane(PaneId::Terminal(pid));
                         }
                     },
                     Err(e) => {
@@ -462,16 +464,18 @@ impl Pty {
     pub fn close_pane(&mut self, id: PaneId) {
         match id {
             PaneId::Terminal(id) => {
-                let child_fd = self.id_to_child_pid.remove(&id).unwrap();
-                self.task_handles.remove(&id).unwrap();
-                task::block_on(async {
-                    self.bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .kill(Pid::from_raw(child_fd))
-                        .unwrap();
-                });
+                self.task_handles.remove(&id);
+                if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
+                    task::block_on(async {
+                        self.bus
+                            .os_input
+                            .as_mut()
+                            .unwrap()
+                            .kill(Pid::from_raw(child_fd))
+                            .unwrap();
+                    });
+                }
+                self.bus.os_input.as_ref().unwrap().clear_terminal_id(id);
             },
             PaneId::Plugin(pid) => drop(
                 self.bus

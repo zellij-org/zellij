@@ -780,9 +780,9 @@ impl PaneFrame {
     }
     fn empty_undertitle(&self, max_undertitle_length: usize) -> Vec<TerminalCharacter> {
         let mut left_boundary =
-            foreground_color(self.get_corner(boundary_type::TOP_LEFT), self.color);
+            foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
-            foreground_color(self.get_corner(boundary_type::TOP_RIGHT), self.color);
+            foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
         let mut ret = vec![];
         let mut padding = String::new();
         for _ in 0..max_undertitle_length {
