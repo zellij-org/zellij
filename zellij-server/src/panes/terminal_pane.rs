@@ -37,7 +37,9 @@ const HOME_KEY: &[u8] = &[27, 91, 72];
 const END_KEY: &[u8] = &[27, 91, 70];
 const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
 const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
-const ENTER: &[u8] = &[13]; // TODO: check this to be sure it fits all types of ENTER
+const ENTER_NEWLINE: &[u8] = &[10];
+const ENTER_CARRIAGE_RETURN: &[u8] = &[13];
+const SPACE: &[u8] = &[32];
 const CTRL_C: &[u8] = &[3]; // TODO: check this to be sure it fits all types of CTRL_C (with mac, etc)
 const TERMINATING_STRING: &str = "\0";
 const DELETE_KEY: &str = "\u{007F}";
@@ -168,7 +170,7 @@ impl Pane for TerminalPane {
         // we send back the original input
         if let Some((_exit_status, run_command)) = &self.is_held {
             match input_bytes.as_slice() {
-                ENTER => {
+                ENTER_CARRIAGE_RETURN | ENTER_NEWLINE | SPACE => {
                     let run_command = run_command.clone();
                     self.is_held = None;
                     self.grid.reset_terminal_state();
