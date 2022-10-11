@@ -26,7 +26,6 @@ If you have an interest in this, don't hesitate to get in touch with us and
 refer to the [tracking issue][tracking_issue] to see what has already been
 done.
 
-
 # Error handling facilities
 
 You get access to all the relevant functions and traits mentioned in the
@@ -43,7 +42,6 @@ Panics are generally handled via the `Panic` error type and the
 [`handle_panic`][handle_panic] panic handler function. The fancy formatting
 is performed by the [`miette`][miette] crate.
 
-
 ## Propagating errors
 
 We use the [`anyhow`][anyhow] crate to propagate errors up the call stack. At
@@ -53,7 +51,7 @@ of providing [`context`][context] about where (i.e. under which circumstances)
 an error happened.
 
 A critical requirement for propagating errors is that all functions involved
-must return the [`Result`][Result] type. This allows convenient error handling
+must return the [`Result`][result] type. This allows convenient error handling
 with the `?` operator.
 
 At some point you will likely stop propagating errors and decide what to do
@@ -63,7 +61,6 @@ with the error. Generally you can:
 2. Report the error to the user and either
     1. Terminate program execution (See [`fatal`][fatal]), or
     2. Continue program execution (See [`non_fatal`][non_fatal])
-
 
 ## Handling errors
 
@@ -76,13 +73,13 @@ Recovery usually isn't an option if an operation has changed the internal state
 (i.e. the value or content of specific variables) of objects in the code. In
 this case, if an error is encountered, it is best to declare the program state
 corrupted and terminate the whole application. This can be done by `unwrap`ing
-on the [`Result`][Result] type. Always try to propagate the error as good as
+on the [`Result`][result] type. Always try to propagate the error as good as
 you can and attach meaningful context before `unwrap`ing. This gives the user
 an idea what went wrong and can also help developers in quickly identifying
 which parts of the code to debug if necessary.
 
 When you encounter such a fatal error and cannot propagate it further up (e.g.
-because the current function cannot be changed to return a [`Result`][Result],
+because the current function cannot be changed to return a [`Result`][result],
 or because it is the "root" function of a program thread), use the
 [`fatal`][fatal] function to panic the application. It will attach some small
 context to the error and finally `unwrap` it. Using this function over the
@@ -95,14 +92,12 @@ to handle it. Instead of `panic`ing the application, the error is written to
 the application log and execution continues. Please use this sparingly, as an
 error usually calls for actions to be taken rather than ignoring it.
 
-
 # Examples of applied error handling
 
 You can have a look at the commit that introduced error handling to the
 `zellij_server::screen` module [right here][1] (look at the changes in
 `zellij-server/src/screen.rs`). We'll use this to demonstrate a few things in
 the following text.
-
 
 ## Converting a function to return a `Result` type
 
@@ -172,7 +167,7 @@ to this:
     pub fn resize_to_screen(&mut self, new_screen_size: Size) -> Result<()> {
         // ...
         self.render()
-            .context("failed to resize to screen size: {new_screen_size:#?}")
+            .with_context(|| format!("failed to resize to screen size: {new_screen_size:#?}"))
     }
 ```
 
@@ -183,37 +178,64 @@ time to do something about the error.
 In general, any function calling `unwrap` or `expect` is a good candidate to be
 rewritten to return a `Result` type instead.
 
-
 ## Attaching context
 
 [Anyhow][anyhow]s [`Context`][context] trait gives us two methods to attach
-context to an error: `context` and `with_context`. In functions where `Result`s
-can be returned in multiple places, it is preferable to use `with_context`, as
-it saves you from duplicating the same context message in multiple places in
-the code. This was shown in the `render` method above, but the call to the
-other function returning a `Result` wasn't shown:
+context to an error: `context` and `with_context`. You should use `context`
+if the message contains only a static text and `with_context` if you need
+additional formatting:
+
+```rust
+    fn move_clients_between_tabs(
+        &mut self,
+        source_tab_index: usize,
+        destination_tab_index: usize,
+        clients_to_move: Option<Vec<ClientId>>,
+    ) -> Result<()> {
+        // ...
+        if let Some(client_mode_info_in_source_tab) = drained_clients {
+            let destination_tab = self.get_indexed_tab_mut(destination_tab_index)
+                .context("failed to get destination tab by index")
+                .with_context(|| format!("failed to move clients from tab {source_tab_index} to tab {destination_tab_index}"))?;
+            // ...
+        }
+        Ok(())
+    }
+```
+
+Feel free to move context string/closure to a variable to avoid copy-pasting:
 
 ```rust
     pub fn render(&mut self) -> Result<()> {
-        let err_context = || "failed to render screen".to_string();
+        let err_context = "failed to render screen";
         // ...
 
         for tab_index in tabs_to_close {
             // ...
             self.close_tab_at_index(tab_index)
-                .with_context(err_context)?;
+                .context(err_context)?;
         }
         // ...
         self.bus
             .senders
             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+            .context(err_context)
+    }
+    // ...
+    pub fn close_tab(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to close tab for client {client_id:?}");
+
+        let active_tab_index = *self
+            .active_tab_indices
+            .get(&client_id)
+            .with_context(err_context)?;
+        self.close_tab_at_index(active_tab_index)
             .with_context(err_context)
     }
 ```
 
 When there is only a single `Result` to be returned from your function, use
 `context` as shown above for `resize_to_screen`.
-
 
 ## Choosing helpful context messages
 
@@ -247,7 +269,6 @@ give us a [`NotFound`][2] error), so we don't have to repeat that.
 
 In case of doubt, look at the name of the function you're currently working in
 and write a context message somehow mentioning this.
-
 
 ## Terminating execution
 
@@ -300,13 +321,12 @@ the application (i.e. crash zellij). Since we made sure to attach context
 messages to the errors on their way up, we will see these messages in the
 resulting output!
 
-
 [tracking_issue]: https://github.com/zellij-org/zellij/issues/1753
 [handle_panic]: https://docs.rs/zellij-utils/latest/zellij_utils/errors/fn.handle_panic.html
 [miette]: https://crates.io/crates/miette
 [anyhow]: https://crates.io/crates/anyhow
 [context]: https://docs.rs/anyhow/latest/anyhow/trait.Context.html
-[Result]: https://doc.rust-lang.org/stable/std/result/enum.Result.html
+[result]: https://doc.rust-lang.org/stable/std/result/enum.Result.html
 [fatal]: https://docs.rs/zellij-utils/latest/zellij_utils/errors/trait.FatalError.html#tymethod.fatal
 [non_fatal]: https://docs.rs/zellij-utils/latest/zellij_utils/errors/trait.FatalError.html#tymethod.non_fatal
 [1]: https://github.com/zellij-org/zellij/commit/99e2bef8c68bd166cf89e90c8ffe8c02272ab4d3
