@@ -8,6 +8,7 @@ use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -29,7 +30,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::time::Instant;
@@ -50,9 +50,9 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
         if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
             // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
+            $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
@@ -89,7 +89,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
-    pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse: bool, // this is only pub for the tests TODO: remove this once we combine write_text_to_clipboard with render
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
@@ -100,6 +100,7 @@ pub(crate) struct Tab {
     last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -127,7 +128,9 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
+    fn adjust_input_to_terminal(&mut self, _input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+        None
+    }
     fn position_and_size(&self) -> PaneGeom;
     fn current_geom(&self) -> PaneGeom;
     fn geom_override(&self) -> Option<PaneGeom>;
@@ -351,6 +354,16 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
+    fn hold(&mut self, _exit_status: Option<i32>, _run_command: RunCommand) {
+        // No-op by default, only terminal panes support holding
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AdjustedInput {
+    WriteBytesToTerminal(Vec<u8>),
+    ReRunCommandInThisPane(RunCommand),
+    CloseThisPane,
 }
 
 impl Tab {
@@ -450,13 +463,14 @@ impl Tab {
             last_mouse_hold_position: None,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            pids_waiting_resize: HashSet::new(),
         }
     }
 
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
-        new_pids: Vec<RawFd>,
+        new_ids: Vec<u32>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -481,7 +495,7 @@ impl Tab {
         let positions_in_layout = layout.position_panes_in_space(&free_space);
 
         let positions_and_size = positions_in_layout.iter();
-        let mut new_pids = new_pids.iter();
+        let mut new_ids = new_ids.iter();
 
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
@@ -516,27 +530,33 @@ impl Tab {
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
-                let pid = new_pids.next().with_context(err_context)?; // if this crashes it means we got less pids than there are panes in this layout
-                let next_terminal_position = self.get_next_terminal_position();
-                let mut new_pane = TerminalPane::new(
-                    *pid,
-                    *position_and_size,
-                    self.style,
-                    next_terminal_position,
-                    layout.name.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                );
-                new_pane.set_borderless(layout.borderless);
-                self.tiled_panes
-                    .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
-                set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                if let Some(pid) = new_ids.next() {
+                    let next_terminal_position = self.get_next_terminal_position();
+                    let initial_title = match &layout.run {
+                        Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                        _ => None,
+                    };
+                    let mut new_pane = TerminalPane::new(
+                        *pid,
+                        *position_and_size,
+                        self.style,
+                        next_terminal_position,
+                        layout.name.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_title,
+                    );
+                    new_pane.set_borderless(layout.borderless);
+                    self.tiled_panes
+                        .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
+                    set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                }
             }
         }
-        for unused_pid in new_pids {
+        for unused_pid in new_ids {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
@@ -745,18 +765,10 @@ impl Tab {
                     }
                 },
                 None => {
-                    // there aren't any floating panes, we need to open a new one
-                    //
-                    // ************************************************************************************************
-                    // BEWARE - THIS IS NOT ATOMIC - this sends an instruction to the pty thread to open a new terminal
-                    // the pty thread will do its thing and eventually come back to the new_pane
-                    // method on this tab which will open a new floating pane because we just
-                    // toggled their visibility above us.
-                    // If the pty thread takes too long, weird things can happen...
-                    // ************************************************************************************************
-                    //
+                    let should_float = true;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
+                        Some(should_float),
                         ClientOrTabIndex::ClientId(client_id),
                     );
                     self.senders.send_to_pty(instruction).with_context(|| {
@@ -769,18 +781,18 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
-
-    pub fn show_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(true);
-        self.set_force_render();
-    }
-
-    pub fn hide_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(false);
-        self.set_force_render();
-    }
-
-    pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) -> Result<()> {
+    pub fn new_pane(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        should_float: Option<bool>,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
+        match should_float {
+            Some(true) => self.floating_panes.toggle_show_panes(true),
+            Some(false) => self.floating_panes.toggle_show_panes(false),
+            None => {},
+        };
         self.close_down_to_max_terminals()
             .with_context(|| format!("failed to create new pane with id {pid:?}"))?;
         if self.floating_panes.panes_are_visible() {
@@ -798,6 +810,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -823,6 +836,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -841,7 +855,7 @@ impl Tab {
         match pid {
             PaneId::Terminal(pid) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let new_pane = TerminalPane::new(
+                let mut new_pane = TerminalPane::new(
                     pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -852,7 +866,11 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    None,
                 );
+                new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
+                                                            // constructor so it won't be overrided
+                                                            // by the editor
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
@@ -882,11 +900,14 @@ impl Tab {
         }
         Ok(())
     }
-
-    pub fn horizontal_split(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
+    pub fn horizontal_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} horizontally for client {client_id}");
-
         if self.floating_panes.panes_are_visible() {
             return Ok(());
         }
@@ -909,6 +930,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -918,11 +940,14 @@ impl Tab {
         }
         Ok(())
     }
-
-    pub fn vertical_split(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
+    pub fn vertical_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context =
             || format!("failed to split pane {pid:?} vertically for client {client_id}");
-
         if self.floating_panes.panes_are_visible() {
             return Ok(());
         }
@@ -945,6 +970,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -990,14 +1016,14 @@ impl Tab {
             self.tiled_panes.get_active_pane_id(client_id)
         }
     }
-    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<RawFd> {
+    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<u32> {
         if let Some(PaneId::Terminal(pid)) = self.get_active_pane_id(client_id) {
             Some(pid)
         } else {
             None
         }
     }
-    pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
+    pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
             || self
@@ -1005,9 +1031,8 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
     }
-    pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) -> Result<()> {
+    pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
-
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -1034,8 +1059,7 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
-
-    pub fn process_pending_vte_events(&mut self, pid: RawFd) -> Result<()> {
+    pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
         if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
             let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
             for vte_event in vte_events {
@@ -1045,10 +1069,8 @@ impl Tab {
         }
         Ok(())
     }
-
-    fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) -> Result<()> {
+    fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
-
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -1059,6 +1081,9 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
             })
         {
+            if self.pids_waiting_resize.remove(&pid) {
+                resize_pty!(terminal_output, self.os_api);
+            }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
@@ -1149,19 +1174,34 @@ impl Tab {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self
                     .floating_panes
-                    .get(&pane_id)
-                    .or_else(|| self.tiled_panes.get_pane(pane_id))
-                    .or_else(|| self.suppressed_panes.get(&pane_id))
+                    .get_mut(&pane_id)
+                    .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+                    .or_else(|| self.suppressed_panes.get_mut(&pane_id))
                     .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
                     .with_context(err_context)?;
-                let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-
-                self.senders
-                    .send_to_pty_writer(PtyWriteInstruction::Write(
-                        adjusted_input,
-                        active_terminal_id,
-                    ))
-                    .with_context(err_context)?;
+                match active_terminal.adjust_input_to_terminal(input_bytes) {
+                    Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        self.senders
+                            .send_to_pty_writer(PtyWriteInstruction::Write(
+                                adjusted_input,
+                                active_terminal_id,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Some(AdjustedInput::ReRunCommandInThisPane(command)) => {
+                        self.pids_waiting_resize.insert(active_terminal_id);
+                        self.senders
+                            .send_to_pty(PtyInstruction::ReRunCommandInPane(
+                                PaneId::Terminal(active_terminal_id),
+                                command,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Some(AdjustedInput::CloseThisPane) => {
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                    },
+                    None => {},
+                }
             },
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
@@ -1684,6 +1724,13 @@ impl Tab {
             self.set_force_render();
             self.tiled_panes.set_force_render();
             closed_pane
+        }
+    }
+    pub fn hold_pane(&mut self, id: PaneId, exit_status: Option<i32>, run_command: RunCommand) {
+        if self.floating_panes.panes_contain(&id) {
+            self.floating_panes.hold_pane(id, exit_status, run_command);
+        } else {
+            self.tiled_panes.hold_pane(id, exit_status, run_command);
         }
     }
     pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
@@ -2335,7 +2382,6 @@ impl Tab {
         let err_context = || {
             format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
         };
-
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {

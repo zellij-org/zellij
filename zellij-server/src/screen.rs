@@ -2,11 +2,11 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::str;
 
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{input::command::TerminalAction, input::layout::PaneLayout, position::Position};
@@ -115,16 +115,16 @@ macro_rules! active_tab_and_connected_client_id {
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
-    PtyBytes(RawFd, VteBytes),
+    PtyBytes(u32, VteBytes),
     Render,
-    NewPane(PaneId, ClientOrTabIndex),
+    NewPane(PaneId, Option<String>, Option<bool>, ClientOrTabIndex), // String is initial title,
+    // bool (if Some) is
+    // should_float
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
-    ShowFloatingPanes(ClientId),
-    HideFloatingPanes(ClientId),
-    HorizontalSplit(PaneId, ClientId),
-    VerticalSplit(PaneId, ClientId),
+    HorizontalSplit(PaneId, Option<String>, ClientId), // String is initial title
+    VerticalSplit(PaneId, Option<String>, ClientId),   // String is initial title
     WriteCharacter(Vec<u8>, ClientId),
     ResizeLeft(ClientId),
     ResizeRight(ClientId),
@@ -164,9 +164,10 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
+    HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(PaneLayout, Vec<RawFd>, ClientId),
+    NewTab(PaneLayout, Vec<u32>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
@@ -217,8 +218,6 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
-            ScreenInstruction::ShowFloatingPanes(..) => ScreenContext::ShowFloatingPanes,
-            ScreenInstruction::HideFloatingPanes(..) => ScreenContext::HideFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
@@ -264,6 +263,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::TogglePaneFrames => ScreenContext::TogglePaneFrames,
             ScreenInstruction::SetSelectable(..) => ScreenContext::SetSelectable,
             ScreenInstruction::ClosePane(..) => ScreenContext::ClosePane,
+            ScreenInstruction::HoldPane(..) => ScreenContext::HoldPane,
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
@@ -811,7 +811,7 @@ impl Screen {
     pub fn new_tab(
         &mut self,
         layout: PaneLayout,
-        new_pids: Vec<RawFd>,
+        new_ids: Vec<u32>,
         client_id: ClientId,
     ) -> Result<()> {
         let client_id = if self.get_active_tab(client_id).is_some() {
@@ -821,7 +821,7 @@ impl Screen {
         } else {
             client_id
         };
-        let err_context = || format!("failed to create new tab for client {client_id:?}");
+        let err_context = || format!("failed to create new tab for client {client_id:?}",);
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -848,7 +848,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
-        tab.apply_layout(layout, new_pids, tab_index, client_id)
+        tab.apply_layout(layout, new_ids, tab_index, client_id)
             .with_context(err_context)?;
         if self.session_is_mirrored {
             if let Some(active_tab) = self.get_active_tab_mut(client_id) {
@@ -1002,9 +1002,8 @@ impl Screen {
                             }
                         },
                     }
-                    self.update_tabs().with_context(|| {
-                        format!("failed to update active tabs name for client id: {client_id:?}")
-                    })
+                    self.update_tabs()
+                        .context("failed to update active tabs name for client id: {client_id:?}")
                 } else {
                     log::error!("Active tab not found for client id: {client_id:?}");
                     Ok(())
@@ -1092,7 +1091,6 @@ impl Screen {
         }
         Ok(())
     }
-
     pub fn change_mode_for_all_clients(&mut self, mode_info: ModeInfo) -> Result<()> {
         let err_context = || {
             format!(
@@ -1225,17 +1223,24 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Render => {
                 screen.render()?;
             },
-            ScreenInstruction::NewPane(pid, client_or_tab_index) => {
+            ScreenInstruction::NewPane(
+                pid,
+                initial_pane_title,
+                should_float,
+                client_or_tab_index,
+            ) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab,
                                                             client_id: ClientId| tab .new_pane(pid,
+                                                                                               initial_pane_title,
+                                                                                               should_float,
                                                                                                Some(client_id)),
                                                                                                ?);
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, None)?;
+                            active_tab.new_pane(pid, initial_pane_title, should_float, None)?;
                         } else {
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
@@ -1270,44 +1275,22 @@ pub(crate) fn screen_thread_main(
 
                 screen.render()?;
             },
-            ScreenInstruction::ShowFloatingPanes(client_id) => {
+            ScreenInstruction::HorizontalSplit(pid, initial_pane_title, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, _client_id: ClientId| tab.show_floating_panes()
-                );
-                screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
-
-                screen.render()?;
-            },
-            ScreenInstruction::HideFloatingPanes(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, _client_id: ClientId| tab.hide_floating_panes()
-                );
-                screen.unblock_input()?;
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
-
-                screen.render()?;
-            },
-            ScreenInstruction::HorizontalSplit(pid, client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id),
                     ?
                 );
                 screen.unblock_input()?;
                 screen.update_tabs()?;
                 screen.render()?;
             },
-            ScreenInstruction::VerticalSplit(pid, client_id) => {
+            ScreenInstruction::VerticalSplit(pid, initial_pane_title, client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id),
                     ?
                 );
                 screen.unblock_input()?;
@@ -1649,6 +1632,27 @@ pub(crate) fn screen_thread_main(
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
                                 tab.close_pane(id, false);
+                                break;
+                            }
+                        }
+                    },
+                }
+                screen.update_tabs()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
+                match client_id {
+                    Some(client_id) => {
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
+                            id,
+                            exit_status,
+                            run_command
+                        ));
+                    },
+                    None => {
+                        for tab in screen.tabs.values_mut() {
+                            if tab.get_all_pane_ids().contains(&id) {
+                                tab.hold_pane(id, exit_status, run_command);
                                 break;
                             }
                         }

@@ -64,6 +64,8 @@ fn stop_zellij(channel: &mut ssh2::Channel) {
         .write_all(b"find /tmp | grep status-bar-tips | xargs rm\n")
         .unwrap();
     channel.write_all(b"killall -KILL zellij\n").unwrap();
+    channel.write_all(b"rm -rf /tmp/*\n").unwrap(); // remove temporary artifacts from previous
+                                                    // tests
 }
 
 fn start_zellij(channel: &mut ssh2::Channel) {
@@ -198,6 +200,7 @@ fn read_from_channel(
                     sixel_image_store,
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -338,6 +341,16 @@ impl RemoteTerminal {
             .unwrap();
         channel.flush().unwrap();
         std::thread::sleep(std::time::Duration::from_secs(1)); // wait until Zellij stops parsing startup ANSI codes from the terminal STDIN
+    }
+    pub fn send_command_through_the_cli(&mut self, command: &str) {
+        let mut channel = self.channel.lock().unwrap();
+        channel
+            .write_all(format!("{} run \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes())
+            .unwrap();
+        channel.flush().unwrap();
+    }
+    pub fn path_to_fixture_folder(&self) -> String {
+        ZELLIJ_FIXTURE_PATH.to_string()
     }
     pub fn load_fixture(&mut self, name: &str) {
         let mut channel = self.channel.lock().unwrap();

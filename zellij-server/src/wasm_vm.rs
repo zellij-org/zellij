@@ -394,6 +394,7 @@ fn host_open_file(plugin_env: &PluginEnv) {
         .senders
         .send_to_pty(PtyInstruction::SpawnTerminal(
             Some(TerminalAction::OpenFile(path, None)),
+            None,
             ClientOrTabIndex::TabIndex(plugin_env.tab_index),
         ))
         .unwrap();

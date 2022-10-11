@@ -31,6 +31,7 @@ impl From<std::io::Result<usize>> for ReadResult {
 
 pub(crate) struct TerminalBytes {
     pid: RawFd,
+    terminal_id: u32,
     senders: ThreadSenders,
     async_reader: Box<dyn AsyncReader>,
     debug: bool,
@@ -47,9 +48,11 @@ impl TerminalBytes {
         senders: ThreadSenders,
         os_input: Box<dyn ServerOsApi>,
         debug: bool,
+        terminal_id: u32,
     ) -> Self {
         TerminalBytes {
             pid,
+            terminal_id,
             senders,
             debug,
             async_reader: os_input.async_file_reader(pid),
@@ -77,7 +80,6 @@ impl TerminalBytes {
         let mut buf = [0u8; 65536];
         loop {
             match self.deadline_read(&mut buf).await {
-                // match deadline_read(async_reader.as_mut(), self.render_deadline, &mut buf).await {
                 ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                 ReadResult::Timeout => {
                     let time_to_send_render =
@@ -93,7 +95,7 @@ impl TerminalBytes {
                         let _ = debug_to_file(bytes, self.pid);
                     }
                     self.async_send_to_screen(ScreenInstruction::PtyBytes(
-                        self.pid,
+                        self.terminal_id,
                         bytes.to_vec(),
                     ))
                     .await;

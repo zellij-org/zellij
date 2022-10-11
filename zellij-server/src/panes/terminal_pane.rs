@@ -6,14 +6,14 @@ use crate::panes::{
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
-use crate::tab::Pane;
+use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::time::{self, Instant};
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
@@ -37,6 +37,10 @@ const HOME_KEY: &[u8] = &[27, 91, 72];
 const END_KEY: &[u8] = &[27, 91, 70];
 const BRACKETED_PASTE_BEGIN: &[u8] = &[27, 91, 50, 48, 48, 126];
 const BRACKETED_PASTE_END: &[u8] = &[27, 91, 50, 48, 49, 126];
+const ENTER_NEWLINE: &[u8] = &[10];
+const ENTER_CARRIAGE_RETURN: &[u8] = &[13];
+const SPACE: &[u8] = &[32];
+const CTRL_C: &[u8] = &[3]; // TODO: check this to be sure it fits all types of CTRL_C (with mac, etc)
 const TERMINATING_STRING: &str = "\0";
 const DELETE_KEY: &str = "\u{007F}";
 const BACKSPACE_KEY: &str = "\u{0008}";
@@ -74,7 +78,7 @@ impl AnsiEncoding {
 
 #[derive(PartialEq, Eq, Ord, PartialOrd, Hash, Clone, Copy, Debug)]
 pub enum PaneId {
-    Terminal(RawFd),
+    Terminal(u32),
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
@@ -83,7 +87,7 @@ pub enum PaneId {
 #[allow(clippy::too_many_arguments)]
 pub struct TerminalPane {
     pub grid: Grid,
-    pub pid: RawFd,
+    pub pid: u32,
     pub selectable: bool,
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
@@ -99,6 +103,8 @@ pub struct TerminalPane {
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
+    is_held: Option<(Option<i32>, RunCommand)>, // a "held" pane means that its command has exited and its waiting for a
+                                                // possible user instruction to be re-run
 }
 
 impl Pane for TerminalPane {
@@ -157,53 +163,83 @@ impl Pane for TerminalPane {
             .cursor_coordinates()
             .map(|(x, y)| (x + left, y + top))
     }
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8> {
+    fn adjust_input_to_terminal(&mut self, input_bytes: Vec<u8>) -> Option<AdjustedInput> {
         // there are some cases in which the terminal state means that input sent to it
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
-        if self.grid.new_line_mode {
-            if let &[13] = input_bytes.as_slice() {
-                // LNM - carriage return is followed by linefeed
-                return "\u{0d}\u{0a}".as_bytes().to_vec();
-            };
-        }
-        if self.grid.cursor_key_mode {
+        if let Some((_exit_status, run_command)) = &self.is_held {
             match input_bytes.as_slice() {
-                LEFT_ARROW => {
-                    return AnsiEncoding::Left.as_vec_bytes();
+                ENTER_CARRIAGE_RETURN | ENTER_NEWLINE | SPACE => {
+                    let run_command = run_command.clone();
+                    self.is_held = None;
+                    self.grid.reset_terminal_state();
+                    self.set_should_render(true);
+                    Some(AdjustedInput::ReRunCommandInThisPane(run_command))
                 },
-                RIGHT_ARROW => {
-                    return AnsiEncoding::Right.as_vec_bytes();
-                },
-                UP_ARROW => {
-                    return AnsiEncoding::Up.as_vec_bytes();
-                },
-                DOWN_ARROW => {
-                    return AnsiEncoding::Down.as_vec_bytes();
-                },
-
-                HOME_KEY => {
-                    return AnsiEncoding::Home.as_vec_bytes();
-                },
-                END_KEY => {
-                    return AnsiEncoding::End.as_vec_bytes();
-                },
-                _ => {},
-            };
-        }
-
-        if !self.grid.bracketed_paste_mode {
-            // Zellij itself operates in bracketed paste mode, so the terminal sends these
-            // instructions (bracketed paste start and bracketed paste end respectively)
-            // when pasting input. We only need to make sure not to send them to terminal
-            // panes who do not work in this mode
-            match input_bytes.as_slice() {
-                BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => return vec![],
-                _ => {},
+                CTRL_C => Some(AdjustedInput::CloseThisPane),
+                _ => None,
             }
+        } else {
+            if self.grid.new_line_mode {
+                if let &[13] = input_bytes.as_slice() {
+                    // LNM - carriage return is followed by linefeed
+                    return Some(AdjustedInput::WriteBytesToTerminal(
+                        "\u{0d}\u{0a}".as_bytes().to_vec(),
+                    ));
+                };
+            }
+            if self.grid.cursor_key_mode {
+                match input_bytes.as_slice() {
+                    LEFT_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Left.as_vec_bytes(),
+                        ));
+                    },
+                    RIGHT_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Right.as_vec_bytes(),
+                        ));
+                    },
+                    UP_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Up.as_vec_bytes(),
+                        ));
+                    },
+                    DOWN_ARROW => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Down.as_vec_bytes(),
+                        ));
+                    },
+
+                    HOME_KEY => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::Home.as_vec_bytes(),
+                        ));
+                    },
+                    END_KEY => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(
+                            AnsiEncoding::End.as_vec_bytes(),
+                        ));
+                    },
+                    _ => {},
+                };
+            }
+
+            if !self.grid.bracketed_paste_mode {
+                // Zellij itself operates in bracketed paste mode, so the terminal sends these
+                // instructions (bracketed paste start and bracketed paste end respectively)
+                // when pasting input. We only need to make sure not to send them to terminal
+                // panes who do not work in this mode
+                match input_bytes.as_slice() {
+                    BRACKETED_PASTE_BEGIN | BRACKETED_PASTE_END => {
+                        return Some(AdjustedInput::WriteBytesToTerminal(vec![]))
+                    },
+                    _ => {},
+                }
+            }
+            Some(AdjustedInput::WriteBytesToTerminal(input_bytes))
         }
-        input_bytes
     }
     fn position_and_size(&self) -> PaneGeom {
         self.geom
@@ -307,7 +343,9 @@ impl Pane for TerminalPane {
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let pane_title = if self.pane_name.is_empty()
+        let pane_title = if let Some((_exit_status, run_command)) = &self.is_held {
+            format!("{}", run_command)
+        } else if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -346,12 +384,15 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
-        let frame = PaneFrame::new(
+        let mut frame = PaneFrame::new(
             self.current_geom().into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
         );
+        if let Some((exit_status, _run_command)) = &self.is_held {
+            frame.add_exit_status(exit_status.as_ref().copied());
+        }
 
         match self.frame.get(&client_id) {
             // TODO: use and_then or something?
@@ -654,12 +695,16 @@ impl Pane for TerminalPane {
     fn is_alternate_mode_active(&self) -> bool {
         self.grid.is_alternate_mode_active()
     }
+    fn hold(&mut self, exit_status: Option<i32>, run_command: RunCommand) {
+        self.is_held = Some((exit_status, run_command));
+        self.set_should_render(true);
+    }
 }
 
 impl TerminalPane {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pid: RawFd,
+        pid: u32,
         position_and_size: PaneGeom,
         style: Style,
         pane_index: usize,
@@ -669,8 +714,10 @@ impl TerminalPane {
         sixel_image_store: Rc<RefCell<SixelImageStore>>,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+        initial_pane_title: Option<String>,
     ) -> TerminalPane {
-        let initial_pane_title = format!("Pane #{}", pane_index);
+        let initial_pane_title =
+            initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
         let grid = Grid::new(
             position_and_size.rows.as_usize(),
             position_and_size.cols.as_usize(),
@@ -698,6 +745,7 @@ impl TerminalPane {
             borderless: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
+            is_held: None,
         }
     }
     pub fn get_x(&self) -> usize {

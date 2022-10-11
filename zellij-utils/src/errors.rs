@@ -273,6 +273,7 @@ pub enum ScreenContext {
     SetFixedHeight,
     SetFixedWidth,
     ClosePane,
+    HoldPane,
     UpdatePaneName,
     UndoRenamePane,
     NewTab,
@@ -326,6 +327,7 @@ pub enum PtyContext {
     NewTab,
     ClosePane,
     CloseTab,
+    ReRunCommandInPane,
     Exit,
 }
 

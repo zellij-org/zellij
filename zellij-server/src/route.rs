@@ -245,29 +245,17 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(shell, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(shell, ClientOrTabIndex::ClientId(client_id)),
+                None => PtyInstruction::SpawnTerminal(
+                    shell,
+                    None,
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
         Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
-            match should_float {
-                Some(true) => {
-                    session
-                        .senders
-                        .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
-                        .unwrap();
-                },
-                Some(false) => {
-                    session
-                        .senders
-                        .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
-                        .unwrap();
-                },
-                None => {},
-            };
-
             let open_file = TerminalAction::OpenFile(path_to_file, line_number);
-            let pty_instr = match (split_direction, should_float.unwrap_or(false)) {
+            let pty_instr = match (split_direction, should_float) {
                 (Some(Direction::Left), false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
                 },
@@ -283,6 +271,7 @@ pub(crate) fn route_action(
                 // No direction specified or should float - defer placement to screen
                 (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
                     Some(open_file),
+                    Some(should_float),
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
@@ -308,10 +297,7 @@ pub(crate) fn route_action(
                 .unwrap();
         },
         Action::NewFloatingPane(run_command) => {
-            session
-                .senders
-                .send_to_screen(ScreenInstruction::ShowFloatingPanes(client_id))
-                .unwrap();
+            let should_float = true;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| session.default_shell.clone());
@@ -319,15 +305,13 @@ pub(crate) fn route_action(
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
+                    Some(should_float),
                     ClientOrTabIndex::ClientId(client_id),
                 ))
                 .unwrap();
         },
         Action::NewTiledPane(direction, run_command) => {
-            session
-                .senders
-                .send_to_screen(ScreenInstruction::HideFloatingPanes(client_id))
-                .unwrap();
+            let should_float = false;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| session.default_shell.clone());
@@ -345,9 +329,11 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => {
-                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
-                },
+                None => PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    Some(should_float),
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
@@ -394,9 +380,11 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => {
-                    PtyInstruction::SpawnTerminal(run_cmd, ClientOrTabIndex::ClientId(client_id))
-                },
+                None => PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    None,
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },

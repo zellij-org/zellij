@@ -201,6 +201,7 @@ fn layout_with_command_panes() {
             children: vec![PaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
+                    hold_on_close: true,
                     ..Default::default()
                 })),
                 ..Default::default()
@@ -226,6 +227,7 @@ fn layout_with_command_panes_and_cwd() {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     cwd: Some(PathBuf::from("/path/to/my/cwd")),
+                    hold_on_close: true,
                     ..Default::default()
                 })),
                 ..Default::default()
@@ -254,6 +256,7 @@ fn layout_with_command_panes_and_cwd_and_args() {
                     command: PathBuf::from("htop"),
                     cwd: Some(PathBuf::from("/path/to/my/cwd")),
                     args: vec![String::from("-h"), String::from("-v")],
+                    hold_on_close: true,
                     ..Default::default()
                 })),
                 ..Default::default()

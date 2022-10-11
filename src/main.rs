@@ -19,7 +19,7 @@ fn main() {
             commands::send_action_to_session(cli_action, opts.session);
             std::process::exit(0);
         }
-        if let Some(Command::Sessions(Sessions::Command {
+        if let Some(Command::Sessions(Sessions::Run {
             command,
             direction,
             cwd,
