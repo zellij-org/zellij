@@ -757,7 +757,7 @@ fn switch_to_tab_with_fullscreen() {
     new_tab(&mut screen, 1);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
-        active_tab.new_pane(PaneId::Terminal(2), None, Some(1));
+        active_tab.new_pane(PaneId::Terminal(2), None, None, Some(1));
         active_tab.toggle_active_pane_fullscreen(1);
     }
     new_tab(&mut screen, 2);
@@ -870,7 +870,7 @@ fn attach_after_first_tab_closed() {
     new_tab(&mut screen, 1);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
-        active_tab.new_pane(PaneId::Terminal(2), None, Some(1));
+        active_tab.new_pane(PaneId::Terminal(2), None, None, Some(1));
         active_tab.toggle_active_pane_fullscreen(1);
     }
     new_tab(&mut screen, 2);

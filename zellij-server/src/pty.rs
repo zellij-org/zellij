@@ -1,7 +1,7 @@
 use crate::os_input_output::SpawnTerminalError;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
-    panes::PaneId, screen::ScreenInstruction, thread_bus::Bus, wasm_vm::PluginInstruction,
+    panes::PaneId, screen::ScreenInstruction, thread_bus::{Bus, ThreadSenders}, wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
@@ -28,7 +28,8 @@ pub enum ClientOrTabIndex {
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
-    SpawnTerminal(Option<TerminalAction>, ClientOrTabIndex),
+    SpawnTerminal(Option<TerminalAction>, Option<bool>, ClientOrTabIndex), // bool (if Some) is
+                                                                           // should_float
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
     SpawnTerminalVertically(Option<TerminalAction>, ClientId),
     SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
@@ -78,7 +79,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
-            PtyInstruction::SpawnTerminal(terminal_action, client_or_tab_index) => {
+            PtyInstruction::SpawnTerminal(terminal_action, should_float, client_or_tab_index) => {
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -94,6 +95,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                             .send_to_screen(ScreenInstruction::NewPane(
                                 PaneId::Terminal(pid),
                                 pane_title,
+                                should_float,
                                 client_or_tab_index,
                             ))
                             .unwrap();
@@ -105,31 +107,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 .send_to_screen(ScreenInstruction::NewPane(
                                     PaneId::Terminal(pid),
                                     pane_title,
+                                    should_float,
                                     client_or_tab_index,
                                 ))
                                 .unwrap();
                             if let Some(run_command) = run_command {
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
-                                        pid,
-                                        format!(
-                                            "Command not found: {}",
-                                            run_command.command.display()
-                                        )
-                                        .as_bytes()
-                                        .to_vec(),
-                                    ))
-                                    .unwrap();
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HoldPane(
-                                        PaneId::Terminal(pid),
-                                        Some(2),
-                                        run_command,
-                                        None,
-                                    ))
-                                    .unwrap();
+                                send_command_not_found_to_screen(pty.bus.senders.clone(), pid, run_command.clone());
                             }
                         } else {
                             pty.close_pane(PaneId::Terminal(pid));
@@ -206,7 +189,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     .senders
                                     .send_to_screen(ScreenInstruction::HoldPane(
                                         PaneId::Terminal(pid),
-                                        Some(2),
+                                        Some(2), // exit status
                                         run_command,
                                         None,
                                     ))
@@ -266,7 +249,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     .senders
                                     .send_to_screen(ScreenInstruction::HoldPane(
                                         PaneId::Terminal(pid),
-                                        Some(2),
+                                        Some(2), // exit status
                                         run_command,
                                         None,
                                     ))
@@ -342,7 +325,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 .senders
                                 .send_to_screen(ScreenInstruction::HoldPane(
                                     PaneId::Terminal(pid),
-                                    Some(2),
+                                    Some(2), // exit status
                                     run_command,
                                     None,
                                 ))
@@ -467,7 +450,9 @@ impl Pty {
         let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
-        let mut new_pane_pids = vec![];
+        let mut new_pane_pids: Vec<(u32, Option<RunCommand>, Result<RawFd, SpawnTerminalError>)> = vec![]; // (terminal_id,
+                                                                                             // run_command
+                                                                                             // file_descriptor)
         for run_instruction in extracted_run_instructions {
             let quit_cb = Box::new({
                 let senders = self.bus.senders.clone();
@@ -494,55 +479,80 @@ impl Pty {
                             }
                         }
                     });
-                    let cmd = TerminalAction::RunCommand(command);
-                    let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
-                        .bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
-                        .unwrap(); // TODO: handle error here
-                    self.id_to_child_pid.insert(terminal_id, child_fd);
-                    new_pane_pids.push((terminal_id, pid_primary));
+                    let cmd = TerminalAction::RunCommand(command.clone());
+                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(cmd, quit_cb, self.default_editor.clone()) {
+                        Ok((terminal_id, pid_primary, child_fd)) => {
+                            self.id_to_child_pid.insert(terminal_id, child_fd);
+                            new_pane_pids.push((terminal_id, Some(command.clone()), Ok(pid_primary)));
+                        },
+                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
+                            new_pane_pids.push((terminal_id, Some(command.clone()), Err(SpawnTerminalError::CommandNotFound(terminal_id))));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to spawn terminal: {}", e);
+                        }
+                    }
                 },
                 None => {
-                    let (terminal_id, pid_primary, child_fd): (u32, RawFd, RawFd) = self
-                        .bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
-                        .unwrap(); // TODO: handle error here
-                    self.id_to_child_pid.insert(terminal_id, child_fd);
-                    new_pane_pids.push((terminal_id, pid_primary));
+                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone()) {
+                        Ok((terminal_id, pid_primary, child_fd)) => {
+                            self.id_to_child_pid.insert(terminal_id, child_fd);
+                            new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
+                        },
+                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
+                            new_pane_pids.push((terminal_id, None, Err(SpawnTerminalError::CommandNotFound(terminal_id))));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to spawn terminal: {}", e);
+                        }
+                    }
                 },
                 // Investigate moving plugin loading to here.
                 Some(Run::Plugin(_)) => {},
             }
         }
+        let new_tab_pane_ids: Vec<u32> = new_pane_pids
+            .iter()
+            .map(|(terminal_id, _, _)| *terminal_id)
+            .collect::<Vec<u32>>();
         self.bus
             .senders
             .send_to_screen(ScreenInstruction::NewTab(
                 layout,
-                new_pane_pids
-                    .iter()
-                    .map(|(terminal_id, _pid_primary)| *terminal_id)
-                    .collect(),
+                new_tab_pane_ids,
                 client_id,
             ))
             .unwrap();
-        for (terminal_id, pid_primary) in new_pane_pids {
-            let terminal_bytes = task::spawn({
-                let senders = self.bus.senders.clone();
-                let os_input = self.bus.os_input.as_ref().unwrap().clone();
-                let debug_to_file = self.debug_to_file;
-                async move {
-                    TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
-                        .listen()
-                        .await;
+        for (terminal_id, run_command, pid_primary) in new_pane_pids {
+            match pid_primary {
+                Ok(pid_primary) => {
+                    let terminal_bytes = task::spawn({
+                        let senders = self.bus.senders.clone();
+                        let os_input = self.bus.os_input.as_ref().unwrap().clone();
+                        let debug_to_file = self.debug_to_file;
+                        async move {
+                            TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
+                                .listen()
+                                .await;
+                        }
+                    });
+                    self.task_handles.insert(terminal_id, terminal_bytes);
+                },
+                _ => {
+                    match run_command {
+                        Some(run_command) => {
+                            if run_command.hold_on_close {
+                                send_command_not_found_to_screen(self.bus.senders.clone(), terminal_id, run_command.clone());
+                            } else {
+                                self.close_pane(PaneId::Terminal(terminal_id));
+                            }
+                        },
+                        None => {
+                            self.close_pane(PaneId::Terminal(terminal_id));
+                        }
+                    }
                 }
-            });
-            self.task_handles.insert(terminal_id, terminal_bytes);
+            }
         }
     }
     pub fn close_pane(&mut self, id: PaneId) {
@@ -635,4 +645,26 @@ impl Drop for Pty {
             self.close_pane(PaneId::Terminal(id));
         }
     }
+}
+
+fn send_command_not_found_to_screen(senders: ThreadSenders, terminal_id: u32, run_command: RunCommand) {
+    senders
+        .send_to_screen(ScreenInstruction::PtyBytes(
+            terminal_id,
+            format!(
+                "Command not found: {}",
+                run_command.command.display()
+            )
+            .as_bytes()
+            .to_vec(),
+        ))
+        .unwrap();
+    senders
+        .send_to_screen(ScreenInstruction::HoldPane(
+            PaneId::Terminal(terminal_id),
+            Some(2),
+            run_command.clone(),
+            None,
+        ))
+        .unwrap();
 }

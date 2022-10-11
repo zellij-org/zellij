@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1566
+assertion_line: 1826
 expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
 ---
-[SpawnTerminal(None, ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]
+[SpawnTerminal(None, Some(false), ClientId(10)), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]

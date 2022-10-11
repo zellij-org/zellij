@@ -82,12 +82,12 @@ macro_rules! active_tab_and_connected_client_id {
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     Render,
-    NewPane(PaneId, Option<String>, ClientOrTabIndex), // String is initial title
+    NewPane(PaneId, Option<String>, Option<bool>, ClientOrTabIndex), // String is initial title,
+                                                                     // bool (if Some) is
+                                                                     // should_float
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
-    ShowFloatingPanes(ClientId),
-    HideFloatingPanes(ClientId),
     HorizontalSplit(PaneId, Option<String>, ClientId), // String is initial title
     VerticalSplit(PaneId, Option<String>, ClientId),   // String is initial title
     WriteCharacter(Vec<u8>, ClientId),
@@ -183,8 +183,6 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
-            ScreenInstruction::ShowFloatingPanes(..) => ScreenContext::ShowFloatingPanes,
-            ScreenInstruction::HideFloatingPanes(..) => ScreenContext::HideFloatingPanes,
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
@@ -1137,7 +1135,7 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Render => {
                 screen.render()?;
             },
-            ScreenInstruction::NewPane(pid, initial_pane_title, client_or_tab_index) => {
+            ScreenInstruction::NewPane(pid, initial_pane_title, should_float, client_or_tab_index) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(
@@ -1146,13 +1144,14 @@ pub(crate) fn screen_thread_main(
                             |tab: &mut Tab, client_id: ClientId| tab.new_pane(
                                 pid,
                                 initial_pane_title,
+                                should_float,
                                 Some(client_id)
                             )
                         );
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                            active_tab.new_pane(pid, initial_pane_title, None);
+                            active_tab.new_pane(pid, initial_pane_title, should_float, None);
                         } else {
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
@@ -1188,26 +1187,6 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .toggle_floating_panes(client_id, default_shell)
-                );
-                screen.unblock_input();
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
-                screen.render()?;
-            },
-            ScreenInstruction::ShowFloatingPanes(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, _client_id: ClientId| tab.show_floating_panes()
-                );
-                screen.unblock_input();
-                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
-                screen.render()?;
-            },
-            ScreenInstruction::HideFloatingPanes(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, _client_id: ClientId| tab.hide_floating_panes()
                 );
                 screen.unblock_input();
                 screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins

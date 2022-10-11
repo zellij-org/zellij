@@ -520,29 +520,30 @@ impl Tab {
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
-                let pid = new_ids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let next_terminal_position = self.get_next_terminal_position();
-                let initial_title = match &layout.run {
-                    Some(Run::Command(run_command)) => Some(run_command.to_string()),
-                    _ => None,
-                };
-                let mut new_pane = TerminalPane::new(
-                    *pid,
-                    *position_and_size,
-                    self.style,
-                    next_terminal_position,
-                    layout.name.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_title,
-                );
-                new_pane.set_borderless(layout.borderless);
-                self.tiled_panes
-                    .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
-                set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                if let Some(pid) = new_ids.next() {
+                    let next_terminal_position = self.get_next_terminal_position();
+                    let initial_title = match &layout.run {
+                        Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                        _ => None,
+                    };
+                    let mut new_pane = TerminalPane::new(
+                        *pid,
+                        *position_and_size,
+                        self.style,
+                        next_terminal_position,
+                        layout.name.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_title,
+                    );
+                    new_pane.set_borderless(layout.borderless);
+                    self.tiled_panes
+                        .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
+                    set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                }
             }
         }
         for unused_pid in new_ids {
@@ -732,18 +733,10 @@ impl Tab {
                     }
                 },
                 None => {
-                    // there aren't any floating panes, we need to open a new one
-                    //
-                    // ************************************************************************************************
-                    // BEWARE - THIS IS NOT ATOMIC - this sends an instruction to the pty thread to open a new terminal
-                    // the pty thread will do its thing and eventually come back to the new_pane
-                    // method on this tab which will open a new floating pane because we just
-                    // toggled their visibility above us.
-                    // If the pty thread takes too long, weird things can happen...
-                    // ************************************************************************************************
-                    //
+                    let should_float = true;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
+                        Some(should_float),
                         ClientOrTabIndex::ClientId(client_id),
                     );
                     self.senders.send_to_pty(instruction).unwrap();
@@ -753,20 +746,18 @@ impl Tab {
         }
         self.set_force_render();
     }
-    pub fn show_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(true);
-        self.set_force_render();
-    }
-    pub fn hide_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(false);
-        self.set_force_render();
-    }
     pub fn new_pane(
         &mut self,
         pid: PaneId,
         initial_pane_title: Option<String>,
+        should_float: Option<bool>,
         client_id: Option<ClientId>,
     ) {
+        match should_float {
+            Some(true) => self.floating_panes.toggle_show_panes(true),
+            Some(false) => self.floating_panes.toggle_show_panes(false),
+            None => {}
+        };
         self.close_down_to_max_terminals();
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
