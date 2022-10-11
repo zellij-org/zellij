@@ -275,10 +275,10 @@ fn attach_with_session_name(
 ) -> ClientInfo {
     match &session_name {
         Some(session) if create => {
-            if !session_exists(session).unwrap() {
-                ClientInfo::New(session_name.unwrap())
-            } else {
+            if session_exists(session).unwrap() {
                 ClientInfo::Attach(session_name.unwrap(), config_options)
+            } else {
+                ClientInfo::New(session_name.unwrap())
             }
         },
         Some(prefix) => match match_session_name(prefix).unwrap() {
@@ -351,7 +351,7 @@ pub(crate) fn start_client(opts: CliArgs) {
 
         if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
             if val == *client.get_session_name() {
-                eprintln!("You are trying to attach to the current session(\"{}\"). Zellij does not support nesting a session in itself.", val);
+                eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", val);
                 process::exit(1);
             }
         }
@@ -391,6 +391,19 @@ pub(crate) fn start_client(opts: CliArgs) {
             );
         } else {
             if let Some(session_name) = config_options.session_name.as_ref() {
+                if let Ok(val) = envs::get_session_name() {
+                    // This prevents the same type of recursion as above, only that here we
+                    // don't get the command to "attach", but to start a new session instead.
+                    // This occurs for example when declaring the session name inside a layout
+                    // file and then, from within this session, trying to open a new zellij
+                    // session with the same layout. This causes an infinite recursion in the
+                    // `zellij_server::terminal_bytes::listen` task, flooding the server and
+                    // clients with infinite `Render` requests.
+                    if *session_name == val {
+                        eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", session_name);
+                        process::exit(1);
+                    }
+                }
                 match config_options.attach_to_session {
                     Some(true) => {
                         let client = attach_with_session_name(
