@@ -756,7 +756,7 @@ impl Tab {
         match should_float {
             Some(true) => self.floating_panes.toggle_show_panes(true),
             Some(false) => self.floating_panes.toggle_show_panes(false),
-            None => {}
+            None => {},
         };
         self.close_down_to_max_terminals();
         if self.floating_panes.panes_are_visible() {

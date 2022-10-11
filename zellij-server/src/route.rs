@@ -245,7 +245,11 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(shell, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => PtyInstruction::SpawnTerminal(shell, None, ClientOrTabIndex::ClientId(client_id)),
+                None => PtyInstruction::SpawnTerminal(
+                    shell,
+                    None,
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
@@ -325,9 +329,11 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => {
-                    PtyInstruction::SpawnTerminal(run_cmd, Some(should_float), ClientOrTabIndex::ClientId(client_id))
-                },
+                None => PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    Some(should_float),
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
@@ -374,9 +380,11 @@ pub(crate) fn route_action(
                     PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
-                None => {
-                    PtyInstruction::SpawnTerminal(run_cmd, None, ClientOrTabIndex::ClientId(client_id))
-                },
+                None => PtyInstruction::SpawnTerminal(
+                    run_cmd,
+                    None,
+                    ClientOrTabIndex::ClientId(client_id),
+                ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },

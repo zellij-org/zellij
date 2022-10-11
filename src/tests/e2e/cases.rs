@@ -1905,8 +1905,10 @@ pub fn send_command_through_the_cli() {
                         && remote_terminal.cursor_position_is(3, 2)
                     {
                         let fixture_folder = remote_terminal.path_to_fixture_folder();
-                        remote_terminal
-                            .send_command_through_the_cli(&format!("{}/append-echo-script.sh", fixture_folder));
+                        remote_terminal.send_command_through_the_cli(&format!(
+                            "{}/append-echo-script.sh",
+                            fixture_folder
+                        ));
                         step_is_complete = true;
                     }
                     step_is_complete
@@ -1916,7 +1918,9 @@ pub fn send_command_through_the_cli() {
                 name: "Wait for command to run",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.snapshot_contains("<Ctrl-c>") && remote_terminal.cursor_position_is(61, 3) {
+                    if remote_terminal.snapshot_contains("<Ctrl-c>")
+                        && remote_terminal.cursor_position_is(61, 3)
+                    {
                         remote_terminal.send_key(&SPACE); // re-run script - here we use SPACE
                                                           // instead of the default ENTER because
                                                           // sending ENTER over SSH can be a little
@@ -1931,7 +1935,9 @@ pub fn send_command_through_the_cli() {
                 name: "Wait for script to run again",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;
-                    if remote_terminal.snapshot_contains("<Ctrl-c>") && remote_terminal.cursor_position_is(61, 4) {
+                    if remote_terminal.snapshot_contains("<Ctrl-c>")
+                        && remote_terminal.cursor_position_is(61, 4)
+                    {
                         step_is_complete = true
                     }
                     step_is_complete
@@ -1943,7 +1949,9 @@ pub fn send_command_through_the_cli() {
             name: "Wait for script to run twice",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("foo") && remote_terminal.cursor_position_is(61, 4) {
+                if remote_terminal.snapshot_contains("foo")
+                    && remote_terminal.cursor_position_is(61, 4)
+                {
                     step_is_complete = true
                 }
                 step_is_complete
