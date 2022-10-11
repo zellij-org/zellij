@@ -124,9 +124,9 @@ pub enum Sessions {
     #[clap(visible_alias = "ac")]
     #[clap(subcommand)]
     Action(CliAction),
-    /// Send a command to a specific session
-    #[clap(visible_alias = "c")]
-    Command {
+    /// Run a command in a new pane
+    #[clap(visible_alias = "r")]
+    Run {
         command: Option<String>,
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
@@ -135,7 +135,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
     },
-    /// Edit file with default $EDITOR / $VISUAL in a specific session
+    /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
