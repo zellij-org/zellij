@@ -7,8 +7,8 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
-use zellij_utils::input::command::RunCommand;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 

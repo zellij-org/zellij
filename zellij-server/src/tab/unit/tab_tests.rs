@@ -142,7 +142,8 @@ fn create_new_tab(size: Size) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id).unwrap();
+    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id)
+        .unwrap();
     tab
 }
 
@@ -188,7 +189,8 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id).unwrap();
+    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id)
+        .unwrap();
     tab
 }
 
@@ -620,7 +622,8 @@ pub fn cannot_split_panes_horizontally_when_active_pane_is_too_small() {
 pub fn cannot_split_largest_pane_when_there_is_no_room() {
     let size = Size { cols: 8, rows: 4 };
     let mut tab = create_new_tab(size);
-    tab.new_pane(PaneId::Terminal(2), None, None, Some(1)).unwrap();
+    tab.new_pane(PaneId::Terminal(2), None, None, Some(1))
+        .unwrap();
     assert_eq!(
         tab.tiled_panes.panes.len(),
         1,
@@ -710,10 +713,18 @@ fn switch_to_next_pane_fullscreen() {
 
     let mut active_tab = create_new_tab(size);
 
-    active_tab.new_pane(PaneId::Terminal(1), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(2), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(3), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(4), None, None, Some(1)).unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(1), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(2), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(3), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(4), None, None, Some(1))
+        .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
 
     // order is now 1 ->2 -> 3 -> 4 due to how new panes are inserted
@@ -742,10 +753,18 @@ fn switch_to_prev_pane_fullscreen() {
 
     //testing four consecutive switches in fullscreen mode
 
-    active_tab.new_pane(PaneId::Terminal(1), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(2), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(3), None, None, Some(1)).unwrap();
-    active_tab.new_pane(PaneId::Terminal(4), None, None, Some(1)).unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(1), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(2), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(3), None, None, Some(1))
+        .unwrap();
+    active_tab
+        .new_pane(PaneId::Terminal(4), None, None, Some(1))
+        .unwrap();
     active_tab.toggle_active_pane_fullscreen(1);
     // order is now 1 2 3 4
 

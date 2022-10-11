@@ -223,7 +223,8 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id).unwrap();
+    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id)
+        .unwrap();
     tab
 }
 
@@ -392,7 +393,8 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id).unwrap();
+    tab.apply_layout(PaneLayout::default(), vec![1], index, client_id)
+        .unwrap();
     tab
 }
 
@@ -500,7 +502,8 @@ fn dump_screen() {
         file_dumps: map.clone(),
     });
     let new_pane_id = PaneId::Terminal(2);
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
         .unwrap();
     let file = "/tmp/log.sh";
@@ -523,7 +526,8 @@ fn new_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -550,7 +554,8 @@ fn floating_panes_persist_across_toggles() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.toggle_floating_panes(client_id, None).unwrap();
     // here we send bytes to the pane when it's not visible to make sure they're still handled and
     // we see them once we toggle the panes back
@@ -581,7 +586,8 @@ fn toggle_floating_panes_off() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -609,7 +615,8 @@ fn toggle_floating_panes_on() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -642,11 +649,16 @@ fn five_new_floating_panes() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -681,7 +693,8 @@ fn increase_floating_pane_size() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -709,7 +722,8 @@ fn decrease_floating_pane_size() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -737,7 +751,8 @@ fn resize_floating_pane_left() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -765,7 +780,8 @@ fn resize_floating_pane_right() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -793,7 +809,8 @@ fn resize_floating_pane_up() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -821,7 +838,8 @@ fn resize_floating_pane_down() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -853,11 +871,16 @@ fn move_floating_pane_focus_left() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -903,11 +926,16 @@ fn move_floating_pane_focus_right() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -954,11 +982,16 @@ fn move_floating_pane_focus_up() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1004,11 +1037,16 @@ fn move_floating_pane_focus_down() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1055,11 +1093,16 @@ fn move_floating_pane_focus_with_mouse() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1108,11 +1151,16 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1161,11 +1209,16 @@ fn drag_pane_with_mouse() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1214,11 +1267,16 @@ fn mark_text_inside_floating_pane() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1275,11 +1333,16 @@ fn resize_tab_with_floating_panes() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1323,11 +1386,16 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1368,11 +1436,16 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
     let new_pane_id_5 = PaneId::Terminal(6);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id)).unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1413,7 +1486,8 @@ fn embed_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
@@ -1440,7 +1514,8 @@ fn float_embedded_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
@@ -1542,7 +1617,8 @@ fn rename_floating_pane() {
     let mut tab = create_new_tab(size, ModeInfo::default());
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.handle_pty_bytes(
         2,
         Vec::from("\n\n\n                   I am a floating pane".as_bytes()),
@@ -1627,7 +1703,8 @@ fn move_floating_pane_with_sixel_image() {
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size);
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(2, fixture).unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
@@ -1664,7 +1741,8 @@ fn floating_pane_above_sixel_image() {
     let mut output = Output::new(sixel_image_store.clone(), character_cell_size);
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     let fixture = read_fixture("sixel-image-500px.six");
     tab.handle_pty_bytes(1, fixture).unwrap();
     tab.handle_left_click(&Position::new(5, 71), client_id)
@@ -1720,9 +1798,11 @@ fn suppress_floating_pane() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.suppress_active_pane(editor_pane_id, client_id).unwrap();
-    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes())).unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
+        .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().get(&client_id).unwrap(),
@@ -1772,10 +1852,13 @@ fn close_suppressing_floating_pane() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.suppress_active_pane(editor_pane_id, client_id).unwrap();
-    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes())).unwrap();
-    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes())).unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
+        .unwrap();
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -1827,10 +1910,13 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.suppress_active_pane(editor_pane_id, client_id).unwrap();
-    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes())).unwrap();
-    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes())).unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("\n\n\nI am the original pane".as_bytes()))
+        .unwrap();
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None).unwrap();
@@ -1883,9 +1969,11 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     let mut output = Output::default();
 
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
     tab.suppress_active_pane(editor_pane_id, client_id).unwrap();
-    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes())).unwrap();
+    tab.handle_pty_bytes(3, Vec::from("\n\n\nI am an editor pane".as_bytes()))
+        .unwrap();
     tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
@@ -1981,7 +2069,8 @@ fn enter_search_floating_pane() {
     let new_pane_id = PaneId::Terminal(2);
     let mut output = Output::default();
     tab.toggle_floating_panes(client_id, None).unwrap();
-    tab.new_pane(new_pane_id, None, None, Some(client_id)).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
 
     let pane_content = read_fixture("grid_copy");
     tab.handle_pty_bytes(2, pane_content).unwrap();

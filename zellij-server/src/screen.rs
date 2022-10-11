@@ -1223,7 +1223,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::Render => {
                 screen.render()?;
             },
-            ScreenInstruction::NewPane(pid, initial_pane_title, should_float, client_or_tab_index) => {
+            ScreenInstruction::NewPane(
+                pid,
+                initial_pane_title,
+                should_float,
+                client_or_tab_index,
+            ) => {
                 match client_or_tab_index {
                     ClientOrTabIndex::ClientId(client_id) => {
                         active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab,
