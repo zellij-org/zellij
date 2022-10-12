@@ -107,10 +107,12 @@ pub struct Options {
     #[clap(long, value_parser)]
     pub scrollback_editor: Option<PathBuf>,
 
+    /// The name of the session to create when starting Zellij
     #[clap(long, value_parser)]
     #[serde(default)]
     pub session_name: Option<String>,
 
+    /// Whether to attach to a session specified in "session-name" if it exists
     #[clap(long, value_parser)]
     #[serde(default)]
     pub attach_to_session: Option<bool>,
@@ -310,6 +312,8 @@ impl From<CliOptions> for Options {
             copy_clipboard: opts.copy_clipboard,
             copy_on_select: opts.copy_on_select,
             scrollback_editor: opts.scrollback_editor,
+            session_name: opts.session_name,
+            attach_to_session: opts.attach_to_session,
             ..Default::default()
         }
     }
