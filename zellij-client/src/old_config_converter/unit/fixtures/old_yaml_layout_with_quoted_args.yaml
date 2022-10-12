@@ -1,0 +1,6 @@
+tabs:
+  - direction: Vertical
+    parts:
+      - direction: Vertical
+        run:
+          command: {cmd: bash, args: ["-c", "exec bash --init-file <(echo \"echo hi\") -i"]}
