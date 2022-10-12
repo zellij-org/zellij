@@ -588,6 +588,20 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().len(),
             ))?;
         self.assert_legal_node_name(&template_name, kdl_node)?;
+        if self.tab_templates.contains_key(&template_name) {
+            return Err(ConfigError::new_kdl_error(
+                format!("Duplicate definition of the \"{}\" tab_template", template_name),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
+        }
+        if self.pane_templates.contains_key(&template_name) {
+            return Err(ConfigError::new_kdl_error(
+                format!("There is already a pane_template with the name \"{}\" - can't have a tab_template with the same name", template_name),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
+        }
         self.tab_templates.insert(
             template_name,
             (self.parse_tab_template_node(kdl_node)?, kdl_node.clone()),
@@ -675,6 +689,13 @@ impl<'a> KdlLayoutParser<'a> {
                 )?;
                 let mut template_children = HashSet::new();
                 self.get_pane_template_dependencies(child, &mut template_children)?;
+                if dependency_tree.contains_key(template_name) {
+                    return Err(ConfigError::new_kdl_error(
+                        format!("Duplicate definition of the \"{}\" pane_template", template_name),
+                        child.span().offset(),
+                        child.span().len(),
+                    ));
+                }
                 dependency_tree.insert(template_name, template_children);
             }
         }
