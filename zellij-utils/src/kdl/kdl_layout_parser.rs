@@ -212,6 +212,7 @@ impl<'a> KdlLayoutParser<'a> {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
             None => (None, vec![]),
         };
+        self.assert_no_mixed_children_and_properties(kdl_node)?;
         Ok(PaneLayout {
             borderless: borderless.unwrap_or_default(),
             focus,
@@ -304,6 +305,7 @@ impl<'a> KdlLayoutParser<'a> {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
             None => (None, vec![]),
         };
+        self.assert_no_mixed_children_and_properties(kdl_node)?;
         self.pane_templates.insert(
             template_name,
             (
@@ -414,6 +416,23 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok((external_children_index, nodes))
     }
+    fn has_child_panes_tabs_or_templates(&self, kdl_node: &KdlNode) -> bool {
+        if let Some(children) = kdl_children_nodes!(kdl_node) {
+            for child in children {
+                let child_node_name = kdl_name!(child);
+                if child_node_name == "pane" || child_node_name == "children" || child_node_name == "tab" {
+                    return true;
+                } else if child_node_name == "children" {
+                    return true;
+                } else if let Some((_pane_template, _pane_template_kdl_node)) =
+                    self.pane_templates.get(child_node_name).cloned()
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
     fn assert_one_children_block(
         &self,
         layout: &PaneLayout,
@@ -464,6 +483,32 @@ impl<'a> KdlLayoutParser<'a> {
             }
         }
         Ok(())
+    }
+    fn assert_no_mixed_children_and_properties(&self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
+        let has_borderless_prop = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
+        let has_focus_prop = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
+        let has_run_prop = self.parse_command_or_plugin_block(kdl_node)?.is_some();
+        let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
+
+        if has_nested_nodes_or_children_block && (has_borderless_prop || has_focus_prop || has_run_prop) {
+            let mut offending_nodes = vec![];
+            if has_borderless_prop {
+                offending_nodes.push("borderless");
+            }
+            if has_focus_prop {
+                offending_nodes.push("focus");
+            }
+            if has_run_prop {
+                offending_nodes.push("command/plugin");
+            }
+            Err(ConfigError::new_kdl_error(
+                format!("Cannot have both properties ({}) and nested children", offending_nodes.join(", ")),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ))
+        } else {
+            Ok(())
+        }
     }
     fn insert_layout_children_or_error(
         &self,
