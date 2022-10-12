@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * debugging: Remove calls to `panic` in server/tab (https://github.com/zellij-org/zellij/pull/1748)
 * debugging: Improve error format in server/thread_bus (https://github.com/zellij-org/zellij/pull/1775)
 * feat: command pane - send commands to Zellij and re-run them with ENTER (https://github.com/zellij-org/zellij/pull/1787)
+* fix: frameless pane wrong size after closing other panes (https://github.com/zellij-org/zellij/pull/1776)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
