@@ -92,7 +92,15 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn parse_split_size(&self, kdl_node: &KdlNode) -> Result<Option<SplitSize>, ConfigError> {
         if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, "size") {
-            Ok(Some(SplitSize::from_str(size)?))
+            match SplitSize::from_str(size) {
+                Ok(size) => Ok(Some(size)),
+                Err(_e) => {
+                    Err(kdl_parsing_error!(
+                        format!("size should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")"),
+                        kdl_node
+                    ))
+                }
+            }
         } else if let Some(size) = kdl_get_int_property_or_child_value!(kdl_node, "size") {
             Ok(Some(SplitSize::Fixed(size as usize)))
         } else if let Some(node) = kdl_property_or_child_value_node!(kdl_node, "size") {
@@ -281,10 +289,18 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(pane_layout)
     }
     fn parse_split_direction(&self, kdl_node: &KdlNode) -> Result<SplitDirection, ConfigError> {
-        Ok(match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        })
+        match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
+            Some(direction) => match SplitDirection::from_str(direction) {
+                Ok(split_direction) => Ok(split_direction),
+                Err(_e) => {
+                    Err(kdl_parsing_error!(
+                        format!("split_direction should be either \"horizontal\" or \"vertical\" found: {}", direction),
+                        kdl_node
+                    ))
+                }
+            }
+            None => Ok(SplitDirection::default()),
+        }
     }
     fn parse_pane_template_node(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         self.assert_valid_pane_properties(kdl_node)?;
@@ -333,10 +349,7 @@ impl<'a> KdlLayoutParser<'a> {
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         let children = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
             None => vec![],
@@ -505,7 +518,6 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
         let has_run_prop = self.parse_command_or_plugin_block(kdl_node)?.is_some();
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
-
         if has_nested_nodes_or_children_block
             && (has_borderless_prop || has_focus_prop || has_run_prop)
         {
@@ -558,10 +570,7 @@ impl<'a> KdlLayoutParser<'a> {
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
                 let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
@@ -627,11 +636,7 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn parse_tab_template_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
         self.assert_valid_tab_properties(kdl_node)?;
-        let children_split_direction =
-            match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
-                Some(direction) => SplitDirection::from_str(direction)?,
-                None => SplitDirection::default(),
-            };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut tab_children = vec![];
         let mut external_children_index = None;
         if let Some(children) = kdl_children_nodes!(kdl_node) {
