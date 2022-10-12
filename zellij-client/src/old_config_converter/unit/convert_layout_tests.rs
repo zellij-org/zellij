@@ -140,3 +140,19 @@ fn properly_convert_layout_example_4() -> Result<(), String> {
     assert_snapshot!(format!("{}", kdl_config));
     Ok(())
 }
+
+#[test]
+fn properly_convert_layout_with_command_quoted_args() -> Result<(), String> {
+    let fixture = PathBuf::from(format!(
+        "{}/src/old_config_converter/unit/fixtures/old_yaml_layout_with_quoted_args.yaml",
+        env!("CARGO_MANIFEST_DIR")
+    ));
+    let mut handle = File::open(&fixture).map_err(|e| format!("{}", e))?;
+    let mut raw_config_file = String::new();
+    handle
+        .read_to_string(&mut raw_config_file)
+        .map_err(|e| format!("{}", e))?;
+    let kdl_config = layout_yaml_to_layout_kdl(&raw_config_file)?;
+    assert_snapshot!(format!("{}", kdl_config));
+    Ok(())
+}
