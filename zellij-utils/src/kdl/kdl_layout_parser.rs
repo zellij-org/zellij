@@ -12,7 +12,7 @@ use std::str::FromStr;
 use crate::{
     kdl_child_with_name, kdl_children_nodes, kdl_get_bool_property_or_child_value,
     kdl_get_bool_property_or_child_value_with_error, kdl_get_child,
-    kdl_get_int_property_or_child_value, kdl_get_property_or_child, kdl_get_string_entry,
+    kdl_get_int_property_or_child_value, kdl_get_property_or_child,
     kdl_get_string_property_or_child_value, kdl_get_string_property_or_child_value_with_error,
     kdl_name, kdl_parsing_error, kdl_property_names, kdl_property_or_child_value_node,
     kdl_string_arguments,
