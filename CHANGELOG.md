@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: command pane - send commands to Zellij and re-run them with ENTER (https://github.com/zellij-org/zellij/pull/1787)
 * fix: escape quotes and backslashes when converting YAML to KDL (https://github.com/zellij-org/zellij/pull/1790)
 * fix: frameless pane wrong size after closing other panes (https://github.com/zellij-org/zellij/pull/1776)
+* fix: error on mixed nodes in layouts (https://github.com/zellij-org/zellij/pull/1791)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
@@ -27,7 +28,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * Terminal compatibility: implement faux scrolling when in alternate screen mode(https://github.com/zellij-org/zellij/pull/1678)
 * fix: mouse-click on tab-bar in simplified-ui now always focuses the correct tab (https://github.com/zellij-org/zellij/pull/1658)
 * fix: sort UI cursors properly when multiple users are focused on the same pane (https://github.com/zellij-org/zellij/pull/1719)
-* fix: error on mixed nodes in layouts (https://github.com/zellij-org/zellij/pull/1791)
 
 ## [0.31.3] - 2022-08-18
 * HOTFIX: fix up-arrow regression
