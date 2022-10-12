@@ -423,9 +423,8 @@ impl<'a> KdlLayoutParser<'a> {
                 if child_node_name == "pane"
                     || child_node_name == "children"
                     || child_node_name == "tab"
+                    || child_node_name == "children"
                 {
-                    return true;
-                } else if child_node_name == "children" {
                     return true;
                 } else if let Some((_pane_template, _pane_template_kdl_node)) =
                     self.pane_templates.get(child_node_name).cloned()
