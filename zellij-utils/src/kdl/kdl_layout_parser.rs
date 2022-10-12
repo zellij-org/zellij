@@ -420,7 +420,10 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(children) = kdl_children_nodes!(kdl_node) {
             for child in children {
                 let child_node_name = kdl_name!(child);
-                if child_node_name == "pane" || child_node_name == "children" || child_node_name == "tab" {
+                if child_node_name == "pane"
+                    || child_node_name == "children"
+                    || child_node_name == "tab"
+                {
                     return true;
                 } else if child_node_name == "children" {
                     return true;
@@ -484,13 +487,20 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(())
     }
-    fn assert_no_mixed_children_and_properties(&self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
-        let has_borderless_prop = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
-        let has_focus_prop = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
+    fn assert_no_mixed_children_and_properties(
+        &self,
+        kdl_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
+        let has_borderless_prop =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
+        let has_focus_prop =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
         let has_run_prop = self.parse_command_or_plugin_block(kdl_node)?.is_some();
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
 
-        if has_nested_nodes_or_children_block && (has_borderless_prop || has_focus_prop || has_run_prop) {
+        if has_nested_nodes_or_children_block
+            && (has_borderless_prop || has_focus_prop || has_run_prop)
+        {
             let mut offending_nodes = vec![];
             if has_borderless_prop {
                 offending_nodes.push("borderless");
@@ -502,7 +512,10 @@ impl<'a> KdlLayoutParser<'a> {
                 offending_nodes.push("command/plugin");
             }
             Err(ConfigError::new_kdl_error(
-                format!("Cannot have both properties ({}) and nested children", offending_nodes.join(", ")),
+                format!(
+                    "Cannot have both properties ({}) and nested children",
+                    offending_nodes.join(", ")
+                ),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ))
