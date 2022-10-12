@@ -397,6 +397,15 @@ impl<'a> KdlLayoutParser<'a> {
             if kdl_name!(child) == "pane" {
                 nodes.push(self.parse_pane_node(child)?);
             } else if kdl_name!(child) == "children" {
+                let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                let node_has_entries = !child.entries().is_empty();
+                if node_has_child_nodes || node_has_entries {
+                    return Err(ConfigError::new_kdl_error(
+                        format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
+                        child.span().offset(),
+                        child.span().len(),
+                    ));
+                }
                 external_children_index = Some(i);
             } else if let Some((pane_template, pane_template_kdl_node)) =
                 self.pane_templates.get(kdl_name!(child)).cloned()
@@ -630,6 +639,15 @@ impl<'a> KdlLayoutParser<'a> {
                 if kdl_name!(child) == "pane" {
                     tab_children.push(self.parse_pane_node(child)?);
                 } else if kdl_name!(child) == "children" {
+                    let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                    let node_has_entries = !child.entries().is_empty();
+                    if node_has_child_nodes || node_has_entries {
+                        return Err(ConfigError::new_kdl_error(
+                            format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
+                            child.span().offset(),
+                            child.span().len(),
+                        ));
+                    }
                     external_children_index = Some(i);
                 } else if let Some((pane_template, pane_template_kdl_node)) =
                     self.pane_templates.get(kdl_name!(child)).cloned()
