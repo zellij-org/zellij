@@ -1,0 +1,17 @@
+---
+source: zellij-client/src/old_config_converter/./unit/convert_layout_tests.rs
+assertion_line: 156
+expression: "format!(\"{}\", kdl_config)"
+---
+layout {
+    default_tab_template {
+        children
+    }
+    tab split_direction="Vertical" {
+        pane split_direction="Vertical" {
+            pane command="bash" {
+                args "-c" "exec bash --init-file <(echo \"echo hi\") -i"
+            }
+        }
+    }
+}

@@ -16,7 +16,8 @@ fn pane_line(
 ) -> String {
     let mut pane_line = format!("pane");
     if let Some(pane_name) = pane_name {
-        pane_line.push_str(&format!(" name=\"{}\"", pane_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        pane_line.push_str(&format!(" name={:?}", pane_name));
     }
     if let Some(split_size) = split_size {
         pane_line.push_str(&format!(" size={}", split_size));
@@ -38,7 +39,8 @@ fn tab_line(
 ) -> String {
     let mut pane_line = format!("tab");
     if let Some(pane_name) = pane_name {
-        pane_line.push_str(&format!(" name=\"{}\"", pane_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        pane_line.push_str(&format!(" name={:?}", pane_name));
     }
     if let Some(split_size) = split_size {
         pane_line.push_str(&format!(" size={}", split_size));
@@ -61,7 +63,8 @@ fn pane_line_with_children(
 ) -> String {
     let mut pane_line = format!("pane");
     if let Some(pane_name) = pane_name {
-        pane_line.push_str(&format!(" name=\"{}\"", pane_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        pane_line.push_str(&format!(" name={:?}", pane_name));
     }
     if let Some(split_size) = split_size {
         pane_line.push_str(&format!(" size={}", split_size));
@@ -85,7 +88,8 @@ fn pane_command_line(
 ) -> String {
     let mut pane_line = format!("pane command={:?}", command);
     if let Some(pane_name) = pane_name {
-        pane_line.push_str(&format!(" name=\"{}\"", pane_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        pane_line.push_str(&format!(" name={:?}", pane_name));
     }
     if let Some(split_size) = split_size {
         pane_line.push_str(&format!(" size={}", split_size));
@@ -108,7 +112,8 @@ fn tab_line_with_children(
 ) -> String {
     let mut pane_line = format!("tab");
     if let Some(pane_name) = pane_name {
-        pane_line.push_str(&format!(" name=\"{}\"", pane_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        pane_line.push_str(&format!(" name={:?}", pane_name));
     }
     if let Some(split_size) = split_size {
         pane_line.push_str(&format!(" size={}", split_size));
@@ -218,7 +223,9 @@ fn stringify_template(
                         command_from_yaml
                             .args
                             .iter()
-                            .map(|s| format!("\"{}\"", s))
+                            // we use debug print here so that quotes and backslashes will be
+                            // escaped
+                            .map(|s| format!("{:?}", s))
                             .collect::<Vec<String>>()
                             .join(" ")
                     ));
@@ -315,7 +322,8 @@ pub fn layout_yaml_to_layout_kdl(raw_yaml_layout: &str) -> Result<String, String
     kdl_layout.push_str("\n}");
     let layout_config = config_yaml_to_config_kdl(raw_yaml_layout, true)?;
     if let Some(session_name) = layout_from_yaml.session.name {
-        kdl_layout.push_str(&format!("\nsession_name \"{}\"", session_name));
+        // we use debug print here so that quotes and backslashes will be escaped
+        kdl_layout.push_str(&format!("\nsession_name {:?}", session_name));
         if let Some(attach_to_session) = layout_from_yaml.session.attach {
             kdl_layout.push_str(&format!("\nattach_to_session {}", attach_to_session));
         }
