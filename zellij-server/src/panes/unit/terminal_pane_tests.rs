@@ -47,6 +47,7 @@ pub fn scrolling_inside_a_pane() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {
@@ -87,6 +88,7 @@ pub fn sixel_image_inside_terminal_pane() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let sixel_image_bytes = "\u{1b}Pq
         #0;2;0;0;0#1;2;100;100;0#2;2;0;100;0
@@ -127,6 +129,7 @@ pub fn partial_sixel_image_inside_terminal_pane() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let pane_content = read_fixture("sixel-image-500px.six");
     terminal_pane.handle_pty_bytes(pane_content);
@@ -161,6 +164,7 @@ pub fn overflowing_sixel_image_inside_terminal_pane() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let pane_content = read_fixture("sixel-image-500px.six");
     terminal_pane.handle_pty_bytes(pane_content);
@@ -194,6 +198,7 @@ pub fn scrolling_through_a_sixel_image() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..30 {
@@ -238,6 +243,7 @@ pub fn multiple_sixel_images_in_pane() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..5 {
@@ -280,6 +286,7 @@ pub fn resizing_pane_with_sixel_images() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..5 {
@@ -325,6 +332,7 @@ pub fn changing_character_cell_size_with_sixel_images() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
     let mut text_to_fill_pane = String::new();
     for i in 0..5 {
@@ -375,6 +383,7 @@ pub fn keep_working_after_corrupted_sixel_image() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
 
     let sixel_image_bytes = "\u{1b}PI AM CORRUPTED BWAHAHAq
@@ -423,6 +432,7 @@ pub fn pane_with_frame_position_is_on_frame() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
 
     terminal_pane.set_content_offset(Offset::frame(1));
@@ -507,6 +517,7 @@ pub fn pane_with_bottom_and_right_borders_position_is_on_frame() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
 
     terminal_pane.set_content_offset(Offset::shift(1, 1));
@@ -591,6 +602,7 @@ pub fn frameless_pane_position_is_on_frame() {
         sixel_image_store,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        None,
     ); // 0 is the pane index
 
     terminal_pane.set_content_offset(Offset::default());

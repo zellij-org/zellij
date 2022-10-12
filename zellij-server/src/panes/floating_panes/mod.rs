@@ -17,15 +17,16 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
+    input::command::RunCommand,
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
 
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
         if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
             // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
+            $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
@@ -149,6 +150,16 @@ impl FloatingPanes {
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.desired_pane_positions.remove(&pane_id);
         self.panes.remove(&pane_id)
+    }
+    pub fn hold_pane(
+        &mut self,
+        pane_id: PaneId,
+        exit_status: Option<i32>,
+        run_command: RunCommand,
+    ) {
+        self.panes
+            .get_mut(&pane_id)
+            .map(|p| p.hold(exit_status, run_command));
     }
     pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(pane_id)

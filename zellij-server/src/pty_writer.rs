@@ -4,7 +4,7 @@ use crate::thread_bus::Bus;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum PtyWriteInstruction {
-    Write(Vec<u8>, i32),
+    Write(Vec<u8>, u32),
     Exit,
 }
 

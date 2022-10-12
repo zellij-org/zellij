@@ -13,6 +13,7 @@ use super::remote_runner::{RemoteRunner, RemoteTerminal, Step};
 pub const QUIT: [u8; 1] = [17]; // ctrl-q
 pub const ESC: [u8; 1] = [27];
 pub const ENTER: [u8; 1] = [10]; // char '\n'
+pub const SPACE: [u8; 1] = [32];
 pub const LOCK_MODE: [u8; 1] = [7]; // ctrl-g
 
 pub const MOVE_FOCUS_LEFT_IN_NORMAL_MODE: [u8; 2] = [27, 104]; // alt-h
@@ -1861,6 +1862,96 @@ pub fn undo_rename_pane() {
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
                 if remote_terminal.snapshot_contains("Pane #1") {
+                    step_is_complete = true
+                }
+                step_is_complete
+            },
+        });
+
+        if runner.test_timed_out && test_attempts > 0 {
+            test_attempts -= 1;
+            continue;
+        } else {
+            break last_snapshot;
+        }
+    };
+    assert_snapshot!(last_snapshot);
+}
+
+#[test]
+#[ignore]
+pub fn send_command_through_the_cli() {
+    // here we test the following flow:
+    // - send a command through the cli to run a bash script in a temporary folder
+    // - have it open a "command pane" that can be re-run with Enter
+    // - press Enter in the command pane to re-run the script
+    //
+    // the script appends the word "foo" to a temporary file and then `cat`s that file,
+    // so when we press "Enter", it will run again and we'll see two "foo"s one after the other,
+    // that's how we know the whole flow is working
+    let fake_win_size = Size {
+        cols: 120,
+        rows: 24,
+    };
+    let mut test_attempts = 10;
+    let last_snapshot = loop {
+        RemoteRunner::kill_running_sessions(fake_win_size);
+        let mut runner = RemoteRunner::new(fake_win_size)
+            .add_step(Step {
+                name: "Run command through the cli",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.status_bar_appears()
+                        && remote_terminal.cursor_position_is(3, 2)
+                    {
+                        let fixture_folder = remote_terminal.path_to_fixture_folder();
+                        remote_terminal.send_command_through_the_cli(&format!(
+                            "{}/append-echo-script.sh",
+                            fixture_folder
+                        ));
+                        step_is_complete = true;
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for command to run",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("<Ctrl-c>")
+                        && remote_terminal.cursor_position_is(61, 3)
+                    {
+                        remote_terminal.send_key(&SPACE); // re-run script - here we use SPACE
+                                                          // instead of the default ENTER because
+                                                          // sending ENTER over SSH can be a little
+                                                          // problematic (read: I couldn't get it
+                                                          // to pass consistently)
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
+                name: "Wait for script to run again",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("<Ctrl-c>")
+                        && remote_terminal.cursor_position_is(61, 4)
+                    {
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            });
+        runner.run_all_steps();
+
+        let last_snapshot = runner.take_snapshot_after(Step {
+            name: "Wait for script to run twice",
+            instruction: |remote_terminal: RemoteTerminal| -> bool {
+                let mut step_is_complete = false;
+                if remote_terminal.snapshot_contains("foo")
+                    && remote_terminal.cursor_position_is(61, 4)
+                {
                     step_is_complete = true
                 }
                 step_is_complete

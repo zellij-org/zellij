@@ -124,18 +124,18 @@ pub enum Sessions {
     #[clap(visible_alias = "ac")]
     #[clap(subcommand)]
     Action(CliAction),
-    /// Send actions to a specific session
-    #[clap(visible_alias = "c")]
-    Command {
+    /// Run a command in a new pane
+    #[clap(visible_alias = "r")]
+    Run {
         command: Option<String>,
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
-        #[clap(short, long, value_parser, default_missing_value("true"))]
-        floating: Option<bool>,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
     },
-    /// Edit file with default $EDITOR / $VISUAL in a specific session
+    /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
@@ -143,8 +143,8 @@ pub enum Sessions {
         line_number: Option<usize>,
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
-        #[clap(short, long, value_parser, default_missing_value("true"))]
-        floating: Option<bool>,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -201,7 +201,7 @@ pub enum CliAction {
     TogglePaneFrames,
     /// Toggle between sending text commands to all panes on the current tab and normal mode.
     ToggleActiveSyncTab,
-    /// Open a new pane in the specified direction [right|left|up|down]
+    /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
     NewPane {
         #[clap(short, long, value_parser, conflicts_with("floating"))]
@@ -210,8 +210,8 @@ pub enum CliAction {
         command: Option<String>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
-        #[clap(short, long, value_parser, default_missing_value("true"))]
-        floating: Option<bool>,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -220,8 +220,8 @@ pub enum CliAction {
         direction: Option<Direction>,
         #[clap(short, long, value_parser)]
         line_number: Option<usize>,
-        #[clap(short, long, value_parser, default_missing_value("true"))]
-        floating: Option<bool>,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        floating: bool,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode { input_mode: InputMode },

@@ -2,7 +2,7 @@ use super::{screen_thread_main, CopyOptions, Screen, ScreenInstruction};
 use crate::panes::PaneId;
 use crate::{
     channels::SenderWithContext,
-    os_input_output::{AsyncReader, Pid, ServerOsApi},
+    os_input_output::{AsyncReader, Pid, ServerOsApi, SpawnTerminalError},
     route::route_action,
     thread_bus::Bus,
     ClientId, ServerInstruction, SessionMetaData, ThreadSenders,
@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::errors::ErrorContext;
 use zellij_utils::input::actions::{Action, Direction, ResizeDirection};
-use zellij_utils::input::command::TerminalAction;
+use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
@@ -126,15 +126,15 @@ struct FakeInputOutput {
 }
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_fd(&self, _fd: RawFd, _cols: u16, _rows: u16) {
+    fn set_terminal_size_using_terminal_id(&self, _terminal_id: u32, _cols: u16, _rows: u16) {
         // noop
     }
     fn spawn_terminal(
         &self,
         _file_to_open: TerminalAction,
-        _quit_db: Box<dyn Fn(PaneId) + Send>,
+        _quit_db: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(RawFd, RawFd), &'static str> {
+    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError> {
         unimplemented!()
     }
     fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
@@ -143,10 +143,10 @@ impl ServerOsApi for FakeInputOutput {
     fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _fd: RawFd, _buf: &[u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize, nix::Error> {
         unimplemented!()
     }
-    fn tcdrain(&self, _fd: RawFd) -> Result<(), nix::Error> {
+    fn tcdrain(&self, _id: u32) -> Result<(), nix::Error> {
         unimplemented!()
     }
     fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {
@@ -194,6 +194,17 @@ impl ServerOsApi for FakeInputOutput {
                 .unwrap()
                 .insert(filename, contents);
         }
+    }
+    fn re_run_command_in_terminal(
+        &self,
+        _terminal_id: u32,
+        _run_command: RunCommand,
+        _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
+    ) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+        unimplemented!()
+    }
+    fn clear_terminal_id(&self, _terminal_id: u32) {
+        unimplemented!()
     }
 }
 
@@ -272,7 +283,7 @@ impl MockScreen {
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         for i in 0..pane_count {
-            pane_ids.push(i as i32);
+            pane_ids.push(i as u32);
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             pane_layout,
@@ -285,7 +296,7 @@ impl MockScreen {
         let pane_count = tab_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         for i in 0..pane_count {
-            pane_ids.push(i as i32);
+            pane_ids.push(i as u32);
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             tab_layout,
@@ -412,7 +423,7 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn new_tab(screen: &mut Screen, pid: i32) {
+fn new_tab(screen: &mut Screen, pid: u32) {
     let client_id = 1;
     screen
         .new_tab(PaneLayout::default(), vec![pid], client_id)
@@ -746,7 +757,9 @@ fn switch_to_tab_with_fullscreen() {
     new_tab(&mut screen, 1);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
-        active_tab.new_pane(PaneId::Terminal(2), Some(1));
+        active_tab
+            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
     new_tab(&mut screen, 2);
@@ -859,7 +872,9 @@ fn attach_after_first_tab_closed() {
     new_tab(&mut screen, 1);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
-        active_tab.new_pane(PaneId::Terminal(2), Some(1));
+        active_tab
+            .new_pane(PaneId::Terminal(2), None, None, Some(1))
+            .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
     new_tab(&mut screen, 2);
@@ -1802,7 +1817,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         direction: None,
         command: None,
         cwd: None,
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1839,7 +1854,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         direction: Some(Direction::Right),
         command: None,
         cwd: None,
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1876,7 +1891,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         direction: Some(Direction::Right),
         command: Some("htop".into()),
         cwd: Some("/some/folder".into()),
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1913,7 +1928,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         file: PathBuf::from("/file/to/edit"),
         direction: None,
         line_number: None,
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1950,7 +1965,7 @@ pub fn send_cli_edit_action_with_line_number() {
         file: PathBuf::from("/file/to/edit"),
         direction: None,
         line_number: Some(100),
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1987,7 +2002,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         file: PathBuf::from("/file/to/edit"),
         direction: Some(Direction::Down),
         line_number: None,
-        floating: None,
+        floating: false,
     };
     send_cli_action_to_server(
         &session_metadata,

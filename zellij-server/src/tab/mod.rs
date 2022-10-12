@@ -7,6 +7,8 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
+use zellij_utils::errors::prelude::*;
+use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -28,7 +30,6 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
-use std::os::unix::io::RawFd;
 use std::rc::Rc;
 use std::sync::mpsc::channel;
 use std::time::Instant;
@@ -49,9 +50,9 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr) => {
         if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_fd` call would be best in
+            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
             // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_fd(
+            $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
@@ -88,7 +89,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
-    pending_vte_events: HashMap<RawFd, Vec<VteBytes>>,
+    pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse: bool, // this is only pub for the tests TODO: remove this once we combine write_text_to_clipboard with render
     link_handler: Rc<RefCell<LinkHandler>>,
     clipboard_provider: ClipboardProvider,
@@ -99,6 +100,7 @@ pub(crate) struct Tab {
     last_mouse_hold_position: Option<Position>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -126,7 +128,9 @@ pub trait Pane {
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
     fn handle_pty_bytes(&mut self, bytes: VteBytes);
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
-    fn adjust_input_to_terminal(&self, input_bytes: Vec<u8>) -> Vec<u8>;
+    fn adjust_input_to_terminal(&mut self, _input_bytes: Vec<u8>) -> Option<AdjustedInput> {
+        None
+    }
     fn position_and_size(&self) -> PaneGeom;
     fn current_geom(&self) -> PaneGeom;
     fn geom_override(&self) -> Option<PaneGeom>;
@@ -350,6 +354,16 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
+    fn hold(&mut self, _exit_status: Option<i32>, _run_command: RunCommand) {
+        // No-op by default, only terminal panes support holding
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum AdjustedInput {
+    WriteBytesToTerminal(Vec<u8>),
+    ReRunCommandInThisPane(RunCommand),
+    CloseThisPane,
 }
 
 impl Tab {
@@ -449,16 +463,22 @@ impl Tab {
             last_mouse_hold_position: None,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            pids_waiting_resize: HashSet::new(),
         }
     }
 
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
-        new_pids: Vec<RawFd>,
+        new_ids: Vec<u32>,
         tab_index: usize,
         client_id: ClientId,
-    ) {
+    ) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to apply layout {layout:#?} in tab {tab_index} for client id {client_id}"
+            )
+        };
         if self.tiled_panes.has_panes() {
             log::error!(
                 "Applying a layout to a tab with existing panes - this is not yet supported!"
@@ -475,7 +495,7 @@ impl Tab {
         let positions_in_layout = layout.position_panes_in_space(&free_space);
 
         let positions_and_size = positions_in_layout.iter();
-        let mut new_pids = new_pids.iter();
+        let mut new_ids = new_ids.iter();
 
         let mut focus_pane_id: Option<PaneId> = None;
         let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
@@ -491,12 +511,16 @@ impl Tab {
                 let pane_title = run.location.to_string();
                 self.senders
                     .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index, client_id))
-                    .unwrap();
-                let pid = pid_rx.recv().unwrap();
+                    .with_context(err_context)?;
+                let pid = pid_rx.recv().with_context(err_context)?;
                 let mut new_plugin = PluginPane::new(
                     pid,
                     *position_and_size,
-                    self.senders.to_plugin.as_ref().unwrap().clone(),
+                    self.senders
+                        .to_plugin
+                        .as_ref()
+                        .with_context(err_context)?
+                        .clone(),
                     pane_title,
                     layout.name.clone().unwrap_or_default(),
                 );
@@ -506,33 +530,39 @@ impl Tab {
                 set_focus_pane_id(layout, PaneId::Plugin(pid));
             } else {
                 // there are still panes left to fill, use the pids we received in this method
-                let pid = new_pids.next().unwrap(); // if this crashes it means we got less pids than there are panes in this layout
-                let next_terminal_position = self.get_next_terminal_position();
-                let mut new_pane = TerminalPane::new(
-                    *pid,
-                    *position_and_size,
-                    self.style,
-                    next_terminal_position,
-                    layout.name.clone().unwrap_or_default(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                );
-                new_pane.set_borderless(layout.borderless);
-                self.tiled_panes
-                    .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
-                set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                if let Some(pid) = new_ids.next() {
+                    let next_terminal_position = self.get_next_terminal_position();
+                    let initial_title = match &layout.run {
+                        Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                        _ => None,
+                    };
+                    let mut new_pane = TerminalPane::new(
+                        *pid,
+                        *position_and_size,
+                        self.style,
+                        next_terminal_position,
+                        layout.name.clone().unwrap_or_default(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        initial_title,
+                    );
+                    new_pane.set_borderless(layout.borderless);
+                    self.tiled_panes
+                        .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
+                    set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                }
             }
         }
-        for unused_pid in new_pids {
+        for unused_pid in new_ids {
             // this is a bit of a hack and happens because we don't have any central location that
             // can query the screen as to how many panes it needs to create a layout
             // fixing this will require a bit of an architecture change
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
-                .unwrap();
+                .with_context(err_context)?;
         }
         // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
         // non-fixed panes that are part of the viewport, get rid of this!
@@ -564,8 +594,9 @@ impl Tab {
                 },
             }
         }
+        Ok(())
     }
-    pub fn update_input_modes(&mut self) {
+    pub fn update_input_modes(&mut self) -> Result<()> {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
         for client_id in self.connected_clients.borrow().iter() {
@@ -576,10 +607,16 @@ impl Tab {
                     Some(*client_id),
                     Event::ModeUpdate(mode_info.clone()),
                 ))
-                .unwrap();
+                .with_context(|| {
+                    format!(
+                        "failed to update plugins with mode info {:?}",
+                        mode_info.mode
+                    )
+                })?;
         }
+        Ok(())
     }
-    pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) {
+    pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
         let other_clients_exist_in_tab = { !self.connected_clients.borrow().is_empty() };
         if other_clients_exist_in_tab {
             if let Some(first_active_floating_pane_id) =
@@ -601,13 +638,17 @@ impl Tab {
             let mut pane_ids: Vec<PaneId> = self.tiled_panes.pane_ids().copied().collect();
             if pane_ids.is_empty() {
                 // no panes here, bye bye
-                return;
+                return Ok(());
             }
-            let focus_pane_id = self.focus_pane_id.unwrap_or_else(|| {
+            let focus_pane_id = if let Some(id) = self.focus_pane_id {
+                id
+            } else {
                 pane_ids.sort(); // TODO: make this predictable
                 pane_ids.retain(|p| !self.tiled_panes.panes_to_hide_contains(*p));
-                *pane_ids.get(0).unwrap()
-            });
+                *(pane_ids.get(0).with_context(|| {
+                    format!("failed to acquire id of focused pane while adding client {client_id}",)
+                })?)
+            };
             self.tiled_panes.focus_pane(focus_pane_id, client_id);
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
@@ -616,18 +657,26 @@ impl Tab {
             );
         }
         self.set_force_render();
-        self.update_input_modes();
+        self.update_input_modes()
+            .with_context(|| format!("failed to add client {client_id} to tab"))
     }
+
     pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
         self.mode_info.borrow_mut().insert(client_id, mode_info);
     }
-    pub fn add_multiple_clients(&mut self, client_ids_to_mode_infos: Vec<(ClientId, ModeInfo)>) {
+
+    pub fn add_multiple_clients(
+        &mut self,
+        client_ids_to_mode_infos: Vec<(ClientId, ModeInfo)>,
+    ) -> Result<()> {
         for (client_id, client_mode_info) in client_ids_to_mode_infos {
-            self.add_client(client_id, None);
+            self.add_client(client_id, None)
+                .context("failed to add clients")?;
             self.mode_info
                 .borrow_mut()
                 .insert(client_id, client_mode_info);
         }
+        Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.focus_pane_id = None;
@@ -659,16 +708,18 @@ impl Tab {
     pub fn has_no_connected_clients(&self) -> bool {
         self.connected_clients.borrow().is_empty()
     }
-    pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) {
+    pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
         if self.floating_panes.panes_are_visible() {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
-                    // this unwrap is safe because floating panes should not be visible if there are no floating panes
-                    let floating_pane_to_embed =
-                        self.close_pane(focused_floating_pane_id, true).unwrap();
+                    let floating_pane_to_embed = self
+                        .close_pane(focused_floating_pane_id, true)
+                        .with_context(|| format!(
+                        "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
+                    ))?;
                     self.tiled_panes
                         .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
                     self.should_clear_display_before_rendering = true;
@@ -681,7 +732,7 @@ impl Tab {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
                 if self.get_selectable_tiled_panes().count() <= 1 {
                     // don't close the only pane on screen...
-                    return;
+                    return Ok(());
                 }
                 if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
                     embedded_pane_to_float.set_geom(new_pane_geom);
@@ -694,12 +745,13 @@ impl Tab {
                 }
             }
         }
+        Ok(())
     }
     pub fn toggle_floating_panes(
         &mut self,
         client_id: ClientId,
         default_shell: Option<TerminalAction>,
-    ) {
+    ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.toggle_show_panes(false);
             self.set_force_render();
@@ -713,37 +765,36 @@ impl Tab {
                     }
                 },
                 None => {
-                    // there aren't any floating panes, we need to open a new one
-                    //
-                    // ************************************************************************************************
-                    // BEWARE - THIS IS NOT ATOMIC - this sends an instruction to the pty thread to open a new terminal
-                    // the pty thread will do its thing and eventually come back to the new_pane
-                    // method on this tab which will open a new floating pane because we just
-                    // toggled their visibility above us.
-                    // If the pty thread takes too long, weird things can happen...
-                    // ************************************************************************************************
-                    //
+                    let should_float = true;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
+                        Some(should_float),
                         ClientOrTabIndex::ClientId(client_id),
                     );
-                    self.senders.send_to_pty(instruction).unwrap();
+                    self.senders.send_to_pty(instruction).with_context(|| {
+                        format!("failed to open a floating pane for client {client_id}")
+                    })?;
                 },
             }
             self.floating_panes.set_force_render();
         }
         self.set_force_render();
+        Ok(())
     }
-    pub fn show_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(true);
-        self.set_force_render();
-    }
-    pub fn hide_floating_panes(&mut self) {
-        self.floating_panes.toggle_show_panes(false);
-        self.set_force_render();
-    }
-    pub fn new_pane(&mut self, pid: PaneId, client_id: Option<ClientId>) {
-        self.close_down_to_max_terminals();
+    pub fn new_pane(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        should_float: Option<bool>,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
+        match should_float {
+            Some(true) => self.floating_panes.toggle_show_panes(true),
+            Some(false) => self.floating_panes.toggle_show_panes(false),
+            None => {},
+        };
+        self.close_down_to_max_terminals()
+            .with_context(|| format!("failed to create new pane with id {pid:?}"))?;
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -759,6 +810,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api);
@@ -784,6 +836,7 @@ impl Tab {
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
+                        initial_pane_title,
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -793,15 +846,16 @@ impl Tab {
                 }
             }
         }
+        Ok(())
     }
-    pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) {
+    pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
         match pid {
             PaneId::Terminal(pid) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
-                let new_pane = TerminalPane::new(
+                let mut new_pane = TerminalPane::new(
                     pid,
                     PaneGeom::default(), // the initial size will be set later
                     self.style,
@@ -812,7 +866,11 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    None,
                 );
+                new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
+                                                            // constructor so it won't be overrided
+                                                            // by the editor
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
@@ -824,7 +882,11 @@ impl Tab {
                     Some(replaced_pane) => {
                         self.suppressed_panes
                             .insert(PaneId::Terminal(pid), replaced_pane);
-                        let current_active_pane = self.get_active_pane(client_id).unwrap(); // this will be the newly replaced pane we just created
+                        // this will be the newly replaced pane we just created
+                        let current_active_pane =
+                            self.get_active_pane(client_id).with_context(|| {
+                                format!("failed to suppress active pane for client {client_id}")
+                            })?;
                         resize_pty!(current_active_pane, self.os_api);
                     },
                     None => {
@@ -836,12 +898,21 @@ impl Tab {
                 // TBD, currently unsupported
             },
         }
+        Ok(())
     }
-    pub fn horizontal_split(&mut self, pid: PaneId, client_id: ClientId) {
+    pub fn horizontal_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to split pane {pid:?} horizontally for client {client_id}");
         if self.floating_panes.panes_are_visible() {
-            return;
+            return Ok(());
         }
-        self.close_down_to_max_terminals();
+        self.close_down_to_max_terminals()
+            .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
@@ -859,6 +930,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -866,12 +938,21 @@ impl Tab {
                 self.tiled_panes.focus_pane(pid, client_id);
             }
         }
+        Ok(())
     }
-    pub fn vertical_split(&mut self, pid: PaneId, client_id: ClientId) {
+    pub fn vertical_split(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to split pane {pid:?} vertically for client {client_id}");
         if self.floating_panes.panes_are_visible() {
-            return;
+            return Ok(());
         }
-        self.close_down_to_max_terminals();
+        self.close_down_to_max_terminals()
+            .with_context(err_context)?;
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
@@ -889,6 +970,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    initial_pane_title,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -896,7 +978,9 @@ impl Tab {
                 self.tiled_panes.focus_pane(pid, client_id);
             }
         }
+        Ok(())
     }
+
     pub fn get_active_pane(&self, client_id: ClientId) -> Option<&dyn Pane> {
         self.get_active_pane_id(client_id).and_then(|ap| {
             if self.floating_panes.panes_are_visible() {
@@ -932,14 +1016,14 @@ impl Tab {
             self.tiled_panes.get_active_pane_id(client_id)
         }
     }
-    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<RawFd> {
+    fn get_active_terminal_id(&self, client_id: ClientId) -> Option<u32> {
         if let Some(PaneId::Terminal(pid)) = self.get_active_pane_id(client_id) {
             Some(pid)
         } else {
             None
         }
     }
-    pub fn has_terminal_pid(&self, pid: RawFd) -> bool {
+    pub fn has_terminal_pid(&self, pid: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Terminal(pid))
             || self.floating_panes.panes_contain(&PaneId::Terminal(pid))
             || self
@@ -947,7 +1031,8 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
     }
-    pub fn handle_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+    pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+        let err_context = || format!("failed to handle pty bytes from fd {pid}");
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -965,23 +1050,27 @@ impl Tab {
                     // Reset scroll - and process all pending events for this pane
                     if evs.len() >= MAX_PENDING_VTE_EVENTS {
                         terminal_output.clear_scroll();
-                        self.process_pending_vte_events(pid);
+                        self.process_pending_vte_events(pid)
+                            .with_context(err_context)?;
                     }
                 }
-                return;
+                return Ok(());
             }
         }
-        self.process_pty_bytes(pid, bytes);
+        self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
-    pub fn process_pending_vte_events(&mut self, pid: RawFd) {
+    pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
         if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
             let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
             for vte_event in vte_events {
-                self.process_pty_bytes(pid, vte_event);
+                self.process_pty_bytes(pid, vte_event)
+                    .context("failed to process pending vte events")?;
             }
         }
+        Ok(())
     }
-    fn process_pty_bytes(&mut self, pid: RawFd, bytes: VteBytes) {
+    fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+        let err_context = || format!("failed to process pty bytes from pid {pid}");
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -992,74 +1081,137 @@ impl Tab {
                     .find(|s_p| s_p.pid() == PaneId::Terminal(pid))
             })
         {
+            if self.pids_waiting_resize.remove(&pid) {
+                resize_pty!(terminal_output, self.os_api);
+            }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
             for message in messages_to_pty {
-                self.write_to_pane_id(message, PaneId::Terminal(pid));
+                self.write_to_pane_id(message, PaneId::Terminal(pid))
+                    .with_context(err_context)?;
             }
             if let Some(string) = clipboard_update {
-                self.write_selection_to_clipboard(&string);
+                self.write_selection_to_clipboard(&string)
+                    .with_context(err_context)?;
             }
         }
+        Ok(())
     }
-    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) {
+
+    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) -> Result<()> {
         let pane_ids = self.get_static_and_floating_pane_ids();
-        pane_ids.iter().for_each(|&pane_id| {
-            self.write_to_pane_id(input_bytes.clone(), pane_id);
-        });
+        for pane_id in pane_ids {
+            self.write_to_pane_id(input_bytes.clone(), pane_id)
+                .context("failed to write to terminals on current tab")?;
+        }
+        Ok(())
     }
-    pub fn write_to_active_terminal(&mut self, input_bytes: Vec<u8>, client_id: ClientId) {
+
+    pub fn write_to_active_terminal(
+        &mut self,
+        input_bytes: Vec<u8>,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to write to active terminal for client {client_id} - msg: {input_bytes:?}"
+            )
+        };
+
         self.clear_search(client_id); // this is an inexpensive operation if empty, if we need more such cleanups we should consider moving this and the rest to some sort of cleanup method
         let pane_id = if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .get_active_pane_id(client_id)
-                .unwrap_or_else(|| self.tiled_panes.get_active_pane_id(client_id).unwrap())
+                .or_else(|| self.tiled_panes.get_active_pane_id(client_id))
+                .ok_or_else(|| {
+                    anyhow!(format!(
+                        "failed to find active pane id for client {client_id}"
+                    ))
+                })
+                .with_context(err_context)?
         } else {
-            self.tiled_panes.get_active_pane_id(client_id).unwrap()
+            self.tiled_panes
+                .get_active_pane_id(client_id)
+                .with_context(err_context)?
         };
-        self.write_to_pane_id(input_bytes, pane_id);
+        // Can't use 'err_context' here since it borrows 'input_bytes'
+        self.write_to_pane_id(input_bytes, pane_id)
+            .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
-    pub fn write_to_terminal_at(&mut self, input_bytes: Vec<u8>, position: &Position) {
+
+    pub fn write_to_terminal_at(
+        &mut self,
+        input_bytes: Vec<u8>,
+        position: &Position,
+    ) -> Result<()> {
+        let err_context = || format!("failed to write to terminal at position {position:?}");
+
         if self.floating_panes.panes_are_visible() {
             let pane_id = self.floating_panes.get_pane_id_at(position, false);
             if let Some(pane_id) = pane_id {
-                self.write_to_pane_id(input_bytes, pane_id);
-                return;
+                return self
+                    .write_to_pane_id(input_bytes, pane_id)
+                    .with_context(err_context);
             }
         }
 
-        let pane_id = self.get_pane_id_at(position, false);
+        let pane_id = self
+            .get_pane_id_at(position, false)
+            .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            self.write_to_pane_id(input_bytes, pane_id);
+            return self
+                .write_to_pane_id(input_bytes, pane_id)
+                .with_context(err_context);
         }
+        Ok(())
     }
-    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) {
+
+    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) -> Result<()> {
+        let err_context = || format!("failed to write to pane with id {pane_id:?}");
+
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self
                     .floating_panes
-                    .get(&pane_id)
-                    .or_else(|| self.tiled_panes.get_pane(pane_id))
-                    .or_else(|| self.suppressed_panes.get(&pane_id))
-                    .unwrap();
-                let adjusted_input = active_terminal.adjust_input_to_terminal(input_bytes);
-
-                self.senders
-                    .send_to_pty_writer(PtyWriteInstruction::Write(
-                        adjusted_input,
-                        active_terminal_id,
-                    ))
-                    .unwrap();
+                    .get_mut(&pane_id)
+                    .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+                    .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+                    .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
+                    .with_context(err_context)?;
+                match active_terminal.adjust_input_to_terminal(input_bytes) {
+                    Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
+                        self.senders
+                            .send_to_pty_writer(PtyWriteInstruction::Write(
+                                adjusted_input,
+                                active_terminal_id,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Some(AdjustedInput::ReRunCommandInThisPane(command)) => {
+                        self.pids_waiting_resize.insert(active_terminal_id);
+                        self.senders
+                            .send_to_pty(PtyInstruction::ReRunCommandInPane(
+                                PaneId::Terminal(active_terminal_id),
+                                command,
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    Some(AdjustedInput::CloseThisPane) => {
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                    },
+                    None => {},
+                }
             },
             PaneId::Plugin(pid) => {
                 for key in parse_keys(&input_bytes) {
                     self.senders
                         .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
-                        .unwrap()
+                        .with_context(err_context)?;
                 }
             },
         }
+        Ok(())
     }
     pub fn get_active_terminal_cursor_position(
         &self,
@@ -1124,7 +1276,7 @@ impl Tab {
             active_pane.set_should_render(true);
         }
     }
-    fn update_active_panes_in_pty_thread(&self) {
+    fn update_active_panes_in_pty_thread(&self) -> Result<()> {
         // this is a bit hacky and we should ideally not keep this state in two different places at
         // some point
         let connected_clients: Vec<ClientId> =
@@ -1135,16 +1287,21 @@ impl Tab {
                     self.get_active_pane_id(client_id),
                     client_id,
                 ))
-                .unwrap();
+                .with_context(|| format!("failed to update active pane for client {client_id}"))?;
         }
+        Ok(())
     }
-    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) {
+
+    pub fn render(&mut self, output: &mut Output, overlay: Option<String>) -> Result<()> {
+        let err_context = || "failed to render tab".to_string();
+
         let connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         if connected_clients.is_empty() || !self.tiled_panes.has_active_panes() {
-            return;
+            return Ok(());
         }
-        self.update_active_panes_in_pty_thread();
+        self.update_active_panes_in_pty_thread()
+            .with_context(err_context)?;
 
         let floating_panes_stack = self.floating_panes.stack();
         output.add_clients(
@@ -1169,7 +1326,9 @@ impl Tab {
         }
 
         self.render_cursor(output);
+        Ok(())
     }
+
     fn hide_cursor_and_clear_display_as_needed(&mut self, output: &mut Output) {
         let hide_cursor = "\u{1b}[?25l";
         let connected_clients: Vec<ClientId> =
@@ -1489,16 +1648,17 @@ impl Tab {
             self.tiled_panes.move_active_pane_left(client_id);
         }
     }
-    fn close_down_to_max_terminals(&mut self) {
+    fn close_down_to_max_terminals(&mut self) -> Result<()> {
         if let Some(max_panes) = self.max_panes {
             let terminals = self.get_tiled_pane_ids();
             for &pid in terminals.iter().skip(max_panes - 1) {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
-                    .unwrap();
+                    .context("failed to close down to max terminals")?;
                 self.close_pane(pid, false);
             }
         }
+        Ok(())
     }
     pub fn get_tiled_pane_ids(&self) -> Vec<PaneId> {
         self.get_tiled_panes().map(|(&pid, _)| pid).collect()
@@ -1566,6 +1726,13 @@ impl Tab {
             closed_pane
         }
     }
+    pub fn hold_pane(&mut self, id: PaneId, exit_status: Option<i32>, run_command: RunCommand) {
+        if self.floating_panes.panes_contain(&id) {
+            self.floating_panes.hold_pane(id, exit_status, run_command);
+        } else {
+            self.tiled_panes.hold_pane(id, exit_status, run_command);
+        }
+    }
     pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
         self.suppressed_panes
             .remove(&pane_id)
@@ -1594,22 +1761,27 @@ impl Tab {
                 replaced_pane
             })
     }
-    pub fn close_focused_pane(&mut self, client_id: ClientId) {
+    pub fn close_focused_pane(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = |pane_id| {
+            format!("failed to close focused pane (ID {pane_id:?}) for client {client_id}")
+        };
+
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 self.close_pane(active_floating_pane_id, false);
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
-                    .unwrap();
-                return;
+                    .with_context(|| err_context(active_floating_pane_id))?;
+                return Ok(());
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
             self.close_pane(active_pane_id, false);
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
-                .unwrap();
+                .with_context(|| err_context(active_pane_id))?;
         }
+        Ok(())
     }
     pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
@@ -1617,7 +1789,7 @@ impl Tab {
             self.os_api.write_to_file(dump, file);
         }
     }
-    pub fn edit_scrollback(&mut self, client_id: ClientId) {
+    pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
@@ -1630,23 +1802,29 @@ impl Tab {
                 line_number,
                 client_id,
             ))
-            .unwrap();
+            .with_context(|| format!("failed to edit scrollback for client {client_id}"))
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_up(1, client_id);
         }
     }
-    pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) {
+
+    pub fn scroll_active_terminal_down(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to scroll down active pane for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.scroll_down(1, client_id);
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
                 }
             }
         }
+        Ok(())
     }
+
     pub fn scroll_active_terminal_up_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // prevent overflow when row == 0
@@ -1654,17 +1832,24 @@ impl Tab {
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) {
+
+    pub fn scroll_active_terminal_down_page(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to scroll down one page in active pane for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let scroll_rows = active_pane.get_content_rows();
             active_pane.scroll_down(scroll_rows, client_id);
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
                 }
             }
         }
+        Ok(())
     }
+
     pub fn scroll_active_terminal_up_half_page(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // prevent overflow when row == 0
@@ -1672,116 +1857,183 @@ impl Tab {
             active_pane.scroll_up(scroll_rows, client_id);
         }
     }
-    pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) {
+
+    pub fn scroll_active_terminal_down_half_page(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to scroll down half a page in active pane for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let scroll_rows = (active_pane.rows().max(1) - 1) / 2;
             active_pane.scroll_down(scroll_rows, client_id);
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
                 }
             }
         }
+        Ok(())
     }
-    pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) {
+
+    pub fn scroll_active_terminal_to_bottom(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to scroll to bottom in active pane for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_scroll();
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
                 }
             }
         }
+        Ok(())
     }
-    pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) {
+
+    pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
         // TODO: is this a thing?
+        let err_context =
+            || format!("failed to clear scroll in active pane for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_scroll();
             if !active_pane.is_scrolled() {
                 if let PaneId::Terminal(raw_fd) = active_pane.pid() {
-                    self.process_pending_vte_events(raw_fd);
+                    self.process_pending_vte_events(raw_fd)
+                        .with_context(err_context)?;
                 }
             }
         }
+        Ok(())
     }
-    pub fn handle_scrollwheel_up(&mut self, point: &Position, lines: usize, client_id: ClientId) {
-        if let Some(pane) = self.get_pane_at(point, false) {
+
+    pub fn handle_scrollwheel_up(
+        &mut self,
+        point: &Position,
+        lines: usize,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle scrollwheel up at position {point:?} for client {client_id}")
+        };
+
+        if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point);
+                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                    .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send UP n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
                     self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point)
+                        .with_context(err_context)?;
                 }
             } else {
                 pane.scroll_up(lines, client_id);
             }
         }
+        Ok(())
     }
-    pub fn handle_scrollwheel_down(&mut self, point: &Position, lines: usize, client_id: ClientId) {
-        if let Some(pane) = self.get_pane_at(point, false) {
+
+    pub fn handle_scrollwheel_down(
+        &mut self,
+        point: &Position,
+        lines: usize,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to handle scrollwheel down at position {point:?} for client {client_id}"
+            )
+        };
+
+        if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point);
+                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                    .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send DOWN n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
                     self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point)
+                        .with_context(err_context)?;
                 }
             } else {
                 pane.scroll_down(lines, client_id);
                 if !pane.is_scrolled() {
                     if let PaneId::Terminal(pid) = pane.pid() {
-                        self.process_pending_vte_events(pid);
+                        self.process_pending_vte_events(pid)
+                            .with_context(err_context)?;
                     }
                 }
             }
         }
+        Ok(())
     }
+
     fn get_pane_at(
         &mut self,
         point: &Position,
         search_selectable: bool,
-    ) -> Option<&mut Box<dyn Pane>> {
+    ) -> Result<Option<&mut Box<dyn Pane>>> {
         if self.floating_panes.panes_are_visible() {
             if let Some(pane_id) = self.floating_panes.get_pane_id_at(point, search_selectable) {
-                return self.floating_panes.get_pane_mut(pane_id);
+                return Ok(self.floating_panes.get_pane_mut(pane_id));
             }
         }
-        if let Some(pane_id) = self.get_pane_id_at(point, search_selectable) {
-            self.tiled_panes.get_pane_mut(pane_id)
+        if let Some(pane_id) = self
+            .get_pane_id_at(point, search_selectable)
+            .with_context(|| format!("failed to get pane at position {point:?}"))?
+        {
+            Ok(self.tiled_panes.get_pane_mut(pane_id))
         } else {
-            None
+            Ok(None)
         }
     }
 
-    fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Option<PaneId> {
-        if self.tiled_panes.fullscreen_is_active() && self.is_position_inside_viewport(point) {
-            let first_client_id = {
-                self.connected_clients
-                    .borrow()
-                    .iter()
-                    .copied()
-                    .next()
-                    .unwrap()
-            }; // TODO: instead of doing this, record the pane that is in fullscreen
-            return self.tiled_panes.get_active_pane_id(first_client_id);
+    fn get_pane_id_at(&self, point: &Position, search_selectable: bool) -> Result<Option<PaneId>> {
+        let err_context = || format!("failed to get id of pane at position {point:?}");
+
+        if self.tiled_panes.fullscreen_is_active()
+            && self
+                .is_position_inside_viewport(point)
+                .with_context(err_context)?
+        {
+            // TODO: instead of doing this, record the pane that is in fullscreen
+            let first_client_id = self
+                .connected_clients
+                .borrow()
+                .iter()
+                .copied()
+                .next()
+                .with_context(err_context)?;
+            return Ok(self.tiled_panes.get_active_pane_id(first_client_id));
         }
         if search_selectable {
-            self.get_selectable_tiled_panes()
+            Ok(self
+                .get_selectable_tiled_panes()
                 .find(|(_, p)| p.contains(point))
-                .map(|(&id, _)| id)
+                .map(|(&id, _)| id))
         } else {
-            self.get_tiled_panes()
+            Ok(self
+                .get_tiled_panes()
                 .find(|(_, p)| p.contains(point))
-                .map(|(&id, _)| id)
+                .map(|(&id, _)| id))
         }
     }
-    pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) {
-        self.focus_pane_at(position, client_id);
+
+    pub fn handle_left_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to handle mouse left click at position {position:?} for client {client_id}"
+            )
+        };
+
+        self.focus_pane_at(position, client_id)
+            .with_context(err_context)?;
 
         let search_selectable = false;
         if self.floating_panes.panes_are_visible()
@@ -1790,14 +2042,18 @@ impl Tab {
                 .move_pane_with_mouse(*position, search_selectable)
         {
             self.set_force_render();
-            return;
+            return Ok(());
         }
 
-        if let Some(pane) = self.get_pane_at(position, false) {
+        if let Some(pane) = self
+            .get_pane_at(position, false)
+            .with_context(err_context)?
+        {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_left_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
                 }
             } else {
                 pane.start_selection(&relative_position, client_id);
@@ -1806,42 +2062,73 @@ impl Tab {
                 }
             }
         };
+        Ok(())
     }
-    pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) {
-        self.focus_pane_at(position, client_id);
 
-        if let Some(pane) = self.get_pane_at(position, false) {
+    pub fn handle_right_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to handle mouse right click at position {position:?} for client {client_id}"
+            )
+        };
+
+        self.focus_pane_at(position, client_id)
+            .with_context(err_context)?;
+
+        if let Some(pane) = self
+            .get_pane_at(position, false)
+            .with_context(err_context)?
+        {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_right_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
                 }
             } else {
                 pane.handle_right_click(&relative_position, client_id);
             }
         };
+        Ok(())
     }
-    pub fn handle_middle_click(&mut self, position: &Position, client_id: ClientId) {
-        self.focus_pane_at(position, client_id);
 
-        if let Some(pane) = self.get_pane_at(position, false) {
+    pub fn handle_middle_click(&mut self, position: &Position, client_id: ClientId) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to handle mouse middle click at position {position:?} for client {client_id}"
+            )
+        };
+
+        self.focus_pane_at(position, client_id)
+            .with_context(err_context)?;
+
+        if let Some(pane) = self
+            .get_pane_at(position, false)
+            .with_context(err_context)?
+        {
             let relative_position = pane.relative_position(position);
             if let Some(mouse_event) = pane.mouse_middle_click(&relative_position, false) {
                 if !pane.position_is_on_frame(position) {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
                 }
             }
         };
+        Ok(())
     }
-    fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) {
+
+    fn focus_pane_at(&mut self, point: &Position, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to focus pane at position {point:?} for client {client_id}");
+
         if self.floating_panes.panes_are_visible() {
             if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true) {
                 self.floating_panes.focus_pane(clicked_pane, client_id);
                 self.set_pane_active_at(clicked_pane);
-                return;
+                return Ok(());
             }
         }
-        if let Some(clicked_pane) = self.get_pane_id_at(point, true) {
+        if let Some(clicked_pane) = self.get_pane_id_at(point, true).with_context(err_context)? {
             self.tiled_panes.focus_pane(clicked_pane, client_id);
             self.set_pane_active_at(clicked_pane);
             if self.floating_panes.panes_are_visible() {
@@ -1849,8 +2136,18 @@ impl Tab {
                 self.set_force_render();
             }
         }
+        Ok(())
     }
-    pub fn handle_right_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+
+    pub fn handle_right_mouse_release(
+        &mut self,
+        position: &Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle right mouse release at position {position:?} for client {client_id}")
+        };
+
         self.last_mouse_hold_position = None;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         if let Some(active_pane) = active_pane {
@@ -1868,11 +2165,22 @@ impl Tab {
             );
 
             if let Some(mouse_event) = active_pane.mouse_right_click_release(&relative_position) {
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                    .with_context(err_context)?;
             }
         }
+        Ok(())
     }
-    pub fn handle_middle_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+
+    pub fn handle_middle_mouse_release(
+        &mut self,
+        position: &Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle middle mouse release at position {position:?} for client {client_id}")
+        };
+
         self.last_mouse_hold_position = None;
         let active_pane = self.get_active_pane_or_floating_pane_mut(client_id);
         if let Some(active_pane) = active_pane {
@@ -1890,18 +2198,29 @@ impl Tab {
             );
 
             if let Some(mouse_event) = active_pane.mouse_middle_click_release(&relative_position) {
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                    .with_context(err_context)?;
             }
         }
+        Ok(())
     }
-    pub fn handle_left_mouse_release(&mut self, position: &Position, client_id: ClientId) {
+
+    pub fn handle_left_mouse_release(
+        &mut self,
+        position: &Position,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let err_context = || {
+            format!("failed to handle left mouse release at position {position:?} for client {client_id}")
+        };
+
         self.last_mouse_hold_position = None;
 
         if self.floating_panes.panes_are_visible()
             && self.floating_panes.pane_is_being_moved_with_mouse()
         {
             self.floating_panes.stop_moving_pane_with_mouse(*position);
-            return;
+            return Ok(());
         }
 
         // read these here to avoid use of borrowed `*self`, since we are holding active_pane
@@ -1924,7 +2243,8 @@ impl Tab {
             );
 
             if let Some(mouse_event) = active_pane.mouse_left_click_release(&relative_position) {
-                self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
+                self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                    .with_context(err_context)?;
             } else {
                 let relative_position = active_pane.relative_position(position);
                 if let PaneId::Terminal(_) = active_pane.pid() {
@@ -1934,7 +2254,8 @@ impl Tab {
                         active_pane.reset_selection();
 
                         if let Some(selected_text) = selected_text {
-                            self.write_selection_to_clipboard(&selected_text);
+                            self.write_selection_to_clipboard(&selected_text)
+                                .with_context(err_context)?;
                         }
                     }
                 } else {
@@ -1944,12 +2265,18 @@ impl Tab {
                 self.selecting_with_mouse = false;
             }
         }
+        Ok(())
     }
+
     pub fn handle_mouse_hold_left(
         &mut self,
         position_on_screen: &Position,
         client_id: ClientId,
-    ) -> bool {
+    ) -> Result<bool> {
+        let err_context = || {
+            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
+        };
+
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
@@ -1968,8 +2295,8 @@ impl Tab {
                 .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
             self.set_force_render();
-            return !is_repeated; // we don't need to re-render in this case if the pane did not move
-                                 // return;
+            return Ok(!is_repeated); // we don't need to re-render in this case if the pane did not move
+                                     // return;
         }
 
         let selecting = self.selecting_with_mouse;
@@ -1991,21 +2318,27 @@ impl Tab {
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_left_click(&relative_position, true) {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-                    return true; // we need to re-render in this case so the selection disappears
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
+                    return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             } else if selecting {
                 active_pane.update_selection(&relative_position, client_id);
-                return true; // we need to re-render in this case so the selection is updated
+                return Ok(true); // we need to re-render in this case so the selection is updated
             }
         }
-        false // we shouldn't even get here, but might as well not needlessly render if we do
+        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
     }
+
     pub fn handle_mouse_hold_right(
         &mut self,
         position_on_screen: &Position,
         client_id: ClientId,
-    ) -> bool {
+    ) -> Result<bool> {
+        let err_context = || {
+            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
+        };
+
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
@@ -2032,18 +2365,23 @@ impl Tab {
                         .min(active_pane.get_content_rows() as isize),
                 );
                 if let Some(mouse_event) = active_pane.mouse_right_click(&relative_position, true) {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-                    return true; // we need to re-render in this case so the selection disappears
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
+                    return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             }
         }
-        false // we shouldn't even get here, but might as well not needlessly render if we do
+        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
     }
+
     pub fn handle_mouse_hold_middle(
         &mut self,
         position_on_screen: &Position,
         client_id: ClientId,
-    ) -> bool {
+    ) -> Result<bool> {
+        let err_context = || {
+            format!("failed to handle left mouse hold at position {position_on_screen:?} for client {client_id}")
+        };
         // return value indicates whether we should trigger a render
         // determine if event is repeated to enable smooth scrolling
         let is_repeated = if let Some(last_position) = self.last_mouse_hold_position {
@@ -2071,31 +2409,39 @@ impl Tab {
                 );
                 if let Some(mouse_event) = active_pane.mouse_middle_click(&relative_position, true)
                 {
-                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id);
-                    return true; // we need to re-render in this case so the selection disappears
+                    self.write_to_active_terminal(mouse_event.into_bytes(), client_id)
+                        .with_context(err_context)?;
+                    return Ok(true); // we need to re-render in this case so the selection disappears
                 }
             }
         }
-        false // we shouldn't even get here, but might as well not needlessly render if we do
+        Ok(false) // we shouldn't even get here, but might as well not needlessly render if we do
     }
 
-    pub fn copy_selection(&self, client_id: ClientId) {
+    pub fn copy_selection(&self, client_id: ClientId) -> Result<()> {
         let selected_text = self
             .get_active_pane(client_id)
             .and_then(|p| p.get_selected_text());
         if let Some(selected_text) = selected_text {
-            self.write_selection_to_clipboard(&selected_text);
+            self.write_selection_to_clipboard(&selected_text)
+                .with_context(|| {
+                    format!("failed to write selection to clipboard for client {client_id}")
+                })?;
             self.senders
                 .send_to_plugin(PluginInstruction::Update(
                     None,
                     None,
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
                 ))
-                .unwrap();
+                .with_context(|| {
+                    format!("failed to inform plugins about copy selection for client {client_id}")
+                })
+                .non_fatal();
         }
+        Ok(())
     }
 
-    fn write_selection_to_clipboard(&self, selection: &str) {
+    fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
         let mut output = Output::default();
         let connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
@@ -2110,7 +2456,7 @@ impl Tab {
                     let serialized_output = output.serialize();
                     self.senders
                         .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                        .unwrap();
+                        .context("failed to write selection to clipboard")?;
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
                 },
                 Err(err) => {
@@ -2120,7 +2466,10 @@ impl Tab {
             };
         self.senders
             .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
-            .unwrap();
+            .context("failed to notify plugins about new clipboard event")
+            .non_fatal();
+
+        Ok(())
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
         let mut viewport = self.viewport.borrow_mut();
@@ -2146,7 +2495,7 @@ impl Tab {
         }
     }
 
-    pub fn visible(&self, visible: bool) {
+    pub fn visible(&self, visible: bool) -> Result<()> {
         let pids_in_this_tab = self.tiled_panes.pane_ids().filter_map(|p| match p {
             PaneId::Plugin(pid) => Some(pid),
             _ => None,
@@ -2158,11 +2507,15 @@ impl Tab {
                     None,
                     Event::Visible(visible),
                 ))
-                .unwrap();
+                .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         }
+        Ok(())
     }
 
-    pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) {
+    pub fn update_active_pane_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to update name of active pane to '{buf:?}' for client {client_id}");
+
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
             let active_terminal = if self.are_floating_panes_visible() {
                 self.floating_panes
@@ -2171,18 +2524,19 @@ impl Tab {
                 self.tiled_panes
                     .get_pane_mut(PaneId::Terminal(active_terminal_id))
             }
-            .unwrap();
+            .with_context(err_context)?;
 
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
             if is_updatable {
-                let s = str::from_utf8(&buf).unwrap();
+                let s = str::from_utf8(&buf).with_context(err_context)?;
                 active_terminal.update_name(s);
             }
         }
+        Ok(())
     }
 
-    pub fn undo_active_rename_pane(&mut self, client_id: ClientId) {
+    pub fn undo_active_rename_pane(&mut self, client_id: ClientId) -> Result<()> {
         if let Some(active_terminal_id) = self.get_active_terminal_id(client_id) {
             let active_terminal = if self.are_floating_panes_visible() {
                 self.floating_panes
@@ -2191,24 +2545,29 @@ impl Tab {
                 self.tiled_panes
                     .get_pane_mut(PaneId::Terminal(active_terminal_id))
             }
-            .unwrap();
+            .with_context(|| {
+                format!("failed to undo rename of active pane for client {client_id}")
+            })?;
 
             active_terminal.load_pane_name();
         }
+        Ok(())
     }
 
-    pub fn is_position_inside_viewport(&self, point: &Position) -> bool {
+    pub fn is_position_inside_viewport(&self, point: &Position) -> Result<bool> {
         let Position {
             line: Line(line),
             column: Column(column),
         } = *point;
-        let line: usize = line.try_into().unwrap();
+        let line: usize = line.try_into().with_context(|| {
+            format!("failed to determine if position {point:?} is inside viewport")
+        })?;
 
         let viewport = self.viewport.borrow();
-        line >= viewport.y
+        Ok(line >= viewport.y
             && column >= viewport.x
             && line <= viewport.y + viewport.rows
-            && column <= viewport.x + viewport.cols
+            && column <= viewport.x + viewport.cols)
     }
 
     pub fn set_pane_frames(&mut self, should_set_pane_frames: bool) {
@@ -2220,15 +2579,18 @@ impl Tab {
         self.tiled_panes.panes_to_hide_count()
     }
 
-    pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) {
+    pub fn update_search_term(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
             if is_updatable {
-                let s = str::from_utf8(&buf).unwrap();
+                let s = str::from_utf8(&buf).with_context(|| {
+                    format!("failed to update search term to '{buf:?}' for client {client_id}")
+                })?;
                 active_pane.update_search_term(s);
             }
         }
+        Ok(())
     }
 
     pub fn search_down(&mut self, client_id: ClientId) {
