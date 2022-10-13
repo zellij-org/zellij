@@ -510,7 +510,9 @@ impl Tab {
                         let (pid_tx, pid_rx) = channel();
                         let pane_title = run.location.to_string();
                         self.senders
-                            .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index, client_id))
+                            .send_to_plugin(PluginInstruction::Load(
+                                pid_tx, run, tab_index, client_id,
+                            ))
                             .with_context(err_context)?;
                         let pid = pid_rx.recv().with_context(err_context)?;
                         let mut new_plugin = PluginPane::new(
@@ -550,8 +552,10 @@ impl Tab {
                                 initial_title,
                             );
                             new_pane.set_borderless(layout.borderless);
-                            self.tiled_panes
-                                .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
+                            self.tiled_panes.add_pane_with_existing_geom(
+                                PaneId::Terminal(*pid),
+                                Box::new(new_pane),
+                            );
                             set_focus_pane_id(layout, PaneId::Terminal(*pid));
                         }
                     }
@@ -604,7 +608,7 @@ impl Tab {
                 }
                 log::error!("{}", e); // TODO: propagate this to the user
                 Ok(())
-            }
+            },
         }
     }
     pub fn update_input_modes(&mut self) -> Result<()> {

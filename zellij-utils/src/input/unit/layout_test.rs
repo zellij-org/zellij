@@ -1095,10 +1095,7 @@ fn error_on_mixed_command_and_child_panes() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(
-        layout.is_err(),
-        "error provided"
-    );
+    assert!(layout.is_err(), "error provided");
 }
 
 #[test]
@@ -1111,10 +1108,7 @@ fn error_on_bare_args_without_command() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(
-        layout.is_err(),
-        "error provided"
-    );
+    assert!(layout.is_err(), "error provided");
 }
 
 #[test]
@@ -1127,10 +1121,7 @@ fn error_on_bare_cwd_without_command() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(
-        layout.is_err(),
-        "error provided"
-    );
+    assert!(layout.is_err(), "error provided");
 }
 
 #[test]
@@ -1144,10 +1135,7 @@ fn error_on_bare_cwd_in_template_without_command() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(
-        layout.is_err(),
-        "error provided"
-    );
+    assert!(layout.is_err(), "error provided");
 }
 
 #[test]
@@ -1161,8 +1149,5 @@ fn error_on_bare_args_in_template_without_command() {
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(
-        layout.is_err(),
-        "error provided"
-    );
+    assert!(layout.is_err(), "error provided");
 }

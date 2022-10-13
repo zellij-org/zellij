@@ -156,7 +156,10 @@ impl PaneLayout {
         }
         count
     }
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
+    pub fn position_panes_in_space(
+        &self,
+        space: &PaneGeom,
+    ) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
         let layouts = split_space(space, self, space);
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {

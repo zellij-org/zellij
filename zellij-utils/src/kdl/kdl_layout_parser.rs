@@ -94,12 +94,12 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, "size") {
             match SplitSize::from_str(size) {
                 Ok(size) => Ok(Some(size)),
-                Err(_e) => {
-                    Err(kdl_parsing_error!(
-                        format!("size should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")"),
-                        kdl_node
-                    ))
-                }
+                Err(_e) => Err(kdl_parsing_error!(
+                    format!(
+                        "size should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")"
+                    ),
+                    kdl_node
+                )),
             }
         } else if let Some(size) = kdl_get_int_property_or_child_value!(kdl_node, "size") {
             if size == 0 {
@@ -173,7 +173,11 @@ impl<'a> KdlLayoutParser<'a> {
             None => Ok(None),
         }
     }
-    fn parse_pane_command(&self, pane_node: &KdlNode, is_template: bool) -> Result<Option<Run>, ConfigError> {
+    fn parse_pane_command(
+        &self,
+        pane_node: &KdlNode,
+        is_template: bool,
+    ) -> Result<Option<Run>, ConfigError> {
         let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
             .map(|c| PathBuf::from(c));
         let cwd = kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
@@ -274,7 +278,9 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|c| PathBuf::from(c));
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_or_plugin_block_for_template(kdl_node)?;
-        if let (None, None, true, true) | (None, None, false, true) | (None, None, true, false) = (&run, &pane_layout.run, args.is_some(), cwd.is_some()) {
+        if let (None, None, true, true) | (None, None, false, true) | (None, None, true, false) =
+            (&run, &pane_layout.run, args.is_some(), cwd.is_some())
+        {
             let mut offending_nodes = vec![];
             if args.is_some() {
                 offending_nodes.push("args");
@@ -285,7 +291,7 @@ impl<'a> KdlLayoutParser<'a> {
             return Err(kdl_parsing_error!(
                 format!("{} can only be specified if a command was specified either in the pane_template or in the pane", offending_nodes.join(" and ")),
                 kdl_node
-            ))
+            ));
         }
 
         let children_split_direction = self.parse_split_direction(kdl_node)?;
@@ -341,13 +347,14 @@ impl<'a> KdlLayoutParser<'a> {
         match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
             Some(direction) => match SplitDirection::from_str(direction) {
                 Ok(split_direction) => Ok(split_direction),
-                Err(_e) => {
-                    Err(kdl_parsing_error!(
-                        format!("split_direction should be either \"horizontal\" or \"vertical\" found: {}", direction),
-                        kdl_node
-                    ))
-                }
-            }
+                Err(_e) => Err(kdl_parsing_error!(
+                    format!(
+                        "split_direction should be either \"horizontal\" or \"vertical\" found: {}",
+                        direction
+                    ),
+                    kdl_node
+                )),
+            },
             None => Ok(SplitDirection::default()),
         }
     }
@@ -693,7 +700,8 @@ impl<'a> KdlLayoutParser<'a> {
                 if kdl_name!(child) == "pane" {
                     tab_children.push(self.parse_pane_node(child)?);
                 } else if kdl_name!(child) == "children" {
-                    let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                    let node_has_child_nodes =
+                        child.children().map(|c| !c.is_empty()).unwrap_or(false);
                     let node_has_entries = !child.entries().is_empty();
                     if node_has_child_nodes || node_has_entries {
                         return Err(ConfigError::new_kdl_error(
