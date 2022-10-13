@@ -102,6 +102,12 @@ impl<'a> KdlLayoutParser<'a> {
                 }
             }
         } else if let Some(size) = kdl_get_int_property_or_child_value!(kdl_node, "size") {
+            if size == 0 {
+                return Err(kdl_parsing_error!(
+                    format!("size should be greater than 0"),
+                    kdl_node
+                ));
+            }
             Ok(Some(SplitSize::Fixed(size as usize)))
         } else if let Some(node) = kdl_property_or_child_value_node!(kdl_node, "size") {
             Err(kdl_parsing_error!(
