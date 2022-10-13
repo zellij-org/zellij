@@ -7,12 +7,14 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
+    consts::DEBUG_MODE,
     logging::*,
 };
 
 fn main() {
     configure_logger();
     let opts = CliArgs::parse();
+    DEBUG_MODE.set(opts.debug).unwrap();
 
     {
         if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
