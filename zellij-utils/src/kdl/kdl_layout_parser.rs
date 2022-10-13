@@ -157,37 +157,40 @@ impl<'a> KdlLayoutParser<'a> {
             location,
         })))
     }
-    fn parse_pane_command(&self, pane_node: &KdlNode) -> Result<Option<Run>, ConfigError> {
-        let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
-            .map(|c| PathBuf::from(c));
-        let cwd = kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
-            .map(|c| PathBuf::from(c));
-        let args = match kdl_get_child!(pane_node, "args") {
+    fn parse_args(&self, pane_node: &KdlNode) -> Result<Option<Vec<String>>, ConfigError> {
+        match kdl_get_child!(pane_node, "args") {
             Some(kdl_args) => {
                 if kdl_args.entries().is_empty() {
                     return Err(kdl_parsing_error!(format!("args cannot be empty and should contain one or more command arguments (eg. args \"-h\" \"-v\")"), kdl_args));
                 }
-                Some(
+                Ok(Some(
                     kdl_string_arguments!(kdl_args)
                         .iter()
                         .map(|s| String::from(*s))
                         .collect(),
-                )
+                ))
             },
-            None => None,
-        };
-        match (command, cwd, args) {
-            (None, Some(_cwd), _) => Err(ConfigError::new_kdl_error(
+            None => Ok(None),
+        }
+    }
+    fn parse_pane_command(&self, pane_node: &KdlNode, is_template: bool) -> Result<Option<Run>, ConfigError> {
+        let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
+            .map(|c| PathBuf::from(c));
+        let cwd = kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
+            .map(|c| PathBuf::from(c));
+        let args = self.parse_args(pane_node)?;
+        match (command, cwd, args, is_template) {
+            (None, Some(_cwd), _, false) => Err(ConfigError::new_kdl_error(
                 "cwd can only be set if a command was specified".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
             )),
-            (None, _, Some(_args)) => Err(ConfigError::new_kdl_error(
+            (None, _, Some(_args), false) => Err(ConfigError::new_kdl_error(
                 "args can only be set if a command was specified".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
             )),
-            (Some(command), cwd, args) => Ok(Some(Run::Command(RunCommand {
+            (Some(command), cwd, args, _) => Ok(Some(Run::Command(RunCommand {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
@@ -200,7 +203,24 @@ impl<'a> KdlLayoutParser<'a> {
         &self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
-        let mut run = self.parse_pane_command(kdl_node)?;
+        let mut run = self.parse_pane_command(kdl_node, false)?;
+        if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
+            if run.is_some() {
+                return Err(ConfigError::new_kdl_error(
+                    "Cannot have both a command and a plugin block for a single pane".into(),
+                    plugin_block.span().offset(),
+                    plugin_block.span().len(),
+                ));
+            }
+            run = self.parse_plugin_block(plugin_block)?;
+        }
+        Ok(run)
+    }
+    fn parse_command_or_plugin_block_for_template(
+        &self,
+        kdl_node: &KdlNode,
+    ) -> Result<Option<Run>, ConfigError> {
+        let mut run = self.parse_pane_command(kdl_node, true)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             if run.is_some() {
                 return Err(ConfigError::new_kdl_error(
@@ -249,47 +269,70 @@ impl<'a> KdlLayoutParser<'a> {
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
+        let args = self.parse_args(kdl_node)?;
+        let cwd = kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd")
+            .map(|c| PathBuf::from(c));
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
+        let run = self.parse_command_or_plugin_block_for_template(kdl_node)?;
+        if let (None, None, true, true) | (None, None, false, true) | (None, None, true, false) = (&run, &pane_layout.run, args.is_some(), cwd.is_some()) {
+            let mut offending_nodes = vec![];
+            if args.is_some() {
+                offending_nodes.push("args");
+            }
+            if cwd.is_some() {
+                offending_nodes.push("cwd");
+            }
+            return Err(kdl_parsing_error!(
+                format!("{} can only be specified if a command was specified either in the pane_template or in the pane", offending_nodes.join(" and ")),
+                kdl_node
+            ))
+        }
 
         let children_split_direction = self.parse_split_direction(kdl_node)?;
-        match kdl_children_nodes!(kdl_node) {
-            Some(children) => {
-                let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
-                let child_panes_layout = PaneLayout {
-                    children_split_direction,
-                    children: child_panes,
-                    ..Default::default()
-                };
-                self.assert_one_children_block(&pane_layout, pane_layout_kdl_node)?;
-                self.insert_layout_children_or_error(
-                    &mut pane_layout,
-                    child_panes_layout,
-                    pane_layout_kdl_node,
-                )?;
-            },
-            None => {
-                if let Some(borderless) = borderless {
-                    pane_layout.borderless = borderless;
-                }
-                if let Some(focus) = focus {
-                    pane_layout.focus = Some(focus);
-                }
-                if let Some(name) = name {
-                    pane_layout.name = Some(name);
-                }
-                if let Some(split_size) = split_size {
-                    pane_layout.split_size = Some(split_size);
-                }
-                if let Some(run) = run {
-                    pane_layout.run = Some(run);
-                }
-                if let Some(index_of_children) = pane_layout.external_children_index {
-                    pane_layout
-                        .children
-                        .insert(index_of_children, PaneLayout::default());
-                }
-            },
+
+        let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
+            Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
+            None => (None, vec![]),
+        };
+        if pane_parts.len() > 0 {
+            let child_panes_layout = PaneLayout {
+                children_split_direction,
+                children: pane_parts,
+                external_children_index,
+                ..Default::default()
+            };
+            self.assert_one_children_block(&pane_layout, pane_layout_kdl_node)?;
+            self.insert_layout_children_or_error(
+                &mut pane_layout,
+                child_panes_layout,
+                pane_layout_kdl_node,
+            )?;
+        }
+        if let Some(borderless) = borderless {
+            pane_layout.borderless = borderless;
+        }
+        if let Some(focus) = focus {
+            pane_layout.focus = Some(focus);
+        }
+        if let Some(name) = name {
+            pane_layout.name = Some(name);
+        }
+        if let Some(split_size) = split_size {
+            pane_layout.split_size = Some(split_size);
+        }
+        if let Some(run) = run {
+            pane_layout.run = Some(run);
+        }
+        if let (Some(args), Some(Run::Command(run_command))) = (args, pane_layout.run.as_mut()) {
+            run_command.args = args.clone();
+        }
+        if let (Some(cwd), Some(Run::Command(run_command))) = (cwd, pane_layout.run.as_mut()) {
+            run_command.cwd = Some(cwd.clone());
+        }
+        if let Some(index_of_children) = pane_layout.external_children_index {
+            pane_layout
+                .children
+                .insert(index_of_children, PaneLayout::default());
         }
         pane_layout.external_children_index = None;
         Ok(pane_layout)
