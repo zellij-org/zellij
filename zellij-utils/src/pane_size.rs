@@ -130,6 +130,9 @@ impl PaneGeom {
             && self.y <= row
             && row < self.y + self.rows.as_usize()
     }
+    pub fn is_at_least_minimum_size(&self) -> bool {
+        self.rows.as_usize() > 0 && self.cols.as_usize() > 0
+    }
 }
 
 impl Offset {

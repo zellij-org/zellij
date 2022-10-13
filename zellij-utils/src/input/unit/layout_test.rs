@@ -700,7 +700,7 @@ fn children_not_as_first_child_of_pane_template() {
                 }
                 pane
             }
-            horizontal-with-vertical-top name="my tab" {
+            horizontal-with-vertical-top name="my pane" {
                 pane
                 pane
             }
@@ -1013,4 +1013,141 @@ fn error_on_more_than_one_focused_tab() {
     "#;
     let layout_error = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap_err();
     assert_snapshot!(format!("{:?}", layout_error));
+}
+
+#[test]
+fn args_override_args_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+                args "-f" "/tmp/foo"
+            }
+            tail
+            tail {
+                args "-f" "/tmp/bar"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn args_added_to_args_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+            }
+            tail
+            tail {
+                args "-f" "/tmp/bar"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn cwd_override_cwd_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+                cwd "/tmp"
+            }
+            tail
+            tail {
+                cwd "/"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn cwd_added_to_cwd_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+            }
+            tail
+            tail {
+                cwd "/home"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn error_on_mixed_command_and_child_panes() {
+    let kdl_layout = r#"
+        layout {
+            pane command="tail" {
+                pane
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn error_on_bare_args_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane {
+                args "-f"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn error_on_bare_cwd_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane {
+                cwd "/"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn error_on_bare_cwd_in_template_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="my_template"
+            my_template {
+                cwd "/"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn error_on_bare_args_in_template_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="my_template"
+            my_template {
+                args "--help"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
+    assert!(layout.is_err(), "error provided");
 }
