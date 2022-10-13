@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: error on mixed nodes in layouts (https://github.com/zellij-org/zellij/pull/1791)
 * fix: error on duplicate pane_template / tab_template definitions in layouts (https://github.com/zellij-org/zellij/pull/1792)
 * fix: accept session-name through the cli properly (https://github.com/zellij-org/zellij/pull/1793)
+* fix: Prevent recursive sessions from layout files (https://github.com/zellij-org/zellij/pull/1766)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
