@@ -156,8 +156,14 @@ impl PaneLayout {
         }
         count
     }
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
-        split_space(space, self, space)
+    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
+        let layouts = split_space(space, self, space);
+        for (_pane_layout, pane_geom) in layouts.iter() {
+            if !pane_geom.is_at_least_minimum_size() {
+                return Err("No room on screen for this layout!");
+            }
+        }
+        Ok(layouts)
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
