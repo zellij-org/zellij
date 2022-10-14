@@ -535,7 +535,7 @@ impl Pty {
                             log::error!("Failed to spawn terminal: {}", e);
                         },
                     }
-                }
+                },
                 None => {
                     match self.bus.os_input.as_mut().unwrap().spawn_terminal(
                         default_shell.clone(),
@@ -560,7 +560,6 @@ impl Pty {
                 },
                 // Investigate moving plugin loading to here.
                 Some(Run::Plugin(_)) => {},
-
             }
         }
         let new_tab_pane_ids: Vec<u32> = new_pane_pids

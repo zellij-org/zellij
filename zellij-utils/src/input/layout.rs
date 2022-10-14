@@ -78,23 +78,23 @@ impl Run {
                     merged.args = base_run_command.args.clone();
                 }
                 Some(Run::Command(merged))
-            }
+            },
             (Some(Run::Command(base_run_command)), Some(Run::Cwd(other_cwd))) => {
                 let mut merged = base_run_command.clone();
                 merged.cwd = Some(other_cwd.clone());
                 Some(Run::Command(merged))
-            }
+            },
             (Some(Run::Cwd(base_cwd)), Some(Run::Command(other_command))) => {
                 let mut merged = other_command.clone();
                 if merged.cwd.is_none() {
                     merged.cwd = Some(base_cwd.clone());
                 }
                 Some(Run::Command(merged))
-            }
+            },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
             (None, Some(other)) => Some(other.clone()),
-            (None, None) => None
+            (None, None) => None,
         }
     }
 }
@@ -291,7 +291,11 @@ impl Layout {
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
-    pub fn from_str(raw: &str, path_to_raw_layout: String, cwd: Option<PathBuf>) -> Result<Layout, ConfigError> {
+    pub fn from_str(
+        raw: &str,
+        path_to_raw_layout: String,
+        cwd: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
         Layout::from_kdl(raw, path_to_raw_layout, cwd)
     }
     pub fn stringified_from_dir(

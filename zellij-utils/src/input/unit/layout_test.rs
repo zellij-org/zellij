@@ -1305,7 +1305,12 @@ fn global_cwd_passed_from_layout_constructor() {
             // both should have the /tmp cwd
         }
     "#;
-    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), Some(PathBuf::from("/tmp"))).unwrap();
+    let layout = Layout::from_kdl(
+        kdl_layout,
+        "layout_file_name".into(),
+        Some(PathBuf::from("/tmp")),
+    )
+    .unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -1320,6 +1325,11 @@ fn global_cwd_passed_from_layout_constructor_overrides_global_cwd_in_layout_file
             // both should have the /tmp cwd
         }
     "#;
-    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), Some(PathBuf::from("/tmp"))).unwrap();
+    let layout = Layout::from_kdl(
+        kdl_layout,
+        "layout_file_name".into(),
+        Some(PathBuf::from("/tmp")),
+    )
+    .unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
