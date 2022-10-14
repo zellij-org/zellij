@@ -32,13 +32,13 @@ pub struct KdlLayoutParser<'a> {
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str) -> Self {
+    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
         KdlLayoutParser {
             raw_layout,
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,
-            global_cwd: None,
+            global_cwd,
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -861,8 +861,11 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(())
     }
     fn populate_global_cwd(&mut self, layout_node: &KdlNode) -> Result<(), ConfigError> {
-        if let Some(global_cwd) = kdl_get_string_property_or_child_value_with_error!(layout_node, "cwd") {
-            self.global_cwd = Some(PathBuf::from(global_cwd));
+        // we only populate global cwd from the layout file if another wasn't explicitly passed to us
+        if self.global_cwd.is_none() {
+            if let Some(global_cwd) = kdl_get_string_property_or_child_value_with_error!(layout_node, "cwd") {
+                self.global_cwd = Some(PathBuf::from(global_cwd));
+            }
         }
         Ok(())
     }

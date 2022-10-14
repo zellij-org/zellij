@@ -1266,8 +1266,8 @@ impl RunPlugin {
     }
 }
 impl Layout {
-    pub fn from_kdl(raw_layout: &str, file_name: String) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout).parse().map_err(|e| {
+    pub fn from_kdl(raw_layout: &str, file_name: String, cwd: Option<PathBuf>) -> Result<Self, ConfigError> {
+        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
             match e {
                 ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
                 ConfigError::KdlDeserializationError(kdl_error) => {
