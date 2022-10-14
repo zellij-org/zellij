@@ -622,6 +622,8 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
         let has_focus_prop =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
+        let has_cwd_prop =
+            kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
         let has_non_cwd_run_prop = self
             .parse_command_or_plugin_block(kdl_node)?
             .map(|r| match r {
@@ -631,7 +633,7 @@ impl<'a> KdlLayoutParser<'a> {
             .unwrap_or(false);
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
         if has_nested_nodes_or_children_block
-            && (has_borderless_prop || has_focus_prop || has_non_cwd_run_prop)
+            && (has_borderless_prop || has_focus_prop || has_non_cwd_run_prop || has_cwd_prop)
         {
             let mut offending_nodes = vec![];
             if has_borderless_prop {
@@ -642,6 +644,9 @@ impl<'a> KdlLayoutParser<'a> {
             }
             if has_non_cwd_run_prop {
                 offending_nodes.push("command/plugin");
+            }
+            if has_cwd_prop {
+                offending_nodes.push("cwd");
             }
             Err(ConfigError::new_kdl_error(
                 format!(
