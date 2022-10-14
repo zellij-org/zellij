@@ -48,6 +48,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "tab_template"
             || word == "default_tab_template"
             || word == "command"
+            || word == "edit"
             || word == "plugin"
             || word == "children"
             || word == "tab"
@@ -66,6 +67,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "size"
             || property_name == "plugin"
             || property_name == "command"
+            || property_name == "edit"
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "split_direction"
@@ -192,6 +194,8 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<Option<Run>, ConfigError> {
         let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
             .map(|c| PathBuf::from(c));
+        let edit = kdl_get_string_property_or_child_value_with_error!(pane_node, "edit")
+            .map(|c| PathBuf::from(c));
         let cwd = if is_template {
             // we fill the global_cwd for templates later
             kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
@@ -200,23 +204,30 @@ impl<'a> KdlLayoutParser<'a> {
             self.parse_cwd(pane_node)?
         };
         let args = self.parse_args(pane_node)?;
-        match (command, cwd, args, is_template) {
-            (None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
-            (None, _, Some(_args), false) => Err(ConfigError::new_kdl_error(
+        match (command, edit, cwd, args, is_template) {
+            (None, None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
+            (None, _, _, Some(_args), false) => Err(ConfigError::new_kdl_error(
                 "args can only be set if a command was specified".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
             )),
-            (Some(command), cwd, args, _) => Ok(Some(Run::Command(RunCommand {
+            (Some(command), None, cwd, args, _) => Ok(Some(Run::Command(RunCommand {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
                 hold_on_close: true,
             }))),
+            (None, Some(edit), Some(cwd), _, _) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
+            (None, Some(edit), None, _, _) => Ok(Some(Run::EditFile(edit, None))),
+            (Some(_command), Some(_edit), _, _, _) => Err(ConfigError::new_kdl_error(
+                "cannot have both a command and an edit instruction for the same pane".into(),
+                pane_node.span().offset(),
+                pane_node.span().len(),
+            )),
             _ => Ok(None),
         }
     }
-    fn parse_command_or_plugin_block(
+    fn parse_command_plugin_or_edit_block(
         &self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
@@ -224,7 +235,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             if run.is_some() {
                 return Err(ConfigError::new_kdl_error(
-                    "Cannot have both a command and a plugin block for a single pane".into(),
+                    "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
                 ));
@@ -233,7 +244,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(run)
     }
-    fn parse_command_or_plugin_block_for_template(
+    fn parse_command_plugin_or_edit_block_for_template(
         &self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
@@ -241,7 +252,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             if run.is_some() {
                 return Err(ConfigError::new_kdl_error(
-                    "Cannot have both a command and a plugin block for a single pane".into(),
+                    "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
                 ));
@@ -257,7 +268,7 @@ impl<'a> KdlLayoutParser<'a> {
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
+        let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, children) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
@@ -315,7 +326,7 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|name| name.to_string());
         let args = self.parse_args(kdl_node)?;
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block_for_template(kdl_node)?;
+        let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
         self.assert_no_bare_args_in_pane_node_with_template(
             &run,
             &pane_template.run,
@@ -370,6 +381,9 @@ impl<'a> KdlLayoutParser<'a> {
                         run_command.cwd = Some(global_cwd.clone());
                     },
                 },
+                Some(Run::EditFile(path_to_file, _line_number)) => {
+                    *path_to_file = global_cwd.join(&path_to_file);
+                }
                 Some(Run::Cwd(pane_template_cwd)) => {
                     *pane_template_cwd = global_cwd.join(&pane_template_cwd);
                 },
@@ -406,7 +420,7 @@ impl<'a> KdlLayoutParser<'a> {
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
+        let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
@@ -625,7 +639,7 @@ impl<'a> KdlLayoutParser<'a> {
         let has_cwd_prop =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
         let has_non_cwd_run_prop = self
-            .parse_command_or_plugin_block(kdl_node)?
+            .parse_command_plugin_or_edit_block(kdl_node)?
             .map(|r| match r {
                 Run::Cwd(_) => false,
                 _ => true,
@@ -643,7 +657,7 @@ impl<'a> KdlLayoutParser<'a> {
                 offending_nodes.push("focus");
             }
             if has_non_cwd_run_prop {
-                offending_nodes.push("command/plugin");
+                offending_nodes.push("command/edit/plugin");
             }
             if has_cwd_prop {
                 offending_nodes.push("cwd");
