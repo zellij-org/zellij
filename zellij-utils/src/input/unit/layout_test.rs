@@ -1112,33 +1112,6 @@ fn error_on_bare_args_without_command() {
 }
 
 #[test]
-fn error_on_bare_cwd_without_command() {
-    let kdl_layout = r#"
-        layout {
-            pane {
-                cwd "/"
-            }
-        }
-    "#;
-    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(layout.is_err(), "error provided");
-}
-
-#[test]
-fn error_on_bare_cwd_in_template_without_command() {
-    let kdl_layout = r#"
-        layout {
-            pane_template name="my_template"
-            my_template {
-                cwd "/"
-            }
-        }
-    "#;
-    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
-    assert!(layout.is_err(), "error provided");
-}
-
-#[test]
 fn error_on_bare_args_in_template_without_command() {
     let kdl_layout = r#"
         layout {
@@ -1150,4 +1123,174 @@ fn error_on_bare_args_in_template_without_command() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into());
     assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn pane_template_command_with_cwd_overriden_by_its_consumers_command_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                command "tail"
+                cwd "bar"
+            }
+            tail command="pwd" {
+                cwd "foo"
+            }
+            // pane should have /tmp/foo and not /tmp/bar as cwd
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_command_with_cwd_remains_when_its_consumer_command_does_not_have_a_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                command "tail"
+                cwd "bar"
+            }
+            tail command="pwd"
+            // pane should have /tmp/bar as its cwd with the pwd command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_command_without_cwd_is_overriden_by_its_consumers_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                command "tail"
+            }
+            tail command="pwd" {
+                cwd "bar"
+            }
+            // pane should have /tmp/bar as its cwd with the pwd command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_command_with_cwd_is_overriden_by_its_consumers_bare_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                command "tail"
+                cwd "foo"
+            }
+            tail {
+                cwd "bar"
+            }
+            // pane should have /tmp/bar as its cwd with the tail command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_command_without_cwd_receives_its_consumers_bare_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                command "tail"
+            }
+            tail {
+                cwd "bar"
+            }
+            // pane should have /tmp/bar as its cwd with the tail command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_with_bare_cwd_overriden_by_its_consumers_bare_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                cwd "foo"
+            }
+            tail {
+                cwd "bar"
+            }
+            // pane should have /tmp/foo without a command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_with_bare_propagated_to_its_consumer_command_without_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                cwd "foo"
+            }
+            tail command="tail"
+            // pane should have /tmp/foo with the tail command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_with_bare_propagated_to_its_consumer_command_with_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                cwd "foo"
+            }
+            tail command="tail" {
+                cwd "bar"
+            }
+            // pane should have /tmp/bar with the tail command
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn global_cwd_given_to_panes_without_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane
+            pane command="tail"
+            // both should have the /tmp cwd
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn global_cwd_prepended_to_panes_with_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane cwd="foo" // should be /tmp/foo
+            pane command="tail" cwd="/home/foo" // should be /home/foo because its an absolute path
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into()).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
 }

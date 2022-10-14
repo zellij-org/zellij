@@ -364,11 +364,11 @@ impl Pty {
             default_editor,
         }
     }
-    pub fn get_default_terminal(&self) -> TerminalAction {
+    pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
-            cwd: None, // this should be filled by the calling function, eg. spawn_terminal
+            cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
             hold_on_close: false,
         })
     }
@@ -400,12 +400,12 @@ impl Pty {
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =
-                    terminal_action.unwrap_or_else(|| self.get_default_terminal());
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None));
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
             ClientOrTabIndex::TabIndex(_) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal())
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
             },
         };
         let hold_on_close = match &terminal_action {
@@ -454,7 +454,7 @@ impl Pty {
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
     ) {
-        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal());
+        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids: Vec<(u32, Option<RunCommand>, Result<RawFd, SpawnTerminalError>)> =
@@ -513,6 +513,29 @@ impl Pty {
                         },
                     }
                 },
+                Some(Run::Cwd(cwd)) => {
+                    let shell = self.get_default_terminal(Some(cwd));
+                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
+                        shell,
+                        quit_cb,
+                        self.default_editor.clone(),
+                    ) {
+                        Ok((terminal_id, pid_primary, child_fd)) => {
+                            self.id_to_child_pid.insert(terminal_id, child_fd);
+                            new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
+                        },
+                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
+                            new_pane_pids.push((
+                                terminal_id,
+                                None,
+                                Err(SpawnTerminalError::CommandNotFound(terminal_id)),
+                            ));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to spawn terminal: {}", e);
+                        },
+                    }
+                }
                 None => {
                     match self.bus.os_input.as_mut().unwrap().spawn_terminal(
                         default_shell.clone(),
@@ -537,6 +560,7 @@ impl Pty {
                 },
                 // Investigate moving plugin loading to here.
                 Some(Run::Plugin(_)) => {},
+
             }
         }
         let new_tab_pane_ids: Vec<u32> = new_pane_pids

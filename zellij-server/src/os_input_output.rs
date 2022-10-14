@@ -140,8 +140,11 @@ fn handle_openpty(
             let cmd = cmd.clone();
             let command = &mut Command::new(cmd.command);
             if let Some(current_dir) = cmd.cwd {
-                if current_dir.exists() {
+                if current_dir.exists() && current_dir.is_dir() {
                     command.current_dir(current_dir);
+                } else {
+                    // TODO: propagate this to the user
+                    log::error!("Failed to set CWD for new pane. {} does not exist or is not a folder", current_dir.display());
                 }
             }
             command
