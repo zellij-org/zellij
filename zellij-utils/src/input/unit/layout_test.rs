@@ -1283,6 +1283,38 @@ fn pane_template_with_bare_propagated_to_its_consumer_command_with_cwd() {
 }
 
 #[test]
+fn pane_template_with_bare_propagated_to_its_consumer_edit() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" {
+                cwd "foo"
+            }
+            tail edit="bar"
+            // pane should have /tmp/foo/bar with the edit file variant
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn pane_template_with_command_propagated_to_its_consumer_edit() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="tail" command="not-vim" {
+                cwd "foo"
+            }
+            tail edit="bar"
+            // pane should have /tmp/foo/bar with the edit file variant
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn global_cwd_given_to_panes_without_cwd() {
     let kdl_layout = r#"
         layout {

@@ -536,6 +536,28 @@ impl Pty {
                         },
                     }
                 },
+                Some(Run::EditFile(path_to_file, line_number)) => {
+                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
+                        TerminalAction::OpenFile(path_to_file, line_number),
+                        quit_cb,
+                        self.default_editor.clone(),
+                    ) {
+                        Ok((terminal_id, pid_primary, child_fd)) => {
+                            self.id_to_child_pid.insert(terminal_id, child_fd);
+                            new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
+                        },
+                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
+                            new_pane_pids.push((
+                                terminal_id,
+                                None,
+                                Err(SpawnTerminalError::CommandNotFound(terminal_id)),
+                            ));
+                        },
+                        Err(e) => {
+                            log::error!("Failed to spawn terminal: {}", e);
+                        },
+                    }
+                },
                 None => {
                     match self.bus.os_input.as_mut().unwrap().spawn_terminal(
                         default_shell.clone(),

@@ -62,11 +62,15 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
+    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
     Cwd(PathBuf),
 }
 
 impl Run {
     pub fn merge(base: &Option<Run>, other: &Option<Run>) -> Option<Run> {
+        // This method is necessary to merge between pane_templates and their consumers
+        // TODO: reconsider the way we parse command/edit/plugin pane_templates from layouts to prevent this
+        // madness
         // TODO: handle Plugin variants once there's a need
         match (base, other) {
             (Some(Run::Command(base_run_command)), Some(Run::Command(other_run_command))) => {
@@ -90,6 +94,16 @@ impl Run {
                     merged.cwd = Some(base_cwd.clone());
                 }
                 Some(Run::Command(merged))
+            },
+            (
+                Some(Run::Command(base_run_command)),
+                Some(Run::EditFile(file_to_edit, line_number)),
+            ) => match &base_run_command.cwd {
+                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
+                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+            },
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
+                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
