@@ -95,11 +95,12 @@ impl Run {
                 }
                 Some(Run::Command(merged))
             },
-            (Some(Run::Command(base_run_command)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                match &base_run_command.cwd {
-                    Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                    None => Some(Run::EditFile(file_to_edit.clone(), *line_number))
-                }
+            (
+                Some(Run::Command(base_run_command)),
+                Some(Run::EditFile(file_to_edit, line_number)),
+            ) => match &base_run_command.cwd {
+                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
+                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
             },
             (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
                 Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))

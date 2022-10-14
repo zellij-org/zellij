@@ -383,7 +383,7 @@ impl<'a> KdlLayoutParser<'a> {
                 },
                 Some(Run::EditFile(path_to_file, _line_number)) => {
                     *path_to_file = global_cwd.join(&path_to_file);
-                }
+                },
                 Some(Run::Cwd(pane_template_cwd)) => {
                     *pane_template_cwd = global_cwd.join(&pane_template_cwd);
                 },
