@@ -7,14 +7,12 @@ mod tests;
 use zellij_utils::{
     clap::Parser,
     cli::{CliAction, CliArgs, Command, Sessions},
-    consts::DEBUG_MODE,
     logging::*,
 };
 
 fn main() {
     configure_logger();
     let opts = CliArgs::parse();
-    DEBUG_MODE.set(opts.debug).unwrap();
 
     {
         if let Some(Command::Sessions(Sessions::Action(cli_action))) = opts.command {
@@ -76,7 +74,7 @@ fn main() {
     {
         commands::kill_session(target_session);
     } else if let Some(path) = opts.server {
-        commands::start_server(path);
+        commands::start_server(path, opts.debug);
     } else {
         commands::start_client(opts);
     }
