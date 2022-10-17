@@ -238,9 +238,15 @@ pub(crate) fn route_action(
         Action::NewPane(direction, name) => {
             let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell, name, client_id),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell, name, client_id),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id),
+                Some(Direction::Left) => {
+                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
+                },
+                Some(Direction::Right) => {
+                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
+                },
+                Some(Direction::Up) => {
+                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
+                },
                 Some(Direction::Down) => {
                     PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
                 },
@@ -264,12 +270,16 @@ pub(crate) fn route_action(
                 (Some(Direction::Right), false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
-                (Some(Direction::Up), false) => {
-                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), Some(title), client_id)
-                },
-                (Some(Direction::Down), false) => {
-                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), Some(title), client_id)
-                },
+                (Some(Direction::Up), false) => PtyInstruction::SpawnTerminalHorizontally(
+                    Some(open_file),
+                    Some(title),
+                    client_id,
+                ),
+                (Some(Direction::Down), false) => PtyInstruction::SpawnTerminalHorizontally(
+                    Some(open_file),
+                    Some(title),
+                    client_id,
+                ),
                 // No direction specified or should float - defer placement to screen
                 (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
                     Some(open_file),

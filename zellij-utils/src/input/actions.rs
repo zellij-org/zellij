@@ -174,8 +174,8 @@ pub enum Action {
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
     NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
-                                                                               // optional pane
-                                                                               // name
+    // optional pane
+    // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
@@ -270,7 +270,10 @@ impl Action {
                         hold_on_close: true,
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(Some(run_command_action), name)])
+                        Ok(vec![Action::NewFloatingPane(
+                            Some(run_command_action),
+                            name,
+                        )])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,
