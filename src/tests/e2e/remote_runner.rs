@@ -345,7 +345,7 @@ impl RemoteTerminal {
     pub fn send_command_through_the_cli(&mut self, command: &str) {
         let mut channel = self.channel.lock().unwrap();
         channel
-            .write_all(format!("{} run \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes())
+            .write_all(format!("{} run -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes())
             .unwrap();
         channel.flush().unwrap();
     }
