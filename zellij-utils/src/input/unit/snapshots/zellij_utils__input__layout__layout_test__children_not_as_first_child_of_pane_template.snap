@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 848
+assertion_line: 711
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -13,7 +13,9 @@ Layout {
             children: [
                 PaneLayout {
                     children_split_direction: Horizontal,
-                    name: None,
+                    name: Some(
+                        "my pane",
+                    ),
                     children: [
                         PaneLayout {
                             children_split_direction: Vertical,

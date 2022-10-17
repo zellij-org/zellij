@@ -492,109 +492,124 @@ impl Tab {
         free_space.cols.set_inner(viewport_cols);
         free_space.rows.set_inner(viewport_rows);
 
-        let positions_in_layout = layout.position_panes_in_space(&free_space);
+        match layout.position_panes_in_space(&free_space) {
+            Ok(positions_in_layout) => {
+                let positions_and_size = positions_in_layout.iter();
+                let mut new_ids = new_ids.iter();
 
-        let positions_and_size = positions_in_layout.iter();
-        let mut new_ids = new_ids.iter();
+                let mut focus_pane_id: Option<PaneId> = None;
+                let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
+                    if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
+                        focus_pane_id = Some(pane_id);
+                    }
+                };
 
-        let mut focus_pane_id: Option<PaneId> = None;
-        let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
-            if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
-                focus_pane_id = Some(pane_id);
-            }
-        };
-
-        for (layout, position_and_size) in positions_and_size {
-            // A plugin pane
-            if let Some(Run::Plugin(run)) = layout.run.clone() {
-                let (pid_tx, pid_rx) = channel();
-                let pane_title = run.location.to_string();
-                self.senders
-                    .send_to_plugin(PluginInstruction::Load(pid_tx, run, tab_index, client_id))
-                    .with_context(err_context)?;
-                let pid = pid_rx.recv().with_context(err_context)?;
-                let mut new_plugin = PluginPane::new(
-                    pid,
-                    *position_and_size,
-                    self.senders
-                        .to_plugin
-                        .as_ref()
-                        .with_context(err_context)?
-                        .clone(),
-                    pane_title,
-                    layout.name.clone().unwrap_or_default(),
-                );
-                new_plugin.set_borderless(layout.borderless);
-                self.tiled_panes
-                    .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
-                set_focus_pane_id(layout, PaneId::Plugin(pid));
-            } else {
-                // there are still panes left to fill, use the pids we received in this method
-                if let Some(pid) = new_ids.next() {
-                    let next_terminal_position = self.get_next_terminal_position();
-                    let initial_title = match &layout.run {
-                        Some(Run::Command(run_command)) => Some(run_command.to_string()),
-                        _ => None,
-                    };
-                    let mut new_pane = TerminalPane::new(
-                        *pid,
-                        *position_and_size,
-                        self.style,
-                        next_terminal_position,
-                        layout.name.clone().unwrap_or_default(),
-                        self.link_handler.clone(),
-                        self.character_cell_size.clone(),
-                        self.sixel_image_store.clone(),
-                        self.terminal_emulator_colors.clone(),
-                        self.terminal_emulator_color_codes.clone(),
-                        initial_title,
-                    );
-                    new_pane.set_borderless(layout.borderless);
-                    self.tiled_panes
-                        .add_pane_with_existing_geom(PaneId::Terminal(*pid), Box::new(new_pane));
-                    set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                for (layout, position_and_size) in positions_and_size {
+                    // A plugin pane
+                    if let Some(Run::Plugin(run)) = layout.run.clone() {
+                        let (pid_tx, pid_rx) = channel();
+                        let pane_title = run.location.to_string();
+                        self.senders
+                            .send_to_plugin(PluginInstruction::Load(
+                                pid_tx, run, tab_index, client_id,
+                            ))
+                            .with_context(err_context)?;
+                        let pid = pid_rx.recv().with_context(err_context)?;
+                        let mut new_plugin = PluginPane::new(
+                            pid,
+                            *position_and_size,
+                            self.senders
+                                .to_plugin
+                                .as_ref()
+                                .with_context(err_context)?
+                                .clone(),
+                            pane_title,
+                            layout.name.clone().unwrap_or_default(),
+                        );
+                        new_plugin.set_borderless(layout.borderless);
+                        self.tiled_panes
+                            .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
+                        set_focus_pane_id(layout, PaneId::Plugin(pid));
+                    } else {
+                        // there are still panes left to fill, use the pids we received in this method
+                        if let Some(pid) = new_ids.next() {
+                            let next_terminal_position = self.get_next_terminal_position();
+                            let initial_title = match &layout.run {
+                                Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                                _ => None,
+                            };
+                            let mut new_pane = TerminalPane::new(
+                                *pid,
+                                *position_and_size,
+                                self.style,
+                                next_terminal_position,
+                                layout.name.clone().unwrap_or_default(),
+                                self.link_handler.clone(),
+                                self.character_cell_size.clone(),
+                                self.sixel_image_store.clone(),
+                                self.terminal_emulator_colors.clone(),
+                                self.terminal_emulator_color_codes.clone(),
+                                initial_title,
+                            );
+                            new_pane.set_borderless(layout.borderless);
+                            self.tiled_panes.add_pane_with_existing_geom(
+                                PaneId::Terminal(*pid),
+                                Box::new(new_pane),
+                            );
+                            set_focus_pane_id(layout, PaneId::Terminal(*pid));
+                        }
+                    }
                 }
-            }
-        }
-        for unused_pid in new_ids {
-            // this is a bit of a hack and happens because we don't have any central location that
-            // can query the screen as to how many panes it needs to create a layout
-            // fixing this will require a bit of an architecture change
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
-                .with_context(err_context)?;
-        }
-        // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
-        // non-fixed panes that are part of the viewport, get rid of this!
-        let display_area = {
-            let display_area = self.display_area.borrow();
-            *display_area
-        };
-        self.resize_whole_tab(display_area);
-        let boundary_geoms = self.tiled_panes.fixed_pane_geoms();
-        for geom in boundary_geoms {
-            self.offset_viewport(&geom)
-        }
-        self.tiled_panes.set_pane_frames(self.draw_pane_frames);
-        self.should_clear_display_before_rendering = true;
+                for unused_pid in new_ids {
+                    // this is a bit of a hack and happens because we don't have any central location that
+                    // can query the screen as to how many panes it needs to create a layout
+                    // fixing this will require a bit of an architecture change
+                    self.senders
+                        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
+                        .with_context(err_context)?;
+                }
+                // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
+                // non-fixed panes that are part of the viewport, get rid of this!
+                let display_area = {
+                    let display_area = self.display_area.borrow();
+                    *display_area
+                };
+                self.resize_whole_tab(display_area);
+                let boundary_geoms = self.tiled_panes.fixed_pane_geoms();
+                for geom in boundary_geoms {
+                    self.offset_viewport(&geom)
+                }
+                self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+                self.should_clear_display_before_rendering = true;
 
-        if let Some(pane_id) = focus_pane_id {
-            self.focus_pane_id = Some(pane_id);
-            self.tiled_panes.focus_pane(pane_id, client_id);
-        } else {
-            // This is the end of the nasty viewport hack...
-            let next_selectable_pane_id = self.tiled_panes.first_selectable_pane_id();
-            match next_selectable_pane_id {
-                Some(active_pane_id) => {
-                    self.tiled_panes.focus_pane(active_pane_id, client_id);
-                },
-                None => {
-                    // this is very likely a configuration error (layout with no selectable panes)
-                    self.tiled_panes.clear_active_panes();
-                },
-            }
+                if let Some(pane_id) = focus_pane_id {
+                    self.focus_pane_id = Some(pane_id);
+                    self.tiled_panes.focus_pane(pane_id, client_id);
+                } else {
+                    // This is the end of the nasty viewport hack...
+                    let next_selectable_pane_id = self.tiled_panes.first_selectable_pane_id();
+                    match next_selectable_pane_id {
+                        Some(active_pane_id) => {
+                            self.tiled_panes.focus_pane(active_pane_id, client_id);
+                        },
+                        None => {
+                            // this is very likely a configuration error (layout with no selectable panes)
+                            self.tiled_panes.clear_active_panes();
+                        },
+                    }
+                }
+                Ok(())
+            },
+            Err(e) => {
+                for unused_pid in new_ids {
+                    self.senders
+                        .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(unused_pid)))
+                        .with_context(err_context)?;
+                }
+                log::error!("{}", e); // TODO: propagate this to the user
+                Ok(())
+            },
         }
-        Ok(())
     }
     pub fn update_input_modes(&mut self) -> Result<()> {
         // this updates all plugins with the client's input mode

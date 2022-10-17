@@ -345,12 +345,12 @@ impl Action {
                 Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::NewTab { name, layout } => {
+            CliAction::NewTab { name, layout, cwd } => {
                 if let Some(layout_path) = layout {
                     let (path_to_raw_layout, raw_layout) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), None)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout).map_err(|e| {
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));

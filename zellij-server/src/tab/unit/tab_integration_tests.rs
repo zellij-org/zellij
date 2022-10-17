@@ -251,7 +251,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let layout = Layout::from_str(layout, "layout_file_name".into()).unwrap();
+    let layout = Layout::from_str(layout, "layout_file_name".into(), None).unwrap();
     let tab_layout = layout.new_tab();
     let mut tab = Tab::new(
         index,

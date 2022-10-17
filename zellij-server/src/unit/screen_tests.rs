@@ -2208,6 +2208,7 @@ pub fn send_cli_new_tab_action_default_params() {
     let new_tab_action = CliAction::NewTab {
         name: None,
         layout: None,
+        cwd: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2243,6 +2244,7 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
             "{}/src/unit/fixtures/layout-with-three-panes.kdl",
             env!("CARGO_MANIFEST_DIR")
         ))),
+        cwd: None,
     };
     send_cli_action_to_server(
         &session_metadata,

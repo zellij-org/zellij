@@ -257,5 +257,7 @@ pub enum CliAction {
         layout: Option<PathBuf>,
         #[clap(short, long, value_parser)]
         name: Option<String>,
+        #[clap(short, long, value_parser, requires("layout"))]
+        cwd: Option<PathBuf>,
     },
 }
