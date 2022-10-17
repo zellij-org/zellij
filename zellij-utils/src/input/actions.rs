@@ -109,37 +109,6 @@ impl FromStr for SearchOption {
     }
 }
 
-fn split_escaped_whitespace(s: &str) -> Vec<String> {
-    s.split_ascii_whitespace()
-        .map(|s| String::from(s))
-        .fold(vec![], |mut acc, part| {
-            if let Some(previous_part) = acc.last_mut() {
-                if previous_part.ends_with('\\') {
-                    previous_part.push(' ');
-                    previous_part.push_str(&part);
-                    return acc;
-                }
-            }
-            acc.push(part);
-            acc
-        })
-}
-
-fn split_command_and_args(command: String) -> (PathBuf, Vec<String>) {
-    let mut full_command = split_escaped_whitespace(&command);
-    let mut command = None;
-    let mut command_args = vec![];
-    for part in full_command.drain(..) {
-        if command.is_none() {
-            command = Some(part);
-        } else {
-            command_args.push(part);
-        }
-    }
-    let command = PathBuf::from(command.unwrap());
-    (command, command_args)
-}
-
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -285,9 +254,10 @@ impl Action {
                 command,
                 cwd,
                 floating,
-            } => match command {
-                Some(command) => {
-                    let (command, args) = split_command_and_args(command);
+            } => {
+                if !command.is_empty() {
+                    let mut command = command.clone();
+                    let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let cwd = cwd.or_else(|| std::env::current_dir().ok());
                     let run_command_action = RunCommandAction {
                         command,
@@ -304,14 +274,13 @@ impl Action {
                             Some(run_command_action),
                         )])
                     }
-                },
-                None => {
+                } else {
                     if floating {
                         Ok(vec![Action::NewFloatingPane(None)])
                     } else {
                         Ok(vec![Action::NewTiledPane(direction, None)])
                     }
-                },
+                }
             },
             CliAction::Edit {
                 direction,

@@ -1815,7 +1815,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     );
     let cli_new_pane_action = CliAction::NewPane {
         direction: None,
-        command: None,
+        command: vec![],
         cwd: None,
         floating: false,
     };
@@ -1852,7 +1852,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
     );
     let cli_new_pane_action = CliAction::NewPane {
         direction: Some(Direction::Right),
-        command: None,
+        command: vec![],
         cwd: None,
         floating: false,
     };
@@ -1889,7 +1889,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     );
     let cli_new_pane_action = CliAction::NewPane {
         direction: Some(Direction::Right),
-        command: Some("htop".into()),
+        command: vec!["htop".into()],
         cwd: Some("/some/folder".into()),
         floating: false,
     };

@@ -127,7 +127,10 @@ pub enum Sessions {
     /// Run a command in a new pane
     #[clap(visible_alias = "r")]
     Run {
-        command: Option<String>,
+        // #[clap(value_delimiter(' '), last(true), required(true))]
+        #[clap(last(true), required(true))]
+        command: Vec<String>,
+        // command: Option<String>,
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
         #[clap(long, value_parser)]
@@ -206,8 +209,8 @@ pub enum CliAction {
     NewPane {
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
-        #[clap(short, long, value_parser)]
-        command: Option<String>,
+        #[clap(last(true))]
+        command: Vec<String>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
