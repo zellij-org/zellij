@@ -343,9 +343,7 @@ impl Pane for TerminalPane {
         input_mode: InputMode,
     ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
         // TODO: remove the cursor stuff from here
-        let pane_title = if let Some((_exit_status, run_command)) = &self.is_held {
-            format!("{}", run_command)
-        } else if self.pane_name.is_empty()
+        let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {

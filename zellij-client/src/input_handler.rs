@@ -267,7 +267,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action, None));
             },
             Action::CloseFocus
-            | Action::NewPane(_)
+            | Action::NewPane(..)
             | Action::Run(_)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating

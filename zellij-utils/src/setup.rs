@@ -125,6 +125,18 @@ pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
     "assets/completions/comp.fish"
 ));
 
+pub const BASH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/completions/comp.bash"
+));
+
+pub const ZSH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/completions/comp.zsh"
+));
+
 pub const BASH_AUTO_START_SCRIPT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
@@ -412,13 +424,17 @@ impl Setup {
         clap_complete::generate(shell, &mut CliArgs::command(), "zellij", &mut out);
         // add shell dependent extra completion
         match shell {
-            Shell::Bash => {},
+            Shell::Bash => {
+                let _ = out.write_all(BASH_EXTRA_COMPLETION);
+            },
             Shell::Elvish => {},
             Shell::Fish => {
                 let _ = out.write_all(FISH_EXTRA_COMPLETION);
             },
             Shell::PowerShell => {},
-            Shell::Zsh => {},
+            Shell::Zsh => {
+                let _ = out.write_all(ZSH_EXTRA_COMPLETION);
+            },
             _ => {},
         };
     }

@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 549
+assertion_line: 575
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -75,6 +75,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
@@ -339,6 +340,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -498,6 +500,7 @@ Config {
                     Some(
                         Down,
                     ),
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -552,6 +555,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -569,6 +573,7 @@ Config {
                     Some(
                         Right,
                     ),
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -667,6 +672,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
@@ -1019,6 +1025,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -1280,6 +1287,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -1480,6 +1488,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
@@ -1761,6 +1770,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -1962,6 +1972,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -2159,6 +2170,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
@@ -2362,6 +2374,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
@@ -2624,6 +2637,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -2819,6 +2833,7 @@ Config {
             ): [
                 NewPane(
                     None,
+                    None,
                 ),
             ],
             Alt(
@@ -2978,6 +2993,7 @@ Config {
                     Some(
                         Down,
                     ),
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -2990,6 +3006,7 @@ Config {
                     Some(
                         Right,
                     ),
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -3163,6 +3180,7 @@ Config {
                 ),
             ): [
                 NewPane(
+                    None,
                     None,
                 ),
             ],
