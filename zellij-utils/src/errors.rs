@@ -547,10 +547,15 @@ mod not_wasm {
                 Ok(val) => crate::anyhow::Ok(val),
                 Err(e) => {
                     let (msg, context) = e.into_inner();
-                    Err(
-                        crate::anyhow::anyhow!("failed to send message to channel: {:#?}", msg)
-                            .context(context.to_string()),
-                    )
+                    if *crate::consts::DEBUG_MODE.get().unwrap_or(&true) {
+                        Err(
+                            crate::anyhow::anyhow!("failed to send message to channel: {:#?}", msg)
+                                .context(context.to_string()),
+                        )
+                    } else {
+                        Err(crate::anyhow::anyhow!("failed to send message to channel")
+                            .context(context.to_string()))
+                    }
                 },
             }
         }

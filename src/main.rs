@@ -74,7 +74,7 @@ fn main() {
     {
         commands::kill_session(target_session);
     } else if let Some(path) = opts.server {
-        commands::start_server(path);
+        commands::start_server(path, opts.debug);
     } else {
         commands::start_client(opts);
     }

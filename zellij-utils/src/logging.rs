@@ -21,7 +21,7 @@ use log4rs::encode::pattern::PatternEncoder;
 use crate::consts::{ZELLIJ_TMP_DIR, ZELLIJ_TMP_LOG_DIR, ZELLIJ_TMP_LOG_FILE};
 use crate::shared::set_permissions;
 
-const LOG_MAX_BYTES: u64 = 1024 * 100;
+const LOG_MAX_BYTES: u64 = 1024 * 1024 * 16; // 16 MiB per log
 
 pub fn configure_logger() {
     atomic_create_dir(&*ZELLIJ_TMP_DIR).unwrap();
