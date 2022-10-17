@@ -513,8 +513,8 @@ impl Pane for TerminalPane {
         self.geom.y -= count;
         self.reflow_lines();
     }
-    fn dump_screen(&mut self, _client_id: ClientId) -> String {
-        self.grid.dump_screen()
+    fn dump_screen(&mut self, _client_id: ClientId, full: bool) -> String {
+        self.grid.dump_screen(full)
     }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);

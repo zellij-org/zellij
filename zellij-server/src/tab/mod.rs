@@ -165,7 +165,7 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
-    fn dump_screen(&mut self, _client_id: ClientId) -> String {
+    fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
         "".to_owned()
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId);
@@ -1783,16 +1783,30 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn dump_active_terminal_screen(&mut self, file: Option<String>, client_id: ClientId) {
+    pub fn dump_active_terminal_screen(
+        &mut self,
+        file: Option<String>,
+        client_id: ClientId,
+        full: Option<bool>,
+    ) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let dump = active_pane.dump_screen(client_id);
+            let full_scrollback = match full {
+                Some(true) => true,
+                Some(false) => false,
+                None => true,
+            };
+            let dump = active_pane.dump_screen(client_id, full_scrollback);
             self.os_api.write_to_file(dump, file);
         }
     }
     pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
-        self.dump_active_terminal_screen(Some(String::from(file.to_string_lossy())), client_id);
+        self.dump_active_terminal_screen(
+            Some(String::from(file.to_string_lossy())),
+            client_id,
+            None,
+        );
         let line_number = self
             .get_active_pane(client_id)
             .and_then(|a_t| a_t.get_line_number());

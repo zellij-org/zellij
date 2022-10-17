@@ -170,7 +170,7 @@ pub enum Action {
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
     /// Dumps the screen to a file
-    DumpScreen(String),
+    DumpScreen(String, Option<bool>),
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,
@@ -266,8 +266,9 @@ impl Action {
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(Some(direction))]),
-            CliAction::DumpScreen { path } => Ok(vec![Action::DumpScreen(
+            CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
+                full,
             )]),
             CliAction::EditScrollback => Ok(vec![Action::EditScrollback]),
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
