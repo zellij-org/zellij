@@ -12,7 +12,7 @@ use std::str::FromStr;
 use crate::{
     kdl_child_with_name, kdl_children_nodes, kdl_get_bool_property_or_child_value,
     kdl_get_bool_property_or_child_value_with_error, kdl_get_child,
-    kdl_get_int_property_or_child_value, kdl_get_property_or_child, kdl_get_string_entry,
+    kdl_get_int_property_or_child_value, kdl_get_property_or_child,
     kdl_get_string_property_or_child_value, kdl_get_string_property_or_child_value_with_error,
     kdl_name, kdl_parsing_error, kdl_property_names, kdl_property_or_child_value_node,
     kdl_string_arguments,
@@ -24,6 +24,7 @@ use std::vec::Vec;
 use url::Url;
 
 pub struct KdlLayoutParser<'a> {
+    global_cwd: Option<PathBuf>,
     raw_layout: &'a str,
     tab_templates: HashMap<String, (PaneLayout, KdlNode)>,
     pane_templates: HashMap<String, (PaneLayout, KdlNode)>,
@@ -31,12 +32,13 @@ pub struct KdlLayoutParser<'a> {
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str) -> Self {
+    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
         KdlLayoutParser {
             raw_layout,
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,
+            global_cwd,
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -46,6 +48,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "tab_template"
             || word == "default_tab_template"
             || word == "command"
+            || word == "edit"
             || word == "plugin"
             || word == "children"
             || word == "tab"
@@ -64,6 +67,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "size"
             || property_name == "plugin"
             || property_name == "command"
+            || property_name == "edit"
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "split_direction"
@@ -92,8 +96,22 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn parse_split_size(&self, kdl_node: &KdlNode) -> Result<Option<SplitSize>, ConfigError> {
         if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, "size") {
-            Ok(Some(SplitSize::from_str(size)?))
+            match SplitSize::from_str(size) {
+                Ok(size) => Ok(Some(size)),
+                Err(_e) => Err(kdl_parsing_error!(
+                    format!(
+                        "size should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")"
+                    ),
+                    kdl_node
+                )),
+            }
         } else if let Some(size) = kdl_get_int_property_or_child_value!(kdl_node, "size") {
+            if size == 0 {
+                return Err(kdl_parsing_error!(
+                    format!("size should be greater than 0"),
+                    kdl_node
+                ));
+            }
             Ok(Some(SplitSize::Fixed(size as usize)))
         } else if let Some(node) = kdl_property_or_child_value_node!(kdl_node, "size") {
             Err(kdl_parsing_error!(
@@ -143,54 +161,98 @@ impl<'a> KdlLayoutParser<'a> {
             location,
         })))
     }
-    fn parse_pane_command(&self, pane_node: &KdlNode) -> Result<Option<Run>, ConfigError> {
-        let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
-            .map(|c| PathBuf::from(c));
-        let cwd = kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
-            .map(|c| PathBuf::from(c));
-        let args = match kdl_get_child!(pane_node, "args") {
+    fn parse_args(&self, pane_node: &KdlNode) -> Result<Option<Vec<String>>, ConfigError> {
+        match kdl_get_child!(pane_node, "args") {
             Some(kdl_args) => {
                 if kdl_args.entries().is_empty() {
                     return Err(kdl_parsing_error!(format!("args cannot be empty and should contain one or more command arguments (eg. args \"-h\" \"-v\")"), kdl_args));
                 }
-                Some(
+                Ok(Some(
                     kdl_string_arguments!(kdl_args)
                         .iter()
                         .map(|s| String::from(*s))
                         .collect(),
-                )
+                ))
             },
-            None => None,
+            None => Ok(None),
+        }
+    }
+    fn parse_cwd(&self, kdl_node: &KdlNode) -> Result<Option<PathBuf>, ConfigError> {
+        Ok(
+            kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd")
+                .and_then(|c| match &self.global_cwd {
+                    Some(global_cwd) => Some(global_cwd.join(c)),
+                    None => Some(PathBuf::from(c)),
+                })
+                .or_else(|| self.global_cwd.as_ref().map(|g| g.clone())),
+        )
+    }
+    fn parse_pane_command(
+        &self,
+        pane_node: &KdlNode,
+        is_template: bool,
+    ) -> Result<Option<Run>, ConfigError> {
+        let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
+            .map(|c| PathBuf::from(c));
+        let edit = kdl_get_string_property_or_child_value_with_error!(pane_node, "edit")
+            .map(|c| PathBuf::from(c));
+        let cwd = if is_template {
+            // we fill the global_cwd for templates later
+            kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
+                .map(|c| PathBuf::from(c))
+        } else {
+            self.parse_cwd(pane_node)?
         };
-        match (command, cwd, args) {
-            (None, Some(_cwd), _) => Err(ConfigError::new_kdl_error(
-                "cwd can only be set if a command was specified".into(),
-                pane_node.span().offset(),
-                pane_node.span().len(),
-            )),
-            (None, _, Some(_args)) => Err(ConfigError::new_kdl_error(
+        let args = self.parse_args(pane_node)?;
+        match (command, edit, cwd, args, is_template) {
+            (None, None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
+            (None, _, _, Some(_args), false) => Err(ConfigError::new_kdl_error(
                 "args can only be set if a command was specified".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
             )),
-            (Some(command), cwd, args) => Ok(Some(Run::Command(RunCommand {
+            (Some(command), None, cwd, args, _) => Ok(Some(Run::Command(RunCommand {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
                 hold_on_close: true,
             }))),
+            (None, Some(edit), Some(cwd), _, _) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
+            (None, Some(edit), None, _, _) => Ok(Some(Run::EditFile(edit, None))),
+            (Some(_command), Some(_edit), _, _, _) => Err(ConfigError::new_kdl_error(
+                "cannot have both a command and an edit instruction for the same pane".into(),
+                pane_node.span().offset(),
+                pane_node.span().len(),
+            )),
             _ => Ok(None),
         }
     }
-    fn parse_command_or_plugin_block(
+    fn parse_command_plugin_or_edit_block(
         &self,
         kdl_node: &KdlNode,
     ) -> Result<Option<Run>, ConfigError> {
-        let mut run = self.parse_pane_command(kdl_node)?;
+        let mut run = self.parse_pane_command(kdl_node, false)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             if run.is_some() {
                 return Err(ConfigError::new_kdl_error(
-                    "Cannot have both a command and a plugin block for a single pane".into(),
+                    "Cannot have both a command/edit and a plugin block for a single pane".into(),
+                    plugin_block.span().offset(),
+                    plugin_block.span().len(),
+                ));
+            }
+            run = self.parse_plugin_block(plugin_block)?;
+        }
+        Ok(run)
+    }
+    fn parse_command_plugin_or_edit_block_for_template(
+        &self,
+        kdl_node: &KdlNode,
+    ) -> Result<Option<Run>, ConfigError> {
+        let mut run = self.parse_pane_command(kdl_node, true)?;
+        if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
+            if run.is_some() {
+                return Err(ConfigError::new_kdl_error(
+                    "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
                 ));
@@ -206,7 +268,7 @@ impl<'a> KdlLayoutParser<'a> {
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
+        let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, children) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
@@ -225,66 +287,125 @@ impl<'a> KdlLayoutParser<'a> {
             ..Default::default()
         })
     }
+    fn insert_children_to_pane_template(
+        &self,
+        kdl_node: &KdlNode,
+        pane_template: &mut PaneLayout,
+        pane_template_kdl_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
+        let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
+            Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
+            None => (None, vec![]),
+        };
+        if pane_parts.len() > 0 {
+            let child_panes_layout = PaneLayout {
+                children_split_direction,
+                children: pane_parts,
+                external_children_index,
+                ..Default::default()
+            };
+            self.assert_one_children_block(&pane_template, pane_template_kdl_node)?;
+            self.insert_layout_children_or_error(
+                pane_template,
+                child_panes_layout,
+                pane_template_kdl_node,
+            )?;
+        }
+        Ok(())
+    }
     fn parse_pane_node_with_template(
         &self,
         kdl_node: &KdlNode,
-        mut pane_layout: PaneLayout,
-        pane_layout_kdl_node: &KdlNode,
+        mut pane_template: PaneLayout,
+        pane_template_kdl_node: &KdlNode,
     ) -> Result<PaneLayout, ConfigError> {
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
+        let args = self.parse_args(kdl_node)?;
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
-
-        let children_split_direction = self.parse_split_direction(kdl_node)?;
-        match kdl_children_nodes!(kdl_node) {
-            Some(children) => {
-                let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
-                let child_panes_layout = PaneLayout {
-                    children_split_direction,
-                    children: child_panes,
-                    ..Default::default()
-                };
-                self.assert_one_children_block(&pane_layout, pane_layout_kdl_node)?;
-                self.insert_layout_children_or_error(
-                    &mut pane_layout,
-                    child_panes_layout,
-                    pane_layout_kdl_node,
-                )?;
-            },
-            None => {
-                if let Some(borderless) = borderless {
-                    pane_layout.borderless = borderless;
-                }
-                if let Some(focus) = focus {
-                    pane_layout.focus = Some(focus);
-                }
-                if let Some(name) = name {
-                    pane_layout.name = Some(name);
-                }
-                if let Some(split_size) = split_size {
-                    pane_layout.split_size = Some(split_size);
-                }
-                if let Some(run) = run {
-                    pane_layout.run = Some(run);
-                }
-                if let Some(index_of_children) = pane_layout.external_children_index {
-                    pane_layout
-                        .children
-                        .insert(index_of_children, PaneLayout::default());
-                }
-            },
+        let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
+        self.assert_no_bare_args_in_pane_node_with_template(
+            &run,
+            &pane_template.run,
+            &args,
+            kdl_node,
+        )?;
+        self.insert_children_to_pane_template(
+            kdl_node,
+            &mut pane_template,
+            pane_template_kdl_node,
+        )?;
+        pane_template.run = Run::merge(&pane_template.run, &run);
+        self.populate_global_cwd_for_pane_run(&mut pane_template.run)?;
+        if let (Some(Run::Command(pane_template_run_command)), Some(args)) =
+            (pane_template.run.as_mut(), args)
+        {
+            if !args.is_empty() {
+                pane_template_run_command.args = args.clone();
+            }
         }
-        pane_layout.external_children_index = None;
-        Ok(pane_layout)
+        if let Some(borderless) = borderless {
+            pane_template.borderless = borderless;
+        }
+        if let Some(focus) = focus {
+            pane_template.focus = Some(focus);
+        }
+        if let Some(name) = name {
+            pane_template.name = Some(name);
+        }
+        if let Some(split_size) = split_size {
+            pane_template.split_size = Some(split_size);
+        }
+        if let Some(index_of_children) = pane_template.external_children_index {
+            pane_template
+                .children
+                .insert(index_of_children, PaneLayout::default());
+        }
+        pane_template.external_children_index = None;
+        Ok(pane_template)
+    }
+    fn populate_global_cwd_for_pane_run(
+        &self,
+        pane_run: &mut Option<Run>,
+    ) -> Result<(), ConfigError> {
+        if let Some(global_cwd) = &self.global_cwd {
+            match pane_run.as_mut() {
+                Some(Run::Command(run_command)) => match run_command.cwd.as_mut() {
+                    Some(run_command_cwd) => {
+                        *run_command_cwd = global_cwd.join(&run_command_cwd);
+                    },
+                    None => {
+                        run_command.cwd = Some(global_cwd.clone());
+                    },
+                },
+                Some(Run::EditFile(path_to_file, _line_number)) => {
+                    *path_to_file = global_cwd.join(&path_to_file);
+                },
+                Some(Run::Cwd(pane_template_cwd)) => {
+                    *pane_template_cwd = global_cwd.join(&pane_template_cwd);
+                },
+                _ => {},
+            }
+        }
+        Ok(())
     }
     fn parse_split_direction(&self, kdl_node: &KdlNode) -> Result<SplitDirection, ConfigError> {
-        Ok(match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        })
+        match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
+            Some(direction) => match SplitDirection::from_str(direction) {
+                Ok(split_direction) => Ok(split_direction),
+                Err(_e) => Err(kdl_parsing_error!(
+                    format!(
+                        "split_direction should be either \"horizontal\" or \"vertical\" found: {}",
+                        direction
+                    ),
+                    kdl_node
+                )),
+            },
+            None => Ok(SplitDirection::default()),
+        }
     }
     fn parse_pane_template_node(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         self.assert_valid_pane_properties(kdl_node)?;
@@ -299,7 +420,7 @@ impl<'a> KdlLayoutParser<'a> {
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let split_size = self.parse_split_size(kdl_node)?;
-        let run = self.parse_command_or_plugin_block(kdl_node)?;
+        let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
@@ -333,10 +454,7 @@ impl<'a> KdlLayoutParser<'a> {
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         let children = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
             None => vec![],
@@ -397,6 +515,15 @@ impl<'a> KdlLayoutParser<'a> {
             if kdl_name!(child) == "pane" {
                 nodes.push(self.parse_pane_node(child)?);
             } else if kdl_name!(child) == "children" {
+                let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                let node_has_entries = !child.entries().is_empty();
+                if node_has_child_nodes || node_has_entries {
+                    return Err(ConfigError::new_kdl_error(
+                        format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
+                        child.span().offset(),
+                        child.span().len(),
+                    ));
+                }
                 external_children_index = Some(i);
             } else if let Some((pane_template, pane_template_kdl_node)) =
                 self.pane_templates.get(kdl_name!(child)).cloned()
@@ -434,6 +561,21 @@ impl<'a> KdlLayoutParser<'a> {
             }
         }
         false
+    }
+    fn assert_no_bare_args_in_pane_node_with_template(
+        &self,
+        pane_run: &Option<Run>,
+        pane_template_run: &Option<Run>,
+        args: &Option<Vec<String>>,
+        pane_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
+        if let (None, None, true) = (pane_run, pane_template_run, args.is_some()) {
+            return Err(kdl_parsing_error!(
+                format!("args can only be specified if a command was specified either in the pane_template or in the pane"),
+                pane_node
+            ));
+        }
+        Ok(())
     }
     fn assert_one_children_block(
         &self,
@@ -494,11 +636,18 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
         let has_focus_prop =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
-        let has_run_prop = self.parse_command_or_plugin_block(kdl_node)?.is_some();
+        let has_cwd_prop =
+            kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
+        let has_non_cwd_run_prop = self
+            .parse_command_plugin_or_edit_block(kdl_node)?
+            .map(|r| match r {
+                Run::Cwd(_) => false,
+                _ => true,
+            })
+            .unwrap_or(false);
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
-
         if has_nested_nodes_or_children_block
-            && (has_borderless_prop || has_focus_prop || has_run_prop)
+            && (has_borderless_prop || has_focus_prop || has_non_cwd_run_prop || has_cwd_prop)
         {
             let mut offending_nodes = vec![];
             if has_borderless_prop {
@@ -507,8 +656,11 @@ impl<'a> KdlLayoutParser<'a> {
             if has_focus_prop {
                 offending_nodes.push("focus");
             }
-            if has_run_prop {
-                offending_nodes.push("command/plugin");
+            if has_non_cwd_run_prop {
+                offending_nodes.push("command/edit/plugin");
+            }
+            if has_cwd_prop {
+                offending_nodes.push("cwd");
             }
             Err(ConfigError::new_kdl_error(
                 format!(
@@ -549,10 +701,7 @@ impl<'a> KdlLayoutParser<'a> {
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
-        let children_split_direction = match kdl_get_string_entry!(kdl_node, "split_direction") {
-            Some(direction) => SplitDirection::from_str(direction)?,
-            None => SplitDirection::default(),
-        };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
                 let child_panes = self.parse_child_pane_nodes_for_tab(children)?;
@@ -618,11 +767,7 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn parse_tab_template_node(&self, kdl_node: &KdlNode) -> Result<PaneLayout, ConfigError> {
         self.assert_valid_tab_properties(kdl_node)?;
-        let children_split_direction =
-            match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
-                Some(direction) => SplitDirection::from_str(direction)?,
-                None => SplitDirection::default(),
-            };
+        let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut tab_children = vec![];
         let mut external_children_index = None;
         if let Some(children) = kdl_children_nodes!(kdl_node) {
@@ -630,6 +775,16 @@ impl<'a> KdlLayoutParser<'a> {
                 if kdl_name!(child) == "pane" {
                     tab_children.push(self.parse_pane_node(child)?);
                 } else if kdl_name!(child) == "children" {
+                    let node_has_child_nodes =
+                        child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                    let node_has_entries = !child.entries().is_empty();
+                    if node_has_child_nodes || node_has_entries {
+                        return Err(ConfigError::new_kdl_error(
+                            format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
+                            child.span().offset(),
+                            child.span().len(),
+                        ));
+                    }
                     external_children_index = Some(i);
                 } else if let Some((pane_template, pane_template_kdl_node)) =
                     self.pane_templates.get(kdl_name!(child)).cloned()
@@ -737,6 +892,17 @@ impl<'a> KdlLayoutParser<'a> {
                 if child_name == Some(pane_template_name) {
                     self.parse_pane_template_node(child)?;
                 }
+            }
+        }
+        Ok(())
+    }
+    fn populate_global_cwd(&mut self, layout_node: &KdlNode) -> Result<(), ConfigError> {
+        // we only populate global cwd from the layout file if another wasn't explicitly passed to us
+        if self.global_cwd.is_none() {
+            if let Some(global_cwd) =
+                kdl_get_string_property_or_child_value_with_error!(layout_node, "cwd")
+            {
+                self.global_cwd = Some(PathBuf::from(global_cwd));
             }
         }
         Ok(())
@@ -939,6 +1105,7 @@ impl<'a> KdlLayoutParser<'a> {
         let mut child_tabs = vec![];
         let mut child_panes = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {
+            self.populate_global_cwd(layout_node)?;
             self.populate_pane_templates(children, &kdl_layout)?;
             self.populate_tab_templates(children)?;
             for child in children {

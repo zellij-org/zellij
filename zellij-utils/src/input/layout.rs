@@ -62,6 +62,55 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
+    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
+    Cwd(PathBuf),
+}
+
+impl Run {
+    pub fn merge(base: &Option<Run>, other: &Option<Run>) -> Option<Run> {
+        // This method is necessary to merge between pane_templates and their consumers
+        // TODO: reconsider the way we parse command/edit/plugin pane_templates from layouts to prevent this
+        // madness
+        // TODO: handle Plugin variants once there's a need
+        match (base, other) {
+            (Some(Run::Command(base_run_command)), Some(Run::Command(other_run_command))) => {
+                let mut merged = other_run_command.clone();
+                if merged.cwd.is_none() && base_run_command.cwd.is_some() {
+                    merged.cwd = base_run_command.cwd.clone();
+                }
+                if merged.args.is_empty() && !base_run_command.args.is_empty() {
+                    merged.args = base_run_command.args.clone();
+                }
+                Some(Run::Command(merged))
+            },
+            (Some(Run::Command(base_run_command)), Some(Run::Cwd(other_cwd))) => {
+                let mut merged = base_run_command.clone();
+                merged.cwd = Some(other_cwd.clone());
+                Some(Run::Command(merged))
+            },
+            (Some(Run::Cwd(base_cwd)), Some(Run::Command(other_command))) => {
+                let mut merged = other_command.clone();
+                if merged.cwd.is_none() {
+                    merged.cwd = Some(base_cwd.clone());
+                }
+                Some(Run::Command(merged))
+            },
+            (
+                Some(Run::Command(base_run_command)),
+                Some(Run::EditFile(file_to_edit, line_number)),
+            ) => match &base_run_command.cwd {
+                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
+                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+            },
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
+                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            },
+            (Some(_base), Some(other)) => Some(other.clone()),
+            (Some(base), _) => Some(base.clone()),
+            (None, Some(other)) => Some(other.clone()),
+            (None, None) => None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -156,8 +205,17 @@ impl PaneLayout {
         }
         count
     }
-    pub fn position_panes_in_space(&self, space: &PaneGeom) -> Vec<(PaneLayout, PaneGeom)> {
-        split_space(space, self, space)
+    pub fn position_panes_in_space(
+        &self,
+        space: &PaneGeom,
+    ) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
+        let layouts = split_space(space, self, space);
+        for (_pane_layout, pane_geom) in layouts.iter() {
+            if !pane_geom.is_at_least_minimum_size() {
+                return Err("No room on screen for this layout!");
+            }
+        }
+        Ok(layouts)
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
         let mut run_instructions = vec![];
@@ -243,12 +301,16 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout)?;
+        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, None)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
-    pub fn from_str(raw: &str, path_to_raw_layout: String) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout)
+    pub fn from_str(
+        raw: &str,
+        path_to_raw_layout: String,
+        cwd: Option<PathBuf>,
+    ) -> Result<Layout, ConfigError> {
+        Layout::from_kdl(raw, path_to_raw_layout, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,

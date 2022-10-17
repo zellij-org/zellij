@@ -1,0 +1,37 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 1314
+expression: "format!(\"{:#?}\", layout)"
+---
+Layout {
+    tabs: [],
+    focused_tab_index: None,
+    template: Some(
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [
+                PaneLayout {
+                    children_split_direction: Horizontal,
+                    name: None,
+                    children: [],
+                    split_size: None,
+                    run: Some(
+                        EditFile(
+                            "/tmp/foo/bar",
+                            None,
+                        ),
+                    ),
+                    borderless: false,
+                    focus: None,
+                    external_children_index: None,
+                },
+            ],
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+        },
+    ),
+}
