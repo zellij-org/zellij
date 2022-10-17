@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow layouts to have a global cwd (https://github.com/zellij-org/zellij/pull/1798)
 * feat: edit panes in layouts (https://github.com/zellij-org/zellij/pull/1799)
 * debugging: Log `thread_bus` IPC messages only in debug mode (https://github.com/zellij-org/zellij/pull/1800)
+* feat: improve zellij run CLI (https://github.com/zellij-org/zellij/pull/1804)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
