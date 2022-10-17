@@ -24,6 +24,7 @@ fn main() {
             direction,
             cwd,
             floating,
+            name,
         })) = opts.command
         {
             let command_cli_action = CliAction::NewPane {
@@ -31,6 +32,7 @@ fn main() {
                 direction,
                 cwd,
                 floating,
+                name,
             };
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);

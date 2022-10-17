@@ -31,11 +31,15 @@ pub enum ClientOrTabIndex {
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
 pub(crate) enum PtyInstruction {
-    SpawnTerminal(Option<TerminalAction>, Option<bool>, ClientOrTabIndex), // bool (if Some) is
-    // should_float
+    SpawnTerminal(Option<TerminalAction>, Option<bool>, Option<String>, ClientOrTabIndex), // bool (if Some) is
+    // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, ClientId),
-    SpawnTerminalHorizontally(Option<TerminalAction>, ClientId),
+    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
+                                                                               // optional pane
+                                                                               // name
+    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
+                                                                                 // optional pane
+                                                                                 // name
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -82,14 +86,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
         match event {
-            PtyInstruction::SpawnTerminal(terminal_action, should_float, client_or_tab_index) => {
+            PtyInstruction::SpawnTerminal(terminal_action, should_float, name, client_or_tab_index) => {
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
-                        Some(run_command.to_string()),
+                        Some(name.unwrap_or_else(|| run_command.to_string())),
                     ),
-                    _ => (false, None, None),
+                    _ => (false, None, name),
                 };
                 match pty.spawn_terminal(terminal_action, client_or_tab_index) {
                     Ok(pid) => {
@@ -149,14 +153,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, client_id) => {
+            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
-                        Some(run_command.to_string()),
+                        Some(name.unwrap_or_else(|| run_command.to_string())),
                     ),
-                    _ => (false, None, None),
+                    _ => (false, None, name),
                 };
                 match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
                     Ok(pid) => {
@@ -209,14 +213,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, client_id) => {
+            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
-                        Some(run_command.to_string()),
+                        Some(name.unwrap_or_else(|| run_command.to_string())),
                     ),
-                    _ => (false, None, None),
+                    _ => (false, None, name),
                 };
                 match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
                     Ok(pid) => {

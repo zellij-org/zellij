@@ -167,13 +167,15 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>),
+    NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
     EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>),
+    NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(Option<Direction>, Option<RunCommandAction>),
+    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+                                                                               // optional pane
+                                                                               // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
@@ -254,6 +256,7 @@ impl Action {
                 command,
                 cwd,
                 floating,
+                name,
             } => {
                 if !command.is_empty() {
                     let mut command = command.clone();
@@ -267,18 +270,19 @@ impl Action {
                         hold_on_close: true,
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(Some(run_command_action))])
+                        Ok(vec![Action::NewFloatingPane(Some(run_command_action), name)])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,
                             Some(run_command_action),
+                            name,
                         )])
                     }
                 } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(None)])
+                        Ok(vec![Action::NewFloatingPane(None, name)])
                     } else {
-                        Ok(vec![Action::NewTiledPane(direction, None)])
+                        Ok(vec![Action::NewTiledPane(direction, None, name)])
                     }
                 }
             },

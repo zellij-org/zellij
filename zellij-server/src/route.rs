@@ -235,43 +235,46 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::TogglePaneFrames)
                 .unwrap();
         },
-        Action::NewPane(direction) => {
+        Action::NewPane(direction, name) => {
             let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
-                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell, client_id),
-                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell, client_id),
+                Some(Direction::Left) => PtyInstruction::SpawnTerminalVertically(shell, name, client_id),
+                Some(Direction::Right) => PtyInstruction::SpawnTerminalVertically(shell, name, client_id),
+                Some(Direction::Up) => PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id),
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     shell,
                     None,
+                    name,
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
             session.senders.send_to_pty(pty_instr).unwrap();
         },
         Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
+            let title = format!("Editing: {}", path_to_file.display());
             let open_file = TerminalAction::OpenFile(path_to_file, line_number);
             let pty_instr = match (split_direction, should_float) {
                 (Some(Direction::Left), false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
                 (Some(Direction::Right), false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), client_id)
+                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
                 (Some(Direction::Up), false) => {
-                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), Some(title), client_id)
                 },
                 (Some(Direction::Down), false) => {
-                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(Some(open_file), Some(title), client_id)
                 },
                 // No direction specified or should float - defer placement to screen
                 (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
                     Some(open_file),
                     Some(should_float),
+                    Some(title),
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
@@ -296,7 +299,7 @@ pub(crate) fn route_action(
                 )))
                 .unwrap();
         },
-        Action::NewFloatingPane(run_command) => {
+        Action::NewFloatingPane(run_command, name) => {
             let should_float = true;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
@@ -306,32 +309,34 @@ pub(crate) fn route_action(
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     run_cmd,
                     Some(should_float),
+                    name,
                     ClientOrTabIndex::ClientId(client_id),
                 ))
                 .unwrap();
         },
-        Action::NewTiledPane(direction, run_command) => {
+        Action::NewTiledPane(direction, run_command, name) => {
             let should_float = false;
             let run_cmd = run_command
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| session.default_shell.clone());
             let pty_instr = match direction {
                 Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id)
                 },
                 Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id)
                 },
                 Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id)
                 },
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
                     Some(should_float),
+                    name,
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
@@ -368,20 +373,21 @@ pub(crate) fn route_action(
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
                 Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id)
                 },
                 Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id)
                 },
                 Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id)
                 },
                 Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, client_id)
+                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id)
                 },
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
+                    None,
                     None,
                     ClientOrTabIndex::ClientId(client_id),
                 ),

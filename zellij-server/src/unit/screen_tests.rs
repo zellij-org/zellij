@@ -1818,6 +1818,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         command: vec![],
         cwd: None,
         floating: false,
+        name: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1855,6 +1856,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         command: vec![],
         cwd: None,
         floating: false,
+        name: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1892,6 +1894,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         command: vec!["htop".into()],
         cwd: Some("/some/folder".into()),
         floating: false,
+        name: None,
     };
     send_cli_action_to_server(
         &session_metadata,
