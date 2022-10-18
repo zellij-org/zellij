@@ -113,6 +113,21 @@ something interesting to work on and guide through.
 [discord-invite-link]: https://discord.gg/feHDHahHCz 
 [good-first-issue]: https://github.com/zellij-org/zellij/labels/good%20first%20issue
 
+
+## Tips for Code Contributions
+
+### Prefer returning `Result`s instead of `unwrap`ing
+
+- Add `use zellij_utils::errors::prelude::*;` to the file
+- Make the function return `Result<T>`, with an appropriate `T` (Use `()` if there's nothing to return)
+- Append `.context()` to any `Result` you get with a sensible error description (see [the docs][error-docs-context])
+- Generate ad-hoc errors with `anyhow!(<SOME MESSAGE>)`
+- *Further reading*: [See here][error-docs-result]
+
+[error-docs-context]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#attaching-context
+[error-docs-result]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#converting-a-function-to-return-a-result-type
+
+
 ## Filing Issues
 
 Bugs and enhancement suggestions are tracked as GitHub issues.
