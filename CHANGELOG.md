@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: improve zellij run CLI (https://github.com/zellij-org/zellij/pull/1804)
 * docs: Add tips for code contributions to CONTRIBUTING (https://github.com/zellij-org/zellij/pull/1805)
 * feat: change floating panes to be grouped rather than scattered (https://github.com/zellij-org/zellij/pull/1810)
+* fix: default to vi editor when we can't an editor in EDITOR or VISUAL and none is configured (https://github.com/zellij-org/zellij/pull/1811)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
