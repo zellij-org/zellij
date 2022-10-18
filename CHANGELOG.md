@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * debugging: Log `thread_bus` IPC messages only in debug mode (https://github.com/zellij-org/zellij/pull/1800)
 * feat: improve zellij run CLI (https://github.com/zellij-org/zellij/pull/1804)
 * docs: Add tips for code contributions to CONTRIBUTING (https://github.com/zellij-org/zellij/pull/1805)
+* feat: change floating panes to be grouped rather than scattered (https://github.com/zellij-org/zellij/pull/1810)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
