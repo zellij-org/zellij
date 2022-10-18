@@ -115,7 +115,8 @@ fn send_cli_action_to_server(
             &*os_input,
             &to_server.clone(),
             client_id,
-        );
+        )
+        .unwrap();
     }
 }
 
