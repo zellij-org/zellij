@@ -139,7 +139,7 @@ pub enum Action {
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
     /// Dumps the screen to a file
-    DumpScreen(String, Option<bool>),
+    DumpScreen(String, bool),
     /// Scroll up in focus pane.
     EditScrollback,
     ScrollUp,

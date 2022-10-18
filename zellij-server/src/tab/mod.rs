@@ -1804,15 +1804,10 @@ impl Tab {
         &mut self,
         file: Option<String>,
         client_id: ClientId,
-        full: Option<bool>,
+        full: bool,
     ) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
-            let full_scrollback = match full {
-                Some(true) => true,
-                Some(false) => false,
-                None => true,
-            };
-            let dump = active_pane.dump_screen(client_id, full_scrollback);
+            let dump = active_pane.dump_screen(client_id, full);
             self.os_api.write_to_file(dump, file);
         }
     }
@@ -1822,7 +1817,7 @@ impl Tab {
         self.dump_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
-            None,
+            true,
         );
         let line_number = self
             .get_active_pane(client_id)

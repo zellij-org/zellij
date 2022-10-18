@@ -183,8 +183,8 @@ pub enum CliAction {
     /// Dumps the pane scrollback to a file
     DumpScreen {
         path: PathBuf,
-        #[clap(short, long, value_parser)]
-        full: Option<bool>,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        full: bool,
     },
     /// Open the pane scrollback in your default editor
     EditScrollback,

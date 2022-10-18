@@ -147,7 +147,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
-    DumpScreen(String, ClientId, Option<bool>),
+    DumpScreen(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
