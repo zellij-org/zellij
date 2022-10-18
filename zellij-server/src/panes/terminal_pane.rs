@@ -145,6 +145,7 @@ impl Pane for TerminalPane {
     fn set_geom(&mut self, position_and_size: PaneGeom) {
         self.geom = position_and_size;
         self.reflow_lines();
+        self.render_full_viewport();
     }
     fn set_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
