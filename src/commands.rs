@@ -86,7 +86,9 @@ fn get_os_input<OsInputOutput>(
     }
 }
 
-pub(crate) fn start_server(path: PathBuf) {
+pub(crate) fn start_server(path: PathBuf, debug: bool) {
+    // Set instance-wide debug mode
+    zellij_utils::consts::DEBUG_MODE.set(debug).unwrap();
     let os_input = get_os_input(get_server_os_input);
     start_server_impl(Box::new(os_input), path);
 }

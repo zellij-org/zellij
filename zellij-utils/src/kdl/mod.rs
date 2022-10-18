@@ -430,7 +430,7 @@ impl Action {
             "DumpScreen" => Ok(Action::DumpScreen(string, Some(false))),
             "NewPane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane(None));
+                    return Ok(Action::NewPane(None, None));
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -439,7 +439,7 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane(Some(direction)))
+                    Ok(Action::NewPane(Some(direction), None))
                 }
             },
             "SearchToggleOption" => {

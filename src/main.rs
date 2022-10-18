@@ -24,6 +24,7 @@ fn main() {
             direction,
             cwd,
             floating,
+            name,
         })) = opts.command
         {
             let command_cli_action = CliAction::NewPane {
@@ -31,6 +32,7 @@ fn main() {
                 direction,
                 cwd,
                 floating,
+                name,
             };
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
@@ -74,7 +76,7 @@ fn main() {
     {
         commands::kill_session(target_session);
     } else if let Some(path) = opts.server {
-        commands::start_server(path);
+        commands::start_server(path, opts.debug);
     } else {
         commands::start_client(opts);
     }

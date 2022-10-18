@@ -127,13 +127,16 @@ pub enum Sessions {
     /// Run a command in a new pane
     #[clap(visible_alias = "r")]
     Run {
-        command: Option<String>,
+        #[clap(last(true), required(true))]
+        command: Vec<String>,
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+        #[clap(short, long, value_parser)]
+        name: Option<String>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -210,12 +213,14 @@ pub enum CliAction {
     NewPane {
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
-        #[clap(short, long, value_parser)]
-        command: Option<String>,
+        #[clap(last(true))]
+        command: Vec<String>,
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+        #[clap(short, long, value_parser)]
+        name: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {

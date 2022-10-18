@@ -109,37 +109,6 @@ impl FromStr for SearchOption {
     }
 }
 
-fn split_escaped_whitespace(s: &str) -> Vec<String> {
-    s.split_ascii_whitespace()
-        .map(|s| String::from(s))
-        .fold(vec![], |mut acc, part| {
-            if let Some(previous_part) = acc.last_mut() {
-                if previous_part.ends_with('\\') {
-                    previous_part.push(' ');
-                    previous_part.push_str(&part);
-                    return acc;
-                }
-            }
-            acc.push(part);
-            acc
-        })
-}
-
-fn split_command_and_args(command: String) -> (PathBuf, Vec<String>) {
-    let mut full_command = split_escaped_whitespace(&command);
-    let mut command = None;
-    let mut command_args = vec![];
-    for part in full_command.drain(..) {
-        if command.is_none() {
-            command = Some(part);
-        } else {
-            command_args.push(part);
-        }
-    }
-    let command = PathBuf::from(command.unwrap());
-    (command, command_args)
-}
-
 // As these actions are bound to the default config, please
 // do take care when refactoring - or renaming.
 // They might need to be adjusted in the default config
@@ -198,13 +167,15 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>),
+    NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
     EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>),
+    NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(Option<Direction>, Option<RunCommandAction>),
+    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+    // optional pane
+    // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
@@ -286,9 +257,11 @@ impl Action {
                 command,
                 cwd,
                 floating,
-            } => match command {
-                Some(command) => {
-                    let (command, args) = split_command_and_args(command);
+                name,
+            } => {
+                if !command.is_empty() {
+                    let mut command = command.clone();
+                    let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let cwd = cwd.or_else(|| std::env::current_dir().ok());
                     let run_command_action = RunCommandAction {
                         command,
@@ -298,21 +271,24 @@ impl Action {
                         hold_on_close: true,
                     };
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(Some(run_command_action))])
+                        Ok(vec![Action::NewFloatingPane(
+                            Some(run_command_action),
+                            name,
+                        )])
                     } else {
                         Ok(vec![Action::NewTiledPane(
                             direction,
                             Some(run_command_action),
+                            name,
                         )])
                     }
-                },
-                None => {
+                } else {
                     if floating {
-                        Ok(vec![Action::NewFloatingPane(None)])
+                        Ok(vec![Action::NewFloatingPane(None, name)])
                     } else {
-                        Ok(vec![Action::NewTiledPane(direction, None)])
+                        Ok(vec![Action::NewTiledPane(direction, None, name)])
                     }
-                },
+                }
             },
             CliAction::Edit {
                 direction,

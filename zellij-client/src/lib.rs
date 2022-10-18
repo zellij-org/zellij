@@ -79,11 +79,15 @@ impl ErrorInstruction for ClientInstruction {
     }
 }
 
-fn spawn_server(socket_path: &Path) -> io::Result<()> {
-    let status = Command::new(current_exe()?)
-        .arg("--server")
-        .arg(socket_path)
-        .status()?;
+fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
+    let mut cmd = Command::new(current_exe()?);
+    cmd.arg("--server");
+    cmd.arg(socket_path);
+    if debug {
+        cmd.arg("--debug");
+    }
+    let status = cmd.status()?;
+
     if status.success() {
         Ok(())
     } else {
@@ -168,7 +172,7 @@ pub fn start_client(
             envs::set_session_name(name);
             envs::set_initial_environment_vars();
 
-            spawn_server(&*ZELLIJ_IPC_PIPE).unwrap();
+            spawn_server(&*ZELLIJ_IPC_PIPE, opts.debug).unwrap();
 
             ClientToServerMsg::NewClient(
                 client_attributes,

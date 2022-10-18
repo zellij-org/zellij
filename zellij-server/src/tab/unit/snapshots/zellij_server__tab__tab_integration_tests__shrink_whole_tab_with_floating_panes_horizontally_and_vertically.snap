@@ -1,18 +1,18 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 1421
 expression: snapshot
-
 ---
-00 (C): ┌ Pane #1 ────────────────────┌ Pane #2 ─────────┐                                                                       
-01 (C): │                             │                  │                                                                       
-02 (C): │ ┌ Pane #┌ Pane #4 ─────────────── SCROLL:  0/1 ┐                                                                       
-03 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-04 (C): │ ┌ Pane #┌ Pane #6 ─────────────── SCROLL:  0/1 ┐                                                                       
-05 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-06 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-07 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-08 (C): │ │EEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                       
-09 (C): └─└───────└──────────────────────────────────────┘                                                                       
+00 (C): ┌ Pane #1 ────────────────────┌ ┌ ┌ Pane #4 ── 0 ┐                                                                       
+01 (C): │                             │ │E│EEEEEEEEEEEEEE│                                                                       
+02 (C): │ ┌ Pane #5 ─────────────── SCROLL:  0/1 ┐EEEEEEE│                                                                       
+03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│       │                                                                       
+04 (C): │ │E┌ Pane #6 ─────────────── SCROLL:  0/1 ┐EEEEE│                                                                       
+05 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEE│                                                                       
+06 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEE│                                                                       
+07 (C): │ └─│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEE│                                                                       
+08 (C): │   │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│     │                                                                       
+09 (C): └───└──────────────────────────────────────┘─────┘                                                                       
 10 (C):                                                                                                                          
 11 (C):                                                                                                                          
 12 (C):                                                                                                                          

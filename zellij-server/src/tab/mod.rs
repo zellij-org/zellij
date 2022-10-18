@@ -780,10 +780,12 @@ impl Tab {
                     }
                 },
                 None => {
+                    let name = None;
                     let should_float = true;
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
                         Some(should_float),
+                        name,
                         ClientOrTabIndex::ClientId(client_id),
                     );
                     self.senders.send_to_pty(instruction).with_context(|| {
