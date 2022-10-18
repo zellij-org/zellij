@@ -904,7 +904,7 @@ fn move_floating_pane_focus_left() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((71, 9)),
+        Some((3, 3)),
         "cursor coordinates moved to the pane on the left"
     );
 
@@ -960,7 +960,7 @@ fn move_floating_pane_focus_right() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((80, 3)),
+        Some((5, 5)),
         "cursor coordinates moved to the pane on the right"
     );
 
@@ -1015,7 +1015,7 @@ fn move_floating_pane_focus_up() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((71, 9)),
+        Some((3, 3)),
         "cursor coordinates moved to the pane above"
     );
 
@@ -1071,7 +1071,7 @@ fn move_floating_pane_focus_down() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((80, 13)),
+        Some((5, 5)),
         "cursor coordinates moved to the pane below"
     );
 
@@ -1129,7 +1129,7 @@ fn move_floating_pane_focus_with_mouse() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((71, 9)),
+        Some((35, 10)),
         "cursor coordinates moved to the clicked pane"
     );
 
@@ -1290,13 +1290,13 @@ fn mark_text_inside_floating_pane() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.handle_left_click(&Position::new(9, 71), client_id)
+    tab.handle_left_click(&Position::new(6, 30), client_id)
         .unwrap();
     assert!(
         tab.selecting_with_mouse,
         "started selecting with mouse on click"
     );
-    tab.handle_left_mouse_release(&Position::new(8, 50), client_id)
+    tab.handle_left_mouse_release(&Position::new(5, 15), client_id)
         .unwrap();
     assert!(
         !tab.selecting_with_mouse,
@@ -1311,7 +1311,7 @@ fn mark_text_inside_floating_pane() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((71, 9)),
+        Some((5, 5)),
         "cursor coordinates stayed in clicked pane"
     );
 

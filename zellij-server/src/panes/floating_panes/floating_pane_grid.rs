@@ -767,55 +767,37 @@ impl<'a> FloatingPaneGrid<'a> {
     pub fn find_room_for_new_pane(&self) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
         let pane_geoms: Vec<PaneGeom> = panes.values().map(|p| p.position_and_size()).collect();
-        for offset in 0..MAX_PANES / 5 {
-            let half_size_middle_geom = half_size_middle_geom(&self.viewport, offset);
-            let half_size_top_left_geom = half_size_top_left_geom(&self.viewport, offset);
-            let half_size_top_right_geom = half_size_top_right_geom(&self.viewport, offset);
-            let half_size_bottom_left_geom = half_size_bottom_left_geom(&self.viewport, offset);
-            let half_size_bottom_right_geom = half_size_bottom_right_geom(&self.viewport, offset);
-            if pane_geom_is_big_enough(&half_size_middle_geom)
-                && pane_geom_is_unoccupied_and_inside_viewport(
-                    &self.viewport,
-                    &half_size_middle_geom,
-                    &pane_geoms,
-                )
-            {
-                return Some(half_size_middle_geom);
-            } else if pane_geom_is_big_enough(&half_size_top_left_geom)
-                && pane_geom_is_unoccupied_and_inside_viewport(
-                    &self.viewport,
-                    &half_size_top_left_geom,
-                    &pane_geoms,
-                )
-            {
-                return Some(half_size_top_left_geom);
-            } else if pane_geom_is_big_enough(&half_size_top_right_geom)
-                && pane_geom_is_unoccupied_and_inside_viewport(
-                    &self.viewport,
-                    &half_size_top_right_geom,
-                    &pane_geoms,
-                )
-            {
-                return Some(half_size_top_right_geom);
-            } else if pane_geom_is_big_enough(&half_size_bottom_left_geom)
-                && pane_geom_is_unoccupied_and_inside_viewport(
-                    &self.viewport,
-                    &half_size_bottom_left_geom,
-                    &pane_geoms,
-                )
-            {
-                return Some(half_size_bottom_left_geom);
-            } else if pane_geom_is_big_enough(&half_size_bottom_right_geom)
-                && pane_geom_is_unoccupied_and_inside_viewport(
-                    &self.viewport,
-                    &half_size_bottom_right_geom,
-                    &pane_geoms,
-                )
-            {
-                return Some(half_size_bottom_right_geom);
-            }
+
+        macro_rules! find_unoccupied_offset {
+            ($get_geom_with_offset:expr, $viewport:expr, $other_geoms:expr) => {
+                let mut offset = 0;
+                loop {
+                    let geom_with_current_offset = $get_geom_with_offset(offset);
+                    if pane_geom_is_big_enough(&geom_with_current_offset)
+                        && pane_geom_is_unoccupied_and_inside_viewport(
+                            $viewport,
+                            &geom_with_current_offset,
+                            $other_geoms,
+                        )
+                    {
+                        return Some(geom_with_current_offset);
+                    } else if !pane_geom_is_inside_viewport($viewport, &geom_with_current_offset) {
+                        break;
+                    } else if offset > MAX_PANES {
+                        // this is mostly to kill the loop no matter what
+                        break;
+                    } else {
+                        offset += 2;
+                    }
+                }
+            };
         }
-        None
+        find_unoccupied_offset!(|offset| half_size_middle_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        find_unoccupied_offset!(|offset| half_size_top_left_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        find_unoccupied_offset!(|offset| half_size_top_right_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        find_unoccupied_offset!(|offset| half_size_bottom_left_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        find_unoccupied_offset!(|offset| half_size_bottom_right_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        return None;
     }
 }
 

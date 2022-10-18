@@ -1,26 +1,26 @@
 ---
 source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 1318
 expression: snapshot
-
 ---
 00 (C): ┌ Pane #1 ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 01 (C): │                                                                                                                       │
-02 (C): │ ┌ Pane #3 ─────────────── SCROLL:  0/1 ┐                                     ┌ Pane #4 ─────────────── SCROLL:  0/1 ┐ │
-03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-04 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-05 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE┌ Pane #2 ─────────────────────────────────────────────────┐EEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-06 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                          │EEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-07 (C): │ └───────────────────────────│                                                          │────────────────────────────┘ │
-08 (C): │                             │                                                          │                              │
-09 (C): │                             │                   I am scratch terminal                  │                              │
-10 (C): │                             │                                                          │                              │
-11 (C): │                             │                                                          │                              │
-12 (C): │ ┌ Pane #5 ─────────────── SC│                                                          │────────────── SCROLL:  0/1 ┐ │
-13 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                          │EEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-14 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEE└──────────────────────────────────────────────────────────┘EEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-15 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-16 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                     │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│ │
-17 (C): │ └──────────────────────────────────────┘                                     └──────────────────────────────────────┘ │
-18 (C): │                                                                                                                       │
+02 (C): │ ┌ Pane #5 ─────────────── SCROLL:  0/1 ┐                                                                              │
+03 (C): │ │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                                                              │
+04 (C): │ │E┌ Pane #6 ─────────────── SCROLL:  0/1 ┐                                                                            │
+05 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│─────────────────────────────────────────────┐                              │
+06 (C): │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                                             │                              │
+07 (C): │ └─│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│───────────────────────────────── SCROLL:  0/1 ┐                            │
+08 (C): │   │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                            │
+09 (C): │   └──────────────────────────────────────┘─────────────────────────────────── SCROLL:  0/1 ┐                          │
+10 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+11 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+12 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+13 (C): │                             │ │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+14 (C): │                             └─│E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+15 (C): │                               │E│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+16 (C): │                               └─│EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+17 (C): │                                 │EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE│                          │
+18 (C): │                                 └──────────────────────────────────────────────────────────┘                          │
 19 (C): └───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 
