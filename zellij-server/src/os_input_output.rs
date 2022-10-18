@@ -245,15 +245,11 @@ fn spawn_terminal(
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {
-            if default_editor.is_none()
-                && env::var("EDITOR").is_err()
-                && env::var("VISUAL").is_err()
-            {
-                return Err(SpawnTerminalError::NoEditorFound);
-            }
-
             let mut command = default_editor.unwrap_or_else(|| {
-                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap()))
+                PathBuf::from(
+                    env::var("EDITOR")
+                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
+                )
             });
 
             let mut args = vec![];

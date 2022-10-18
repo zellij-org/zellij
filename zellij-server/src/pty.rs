@@ -136,6 +136,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 );
                             }
                         } else {
+                            log::error!("Failed to spawn terminal: command not found");
                             pty.close_pane(PaneId::Terminal(pid));
                         }
                     },
