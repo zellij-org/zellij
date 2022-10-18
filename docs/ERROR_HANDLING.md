@@ -101,6 +101,12 @@ the following text.
 
 ## Converting a function to return a `Result` type
 
+> **TL;DR**  
+> - Add `use zellij_utils::errors::prelude::*;` to the file
+> - Make the function return `Result<T>`, with an appropriate `T` (Often `()`)
+> - Append `.context()` to any `Result` you get with a sensible error description (see below)
+> - Generate ad-hoc errors with `anyhow!(<SOME MESSAGE>)`
+
 Here's an example of the `Screen::render` function as it looked before:
 
 ```rust
@@ -320,6 +326,44 @@ Remember the call to [`fatal`][fatal] will log the error and afterwards panic
 the application (i.e. crash zellij). Since we made sure to attach context
 messages to the errors on their way up, we will see these messages in the
 resulting output!
+
+
+## Error handling for `Option` types
+
+Beyond what's described in "Choosing helpful context messages" above, `Option`
+types benefit from extra handling. That is because a `Option` containing a
+`None` where a value is expected doesn't carry an error message: It doesn't
+tell us why the `None` is bad (i.e. equivalent to an Error) in this case.
+
+In situations where a call to `unwrap()` or similar on a `Option` type is to be
+converted for error handling, it is a good idea to attach an additional short
+context. An example from the zellij codebase is shown below:
+
+```rust
+    let destination_tab = self.get_indexed_tab_mut(destination_tab_index)
+        .context("failed to get destination tab by index")
+        .with_context(|| format!("failed to move clients from tab {source_tab_index} to tab {destination_tab_index}"))?;
+```
+
+Here the call to `self.get_indexed_tab_mut(destination_tab_index)` will return
+a `Option`. The surrounding code, however, doesn't know what to do with a
+`None` value, so it is considered an error.
+
+Here you see that we attach two contexts:
+
+```rust
+        .context("failed to get destination tab by index")
+```
+
+Because the `None` type itself doesn't tell us what the "error" means, we
+attach a description manually. The second context:
+
+```rust
+        .with_context(|| format!("failed to move clients from tab {source_tab_index} to tab {destination_tab_index}"))?;
+```
+
+then describes what the surrounding function was trying to achieve (See
+descriptions above).
 
 [tracking_issue]: https://github.com/zellij-org/zellij/issues/1753
 [handle_panic]: https://docs.rs/zellij-utils/latest/zellij_utils/errors/fn.handle_panic.html
