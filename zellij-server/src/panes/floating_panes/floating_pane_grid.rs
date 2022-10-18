@@ -792,11 +792,31 @@ impl<'a> FloatingPaneGrid<'a> {
                 }
             };
         }
-        find_unoccupied_offset!(|offset| half_size_middle_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
-        find_unoccupied_offset!(|offset| half_size_top_left_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
-        find_unoccupied_offset!(|offset| half_size_top_right_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
-        find_unoccupied_offset!(|offset| half_size_bottom_left_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
-        find_unoccupied_offset!(|offset| half_size_bottom_right_geom(&self.viewport, offset), &self.viewport, &pane_geoms);
+        find_unoccupied_offset!(
+            |offset| half_size_middle_geom(&self.viewport, offset),
+            &self.viewport,
+            &pane_geoms
+        );
+        find_unoccupied_offset!(
+            |offset| half_size_top_left_geom(&self.viewport, offset),
+            &self.viewport,
+            &pane_geoms
+        );
+        find_unoccupied_offset!(
+            |offset| half_size_top_right_geom(&self.viewport, offset),
+            &self.viewport,
+            &pane_geoms
+        );
+        find_unoccupied_offset!(
+            |offset| half_size_bottom_left_geom(&self.viewport, offset),
+            &self.viewport,
+            &pane_geoms
+        );
+        find_unoccupied_offset!(
+            |offset| half_size_bottom_right_geom(&self.viewport, offset),
+            &self.viewport,
+            &pane_geoms
+        );
         return None;
     }
 }
