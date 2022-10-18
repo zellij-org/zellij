@@ -246,7 +246,10 @@ fn spawn_terminal(
     let cmd = match terminal_action {
         TerminalAction::OpenFile(file_to_open, line_number) => {
             let mut command = default_editor.unwrap_or_else(|| {
-                PathBuf::from(env::var("EDITOR").unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())))
+                PathBuf::from(
+                    env::var("EDITOR")
+                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
+                )
             });
 
             let mut args = vec![];
