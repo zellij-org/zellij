@@ -530,7 +530,7 @@ pub(crate) fn route_thread_main(
     to_server: SenderWithContext<ServerInstruction>,
     mut receiver: IpcReceiverWithContext<ClientToServerMsg>,
     client_id: ClientId,
-) {
+) -> Result<()> {
     let mut retry_queue = vec![];
     'route_loop: loop {
         match receiver.recv() {
@@ -539,7 +539,7 @@ pub(crate) fn route_thread_main(
                 let rlocked_sessions = session_data.read().unwrap();
                 let handle_instruction = |instruction: ClientToServerMsg,
                                           mut retry_queue: Option<&mut Vec<ClientToServerMsg>>|
-                 -> bool {
+                 -> Result<bool> {
                     let mut should_break = false;
                     match instruction {
                         ClientToServerMsg::Action(action, maybe_client_id) => {
@@ -553,7 +553,7 @@ pub(crate) fn route_thread_main(
                                     if send_res.is_err() {
                                         let _ = to_server
                                             .send(ServerInstruction::RemoveClient(client_id));
-                                        return true;
+                                        return Ok(true);
                                     }
                                 }
                                 if route_action(
@@ -562,9 +562,7 @@ pub(crate) fn route_thread_main(
                                     &*os_input,
                                     &to_server,
                                     client_id,
-                                )
-                                .unwrap()
-                                {
+                                )? {
                                     should_break = true;
                                 }
                             }
@@ -648,7 +646,7 @@ pub(crate) fn route_thread_main(
                             // we don't unwrap this because we don't really care if there's an error here (eg.
                             // if the main server thread exited before this router thread did)
                             let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
-                            return true;
+                            return Ok(true);
                         },
                         ClientToServerMsg::KillSession => {
                             to_server.send(ServerInstruction::KillSession).unwrap();
@@ -665,16 +663,16 @@ pub(crate) fn route_thread_main(
                             let _ = to_server.send(ServerInstruction::ActiveClients(client_id));
                         },
                     }
-                    should_break
+                    Ok(should_break)
                 };
                 for instruction_to_retry in retry_queue.drain(..) {
                     log::warn!("Server ready, retrying sending instruction.");
-                    let should_break = handle_instruction(instruction_to_retry, None);
+                    let should_break = handle_instruction(instruction_to_retry, None)?;
                     if should_break {
                         break 'route_loop;
                     }
                 }
-                let should_break = handle_instruction(instruction, Some(&mut retry_queue));
+                let should_break = handle_instruction(instruction, Some(&mut retry_queue))?;
                 if should_break {
                     break 'route_loop;
                 }
@@ -691,4 +689,5 @@ pub(crate) fn route_thread_main(
             },
         }
     }
+    Ok(())
 }
