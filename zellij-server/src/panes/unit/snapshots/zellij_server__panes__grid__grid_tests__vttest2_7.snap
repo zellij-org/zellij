@@ -1,7 +1,7 @@
 ---
 source: zellij-server/src/panes/./unit/grid_tests.rs
+assertion_line: 327
 expression: "format!(\"{:?}\", grid)"
-
 ---
 00 (W): Push <RETURN>
 01 (W): Soft scroll down region [1..24] size 24 Line 29
@@ -16,32 +16,32 @@ expression: "format!(\"{:?}\", grid)"
 10 (W): Soft scroll down region [1..24] size 24 Line 20
 11 (W): Soft scroll down region [1..24] size 24 Line 19
 12 (W): Soft scroll down region [1..24] size 24 Line 18
-13 (W): Soft scroll down region [1..24] size 24 Line 17
-14 (W): Soft scroll down region [1..24] size 24 Line 16
-15 (W): Soft scroll down region [1..24] size 24 Line 15
-16 (W): Soft scroll down region [1..24] size 24 Line 14
-17 (W): Soft scroll down region [1..24] size 24 Line 13
-18 (W): Soft scroll down region [1..24] size 24 Line 12
-19 (W): Soft scroll down region [1..24] size 24 Line 11
-20 (W): Soft scroll down region [1..24] size 24 Line 10
-21 (W): Soft scroll down region [1..24] size 24 Line 9
-22 (W): Soft scroll down region [1..24] size 24 Line 8
-23 (W): Soft scroll down region [1..24] size 24 Line 7
-24 (C):                                                                                                               
-25 (C):                                                                                                               
-26 (C):                                                                                                               
-27 (C):                                                                                                               
-28 (C):                                                                                                               
-29 (C):                                                                                                               
-30 (C):                                                                                                               
-31 (C):                                                                                                               
-32 (C):                                                                                                               
-33 (C):                                                                                                               
-34 (C):                                                                                                               
-35 (C):                                                                                                               
-36 (C):                                                                                                               
-37 (C):                                                                                                               
-38 (C):                                                                                                               
-39 (C):                                                                                                               
-40 (C):                                                                                                               
+13 (C): Soft scroll down region [1..24] size 24 Line 17                                                               
+14 (C): Soft scroll down region [1..24] size 24 Line 16                                                               
+15 (C): Soft scroll down region [1..24] size 24 Line 15                                                               
+16 (C): Soft scroll down region [1..24] size 24 Line 14                                                               
+17 (C): Soft scroll down region [1..24] size 24 Line 13                                                               
+18 (C): Soft scroll down region [1..24] size 24 Line 12                                                               
+19 (C): Soft scroll down region [1..24] size 24 Line 11                                                               
+20 (C): Soft scroll down region [1..24] size 24 Line 10                                                               
+21 (C): Soft scroll down region [1..24] size 24 Line 9                                                                
+22 (C): Soft scroll down region [1..24] size 24 Line 8                                                                
+23 (C): Soft scroll down region [1..24] size 24 Line 7                                                                
+24 (C): Soft scroll down region [1..24] size 24 Line 6                                                                
+25 (C): Soft scroll down region [1..24] size 24 Line 5                                                                
+26 (C): Soft scroll down region [1..24] size 24 Line 4                                                                
+27 (C): Soft scroll down region [1..24] size 24 Line 3                                                                
+28 (C): Soft scroll down region [1..24] size 24 Line 2                                                                
+29 (C): Soft scroll down region [1..24] size 24 Line 1                                                                
+30 (C): Soft scroll up region [1..24] size 24 Line 7                                                                  
+31 (C): Soft scroll up region [1..24] size 24 Line 8                                                                  
+32 (C): Soft scroll up region [1..24] size 24 Line 9                                                                  
+33 (C): Soft scroll up region [1..24] size 24 Line 10                                                                 
+34 (C): Soft scroll up region [1..24] size 24 Line 11                                                                 
+35 (C): Soft scroll up region [1..24] size 24 Line 12                                                                 
+36 (C): Soft scroll up region [1..24] size 24 Line 13                                                                 
+37 (C): Soft scroll up region [1..24] size 24 Line 14                                                                 
+38 (C): Soft scroll up region [1..24] size 24 Line 15                                                                 
+39 (C): Soft scroll up region [1..24] size 24 Line 16                                                                 
+40 (C): Soft scroll up region [1..24] size 24 Line 17                                                                 
 
