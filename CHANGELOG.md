@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: change floating panes to be grouped rather than scattered (https://github.com/zellij-org/zellij/pull/1810)
 * fix: default to vi editor when we can't an editor in EDITOR or VISUAL and none is configured (https://github.com/zellij-org/zellij/pull/1811)
 * deps: upgrade log4rs to 1.2.0 (https://github.com/zellij-org/zellij/pull/1814)
+* feat: allow `DumpScreen` to dump the viewport by default (https://github.com/zellij-org/zellij/pull/1794)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
