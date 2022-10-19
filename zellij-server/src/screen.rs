@@ -147,7 +147,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
-    DumpScreen(String, ClientId),
+    DumpScreen(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -1437,12 +1437,15 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::DumpScreen(file, client_id) => {
+            ScreenInstruction::DumpScreen(file, client_id, full) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab
-                        .dump_active_terminal_screen(Some(file.to_string()), client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.dump_active_terminal_screen(
+                        Some(file.to_string()),
+                        client_id,
+                        full
+                    )
                 );
                 screen.render()?;
                 screen.unblock_input()?;

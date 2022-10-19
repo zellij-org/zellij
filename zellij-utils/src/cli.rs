@@ -181,7 +181,11 @@ pub enum CliAction {
     /// [right|left|up|down]
     MovePane { direction: Direction },
     /// Dumps the pane scrollback to a file
-    DumpScreen { path: PathBuf },
+    DumpScreen {
+        path: PathBuf,
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        full: bool,
+    },
     /// Open the pane scrollback in your default editor
     EditScrollback,
     /// Scroll up in the focused pane

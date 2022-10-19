@@ -427,7 +427,7 @@ impl Action {
                     Ok(Action::MovePane(Some(direction)))
                 }
             },
-            "DumpScreen" => Ok(Action::DumpScreen(string)),
+            "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));

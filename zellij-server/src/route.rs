@@ -157,10 +157,10 @@ pub(crate) fn route_action(
             };
             session.senders.send_to_screen(screen_instr).unwrap();
         },
-        Action::DumpScreen(val) => {
+        Action::DumpScreen(val, full) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::DumpScreen(val, client_id))
+                .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))
                 .unwrap();
         },
         Action::EditScrollback => {

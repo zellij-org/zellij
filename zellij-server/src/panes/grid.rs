@@ -985,9 +985,12 @@ impl Grid {
         }
     }
 
-    pub fn dump_screen(&mut self) -> String {
-        let mut scrollback: String = dump_screen!(self.lines_above);
+    pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
+        if !full {
+            return viewport;
+        }
+        let mut scrollback: String = dump_screen!(self.lines_above);
         if !scrollback.is_empty() {
             scrollback.push('\n');
         }
