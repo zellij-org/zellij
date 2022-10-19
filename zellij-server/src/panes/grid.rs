@@ -2261,6 +2261,7 @@ impl Perform for Grid {
                 } else if clear_type == 1 {
                     self.clear_all_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
+                    self.set_scroll_region_to_viewport_size();
                     self.fill_viewport(char_to_replace);
                 } else if clear_type == 3 {
                     self.clear_lines_above();
