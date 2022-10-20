@@ -97,7 +97,11 @@ impl<'a> KdlLayoutParser<'a> {
             Ok(())
         }
     }
-    fn assert_legal_template_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
+    fn assert_legal_template_name(
+        &self,
+        name: &str,
+        kdl_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
         if name.is_empty() {
             Err(ConfigError::new_kdl_error(
                 format!("Template names cannot be empty"),
@@ -110,7 +114,12 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ))
-        } else if name.chars().next().map(|first_char| first_char.is_numeric()).unwrap_or(false) {
+        } else if name
+            .chars()
+            .next()
+            .map(|first_char| first_char.is_numeric())
+            .unwrap_or(false)
+        {
             Err(ConfigError::new_kdl_error(
                 format!("Template names cannot start with numbers"),
                 kdl_node.span().offset(),
