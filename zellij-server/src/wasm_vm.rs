@@ -123,7 +123,8 @@ pub(crate) fn wasm_thread_main(
                 let plugin = plugins
                     .get(&run)
                     .with_context(|| format!("failed to resolve plugin {run:?}"))
-                    .with_context(err_context)?;
+                    .with_context(err_context)
+                    .fatal();
 
                 let (instance, plugin_env) = start_plugin(
                     plugin_id, client_id, &plugin, tab_index, &bus, &store, &data_dir,
