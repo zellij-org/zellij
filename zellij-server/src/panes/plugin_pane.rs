@@ -161,7 +161,9 @@ impl Pane for PluginPane {
                 .unwrap();
 
             self.should_render = false;
-            let contents = buf_rx.recv().unwrap();
+            let contents = buf_rx
+                .recv()
+                .expect("Failed to receive reply from plugin. Please check the logs");
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
                 let line_to_print = if actual_len > self.get_content_columns() {
