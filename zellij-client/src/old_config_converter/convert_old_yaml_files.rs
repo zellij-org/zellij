@@ -270,9 +270,20 @@ fn convert_yaml(
     let mut new_config_file = yaml_config_file.clone();
     new_config_file.set_extension("kdl");
     let yaml_config_file_exists = yaml_config_file.exists();
-    let layout_was_explicitly_set = layout_files_to_convert
+    let explicitly_set_layout_file = layout_files_to_convert
         .iter()
-        .find(|(_l, was_explicitly_set)| *was_explicitly_set)
+        .find(|(_l, was_explicitly_set)| *was_explicitly_set);
+    let layout_was_explicitly_set = explicitly_set_layout_file.is_some();
+    let explicitly_set_layout_files_kdl_equivalent_exists = explicitly_set_layout_file
+        .map(|(layout_file, _)| {
+            let mut layout_file = layout_file.clone();
+            layout_file.set_extension("kdl");
+            if layout_file.exists() {
+                Some(true)
+            } else {
+                None
+            }
+        })
         .is_some();
     let new_config_file_exists = new_config_file.exists();
     let no_need_to_convert_config =
@@ -305,6 +316,17 @@ fn convert_yaml(
                 "Specified old YAML format config (--config {}) but a new KDL file exists in that location. To fix, point to it the new file instead: zellij --config {}",
                 yaml_config_file.as_path().as_os_str().to_string_lossy().to_string(),
                 new_config_file.as_path().as_os_str().to_string_lossy().to_string()
+            )
+        );
+    } else if layout_was_explicitly_set && explicitly_set_layout_files_kdl_equivalent_exists {
+        let explicitly_set_layout_file = explicitly_set_layout_file.unwrap().0.clone();
+        let mut explicitly_set_layout_file_kdl_equivalent = explicitly_set_layout_file.clone();
+        explicitly_set_layout_file_kdl_equivalent.set_extension("kdl");
+        return Err(
+            format!(
+                "Specified old YAML format layout (--layout {}) but a new KDL file exists in that location. To fix, point to it the new file instead: zellij --layout {}",
+                explicitly_set_layout_file.display(),
+                explicitly_set_layout_file_kdl_equivalent.display()
             )
         );
     }
