@@ -308,7 +308,7 @@ impl Action {
                     direction,
                     floating,
                 )])
-            }
+            },
             CliAction::SwitchMode { input_mode } => {
                 Ok(vec![Action::SwitchModeForAllClients(input_mode)])
             },
