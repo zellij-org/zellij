@@ -1,0 +1,75 @@
+---
+source: zellij-utils/src/input/./unit/layout_test.rs
+assertion_line: 1426
+expression: "format!(\"{:#?}\", layout)"
+---
+Layout {
+    tabs: [
+        (
+            None,
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Cwd(
+                                "/tmp/./foo",
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: Some(
+                            Command(
+                                RunCommand {
+                                    command: "tail",
+                                    args: [],
+                                    cwd: Some(
+                                        "/tmp/./foo",
+                                    ),
+                                    hold_on_close: true,
+                                },
+                            ),
+                        ),
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: Some(
+                    Cwd(
+                        "/tmp",
+                    ),
+                ),
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+    ],
+    focused_tab_index: None,
+    template: Some(
+        PaneLayout {
+            children_split_direction: Horizontal,
+            name: None,
+            children: [],
+            split_size: None,
+            run: None,
+            borderless: false,
+            focus: None,
+            external_children_index: None,
+        },
+    ),
+}

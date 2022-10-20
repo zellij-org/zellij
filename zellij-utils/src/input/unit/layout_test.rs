@@ -1379,3 +1379,104 @@ fn global_cwd_passed_from_layout_constructor_overrides_global_cwd_in_layout_file
     .unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
+
+#[test]
+fn global_cwd_with_tab_cwd_given_to_panes_without_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            tab cwd="./foo" {
+                pane
+                pane command="tail"
+            }
+            // both should have the /tmp/foo cwd
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn tab_cwd_given_to_panes_without_cwd() {
+    let kdl_layout = r#"
+        layout {
+            tab cwd="/tmp" {
+                pane
+                pane command="tail"
+            }
+            // both should have the /tmp cwd
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn tab_cwd_prepended_to_panes_with_cwd() {
+    let kdl_layout = r#"
+        layout {
+            tab cwd="/tmp" {
+                pane cwd="./foo"
+                pane command="tail" cwd="./foo"
+            }
+            // both should have the /tmp/foo cwd
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            tab cwd="./foo" {
+                pane // should have /tmp/foo
+                pane command="tail" cwd="./bar" // should have /tmp/foo/bar
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd_in_pane_templates() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            pane_template name="my_pane_template" {
+                pane // should have /tmp/foo
+                pane command="tail" cwd="./bar" // should have /tmp/foo/bar
+                children
+            }
+            tab cwd="./foo" {
+                my_pane_template {
+                    pane // should have /tmp/foo
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn global_cwd_and_tab_cwd_prepended_to_panes_with_and_without_cwd_in_tab_templates() {
+    let kdl_layout = r#"
+        layout {
+            cwd "/tmp"
+            tab_template name="my_tab_template" {
+                pane // should have /tmp/foo
+                pane command="tail" cwd="./bar" // should have /tmp/foo/bar
+                children
+            }
+            my_tab_template cwd="./foo" {
+                pane // should have /tmp/foo
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
