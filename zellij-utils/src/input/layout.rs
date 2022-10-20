@@ -575,7 +575,11 @@ impl FromStr for SplitSize {
         if s.chars().last() == Some('%') {
             let char_count = s.chars().count();
             let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
-            Ok(SplitSize::Percent(percent_size))
+            if percent_size > 0 && percent_size <= 100 {
+                Ok(SplitSize::Percent(percent_size))
+            } else {
+                Err("Percent must be between 0 and 100".into())
+            }
         } else {
             let fixed_size = usize::from_str_radix(s, 10)?;
             Ok(SplitSize::Fixed(fixed_size))
