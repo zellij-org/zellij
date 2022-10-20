@@ -854,6 +854,10 @@ impl<'a> KdlLayoutParser<'a> {
                 dependency_tree.insert(template_name, template_children);
             }
         }
+        let all_pane_template_names: HashSet<&str> = dependency_tree.keys().cloned().collect();
+        for (_pane_template_name, dependencies) in dependency_tree.iter_mut() {
+            dependencies.retain(|d| all_pane_template_names.contains(d));
+        }
         Ok(dependency_tree)
     }
     fn get_pane_template_dependencies(
