@@ -104,12 +104,13 @@ fn command_exists(cmd: &RunCommand) -> bool {
     let command = &cmd.command;
     match cmd.cwd.as_ref() {
         Some(cwd) => {
-            if cwd.join(&command).exists() {
+            let full_command = cwd.join(&command);
+            if full_command.exists() && full_command.is_file() {
                 return true;
             }
         },
         None => {
-            if command.exists() {
+            if command.exists() && command.is_file() {
                 return true;
             }
         },
@@ -117,7 +118,8 @@ fn command_exists(cmd: &RunCommand) -> bool {
 
     if let Some(paths) = env::var_os("PATH") {
         for path in env::split_paths(&paths) {
-            if path.join(command).exists() {
+            let full_command = path.join(command);
+            if full_command.exists() && full_command.is_file() {
                 return true;
             }
         }
