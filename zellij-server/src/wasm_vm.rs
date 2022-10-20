@@ -30,12 +30,12 @@ use crate::{
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
-    errors::{ContextType, PluginContext},
-};
-use zellij_utils::{
-    input::command::TerminalAction,
-    input::layout::RunPlugin,
-    input::plugins::{PluginConfig, PluginType, PluginsConfig},
+    errors::{prelude::*, ContextType, PluginContext},
+    input::{
+        command::TerminalAction,
+        layout::RunPlugin,
+        plugins::{PluginConfig, PluginType, PluginsConfig},
+    },
     serde,
 };
 
