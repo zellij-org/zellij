@@ -97,6 +97,38 @@ impl<'a> KdlLayoutParser<'a> {
             Ok(())
         }
     }
+    fn assert_legal_template_name(
+        &self,
+        name: &str,
+        kdl_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
+        if name.is_empty() {
+            Err(ConfigError::new_kdl_error(
+                format!("Template names cannot be empty"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ))
+        } else if name.contains(')') || name.contains('(') {
+            Err(ConfigError::new_kdl_error(
+                format!("Template names cannot contain parantheses"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ))
+        } else if name
+            .chars()
+            .next()
+            .map(|first_char| first_char.is_numeric())
+            .unwrap_or(false)
+        {
+            Err(ConfigError::new_kdl_error(
+                format!("Template names cannot start with numbers"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ))
+        } else {
+            Ok(())
+        }
+    }
     fn parse_split_size(&self, kdl_node: &KdlNode) -> Result<Option<SplitSize>, ConfigError> {
         if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, "size") {
             match SplitSize::from_str(size) {
@@ -404,6 +436,7 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().len(),
             ))?;
         self.assert_legal_node_name(&template_name, kdl_node)?;
+        self.assert_legal_template_name(&template_name, kdl_node)?;
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let split_size = self.parse_split_size(kdl_node)?;
@@ -731,6 +764,7 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().len(),
             ))?;
         self.assert_legal_node_name(&template_name, kdl_node)?;
+        self.assert_legal_template_name(&template_name, kdl_node)?;
         if self.tab_templates.contains_key(&template_name) {
             return Err(ConfigError::new_kdl_error(
                 format!(
@@ -853,6 +887,10 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 dependency_tree.insert(template_name, template_children);
             }
+        }
+        let all_pane_template_names: HashSet<&str> = dependency_tree.keys().cloned().collect();
+        for (_pane_template_name, dependencies) in dependency_tree.iter_mut() {
+            dependencies.retain(|d| all_pane_template_names.contains(d));
         }
         Ok(dependency_tree)
     }
