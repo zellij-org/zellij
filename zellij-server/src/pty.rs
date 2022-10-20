@@ -751,7 +751,7 @@ fn send_command_not_found_to_screen(
     senders
         .send_to_screen(ScreenInstruction::PtyBytes(
             terminal_id,
-            format!("Command not found: {}", run_command.command.display())
+            format!("Command not found: {}\n\rIf you were including arguments as part of the command, try including them as 'args' instead.", run_command.command.display())
                 .as_bytes()
                 .to_vec(),
         ))
