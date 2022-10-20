@@ -560,4 +560,21 @@ mod not_wasm {
             }
         }
     }
+
+    impl<U> ToAnyhow<U> for Result<U, std::sync::PoisonError<U>> {
+        fn to_anyhow(self) -> crate::anyhow::Result<U> {
+            match self {
+                Ok(val) => crate::anyhow::Ok(val),
+                Err(e) => {
+                    if *crate::consts::DEBUG_MODE.get().unwrap_or(&true) {
+                        Err(crate::anyhow::anyhow!(
+                            "cannot acquire poisoned lock for {e:#?}"
+                        ))
+                    } else {
+                        Err(crate::anyhow::anyhow!("cannot acquire poisoned lock"))
+                    }
+                },
+            }
+        }
+    }
 }

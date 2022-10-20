@@ -28,16 +28,36 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
-    errors::{ContextType, PluginContext},
-};
-use zellij_utils::{
-    input::command::TerminalAction,
-    input::layout::RunPlugin,
-    input::plugins::{PluginConfig, PluginType, PluginsConfig},
+    errors::{prelude::*, ContextType, PluginContext},
+    input::{
+        command::TerminalAction,
+        layout::RunPlugin,
+        plugins::{PluginConfig, PluginType, PluginsConfig},
+    },
     serde,
 };
+
+// String to add as error context when we fail to call the `load` function on a plugin.
+// The usual cause of an error in this call is that the plugin versions don't match the zellij
+// version.
+const PLUGINS_OUT_OF_DATE: &str =
+    "If you're seeing this error the most likely cause is that your plugin versions
+don't match your current zellij version.
+
+If you're a user:
+    Please contact the distributor of your zellij version and report this error
+    to them.
+
+If you're a developer:
+    Please run zellij with the updated plugins. The easiest way to achieve this
+    is to build zellij with `cargo make install`. Also refer to the docs:
+    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
+
+A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
+folder from the output of the `zellij setup --check` command.
+";
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
@@ -83,7 +103,7 @@ pub(crate) fn wasm_thread_main(
     store: Store,
     data_dir: PathBuf,
     plugins: PluginsConfig,
-) {
+) -> Result<()> {
     info!("Wasm main thread starts");
 
     let mut plugin_id = 0;
@@ -101,17 +121,22 @@ pub(crate) fn wasm_thread_main(
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(pid_tx, run, tab_index, client_id) => {
+                let err_context = || format!("failed to load plugin for client {client_id}");
+
                 let plugin = plugins
                     .get(&run)
-                    .unwrap_or_else(|| panic!("Plugin {:?} could not be resolved", run));
+                    .with_context(|| format!("failed to resolve plugin {run:?}"))
+                    .with_context(err_context)
+                    .fatal();
 
                 let (instance, plugin_env) = start_plugin(
                     plugin_id, client_id, &plugin, tab_index, &bus, &store, &data_dir,
-                );
+                )
+                .with_context(err_context)?;
 
                 let mut main_user_instance = instance.clone();
                 let main_user_env = plugin_env.clone();
-                load_plugin(&mut main_user_instance);
+                load_plugin(&mut main_user_instance).with_context(err_context)?;
 
                 plugin_map.insert((plugin_id, client_id), (main_user_instance, main_user_env));
 
@@ -120,45 +145,82 @@ pub(crate) fn wasm_thread_main(
                     let mut new_plugin_env = plugin_env.clone();
                     new_plugin_env.client_id = *client_id;
                     let module = instance.module().clone();
-                    let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
+                    let wasi = new_plugin_env
+                        .wasi_env
+                        .import_object(&module)
+                        .with_context(err_context)?;
                     let zellij = zellij_exports(&store, &new_plugin_env);
-                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
-                    load_plugin(&mut instance);
+                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
+                        .with_context(err_context)?;
+                    load_plugin(&mut instance).with_context(err_context)?;
                     plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env));
                 }
-                pid_tx.send(plugin_id).unwrap();
+                pid_tx.send(plugin_id).with_context(err_context)?;
                 plugin_id += 1;
             },
             PluginInstruction::Update(pid, cid, event) => {
+                let err_context = || {
+                    if *DEBUG_MODE.get().unwrap_or(&true) {
+                        format!("failed to update plugin with event: {event:#?}")
+                    } else {
+                        "failed to update plugin".to_string()
+                    }
+                };
+
                 for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
-                    let subs = plugin_env.subscriptions.lock().unwrap();
+                    let subs = plugin_env
+                        .subscriptions
+                        .lock()
+                        .to_anyhow()
+                        .with_context(err_context)?;
                     // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                    let event_type = EventType::from_str(&event.to_string()).unwrap();
+                    let event_type =
+                        EventType::from_str(&event.to_string()).with_context(err_context)?;
                     if subs.contains(&event_type)
                         && ((pid.is_none() && cid.is_none())
                             || (pid.is_none() && cid == Some(client_id))
                             || (cid.is_none() && pid == Some(plugin_id))
                             || (cid == Some(client_id) && pid == Some(plugin_id)))
                     {
-                        let update = instance.exports.get_function("update").unwrap();
+                        let update = instance
+                            .exports
+                            .get_function("update")
+                            .with_context(err_context)?;
                         wasi_write_object(&plugin_env.wasi_env, &event);
-                        update.call(&[]).unwrap();
+                        update
+                            .call(&[])
+                            .with_context(err_context)
+                            .context(PLUGINS_OUT_OF_DATE)?;
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             },
             PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
+                let err_context = || {
+                    format!(
+                        "failed to render plugin with pid {pid} and cid {cid} at ({rows}, {cols})"
+                    )
+                };
+
                 if rows == 0 || cols == 0 {
-                    buf_tx.send(String::new()).unwrap();
+                    buf_tx.send(String::new()).with_context(err_context)?;
                 } else {
-                    let (instance, plugin_env) = plugin_map.get(&(pid, cid)).unwrap();
-                    let render = instance.exports.get_function("render").unwrap();
+                    let (instance, plugin_env) = plugin_map
+                        .get(&(pid, cid))
+                        .context("failed to find plugin for rendering")
+                        .with_context(err_context)?;
+                    let render = instance
+                        .exports
+                        .get_function("render")
+                        .with_context(err_context)?;
 
                     render
                         .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                        .unwrap();
+                        .with_context(err_context)?;
 
-                    buf_tx.send(wasi_read_string(&plugin_env.wasi_env)).unwrap();
+                    buf_tx
+                        .send(wasi_read_string(&plugin_env.wasi_env))
+                        .with_context(err_context)?;
                 }
             },
             PluginInstruction::Unload(pid) => {
@@ -172,6 +234,8 @@ pub(crate) fn wasm_thread_main(
                 }
             },
             PluginInstruction::AddClient(client_id) => {
+                let err_context = || format!("failed to add plugins for client {client_id}");
+
                 connected_clients.push(client_id);
 
                 let mut seen = HashSet::new();
@@ -187,10 +251,14 @@ pub(crate) fn wasm_thread_main(
                     new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
                 }
                 for (plugin_id, (module, mut new_plugin_env)) in new_plugins.drain() {
-                    let wasi = new_plugin_env.wasi_env.import_object(&module).unwrap();
+                    let wasi = new_plugin_env
+                        .wasi_env
+                        .import_object(&module)
+                        .with_context(err_context)?;
                     let zellij = zellij_exports(&store, &new_plugin_env);
-                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
-                    load_plugin(&mut instance);
+                    let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
+                        .with_context(err_context)?;
+                    load_plugin(&mut instance).with_context(err_context)?;
                     plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env));
                 }
 
@@ -198,7 +266,8 @@ pub(crate) fn wasm_thread_main(
                 for plugin in plugins.iter() {
                     if let PluginType::Headless = plugin.run {
                         let (instance, plugin_env) =
-                            start_plugin(plugin_id, client_id, plugin, 0, &bus, &store, &data_dir);
+                            start_plugin(plugin_id, client_id, plugin, 0, &bus, &store, &data_dir)
+                                .with_context(err_context)?;
                         headless_plugins.insert(plugin_id, (instance, plugin_env));
                         plugin_id += 1;
                     }
@@ -211,7 +280,9 @@ pub(crate) fn wasm_thread_main(
         }
     }
     info!("wasm main thread exits");
-    fs::remove_dir_all(&plugin_global_data_dir).unwrap();
+    fs::remove_dir_all(&plugin_global_data_dir)
+        .context("failed to cleanup plugin data directory")?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -223,7 +294,9 @@ fn start_plugin(
     bus: &Bus<PluginInstruction>,
     store: &Store,
     data_dir: &Path,
-) -> (Instance, PluginEnv) {
+) -> Result<(Instance, PluginEnv)> {
+    let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
+
     if plugin._allow_exec_host_cmd {
         info!(
             "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
@@ -231,9 +304,12 @@ fn start_plugin(
         );
     }
 
+    // The plugins blob as stored on the filesystem
     let wasm_bytes = plugin
         .resolve_wasm_bytes(&data_dir.join("plugins/"))
-        .unwrap_or_else(|| panic!("Cannot resolve wasm bytes for plugin {:?}", plugin));
+        .context("cannot resolve wasm bytes")
+        .with_context(err_context)
+        .fatal();
 
     let hash: String = PortableHash::default()
         .hash256(&wasm_bytes)
@@ -244,50 +320,55 @@ fn start_plugin(
     let cached_path = ZELLIJ_PROJ_DIR.cache_dir().join(&hash);
 
     let module = unsafe {
-        Module::deserialize_from_file(store, &cached_path).unwrap_or_else(|_| {
-            let m = Module::new(store, &wasm_bytes).unwrap();
-            fs::create_dir_all(ZELLIJ_PROJ_DIR.cache_dir()).unwrap();
-            m.serialize_to_file(&cached_path).unwrap();
-            m
-        })
+        match Module::deserialize_from_file(store, &cached_path) {
+            Ok(m) => m,
+            Err(e) => {
+                let inner_context = || format!("failed to recover from {e:?}");
+
+                let m = Module::new(store, &wasm_bytes)
+                    .with_context(inner_context)
+                    .with_context(err_context)?;
+                fs::create_dir_all(ZELLIJ_PROJ_DIR.cache_dir())
+                    .with_context(inner_context)
+                    .with_context(err_context)?;
+                m.serialize_to_file(&cached_path)
+                    .with_context(inner_context)
+                    .with_context(err_context)?;
+                m
+            },
+        }
     };
 
     let output = Pipe::new();
     let input = Pipe::new();
     let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
     let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-    fs::create_dir_all(&plugin_own_data_dir).unwrap_or_else(|e| {
-        log::error!(
-            "Could not create plugin_own_data_dir in {:?} \n Error: {:?}",
-            &plugin_own_data_dir,
-            e
-        )
-    });
+    fs::create_dir_all(&plugin_own_data_dir)
+        .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
+        .with_context(|| format!("while starting plugin {plugin:#?}"))
+        .non_fatal();
 
     // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
-    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path()).unwrap_or_else(|e| {
-        log::error!(
-            "Could not create ZELLIJ_TMP_DIR at {:?} \n Error: {:?}",
-            &ZELLIJ_TMP_DIR.as_path(),
-            e
-        )
-    });
+    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
+        .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
+        .with_context(|| format!("while starting plugin {plugin:#?}"))
+        .non_fatal();
 
     let mut wasi_env = WasiState::new("Zellij")
         .env("CLICOLOR_FORCE", "1")
         .map_dir("/host", ".")
-        .unwrap()
+        .with_context(err_context)?
         .map_dir("/data", &plugin_own_data_dir)
-        .unwrap()
+        .with_context(err_context)?
         .map_dir("/tmp", ZELLIJ_TMP_DIR.as_path())
-        .unwrap()
+        .with_context(err_context)?
         .stdin(Box::new(input))
         .stdout(Box::new(output))
         .stderr(Box::new(stderr))
         .finalize()
-        .unwrap();
+        .with_context(err_context)?;
 
-    let wasi = wasi_env.import_object(&module).unwrap();
+    let wasi = wasi_env.import_object(&module).with_context(err_context)?;
     let mut plugin = plugin.clone();
     plugin.set_tab_index(tab_index);
 
@@ -303,16 +384,21 @@ fn start_plugin(
     };
 
     let zellij = zellij_exports(store, &plugin_env);
-    let instance = Instance::new(&module, &zellij.chain_back(wasi)).unwrap();
+    let instance = Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
 
-    (instance, plugin_env)
+    Ok((instance, plugin_env))
 }
 
-fn load_plugin(instance: &mut Instance) {
-    let load_function = instance.exports.get_function("_start").unwrap();
+fn load_plugin(instance: &mut Instance) -> Result<()> {
+    let err_context = || format!("failed to load plugin from instance {instance:#?}");
 
+    let load_function = instance
+        .exports
+        .get_function("_start")
+        .with_context(err_context)?;
     // This eventually calls the `.load()` method
-    load_function.call(&[]).unwrap();
+    load_function.call(&[]).with_context(err_context)?;
+    Ok(())
 }
 
 // Plugin API ---------------------------------------------------------------------------------------------------------

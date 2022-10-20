@@ -718,7 +718,9 @@ fn init_session(
             );
             let store = Store::default();
 
-            move || wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default())
+            move || {
+                wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default()).fatal()
+            }
         })
         .unwrap();
 
