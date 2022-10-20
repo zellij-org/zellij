@@ -295,12 +295,20 @@ impl Action {
                 file,
                 line_number,
                 floating,
-            } => Ok(vec![Action::EditFile(
-                file,
-                line_number,
-                direction,
-                floating,
-            )]),
+            } => {
+                let mut file = file;
+                if file.is_relative() {
+                    if let Some(cwd) = std::env::current_dir().ok() {
+                        file = cwd.join(file);
+                    }
+                }
+                Ok(vec![Action::EditFile(
+                    file,
+                    line_number,
+                    direction,
+                    floating,
+                )])
+            }
             CliAction::SwitchMode { input_mode } => {
                 Ok(vec![Action::SwitchModeForAllClients(input_mode)])
             },
