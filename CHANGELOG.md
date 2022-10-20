@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow `DumpScreen` to dump the viewport by default (https://github.com/zellij-org/zellij/pull/1794)
 * Terminal compatibility: clear scroll region when terminal pane is cleared (https://github.com/zellij-org/zellij/pull/1826)
 * feat: allow defining tab cwd in layouts (https://github.com/zellij-org/zellij/pull/1828)
+* debugging: Remove calls to `unwrap` from plugin WASM VM (https://github.com/zellij-org/zellij/pull/1827)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
