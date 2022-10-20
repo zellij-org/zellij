@@ -54,6 +54,9 @@ If you're a developer:
     Please run zellij with the updated plugins. The easiest way to achieve this
     is to build zellij with `cargo make install`. Also refer to the docs:
     https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
+
+A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
+folder from the output of the `zellij setup --check` command.
 ";
 
 #[derive(Clone, Debug)]
