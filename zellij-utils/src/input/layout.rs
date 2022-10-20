@@ -111,6 +111,25 @@ impl Run {
             (None, None) => None,
         }
     }
+    pub fn add_cwd(&mut self, cwd: &PathBuf) {
+        match self {
+            Run::Command(run_command) => match run_command.cwd.as_mut() {
+                Some(run_cwd) => {
+                    *run_cwd = cwd.join(&run_cwd);
+                },
+                None => {
+                    run_command.cwd = Some(cwd.clone());
+                },
+            },
+            Run::EditFile(path_to_file, _line_number) => {
+                *path_to_file = cwd.join(&path_to_file);
+            },
+            Run::Cwd(path) => {
+                *path = cwd.join(&path);
+            },
+            _ => {}, // plugins aren't yet supported
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -232,6 +251,17 @@ impl PaneLayout {
         let mut default_layout = PaneLayout::default();
         default_layout.children = vec![PaneLayout::default()];
         default_layout
+    }
+    pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
+        match self.run.as_mut() {
+            Some(run) => run.add_cwd(cwd),
+            None => {
+                self.run = Some(Run::Cwd(cwd.clone()));
+            },
+        }
+        for child in self.children.iter_mut() {
+            child.add_cwd_to_layout(cwd);
+        }
     }
 }
 

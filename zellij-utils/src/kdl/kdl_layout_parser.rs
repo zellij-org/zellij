@@ -75,7 +75,10 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "children"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
-        property_name == "focus" || property_name == "name" || property_name == "split_direction"
+        property_name == "focus"
+            || property_name == "name"
+            || property_name == "split_direction"
+            || property_name == "cwd"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -177,14 +180,18 @@ impl<'a> KdlLayoutParser<'a> {
             None => Ok(None),
         }
     }
+    fn cwd_prefix(&self, tab_cwd: Option<&PathBuf>) -> Result<Option<PathBuf>, ConfigError> {
+        Ok(match (&self.global_cwd, tab_cwd) {
+            (Some(global_cwd), Some(tab_cwd)) => Some(global_cwd.join(tab_cwd)),
+            (None, Some(tab_cwd)) => Some(tab_cwd.clone()),
+            (Some(global_cwd), None) => Some(global_cwd.clone()),
+            (None, None) => None,
+        })
+    }
     fn parse_cwd(&self, kdl_node: &KdlNode) -> Result<Option<PathBuf>, ConfigError> {
         Ok(
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd")
-                .and_then(|c| match &self.global_cwd {
-                    Some(global_cwd) => Some(global_cwd.join(c)),
-                    None => Some(PathBuf::from(c)),
-                })
-                .or_else(|| self.global_cwd.as_ref().map(|g| g.clone())),
+                .map(|cwd| PathBuf::from(cwd)),
         )
     }
     fn parse_pane_command(
@@ -196,13 +203,7 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|c| PathBuf::from(c));
         let edit = kdl_get_string_property_or_child_value_with_error!(pane_node, "edit")
             .map(|c| PathBuf::from(c));
-        let cwd = if is_template {
-            // we fill the global_cwd for templates later
-            kdl_get_string_property_or_child_value_with_error!(pane_node, "cwd")
-                .map(|c| PathBuf::from(c))
-        } else {
-            self.parse_cwd(pane_node)?
-        };
+        let cwd = self.parse_cwd(pane_node)?;
         let args = self.parse_args(pane_node)?;
         match (command, edit, cwd, args, is_template) {
             (None, None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
@@ -233,7 +234,13 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, false)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
-            if run.is_some() {
+            let has_non_cwd_run_prop = run
+                .map(|r| match r {
+                    Run::Cwd(_) => false,
+                    _ => true,
+                })
+                .unwrap_or(false);
+            if has_non_cwd_run_prop {
                 return Err(ConfigError::new_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
@@ -250,7 +257,13 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, true)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
-            if run.is_some() {
+            let has_non_cwd_run_prop = run
+                .map(|r| match r {
+                    Run::Cwd(_) => false,
+                    _ => true,
+                })
+                .unwrap_or(false);
+            if has_non_cwd_run_prop {
                 return Err(ConfigError::new_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
@@ -339,7 +352,6 @@ impl<'a> KdlLayoutParser<'a> {
             pane_template_kdl_node,
         )?;
         pane_template.run = Run::merge(&pane_template.run, &run);
-        self.populate_global_cwd_for_pane_run(&mut pane_template.run)?;
         if let (Some(Run::Command(pane_template_run_command)), Some(args)) =
             (pane_template.run.as_mut(), args)
         {
@@ -366,31 +378,6 @@ impl<'a> KdlLayoutParser<'a> {
         }
         pane_template.external_children_index = None;
         Ok(pane_template)
-    }
-    fn populate_global_cwd_for_pane_run(
-        &self,
-        pane_run: &mut Option<Run>,
-    ) -> Result<(), ConfigError> {
-        if let Some(global_cwd) = &self.global_cwd {
-            match pane_run.as_mut() {
-                Some(Run::Command(run_command)) => match run_command.cwd.as_mut() {
-                    Some(run_command_cwd) => {
-                        *run_command_cwd = global_cwd.join(&run_command_cwd);
-                    },
-                    None => {
-                        run_command.cwd = Some(global_cwd.clone());
-                    },
-                },
-                Some(Run::EditFile(path_to_file, _line_number)) => {
-                    *path_to_file = global_cwd.join(&path_to_file);
-                },
-                Some(Run::Cwd(pane_template_cwd)) => {
-                    *pane_template_cwd = global_cwd.join(&pane_template_cwd);
-                },
-                _ => {},
-            }
-        }
-        Ok(())
     }
     fn parse_split_direction(&self, kdl_node: &KdlNode) -> Result<SplitDirection, ConfigError> {
         match kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction") {
@@ -453,21 +440,23 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_tab_properties(kdl_node)?;
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
+        let tab_cwd =
+            kdl_get_string_property_or_child_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let children = match kdl_children_nodes!(kdl_node) {
             Some(children) => self.parse_child_pane_nodes_for_tab(children)?,
             None => vec![],
         };
-        Ok((
-            is_focused,
-            tab_name,
-            PaneLayout {
-                children_split_direction,
-                children,
-                ..Default::default()
-            },
-        ))
+        let mut pane_layout = PaneLayout {
+            children_split_direction,
+            children,
+            ..Default::default()
+        };
+        if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
+            pane_layout.add_cwd_to_layout(&cwd_prefix);
+        }
+        Ok((is_focused, tab_name, pane_layout))
     }
     fn parse_child_pane_nodes_for_tab(
         &self,
@@ -700,6 +689,8 @@ impl<'a> KdlLayoutParser<'a> {
         // (is_focused, Option<tab_name>, PaneLayout)
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
+        let tab_cwd =
+            kdl_get_string_property_or_child_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
@@ -724,6 +715,9 @@ impl<'a> KdlLayoutParser<'a> {
                         .insert(index_of_children, PaneLayout::default());
                 }
             },
+        }
+        if let Some(cwd_prefix) = self.cwd_prefix(tab_cwd.as_ref())? {
+            tab_layout.add_cwd_to_layout(&cwd_prefix);
         }
         tab_layout.external_children_index = None;
         Ok((is_focused, tab_name, tab_layout))
@@ -1017,7 +1011,11 @@ impl<'a> KdlLayoutParser<'a> {
                     child.span().len(),
                 ));
             }
-            child_panes.push(self.parse_pane_node(child)?);
+            let mut pane_node = self.parse_pane_node(child)?;
+            if let Some(global_cwd) = &self.global_cwd {
+                pane_node.add_cwd_to_layout(&global_cwd);
+            }
+            child_panes.push(pane_node);
         } else if child_name == "tab" {
             if !child_panes.is_empty() {
                 return Err(ConfigError::new_kdl_error(
@@ -1064,11 +1062,12 @@ impl<'a> KdlLayoutParser<'a> {
                     child.span().len(),
                 ));
             }
-            child_panes.push(self.parse_pane_node_with_template(
-                child,
-                pane_template,
-                &pane_template_kdl_node,
-            )?);
+            let mut pane_template =
+                self.parse_pane_node_with_template(child, pane_template, &pane_template_kdl_node)?;
+            if let Some(cwd_prefix) = &self.cwd_prefix(None)? {
+                pane_template.add_cwd_to_layout(&cwd_prefix);
+            }
+            child_panes.push(pane_template);
         } else if !self.is_a_reserved_word(child_name) {
             return Err(ConfigError::new_kdl_error(
                 format!("Unknown layout node: '{}'", child_name),
