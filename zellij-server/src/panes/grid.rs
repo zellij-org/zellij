@@ -1195,7 +1195,7 @@ impl Grid {
         let character_width = terminal_character.width;
         // Drop zero-width Unicode/UTF-8 codepoints, like for example Variation Selectors.
         // This breaks unicode grapheme segmentation, and is the reason why some characters
-        // aren't displayed correctly. Refer to this issue for more information: 
+        // aren't displayed correctly. Refer to this issue for more information:
         //     https://github.com/zellij-org/zellij/issues/1538
         if character_width == 0 {
             return;
