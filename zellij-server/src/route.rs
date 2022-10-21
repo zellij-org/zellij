@@ -111,7 +111,10 @@ pub(crate) fn route_action(
                 ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
                 ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
             };
-            session.senders.send_to_screen(screen_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
         },
         Action::SwitchFocus => {
             session
@@ -138,7 +141,10 @@ pub(crate) fn route_action(
                 Direction::Up => ScreenInstruction::MoveFocusUp(client_id),
                 Direction::Down => ScreenInstruction::MoveFocusDown(client_id),
             };
-            session.senders.send_to_screen(screen_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
         },
         Action::MoveFocusOrTab(direction) => {
             let screen_instr = match direction {
@@ -147,7 +153,10 @@ pub(crate) fn route_action(
                 Direction::Up => ScreenInstruction::SwitchTabNext(client_id),
                 Direction::Down => ScreenInstruction::SwitchTabPrev(client_id),
             };
-            session.senders.send_to_screen(screen_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
         },
         Action::MovePane(direction) => {
             let screen_instr = match direction {
@@ -157,7 +166,10 @@ pub(crate) fn route_action(
                 Some(Direction::Down) => ScreenInstruction::MovePaneDown(client_id),
                 None => ScreenInstruction::MovePane(client_id),
             };
-            session.senders.send_to_screen(screen_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
         },
         Action::DumpScreen(val, full) => {
             session
@@ -260,7 +272,10 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session.senders.send_to_pty(pty_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_pty(pty_instr)
+                .with_context(err_context)?;
         },
         Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
             let title = format!("Editing: {}", path_to_file.display());
@@ -290,7 +305,10 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session.senders.send_to_pty(pty_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_pty(pty_instr)
+                .with_context(err_context)?;
         },
         Action::SwitchModeForAllClients(input_mode) => {
             let attrs = &session.client_attributes;
@@ -352,7 +370,10 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session.senders.send_to_pty(pty_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_pty(pty_instr)
+                .with_context(err_context)?;
         },
         Action::TogglePaneEmbedOrFloating => {
             session
@@ -404,7 +425,10 @@ pub(crate) fn route_action(
                     ClientOrTabIndex::ClientId(client_id),
                 ),
             };
-            session.senders.send_to_pty(pty_instr).with_context(err_context)?;
+            session
+                .senders
+                .send_to_pty(pty_instr)
+                .with_context(err_context)?;
         },
         Action::CloseFocus => {
             session
@@ -569,7 +593,10 @@ pub(crate) fn route_action(
                 SearchDirection::Down => ScreenInstruction::SearchDown(client_id),
                 SearchDirection::Up => ScreenInstruction::SearchUp(client_id),
             };
-            session.senders.send_to_screen(instruction).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(instruction)
+                .with_context(err_context)?;
         },
         Action::SearchToggleOption(o) => {
             let instruction = match o {
@@ -579,7 +606,10 @@ pub(crate) fn route_action(
                 SearchOption::WholeWord => ScreenInstruction::SearchToggleWholeWord(client_id),
                 SearchOption::Wrap => ScreenInstruction::SearchToggleWrap(client_id),
             };
-            session.senders.send_to_screen(instruction).with_context(err_context)?;
+            session
+                .senders
+                .send_to_screen(instruction)
+                .with_context(err_context)?;
         },
     }
     Ok(should_break)
@@ -611,7 +641,7 @@ pub(crate) fn route_thread_main(
     client_id: ClientId,
 ) -> Result<()> {
     let mut retry_queue = vec![];
-    let err_context = ||format!("failed to handle instruction for client {client_id}");
+    let err_context = || format!("failed to handle instruction for client {client_id}");
     'route_loop: loop {
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
@@ -715,12 +745,16 @@ pub(crate) fn route_thread_main(
                                 client_id,
                                 plugin_config,
                             );
-                            to_server.send(new_client_instruction).with_context(err_context)?;
+                            to_server
+                                .send(new_client_instruction)
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::AttachClient(client_attributes, opts) => {
                             let attach_client_instruction =
                                 ServerInstruction::AttachClient(client_attributes, opts, client_id);
-                            to_server.send(attach_client_instruction).with_context(err_context)?;
+                            to_server
+                                .send(attach_client_instruction)
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::ClientExited => {
                             // we don't unwrap this because we don't really care if there's an error here (eg.
@@ -729,7 +763,9 @@ pub(crate) fn route_thread_main(
                             return Ok(true);
                         },
                         ClientToServerMsg::KillSession => {
-                            to_server.send(ServerInstruction::KillSession).with_context(err_context)?;
+                            to_server
+                                .send(ServerInstruction::KillSession)
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::ConnStatus => {
                             let _ = to_server.send(ServerInstruction::ConnStatus(client_id));
