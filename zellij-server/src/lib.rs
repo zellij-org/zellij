@@ -276,6 +276,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                             receiver,
                                             client_id,
                                         )
+                                        .fatal()
                                     })
                                     .unwrap(),
                             );
