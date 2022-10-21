@@ -686,13 +686,13 @@ pub(crate) fn route_thread_main(
                                 .read()
                                 .unwrap()
                                 .min_client_terminal_size()
-                                .unwrap();
+                                .with_context(err_context)?;
                             rlocked_sessions
                                 .as_ref()
                                 .unwrap()
                                 .senders
                                 .send_to_screen(ScreenInstruction::TerminalResize(min_size))
-                                .unwrap();
+                                .with_context(err_context)?;
                         },
                         ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
                             send_to_screen_or_retry_queue!(
