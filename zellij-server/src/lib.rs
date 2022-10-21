@@ -35,7 +35,6 @@ use crate::{
     wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use route::route_thread_main;
-use zellij_utils::errors::prelude::Context;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
@@ -276,10 +275,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                                             to_server,
                                             receiver,
                                             client_id,
-                                        )
+                                        ).fatal()
                                     })
-                                    .context("Failed to spawn server_router thread")
-                                    .fatal(),
+                                    .unwrap(),
                             );
                         },
                         Err(err) => {
