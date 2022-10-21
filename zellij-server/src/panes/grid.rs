@@ -2563,7 +2563,7 @@ impl Perform for Grid {
             };
             if first_intermediate_is_questionmark {
                 let query_type = params_iter.next();
-                let is_query = params_iter.next() == Some(&[1]);
+                let is_query = matches!(params_iter.next(), Some(&[1]));
                 if is_query {
                     // XTSMGRAPHICS
                     match query_type {
