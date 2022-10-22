@@ -38,5 +38,10 @@ macro_rules! register_plugin {
                 state.borrow_mut().render(rows as usize, cols as usize);
             });
         }
+
+        #[no_mangle]
+        pub fn plugin_version() {
+            println!("{}", $crate::prelude::VERSION);
+        }
     };
 }

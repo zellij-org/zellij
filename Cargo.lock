@@ -3405,6 +3405,7 @@ dependencies = [
  "highway",
  "insta",
  "log",
+ "semver",
  "serde_json",
  "sixel-image",
  "sixel-tokenizer",
