@@ -438,7 +438,7 @@ fn start_plugin(
     let zellij_version = Version::parse(VERSION)
         .context("failed to parse zellij version")
         .with_context(err_context)?;
-    if plugin_version < zellij_version {
+    if plugin_version != zellij_version {
         panic!(
             "{}",
             anyError::new(VersionMismatchError::new(
