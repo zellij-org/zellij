@@ -15,6 +15,7 @@ use zellij_utils::shared::ansi_len;
 use zellij_utils::{
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, PaletteColor},
+    errors::prelude::*,
     pane_size::{Dimension, PaneGeom},
     shared::make_terminal_title,
 };
@@ -137,12 +138,16 @@ impl Pane for PluginPane {
     fn render(
         &mut self,
         client_id: Option<ClientId>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
         // this is a bit of a hack but works in a pinch
-        client_id?;
-        let client_id = client_id.unwrap();
+        let client_id = match client_id {
+            Some(id) => id,
+            None => return Ok(None),
+        };
         // if self.should_render {
         if true {
+            let err_context = || format!("failed to render plugin panes for client {client_id}");
+
             // while checking should_render rather than rendering each pane every time
             // is more performant, it causes some problems when the pane to the left should be
             // rendered and has wide characters (eg. Chinese characters or emoji)
@@ -158,12 +163,16 @@ impl Pane for PluginPane {
                     self.get_content_rows(),
                     self.get_content_columns(),
                 ))
-                .unwrap();
+                .to_anyhow()
+                .with_context(err_context)?;
 
             self.should_render = false;
+            // This is where we receive the text to render from the plugins.
             let contents = buf_rx
                 .recv()
-                .expect("Failed to receive reply from plugin. Please check the logs");
+                .with_context(err_context)
+                .to_log()
+                .unwrap_or("No output from plugin received. See logs".to_string());
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
                 let line_to_print = if actual_len > self.get_content_columns() {
@@ -185,7 +194,7 @@ impl Pane for PluginPane {
                     self.get_content_x() + 1,
                     line_to_print,
                 )
-                .unwrap(); // goto row/col and reset styles
+                .with_context(err_context)?; // goto row/col and reset styles
                 let line_len = line_to_print.len();
                 if line_len < self.get_content_columns() {
                     // pad line
@@ -206,15 +215,15 @@ impl Pane for PluginPane {
                         y + line_index + 1,
                         x + 1
                     )
-                    .unwrap(); // goto row/col and reset styles
+                    .with_context(err_context)?; // goto row/col and reset styles
                     for _col_index in 0..self.get_content_columns() {
                         vte_output.push(' ');
                     }
                 }
             }
-            Some((vec![], Some(vte_output), vec![])) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
+            Ok(Some((vec![], Some(vte_output), vec![]))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
         } else {
-            None
+            Ok(None)
         }
     }
     fn render_frame(
