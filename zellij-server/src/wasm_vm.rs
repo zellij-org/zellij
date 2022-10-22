@@ -49,15 +49,17 @@ use zellij_utils::{
 pub struct VersionMismatchError {
     zellij_version: String,
     plugin_version: String,
+    plugin_path: PathBuf,
 }
 
 impl std::error::Error for VersionMismatchError {}
 
 impl VersionMismatchError {
-    pub fn new(zellij_version: &str, plugin_version: &str) -> Self {
+    pub fn new(zellij_version: &str, plugin_version: &str, plugin_path: &PathBuf) -> Self {
         VersionMismatchError {
             zellij_version: zellij_version.to_owned(),
             plugin_version: plugin_version.to_owned(),
+            plugin_path: plugin_path.to_owned(),
         }
     }
 }
@@ -71,6 +73,7 @@ zellij version. Detected versions:
 
 - Plugin version: {}
 - Zellij version: {}
+- Offending plugin: {}
 
 If you're a user:
     Please contact the distributor of your zellij version and report this error
@@ -84,7 +87,9 @@ If you're a developer:
 A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
 folder from the output of the `zellij setup --check` command.
 ",
-            self.plugin_version, self.zellij_version
+            self.plugin_version,
+            self.zellij_version,
+            self.plugin_path.display()
         )
     }
 }
@@ -416,7 +421,14 @@ fn start_plugin(
     // Check plugin version
     let plugin_version_func = match instance.exports.get_function("plugin_version") {
         Ok(val) => val,
-        Err(_) => panic!("{}", anyError::new(VersionMismatchError::new(VERSION, "Unavailable"))),
+        Err(_) => panic!(
+            "{}",
+            anyError::new(VersionMismatchError::new(
+                VERSION,
+                "Unavailable",
+                &plugin_env.plugin.path
+            ))
+        ),
     };
     plugin_version_func.call(&[]).with_context(err_context)?;
     let plugin_version_str = wasi_read_string(&plugin_env.wasi_env);
@@ -427,7 +439,14 @@ fn start_plugin(
         .context("failed to parse zellij version")
         .with_context(err_context)?;
     if plugin_version < zellij_version {
-        panic!("{}", anyError::new(VersionMismatchError::new(VERSION, &plugin_version_str)));
+        panic!(
+            "{}",
+            anyError::new(VersionMismatchError::new(
+                VERSION,
+                &plugin_version_str,
+                &plugin_env.plugin.path
+            ))
+        );
     }
 
     Ok((instance, plugin_env))
