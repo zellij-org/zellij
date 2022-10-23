@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow defining tab cwd in layouts (https://github.com/zellij-org/zellij/pull/1828)
 * debugging: Remove calls to `unwrap` from plugin WASM VM (https://github.com/zellij-org/zellij/pull/1827)
 * debugging: Improve error handling in `server/route` (https://github.com/zellij-org/zellij/pull/1808)
+* debugging: Detect plugin version mismatches (https://github.com/zellij-org/zellij/pull/1838)
 
 ## [0.31.4] - 2022-09-09
 * Terminal compatibility: improve vttest compliance (https://github.com/zellij-org/zellij/pull/1671)
