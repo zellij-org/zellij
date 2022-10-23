@@ -18,6 +18,11 @@ macro_rules! register_plugin {
         }
 
         fn main() {
+            // Register custom panic handler
+            std::panic::set_hook(Box::new(|info| {
+                report_panic(info);
+            }));
+
             STATE.with(|state| {
                 state.borrow_mut().load();
             });

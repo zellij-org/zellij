@@ -50,6 +50,13 @@ pub fn exec_cmd(cmd: &[&str]) {
     unsafe { host_exec_cmd() };
 }
 
+pub fn report_panic(info: &std::panic::PanicInfo) {
+    println!("");
+    println!("A panic occured in a plugin");
+    println!("{:#?}", info);
+    unsafe { host_report_panic() };
+}
+
 // Internal Functions
 
 #[doc(hidden)]
@@ -75,4 +82,5 @@ extern "C" {
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
     fn host_exec_cmd();
+    fn host_report_panic();
 }

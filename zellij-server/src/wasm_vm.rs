@@ -497,6 +497,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
+        host_report_panic,
     }
 }
 
@@ -616,6 +617,16 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
         .args(cmdline)
         .spawn()
         .unwrap();
+}
+
+// Custom panic handler for plugins.
+//
+// This is called when a panic occurs in a plugin. Since most panics will likely originate in the
+// code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
+// formatted as string from the plugin.
+fn host_report_panic(plugin_env: &PluginEnv) {
+    let msg = wasi_read_string(&plugin_env.wasi_env);
+    panic!("{}", msg);
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
