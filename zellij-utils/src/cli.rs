@@ -127,14 +127,23 @@ pub enum Sessions {
     /// Run a command in a new pane
     #[clap(visible_alias = "r")]
     Run {
+        /// Command to run
         #[clap(last(true), required(true))]
         command: Vec<String>,
+
+        /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// Change the working directory of the new pane
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
     },
@@ -142,10 +151,16 @@ pub enum Sessions {
     #[clap(visible_alias = "e")]
     Edit {
         file: PathBuf,
+
+        /// Open the file in the specified line number
         #[clap(short, long, value_parser)]
         line_number: Option<usize>,
+
+        /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
     },
@@ -180,9 +195,11 @@ pub enum CliAction {
     /// Change the location of the focused pane in the specified direction
     /// [right|left|up|down]
     MovePane { direction: Direction },
-    /// Dumps the pane scrollback to a file
+    /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,
+
+        /// Dump the pane with full scrollback
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         full: bool,
     },
@@ -211,24 +228,38 @@ pub enum CliAction {
     /// Open a new pane in the specified direction [right|down]
     /// If no direction is specified, will try to use the biggest available space.
     NewPane {
+        /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
         #[clap(last(true))]
         command: Vec<String>,
+
+        /// Change the working directory of the new pane
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
         file: PathBuf,
+
+        /// Direction to open the new pane in
         #[clap(short, long, value_parser, conflicts_with("floating"))]
         direction: Option<Direction>,
+
+        /// Open the file in the specified line number
         #[clap(short, long, value_parser)]
         line_number: Option<usize>,
+
+        /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
     },
@@ -258,10 +289,15 @@ pub enum CliAction {
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
     NewTab {
+        /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
         layout: Option<PathBuf>,
+
+        /// Name of the new tab
         #[clap(short, long, value_parser)]
         name: Option<String>,
+
+        /// Change the working directory of the new tab
         #[clap(short, long, value_parser, requires("layout"))]
         cwd: Option<PathBuf>,
     },
