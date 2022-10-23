@@ -17,6 +17,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
+    errors::prelude::*,
     pane_size::SizeInPixels,
     pane_size::{Dimension, PaneGeom},
     position::Position,
@@ -272,7 +273,7 @@ impl Pane for TerminalPane {
     fn render(
         &mut self,
         _client_id: Option<ClientId>,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)> {
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
@@ -332,9 +333,13 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Some((character_chunks, Some(raw_vte_output), sixel_image_chunks))
+            Ok(Some((
+                character_chunks,
+                Some(raw_vte_output),
+                sixel_image_chunks,
+            )))
         } else {
-            None
+            Ok(None)
         }
     }
     fn render_frame(

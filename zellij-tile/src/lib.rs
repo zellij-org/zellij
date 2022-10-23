@@ -10,6 +10,18 @@ pub trait ZellijPlugin {
     fn render(&mut self, rows: usize, cols: usize) {}
 }
 
+pub const PLUGIN_MISMATCH: &str =
+    "An error occured in a plugin while receiving an Event from zellij. This means
+that the plugins aren't compatible with the current zellij version.
+
+The most likely explanation for this is that you're running either a
+self-compiled zellij or plugin version. Please make sure that, while developing,
+you also rebuild the plugins in order to pick up changes to the plugin code.
+
+Please refer to the documentation for further information:
+    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
+";
+
 #[macro_export]
 macro_rules! register_plugin {
     ($t:ty) => {
@@ -18,6 +30,11 @@ macro_rules! register_plugin {
         }
 
         fn main() {
+            // Register custom panic handler
+            std::panic::set_hook(Box::new(|info| {
+                report_panic(info);
+            }));
+
             STATE.with(|state| {
                 state.borrow_mut().load();
             });
@@ -25,10 +42,13 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() {
+            let object = $crate::shim::object_from_stdin()
+                .context($crate::PLUGIN_MISMATCH)
+                .to_stdout()
+                .unwrap();
+
             STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .update($crate::shim::object_from_stdin().unwrap());
+                state.borrow_mut().update(object);
             });
         }
 
@@ -37,6 +57,11 @@ macro_rules! register_plugin {
             STATE.with(|state| {
                 state.borrow_mut().render(rows as usize, cols as usize);
             });
+        }
+
+        #[no_mangle]
+        pub fn plugin_version() {
+            println!("{}", $crate::prelude::VERSION);
         }
     };
 }

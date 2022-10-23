@@ -1,9 +1,10 @@
 use highway::{HighwayHash, PortableHash};
 use log::{debug, info, warn};
+use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     process,
     str::FromStr,
@@ -39,12 +40,40 @@ use zellij_utils::{
     serde,
 };
 
-// String to add as error context when we fail to call the `load` function on a plugin.
-// The usual cause of an error in this call is that the plugin versions don't match the zellij
-// version.
-const PLUGINS_OUT_OF_DATE: &str =
-    "If you're seeing this error the most likely cause is that your plugin versions
-don't match your current zellij version.
+/// Custom error for plugin version mismatch.
+///
+/// This is thrown when, during starting a plugin, it is detected that the plugin version doesn't
+/// match the zellij version. This is treated as a fatal error and leads to instantaneous
+/// termination.
+#[derive(Debug)]
+pub struct VersionMismatchError {
+    zellij_version: String,
+    plugin_version: String,
+    plugin_path: PathBuf,
+}
+
+impl std::error::Error for VersionMismatchError {}
+
+impl VersionMismatchError {
+    pub fn new(zellij_version: &str, plugin_version: &str, plugin_path: &PathBuf) -> Self {
+        VersionMismatchError {
+            zellij_version: zellij_version.to_owned(),
+            plugin_version: plugin_version.to_owned(),
+            plugin_path: plugin_path.to_owned(),
+        }
+    }
+}
+
+impl fmt::Display for VersionMismatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "If you're seeing this error the plugin versions don't match the current
+zellij version. Detected versions:
+
+- Plugin version: {}
+- Zellij version: {}
+- Offending plugin: {}
 
 If you're a user:
     Please contact the distributor of your zellij version and report this error
@@ -57,7 +86,13 @@ If you're a developer:
 
 A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
 folder from the output of the `zellij setup --check` command.
-";
+",
+            self.plugin_version,
+            self.zellij_version,
+            self.plugin_path.display()
+        )
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) enum PluginInstruction {
@@ -161,9 +196,9 @@ pub(crate) fn wasm_thread_main(
             PluginInstruction::Update(pid, cid, event) => {
                 let err_context = || {
                     if *DEBUG_MODE.get().unwrap_or(&true) {
-                        format!("failed to update plugin with event: {event:#?}")
+                        format!("failed to update plugin state with event: {event:#?}")
                     } else {
-                        "failed to update plugin".to_string()
+                        "failed to update plugin state".to_string()
                     }
                 };
 
@@ -187,10 +222,19 @@ pub(crate) fn wasm_thread_main(
                             .get_function("update")
                             .with_context(err_context)?;
                         wasi_write_object(&plugin_env.wasi_env, &event);
-                        update
-                            .call(&[])
-                            .with_context(err_context)
-                            .context(PLUGINS_OUT_OF_DATE)?;
+                        update.call(&[]).or_else::<anyError, _>(|e| {
+                            match e.downcast::<serde_json::Error>() {
+                                Ok(_) => panic!(
+                                    "{}",
+                                    anyError::new(VersionMismatchError::new(
+                                        VERSION,
+                                        "Unavailable",
+                                        &plugin_env.plugin.path
+                                    ))
+                                ),
+                                Err(e) => Err(e).with_context(err_context),
+                            }
+                        })?;
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
@@ -386,6 +430,37 @@ fn start_plugin(
     let zellij = zellij_exports(store, &plugin_env);
     let instance = Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
 
+    // Check plugin version
+    let plugin_version_func = match instance.exports.get_function("plugin_version") {
+        Ok(val) => val,
+        Err(_) => panic!(
+            "{}",
+            anyError::new(VersionMismatchError::new(
+                VERSION,
+                "Unavailable",
+                &plugin_env.plugin.path
+            ))
+        ),
+    };
+    plugin_version_func.call(&[]).with_context(err_context)?;
+    let plugin_version_str = wasi_read_string(&plugin_env.wasi_env);
+    let plugin_version = Version::parse(&plugin_version_str)
+        .context("failed to parse plugin version")
+        .with_context(err_context)?;
+    let zellij_version = Version::parse(VERSION)
+        .context("failed to parse zellij version")
+        .with_context(err_context)?;
+    if plugin_version != zellij_version {
+        panic!(
+            "{}",
+            anyError::new(VersionMismatchError::new(
+                VERSION,
+                &plugin_version_str,
+                &plugin_env.plugin.path
+            ))
+        );
+    }
+
     Ok((instance, plugin_env))
 }
 
@@ -425,6 +500,7 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
         host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
+        host_report_panic,
     }
 }
 
@@ -544,6 +620,16 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
         .args(cmdline)
         .spawn()
         .unwrap();
+}
+
+// Custom panic handler for plugins.
+//
+// This is called when a panic occurs in a plugin. Since most panics will likely originate in the
+// code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
+// formatted as string from the plugin.
+fn host_report_panic(plugin_env: &PluginEnv) {
+    let msg = wasi_read_string(&plugin_env.wasi_env);
+    panic!("{}", msg);
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------

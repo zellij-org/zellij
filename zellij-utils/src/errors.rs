@@ -27,6 +27,7 @@ pub mod prelude {
     pub use anyhow::anyhow;
     pub use anyhow::bail;
     pub use anyhow::Context;
+    pub use anyhow::Error as anyError;
     pub use anyhow::Result;
 }
 
@@ -111,11 +112,7 @@ pub trait LoggableError<T>: Sized {
 impl<T> LoggableError<T> for anyhow::Result<T> {
     fn print_error<F: Fn(&str)>(self, fun: F) -> Self {
         if let Err(ref err) = self {
-            let mut msg = format!("ERROR: {}", err);
-            for cause in err.chain().skip(1) {
-                msg = format!("{msg}\nbecause: {cause}");
-            }
-            fun(&msg);
+            fun(&format!("{:?}", err));
         }
         self
     }
