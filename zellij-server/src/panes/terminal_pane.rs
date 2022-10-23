@@ -333,7 +333,11 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Ok(Some((character_chunks, Some(raw_vte_output), sixel_image_chunks)))
+            Ok(Some((
+                character_chunks,
+                Some(raw_vte_output),
+                sixel_image_chunks,
+            )))
         } else {
             Ok(None)
         }

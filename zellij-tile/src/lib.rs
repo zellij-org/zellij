@@ -11,7 +11,7 @@ pub trait ZellijPlugin {
 }
 
 pub const PLUGIN_MISMATCH: &str =
-"An error occured in a plugin while receiving an Event from zellij. This means
+    "An error occured in a plugin while receiving an Event from zellij. This means
 that your plugins aren't compatible with your zellij version.
 
 The most likely explanation for this is that you're running either a
@@ -48,9 +48,7 @@ macro_rules! register_plugin {
                 .unwrap();
 
             STATE.with(|state| {
-                state
-                    .borrow_mut()
-                    .update(object);
+                state.borrow_mut().update(object);
             });
         }
 
@@ -65,7 +63,5 @@ macro_rules! register_plugin {
         pub fn plugin_version() {
             println!("{}", $crate::prelude::VERSION);
         }
-
     };
 }
-

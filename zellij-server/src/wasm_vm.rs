@@ -224,14 +224,17 @@ pub(crate) fn wasm_thread_main(
                         wasi_write_object(&plugin_env.wasi_env, &event);
                         update.call(&[]).or_else::<anyError, _>(|e| {
                             match e.downcast::<serde_json::Error>() {
-                                Ok(_) => panic!("{}", 
+                                Ok(_) => panic!(
+                                    "{}",
                                     anyError::new(VersionMismatchError::new(
                                         VERSION,
                                         "Unavailable",
                                         &plugin_env.plugin.path
-                                    ))),
-                                Err(e) => Err(e).with_context(err_context)
-                            }})?;
+                                    ))
+                                ),
+                                Err(e) => Err(e).with_context(err_context),
+                            }
+                        })?;
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
