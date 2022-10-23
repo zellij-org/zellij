@@ -11,8 +11,8 @@ pub trait ZellijPlugin {
 }
 
 pub const PLUGIN_MISMATCH: &str =
-"An error occured while receiving an Event from zellij. This is most likely
-caused by your plugins not matching your current zellij version.
+"An error occured in a plugin while receiving an Event from zellij. This means
+that your plugins aren't compatible with your zellij version.
 
 The most likely explanation for this is that you're running either a
 self-compiled zellij or plugin version. Please make sure that, while developing,
