@@ -68,7 +68,7 @@ impl fmt::Display for VersionMismatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "If you're seeing this error your plugin versions don't match your current
+            "If you're seeing this error the plugin versions don't match the current
 zellij version. Detected versions:
 
 - Plugin version: {}
