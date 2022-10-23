@@ -10,6 +10,18 @@ pub trait ZellijPlugin {
     fn render(&mut self, rows: usize, cols: usize) {}
 }
 
+pub const PLUGIN_MISMATCH: &str =
+"An error occured while receiving an Event from zellij. This is most likely
+caused by your plugins not matching your current zellij version.
+
+The most likely explanation for this is that you're running either a
+self-compiled zellij or plugin version. Please make sure that, while developing,
+you also rebuild the plugins in order to pick up changes to the plugin code.
+
+Please refer to the documentation for further information:
+    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
+";
+
 #[macro_export]
 macro_rules! register_plugin {
     ($t:ty) => {
@@ -30,10 +42,15 @@ macro_rules! register_plugin {
 
         #[no_mangle]
         pub fn update() {
+            let object = $crate::shim::object_from_stdin()
+                .context($crate::PLUGIN_MISMATCH)
+                .to_stdout()
+                .unwrap();
+
             STATE.with(|state| {
                 state
                     .borrow_mut()
-                    .update($crate::shim::object_from_stdin().unwrap());
+                    .update(object);
             });
         }
 
@@ -48,5 +65,7 @@ macro_rules! register_plugin {
         pub fn plugin_version() {
             println!("{}", $crate::prelude::VERSION);
         }
+
     };
 }
+

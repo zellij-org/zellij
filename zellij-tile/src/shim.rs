@@ -1,6 +1,7 @@
 use serde::{de::DeserializeOwned, Serialize};
 use std::{io, path::Path};
 use zellij_utils::data::*;
+use zellij_utils::errors::prelude::*;
 
 // Subscription Handling
 
@@ -60,10 +61,12 @@ pub fn report_panic(info: &std::panic::PanicInfo) {
 // Internal Functions
 
 #[doc(hidden)]
-pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
+pub fn object_from_stdin<T: DeserializeOwned>() -> Result<T> {
+    let err_context = || "failed to deserialize object from stdin".to_string();
+
     let mut json = String::new();
-    io::stdin().read_line(&mut json).unwrap();
-    serde_json::from_str(&json)
+    io::stdin().read_line(&mut json).with_context(err_context)?;
+    serde_json::from_str(&json).with_context(err_context)
 }
 
 #[doc(hidden)]
