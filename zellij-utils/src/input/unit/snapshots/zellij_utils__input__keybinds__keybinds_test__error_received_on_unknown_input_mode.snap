@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/keybinds_test.rs
-assertion_line: 476
+assertion_line: 529
 expression: "format!(\"{:?}\", config_error)"
 ---
-KdlError(KdlError { error_message: "Invalid mode: 'i_do_not_exist'", src: None, offset: Some(32), len: Some(14) })
+KdlError(KdlError { error_message: "Invalid mode: 'i_do_not_exist'", src: None, offset: Some(32), len: Some(14), help_message: None })

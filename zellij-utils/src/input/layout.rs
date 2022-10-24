@@ -284,7 +284,7 @@ impl LayoutParts {
                 panes.insert(index, layout);
                 Ok(())
             },
-            LayoutParts::Tabs(_tabs) => Err(ConfigError::new_kdl_error(
+            LayoutParts::Tabs(_tabs) => Err(ConfigError::new_layout_kdl_error(
                 "Trying to insert a pane into a tab layout".into(),
                 0,
                 0,

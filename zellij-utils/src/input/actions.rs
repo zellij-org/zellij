@@ -357,6 +357,7 @@ impl Action {
                                     src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
                                     offset: Some(kdl_error.span.offset()),
                                     len: Some(kdl_error.span.len()),
+                                    help_message: None,
                                 };
                                 let report: Report = kdl_error.into();
                                 format!("{:?}", report)

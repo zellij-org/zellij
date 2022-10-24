@@ -6,19 +6,15 @@ complete -c zellij -n "__fish_seen_subcommand_from a" -f -a "(__fish_complete_se
 complete -c zellij -n "__fish_seen_subcommand_from kill-session" -f -a "(__fish_complete_sessions)" -d "Session"
 complete -c zellij -n "__fish_seen_subcommand_from k" -f -a "(__fish_complete_sessions)" -d "Session"
 complete -c zellij -n "__fish_seen_subcommand_from setup" -l "generate-completion" -x -a "bash elvish fish zsh powershell" -d "Shell"
-function zp
-  # zellij pane
+function zr
   command zellij run --name "$argv" -- fish -c "$argv"
 end
-function zpf
-  # zellij pane floating
+function zrf
   command zellij run --name "$argv" --floating -- fish -c "$argv"
 end
-function zo
-  # zellij open
+function ze
   command zellij edit $argv
 end
-function zof
-  # zellij open floating
+function zef
   command zellij edit --floating $argv
 end

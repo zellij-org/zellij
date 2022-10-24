@@ -36,17 +36,10 @@ pub struct KdlError {
     pub src: Option<NamedSource>,
     pub offset: Option<usize>,
     pub len: Option<usize>,
+    pub help_message: Option<String>,
 }
 
 impl KdlError {
-    pub fn new_with_location(error_message: String, offset: usize, len: usize) -> Self {
-        KdlError {
-            error_message,
-            src: None,
-            offset: Some(offset),
-            len: Some(len),
-        }
-    }
     pub fn add_src(mut self, src_name: String, src_input: String) -> Self {
         self.src = Some(NamedSource::new(src_name, src_input));
         self
@@ -68,8 +61,10 @@ impl Diagnostic for KdlError {
         }
     }
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        // TODO: link to specific relevant sections
-        Some(Box::new(format!("For more information, please see our configuration guide: https://zellij.dev/documentation/configuration.html")))
+        match &self.help_message {
+            Some(help_message) => Some(Box::new(help_message)),
+            None => Some(Box::new(format!("For more information, please see our configuration guide: https://zellij.dev/documentation/configuration.html")))
+        }
     }
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         if let (Some(offset), Some(len)) = (self.offset, self.len) {
@@ -113,6 +108,16 @@ impl ConfigError {
             src: None,
             offset: Some(offset),
             len: Some(len),
+            help_message: None,
+        })
+    }
+    pub fn new_layout_kdl_error(error_message: String, offset: usize, len: usize) -> Self {
+        ConfigError::KdlError(KdlError {
+            error_message,
+            src: None,
+            offset: Some(offset),
+            len: Some(len),
+            help_message: Some(format!("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html")),
         })
     }
 }
@@ -204,6 +209,7 @@ impl Config {
                             )),
                             offset: Some(kdl_error.span.offset()),
                             len: Some(kdl_error.span.len()),
+                            help_message: None,
                         };
                         Err(ConfigError::KdlError(kdl_error))
                     },
