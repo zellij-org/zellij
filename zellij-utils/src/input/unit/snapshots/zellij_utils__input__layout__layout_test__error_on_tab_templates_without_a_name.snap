@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 966
+assertion_line: 1002
 expression: "format!(\"{:?}\", layout_error)"
 ---
-KdlError(KdlError { error_message: "Tab templates must have a name", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(30), len: Some(95) })
+KdlError(KdlError { error_message: "Tab templates must have a name", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(30), len: Some(95), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })

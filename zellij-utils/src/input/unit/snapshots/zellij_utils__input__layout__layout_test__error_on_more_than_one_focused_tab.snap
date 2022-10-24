@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 979
+assertion_line: 1015
 expression: "format!(\"{:?}\", layout_error)"
 ---
-KdlError(KdlError { error_message: "Only one tab can be focused", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(0), len: Some(98) })
+KdlError(KdlError { error_message: "Only one tab can be focused", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(0), len: Some(98), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })

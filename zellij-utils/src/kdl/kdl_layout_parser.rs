@@ -82,13 +82,13 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!("Node names ({}) cannot contain whitespace.", name),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ))
         } else if self.is_a_reserved_word(&name) {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!("Node name '{}' is a reserved word.", name),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -103,13 +103,13 @@ impl<'a> KdlLayoutParser<'a> {
         kdl_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if name.is_empty() {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!("Template names cannot be empty"),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ))
         } else if name.contains(')') || name.contains('(') {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!("Template names cannot contain parantheses"),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -120,7 +120,7 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|first_char| first_char.is_numeric())
             .unwrap_or(false)
         {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!("Template names cannot start with numbers"),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -170,21 +170,21 @@ impl<'a> KdlLayoutParser<'a> {
                 .unwrap_or(false);
         let string_url =
             kdl_get_string_property_or_child_value_with_error!(plugin_block, "location").ok_or(
-                ConfigError::new_kdl_error(
+                ConfigError::new_layout_kdl_error(
                     "Plugins must have a location".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
                 ),
             )?;
         let url_node = kdl_get_property_or_child!(plugin_block, "location").ok_or(
-            ConfigError::new_kdl_error(
+            ConfigError::new_layout_kdl_error(
                 "Plugins must have a location".into(),
                 plugin_block.span().offset(),
                 plugin_block.span().len(),
             ),
         )?;
         let url = Url::parse(string_url).map_err(|e| {
-            ConfigError::new_kdl_error(
+            ConfigError::new_layout_kdl_error(
                 format!("Failed to parse url: {:?}", e),
                 url_node.span().offset(),
                 url_node.span().len(),
@@ -239,7 +239,7 @@ impl<'a> KdlLayoutParser<'a> {
         let args = self.parse_args(pane_node)?;
         match (command, edit, cwd, args, is_template) {
             (None, None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
-            (None, _, _, Some(_args), false) => Err(ConfigError::new_kdl_error(
+            (None, _, _, Some(_args), false) => Err(ConfigError::new_layout_kdl_error(
                 "args can only be set if a command was specified".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
@@ -252,7 +252,7 @@ impl<'a> KdlLayoutParser<'a> {
             }))),
             (None, Some(edit), Some(cwd), _, _) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
             (None, Some(edit), None, _, _) => Ok(Some(Run::EditFile(edit, None))),
-            (Some(_command), Some(_edit), _, _, _) => Err(ConfigError::new_kdl_error(
+            (Some(_command), Some(_edit), _, _, _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
@@ -273,7 +273,7 @@ impl<'a> KdlLayoutParser<'a> {
                 })
                 .unwrap_or(false);
             if has_non_cwd_run_prop {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
@@ -296,7 +296,7 @@ impl<'a> KdlLayoutParser<'a> {
                 })
                 .unwrap_or(false);
             if has_non_cwd_run_prop {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
                     plugin_block.span().offset(),
                     plugin_block.span().len(),
@@ -430,7 +430,7 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_pane_properties(kdl_node)?;
         let template_name = kdl_get_string_property_or_child_value!(kdl_node, "name")
             .map(|s| s.to_string())
-            .ok_or(ConfigError::new_kdl_error(
+            .ok_or(ConfigError::new_layout_kdl_error(
                 "Pane templates must have a name".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -508,13 +508,13 @@ impl<'a> KdlLayoutParser<'a> {
                     &pane_template_kdl_node,
                 )?);
             } else if self.is_a_valid_tab_property(kdl_name!(child)) {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     format!("Tab property '{}' must be placed on the tab title line and not in the child braces", kdl_name!(child)),
                     child.span().offset(),
                     child.span().len()
                 ));
             } else {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     format!("Invalid tab property: {}", kdl_name!(child)),
                     child.span().offset(),
                     child.span().len(),
@@ -540,7 +540,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
                 let node_has_entries = !child.entries().is_empty();
                 if node_has_child_nodes || node_has_entries {
-                    return Err(ConfigError::new_kdl_error(
+                    return Err(ConfigError::new_layout_kdl_error(
                         format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
                         child.span().offset(),
                         child.span().len(),
@@ -556,7 +556,7 @@ impl<'a> KdlLayoutParser<'a> {
                     &pane_template_kdl_node,
                 )?);
             } else if !self.is_a_valid_pane_property(kdl_name!(child)) {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     format!("Unknown pane property: {}", kdl_name!(child)),
                     child.span().offset(),
                     child.span().len(),
@@ -606,7 +606,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<(), ConfigError> {
         let children_block_count = layout.children_block_count();
         if children_block_count != 1 {
-            return Err(ConfigError::new_kdl_error(format!("This template has {} children blocks, only 1 is allowed when used to insert child panes", children_block_count), kdl_node.span().offset(), kdl_node.span().len()));
+            return Err(ConfigError::new_layout_kdl_error(format!("This template has {} children blocks, only 1 is allowed when used to insert child panes", children_block_count), kdl_node.span().offset(), kdl_node.span().len()));
         }
         Ok(())
     }
@@ -619,7 +619,7 @@ impl<'a> KdlLayoutParser<'a> {
             {
                 Some(string_name) => {
                     if !self.is_a_valid_pane_property(string_name) {
-                        return Err(ConfigError::new_kdl_error(
+                        return Err(ConfigError::new_layout_kdl_error(
                             format!("Unknown pane property: {}", string_name),
                             entry.span().offset(),
                             entry.span().len(),
@@ -627,7 +627,7 @@ impl<'a> KdlLayoutParser<'a> {
                     }
                 },
                 None => {
-                    return Err(ConfigError::new_kdl_error(
+                    return Err(ConfigError::new_layout_kdl_error(
                         "Unknown pane property".into(),
                         entry.span().offset(),
                         entry.span().len(),
@@ -641,7 +641,7 @@ impl<'a> KdlLayoutParser<'a> {
         let all_property_names = kdl_property_names!(pane_node);
         for name in all_property_names {
             if !self.is_a_valid_tab_property(name) {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     format!("Invalid tab property '{}'", name),
                     pane_node.span().offset(),
                     pane_node.span().len(),
@@ -684,7 +684,7 @@ impl<'a> KdlLayoutParser<'a> {
             if has_cwd_prop {
                 offending_nodes.push("cwd");
             }
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 format!(
                     "Cannot have both properties ({}) and nested children",
                     offending_nodes.join(", ")
@@ -704,7 +704,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<(), ConfigError> {
         let successfully_inserted = layout.insert_children_layout(&mut child_panes_layout)?;
         if !successfully_inserted {
-            Err(ConfigError::new_kdl_error(
+            Err(ConfigError::new_layout_kdl_error(
                 "This template does not have children".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -758,7 +758,7 @@ impl<'a> KdlLayoutParser<'a> {
     fn populate_one_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         let template_name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|s| s.to_string())
-            .ok_or(ConfigError::new_kdl_error(
+            .ok_or(ConfigError::new_layout_kdl_error(
                 "Tab templates must have a name".into(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -766,7 +766,7 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_legal_node_name(&template_name, kdl_node)?;
         self.assert_legal_template_name(&template_name, kdl_node)?;
         if self.tab_templates.contains_key(&template_name) {
-            return Err(ConfigError::new_kdl_error(
+            return Err(ConfigError::new_layout_kdl_error(
                 format!(
                     "Duplicate definition of the \"{}\" tab_template",
                     template_name
@@ -776,7 +776,7 @@ impl<'a> KdlLayoutParser<'a> {
             ));
         }
         if self.pane_templates.contains_key(&template_name) {
-            return Err(ConfigError::new_kdl_error(
+            return Err(ConfigError::new_layout_kdl_error(
                 format!("There is already a pane_template with the name \"{}\" - can't have a tab_template with the same name", template_name),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
@@ -807,7 +807,7 @@ impl<'a> KdlLayoutParser<'a> {
                         child.children().map(|c| !c.is_empty()).unwrap_or(false);
                     let node_has_entries = !child.entries().is_empty();
                     if node_has_child_nodes || node_has_entries {
-                        return Err(ConfigError::new_kdl_error(
+                        return Err(ConfigError::new_layout_kdl_error(
                             format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
                             child.span().offset(),
                             child.span().len(),
@@ -823,13 +823,13 @@ impl<'a> KdlLayoutParser<'a> {
                         &pane_template_kdl_node,
                     )?);
                 } else if self.is_a_valid_tab_property(kdl_name!(child)) {
-                    return Err(ConfigError::new_kdl_error(
+                    return Err(ConfigError::new_layout_kdl_error(
                         format!("Tab property '{}' must be placed on the tab_template title line and not in the child braces", kdl_name!(child)),
                         child.span().offset(),
                         child.span().len()
                     ));
                 } else {
-                    return Err(ConfigError::new_kdl_error(
+                    return Err(ConfigError::new_layout_kdl_error(
                         format!("Invalid tab_template property: {}", kdl_name!(child)),
                         child.span().offset(),
                         child.span().len(),
@@ -867,7 +867,7 @@ impl<'a> KdlLayoutParser<'a> {
         for child in kdl_children {
             if kdl_name!(child) == "pane_template" {
                 let template_name = kdl_get_string_property_or_child_value!(child, "name").ok_or(
-                    ConfigError::new_kdl_error(
+                    ConfigError::new_layout_kdl_error(
                         "Pane templates must have a name".into(),
                         child.span().offset(),
                         child.span().len(),
@@ -876,7 +876,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let mut template_children = HashSet::new();
                 self.get_pane_template_dependencies(child, &mut template_children)?;
                 if dependency_tree.contains_key(template_name) {
-                    return Err(ConfigError::new_kdl_error(
+                    return Err(ConfigError::new_layout_kdl_error(
                         format!(
                             "Duplicate definition of the \"{}\" pane_template",
                             template_name
@@ -957,7 +957,7 @@ impl<'a> KdlLayoutParser<'a> {
                 }
             }
             if candidates.is_empty() {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Circular dependency detected between pane templates.".into(),
                     kdl_layout.span().offset(),
                     kdl_layout.span().len(),
@@ -1043,7 +1043,7 @@ impl<'a> KdlLayoutParser<'a> {
         let child_name = kdl_name!(child);
         if child_name == "pane" {
             if !child_tabs.is_empty() {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both tabs and panes in the same node".into(),
                     child.span().offset(),
                     child.span().len(),
@@ -1056,7 +1056,7 @@ impl<'a> KdlLayoutParser<'a> {
             child_panes.push(pane_node);
         } else if child_name == "tab" {
             if !child_panes.is_empty() {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both tabs and panes in the same node".into(),
                     child.span().offset(),
                     child.span().len(),
@@ -1079,7 +1079,7 @@ impl<'a> KdlLayoutParser<'a> {
             self.tab_templates.get(child_name).cloned()
         {
             if !child_panes.is_empty() {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both tabs and panes in the same node".into(),
                     child.span().offset(),
                     child.span().len(),
@@ -1094,7 +1094,7 @@ impl<'a> KdlLayoutParser<'a> {
             self.pane_templates.get(child_name).cloned()
         {
             if !child_tabs.is_empty() {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both tabs and panes in the same node".into(),
                     child.span().offset(),
                     child.span().len(),
@@ -1107,7 +1107,7 @@ impl<'a> KdlLayoutParser<'a> {
             }
             child_panes.push(pane_template);
         } else if !self.is_a_reserved_word(child_name) {
-            return Err(ConfigError::new_kdl_error(
+            return Err(ConfigError::new_layout_kdl_error(
                 format!("Unknown layout node: '{}'", child_name),
                 child.span().offset(),
                 child.span().len(),
@@ -1121,7 +1121,7 @@ impl<'a> KdlLayoutParser<'a> {
             .nodes()
             .iter()
             .find(|n| kdl_name!(n) == "layout")
-            .ok_or(ConfigError::new_kdl_error(
+            .ok_or(ConfigError::new_layout_kdl_error(
                 "No layout found".into(),
                 kdl_layout.span().offset(),
                 kdl_layout.span().len(),
@@ -1133,7 +1133,7 @@ impl<'a> KdlLayoutParser<'a> {
             .count()
             > 1;
         if has_multiple_layout_nodes {
-            return Err(ConfigError::new_kdl_error(
+            return Err(ConfigError::new_layout_kdl_error(
                 "Only one layout node per file allowed".into(),
                 kdl_layout.span().offset(),
                 kdl_layout.span().len(),
@@ -1156,7 +1156,7 @@ impl<'a> KdlLayoutParser<'a> {
                 .count()
                 > 1;
             if has_more_than_one_focused_tab {
-                return Err(ConfigError::new_kdl_error(
+                return Err(ConfigError::new_layout_kdl_error(
                     "Only one tab can be focused".into(),
                     kdl_layout.span().offset(),
                     kdl_layout.span().len(),

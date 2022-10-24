@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 936
+assertion_line: 968
 expression: "format!(\"{:?}\", layout_error)"
 ---
-KdlError(KdlError { error_message: "Invalid tab property 'spit_size'", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(30), len: Some(48) })
+KdlError(KdlError { error_message: "Invalid tab property 'spit_size'", src: Some(NamedSource { name: "layout_file_name", source: "<redacted>"), offset: Some(30), len: Some(48), help_message: Some("For more information, please see our layout guide: https://zellij.dev/documentation/creating-a-layout.html") })

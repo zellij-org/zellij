@@ -1290,6 +1290,7 @@ impl Layout {
                         src: Some(NamedSource::new(file_name, String::from(raw_layout))),
                         offset: Some(kdl_error.span.offset()),
                         len: Some(kdl_error.span.len()),
+                        help_message: None,
                     };
                     ConfigError::KdlError(kdl_error)
                 },
