@@ -674,7 +674,7 @@ fn init_session(
                 config_options.scrollback_editor.clone(),
             );
 
-            move || pty_thread_main(pty, layout)
+            move || pty_thread_main(pty, layout).fatal()
         })
         .unwrap();
 
