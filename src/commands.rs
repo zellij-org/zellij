@@ -351,7 +351,7 @@ pub(crate) fn start_client(opts: CliArgs) {
             attach_with_session_name(session_name, config_options.clone(), create)
         };
 
-        if let Ok(val) = std::env::var(envs::SESSION_NAME_ENV_KEY) {
+        if let Ok(val) = envs::get_session_name() {
             if val == *client.get_session_name() {
                 eprintln!("You are trying to attach to the current session (\"{}\"). Zellij does not support nesting a session in itself.", val);
                 process::exit(1);
