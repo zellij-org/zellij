@@ -454,7 +454,13 @@ impl Pty {
         let terminal_bytes = task::spawn({
             let err_context = || format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
-            let os_input = self.bus.os_input.as_ref().with_context(err_context).fatal().clone();
+            let os_input = self
+                .bus
+                .os_input
+                .as_ref()
+                .with_context(err_context)
+                .fatal()
+                .clone();
             let debug_to_file = self.debug_to_file;
             async move {
                 TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
@@ -673,7 +679,7 @@ impl Pty {
         }
         Ok(())
     }
-    pub fn close_pane(&mut self, id: PaneId) -> Result<()>{
+    pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
         let err_context = || format!("failed to close for pane {id:?}");
         match id {
             PaneId::Terminal(id) => {
@@ -691,7 +697,11 @@ impl Pty {
                             .fatal();
                     });
                 }
-                self.bus.os_input.as_ref().with_context(err_context)?.clear_terminal_id(id);
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .with_context(err_context)?
+                    .clear_terminal_id(id);
             },
             PaneId::Plugin(pid) => drop(
                 self.bus
@@ -701,7 +711,7 @@ impl Pty {
         }
         Ok(())
     }
-    pub fn close_tab(&mut self, ids: Vec<PaneId>) -> Result<()>{
+    pub fn close_tab(&mut self, ids: Vec<PaneId>) -> Result<()> {
         for id in ids {
             self.close_pane(id)?;
         }
@@ -735,17 +745,23 @@ impl Pty {
                         ));
                     }
                 });
-                let (pid_primary, child_fd): (RawFd, RawFd) =
-                    self.bus
-                        .os_input
-                        .as_mut()
-                        .with_context(err_context)
-                        .map_err(|_e|SpawnTerminalError::GenericSpawnError("os input is none"))?
-                        .re_run_command_in_terminal(id, run_command, quit_cb)?;
+                let (pid_primary, child_fd): (RawFd, RawFd) = self
+                    .bus
+                    .os_input
+                    .as_mut()
+                    .with_context(err_context)
+                    .map_err(|_e| SpawnTerminalError::GenericSpawnError("os input is none"))?
+                    .re_run_command_in_terminal(id, run_command, quit_cb)?;
                 let terminal_bytes = task::spawn({
                     let err_context = || format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();
-                    let os_input = self.bus.os_input.as_ref().with_context(err_context).fatal().clone();
+                    let os_input = self
+                        .bus
+                        .os_input
+                        .as_ref()
+                        .with_context(err_context)
+                        .fatal()
+                        .clone();
                     let debug_to_file = self.debug_to_file;
                     async move {
                         TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, id)
