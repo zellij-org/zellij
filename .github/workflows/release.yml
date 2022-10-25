@@ -85,10 +85,10 @@ jobs:
       - name: Build release binary
         run: cargo make ci-build-release ${{ matrix.target }}
 
-        # there currently seems to be an issue with strip in aarch64, TODO: investigate this
-      - name: Strip release binary
-        if: runner.target != 'aarch64-unknown-linux-musl' && runner.target != 'aarch64-apple-darwin'
-        run: strip "target/${{ matrix.target }}/release/zellij"
+      # this breaks on aarch64 and this if conditional isn't working for some reason: TODO: investigate
+      #- name: Strip release binary
+      #  if: runner.target != 'aarch64-unknown-linux-musl' && runner.target != 'aarch64-apple-darwin'
+      #  run: strip "target/${{ matrix.target }}/release/zellij"
 
       - name: Create checksum
         id: make-checksum
