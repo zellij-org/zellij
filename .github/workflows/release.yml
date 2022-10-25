@@ -72,7 +72,7 @@ jobs:
 
       - name: Install wasm-opt (ubuntu)
         if: matrix.os == 'ubuntu-latest'
-        run: eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install binaryen
+        run: sudo apt-get install -y --no-install-recommends binaryen
 
       # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
       - name: Switch Xcode SDK
