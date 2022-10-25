@@ -170,7 +170,7 @@ workspace = false
 dependencies = []
 script_runner = "@duckscript"
 script = '''
-cp ${ZELLIJ_ASSETS_DIR}/config/default.yaml ${ZELLIJ_EXAMPLE_DIR}/default.yaml
+cp ${ZELLIJ_ASSETS_DIR}/config/default.kdl ${ZELLIJ_EXAMPLE_DIR}/default.kdl
 '''
 
 # CI Releasing Zellij
