@@ -74,9 +74,6 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install binaryen
 
-      - name: Install wasm-opt
-        run: brew install binaryen
-
       # Workaround for <https://github.com/actions/virtual-environments/issues/2557>
       - name: Switch Xcode SDK
         if: runner.os == 'macos'
