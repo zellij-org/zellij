@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.32.0] - 2022-10-25
+
 * BREAKING CHANGE: switch config/layout/theme language to KDL (https://github.com/zellij-org/zellij/pull/1759)
 * debugging: Improve error handling in screen thread (https://github.com/zellij-org/zellij/pull/1670)
 * fix: Server exits when client panics (https://github.com/zellij-org/zellij/pull/1731)
