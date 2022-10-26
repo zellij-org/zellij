@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+* debugging: improve error handling in `zellij_server::pty` (https://github.com/zellij-org/zellij/pull/1840)
+
 ## [0.32.0] - 2022-10-25
 
 * BREAKING CHANGE: switch config/layout/theme language to KDL (https://github.com/zellij-org/zellij/pull/1759)
