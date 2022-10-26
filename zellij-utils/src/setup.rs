@@ -1,4 +1,4 @@
-use crate::input::theme::Theme;
+use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
     consts::{
@@ -241,10 +241,8 @@ impl Setup {
                 for entry in (theme_dir.read_dir()?).flatten() {
                     if let Some(extension) = entry.path().extension() {
                         if extension == "kdl" {
-                            match Theme::from_path(entry.path()) {
-                                Ok((theme_name, theme)) => {
-                                    config.themes.insert(theme_name, theme);
-                                },
+                            match Themes::from_path(entry.path()) {
+                                Ok(themes) => config.themes = config.themes.merge(themes),
                                 Err(e) => {
                                     log::error!("error loading theme file: {:?}", e);
                                 },
