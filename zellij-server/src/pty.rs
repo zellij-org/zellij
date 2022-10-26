@@ -12,6 +12,7 @@ use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
+    errors::prelude::*,
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
@@ -86,7 +87,8 @@ pub(crate) struct Pty {
     default_editor: Option<PathBuf>,
 }
 
-pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
+pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
+    let err_context = || "failed in pty thread main".to_string();
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -115,7 +117,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 should_float,
                                 client_or_tab_index,
                             ))
-                            .unwrap();
+                            .with_context(err_context)?;
                     },
                     Err(SpawnTerminalError::CommandNotFound(pid)) => {
                         if hold_on_close {
@@ -127,17 +129,19 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     should_float,
                                     client_or_tab_index,
                                 ))
-                                .unwrap();
+                                .with_context(err_context)?;
                             if let Some(run_command) = run_command {
                                 send_command_not_found_to_screen(
                                     pty.bus.senders.clone(),
                                     pid,
                                     run_command.clone(),
-                                );
+                                )
+                                .with_context(err_context)?;
                             }
                         } else {
                             log::error!("Failed to spawn terminal: command not found");
-                            pty.close_pane(PaneId::Terminal(pid));
+                            pty.close_pane(PaneId::Terminal(pid))
+                                .with_context(err_context)?;
                         }
                     },
                     Err(e) => {
@@ -157,7 +161,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 PaneId::Terminal(pid),
                                 client_id,
                             ))
-                            .unwrap();
+                            .with_context(err_context)?;
                     },
                     Err(e) => {
                         log::error!("Failed to open editor: {}", e);
@@ -182,7 +186,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pane_title,
                                 client_id,
                             ))
-                            .unwrap();
+                            .with_context(err_context)?;
                     },
                     Err(SpawnTerminalError::CommandNotFound(pid)) => {
                         if hold_on_close {
@@ -193,7 +197,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     pane_title,
                                     client_id,
                                 ))
-                                .unwrap();
+                                .with_context(err_context)?;
                             if let Some(run_command) = run_command {
                                 pty.bus
                                     .senders
@@ -206,7 +210,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                         .as_bytes()
                                         .to_vec(),
                                     ))
-                                    .unwrap();
+                                    .with_context(err_context)?;
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::HoldPane(
@@ -215,7 +219,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                         run_command,
                                         None,
                                     ))
-                                    .unwrap();
+                                    .with_context(err_context)?;
                             }
                         }
                     },
@@ -242,7 +246,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                 pane_title,
                                 client_id,
                             ))
-                            .unwrap();
+                            .with_context(err_context)?;
                     },
                     Err(SpawnTerminalError::CommandNotFound(pid)) => {
                         if hold_on_close {
@@ -253,7 +257,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     pane_title,
                                     client_id,
                                 ))
-                                .unwrap();
+                                .with_context(err_context)?;
                             if let Some(run_command) = run_command {
                                 pty.bus
                                     .senders
@@ -266,7 +270,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                         .as_bytes()
                                         .to_vec(),
                                     ))
-                                    .unwrap();
+                                    .with_context(err_context)?;
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::HoldPane(
@@ -275,7 +279,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                         run_command,
                                         None,
                                     ))
-                                    .unwrap();
+                                    .with_context(err_context)?;
                             }
                         }
                     },
@@ -291,43 +295,44 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
-                    .unwrap();
+                    .with_context(err_context)?;
             },
             PtyInstruction::NewTab(terminal_action, tab_layout, tab_name, client_id) => {
                 pty.spawn_terminals_for_layout(
                     tab_layout.unwrap_or_else(|| layout.new_tab()),
                     terminal_action.clone(),
                     client_id,
-                );
+                )
+                .with_context(err_context)?;
 
                 if let Some(tab_name) = tab_name {
                     // clear current name at first
                     pty.bus
                         .senders
                         .send_to_screen(ScreenInstruction::UpdateTabName(vec![0], client_id))
-                        .unwrap();
+                        .with_context(err_context)?;
                     pty.bus
                         .senders
                         .send_to_screen(ScreenInstruction::UpdateTabName(
                             tab_name.into_bytes(),
                             client_id,
                         ))
-                        .unwrap();
+                        .with_context(err_context)?;
                 }
             },
             PtyInstruction::ClosePane(id) => {
-                pty.close_pane(id);
+                pty.close_pane(id).with_context(err_context)?;
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                    .with_context(err_context)?;
             },
             PtyInstruction::CloseTab(ids) => {
-                pty.close_tab(ids);
+                pty.close_tab(ids).with_context(err_context)?;
                 pty.bus
                     .senders
                     .send_to_server(ServerInstruction::UnblockInputThread)
-                    .unwrap();
+                    .with_context(err_context)?;
             },
             PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
                 match pty.rerun_command_in_pane(pane_id, run_command.clone()) {
@@ -342,7 +347,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                         .as_bytes()
                                         .to_vec(),
                                 ))
-                                .unwrap();
+                                .with_context(err_context)?;
                             pty.bus
                                 .senders
                                 .send_to_screen(ScreenInstruction::HoldPane(
@@ -351,7 +356,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
                                     run_command,
                                     None,
                                 ))
-                                .unwrap();
+                                .with_context(err_context)?;
                         }
                     },
                     Err(e) => {
@@ -362,6 +367,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) {
             PtyInstruction::Exit => break,
         }
     }
+    Ok(())
 }
 
 impl Pty {
@@ -449,8 +455,15 @@ impl Pty {
             .unwrap()
             .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
         let terminal_bytes = task::spawn({
+            let err_context = || format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
-            let os_input = self.bus.os_input.as_ref().unwrap().clone();
+            let os_input = self
+                .bus
+                .os_input
+                .as_ref()
+                .with_context(err_context)
+                .fatal()
+                .clone();
             let debug_to_file = self.debug_to_file;
             async move {
                 TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
@@ -468,7 +481,8 @@ impl Pty {
         layout: PaneLayout,
         default_shell: Option<TerminalAction>,
         client_id: ClientId,
-    ) {
+    ) -> Result<()> {
+        let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
         let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
@@ -503,11 +517,13 @@ impl Pty {
                         }
                     });
                     let cmd = TerminalAction::RunCommand(command.clone());
-                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
-                        cmd,
-                        quit_cb,
-                        self.default_editor.clone(),
-                    ) {
+                    match self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .with_context(err_context)?
+                        .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
+                    {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((
@@ -530,11 +546,13 @@ impl Pty {
                 },
                 Some(Run::Cwd(cwd)) => {
                     let shell = self.get_default_terminal(Some(cwd));
-                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
-                        shell,
-                        quit_cb,
-                        self.default_editor.clone(),
-                    ) {
+                    match self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .with_context(err_context)?
+                        .spawn_terminal(shell, quit_cb, self.default_editor.clone())
+                    {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
@@ -552,11 +570,16 @@ impl Pty {
                     }
                 },
                 Some(Run::EditFile(path_to_file, line_number)) => {
-                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
-                        TerminalAction::OpenFile(path_to_file, line_number),
-                        quit_cb,
-                        self.default_editor.clone(),
-                    ) {
+                    match self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .with_context(err_context)?
+                        .spawn_terminal(
+                            TerminalAction::OpenFile(path_to_file, line_number),
+                            quit_cb,
+                            self.default_editor.clone(),
+                        ) {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
@@ -574,11 +597,13 @@ impl Pty {
                     }
                 },
                 None => {
-                    match self.bus.os_input.as_mut().unwrap().spawn_terminal(
-                        default_shell.clone(),
-                        quit_cb,
-                        self.default_editor.clone(),
-                    ) {
+                    match self
+                        .bus
+                        .os_input
+                        .as_mut()
+                        .with_context(err_context)?
+                        .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
+                    {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, None, Ok(pid_primary)));
@@ -610,13 +635,18 @@ impl Pty {
                 new_tab_pane_ids,
                 client_id,
             ))
-            .unwrap();
+            .with_context(err_context)?;
         for (terminal_id, run_command, pid_primary) in new_pane_pids {
             match pid_primary {
                 Ok(pid_primary) => {
                     let terminal_bytes = task::spawn({
                         let senders = self.bus.senders.clone();
-                        let os_input = self.bus.os_input.as_ref().unwrap().clone();
+                        let os_input = self
+                            .bus
+                            .os_input
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone();
                         let debug_to_file = self.debug_to_file;
                         async move {
                             TerminalBytes::new(
@@ -639,33 +669,45 @@ impl Pty {
                                 self.bus.senders.clone(),
                                 terminal_id,
                                 run_command.clone(),
-                            );
+                            )
+                            .with_context(err_context)?;
                         } else {
-                            self.close_pane(PaneId::Terminal(terminal_id));
+                            self.close_pane(PaneId::Terminal(terminal_id))
+                                .with_context(err_context)?;
                         }
                     },
                     None => {
-                        self.close_pane(PaneId::Terminal(terminal_id));
+                        self.close_pane(PaneId::Terminal(terminal_id))
+                            .with_context(err_context)?;
                     },
                 },
             }
         }
+        Ok(())
     }
-    pub fn close_pane(&mut self, id: PaneId) {
+    pub fn close_pane(&mut self, id: PaneId) -> Result<()> {
+        let err_context = || format!("failed to close for pane {id:?}");
         match id {
             PaneId::Terminal(id) => {
                 self.task_handles.remove(&id);
                 if let Some(child_fd) = self.id_to_child_pid.remove(&id) {
                     task::block_on(async {
+                        let err_context = || format!("failed to run async task for pane {id}");
                         self.bus
                             .os_input
                             .as_mut()
-                            .unwrap()
+                            .with_context(err_context)
+                            .fatal()
                             .kill(Pid::from_raw(child_fd))
-                            .unwrap();
+                            .with_context(err_context)
+                            .fatal();
                     });
                 }
-                self.bus.os_input.as_ref().unwrap().clear_terminal_id(id);
+                self.bus
+                    .os_input
+                    .as_ref()
+                    .with_context(err_context)?
+                    .clear_terminal_id(id);
             },
             PaneId::Plugin(pid) => drop(
                 self.bus
@@ -673,11 +715,14 @@ impl Pty {
                     .send_to_plugin(PluginInstruction::Unload(pid)),
             ),
         }
+        Ok(())
     }
-    pub fn close_tab(&mut self, ids: Vec<PaneId>) {
-        ids.iter().for_each(|&id| {
-            self.close_pane(id);
-        });
+    pub fn close_tab(&mut self, ids: Vec<PaneId>) -> Result<()> {
+        for id in ids {
+            self.close_pane(id)
+                .with_context(|| format!("failed to close tab for pane {id:?}"))?;
+        }
+        Ok(())
     }
     pub fn set_active_pane(&mut self, pane_id: Option<PaneId>, client_id: ClientId) {
         if let Some(pane_id) = pane_id {
@@ -706,15 +751,22 @@ impl Pty {
                         ));
                     }
                 });
-                let (pid_primary, child_fd): (RawFd, RawFd) =
-                    self.bus
-                        .os_input
-                        .as_mut()
-                        .unwrap()
-                        .re_run_command_in_terminal(id, run_command, quit_cb)?;
+                let (pid_primary, child_fd): (RawFd, RawFd) = self
+                    .bus
+                    .os_input
+                    .as_mut()
+                    .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
+                    .re_run_command_in_terminal(id, run_command, quit_cb)?;
                 let terminal_bytes = task::spawn({
+                    let err_context = || format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();
-                    let os_input = self.bus.os_input.as_ref().unwrap().clone();
+                    let os_input = self
+                        .bus
+                        .os_input
+                        .as_ref()
+                        .with_context(err_context)
+                        .fatal()
+                        .clone();
                     let debug_to_file = self.debug_to_file;
                     async move {
                         TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, id)
@@ -738,7 +790,9 @@ impl Drop for Pty {
     fn drop(&mut self) {
         let child_ids: Vec<u32> = self.id_to_child_pid.keys().copied().collect();
         for id in child_ids {
-            self.close_pane(PaneId::Terminal(id));
+            self.close_pane(PaneId::Terminal(id))
+                .with_context(|| format!("failed to close pane for pid {id}"))
+                .fatal();
         }
     }
 }
@@ -747,7 +801,8 @@ fn send_command_not_found_to_screen(
     senders: ThreadSenders,
     terminal_id: u32,
     run_command: RunCommand,
-) {
+) -> Result<()> {
+    let err_context = || format!("failed to send command_not_fount for terminal {terminal_id}");
     senders
         .send_to_screen(ScreenInstruction::PtyBytes(
             terminal_id,
@@ -755,7 +810,7 @@ fn send_command_not_found_to_screen(
                 .as_bytes()
                 .to_vec(),
         ))
-        .unwrap();
+        .with_context(err_context)?;
     senders
         .send_to_screen(ScreenInstruction::HoldPane(
             PaneId::Terminal(terminal_id),
@@ -763,5 +818,6 @@ fn send_command_not_found_to_screen(
             run_command.clone(),
             None,
         ))
-        .unwrap();
+        .with_context(err_context)?;
+    Ok(())
 }
