@@ -130,6 +130,26 @@ impl Run {
             _ => {}, // plugins aren't yet supported
         }
     }
+    pub fn add_args(&mut self, args: Option<Vec<String>>) {
+        // overrides the args of a Run::Command if they are Some
+        // and not empty
+        if let Some(args) = args {
+            if let Run::Command(run_command) = self {
+                if !args.is_empty() {
+                    run_command.args = args.clone();
+                }
+            }
+        }
+    }
+    pub fn add_close_on_exit(&mut self, close_on_exit: Option<bool>) {
+        // overrides the args of a Run::Command if they are Some
+        // and not empty
+        if let Some(close_on_exit) = close_on_exit {
+            if let Run::Command(run_command) = self {
+                run_command.hold_on_close = !close_on_exit;
+            }
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
