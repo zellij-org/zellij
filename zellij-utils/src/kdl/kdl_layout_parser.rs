@@ -239,9 +239,15 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|c| PathBuf::from(c));
         let cwd = self.parse_cwd(pane_node)?;
         let args = self.parse_args(pane_node)?;
-        let close_on_exit = kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
+        let close_on_exit =
+            kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
         if !is_template {
-            self.assert_no_bare_attributes_in_pane_node(&command, &args, &close_on_exit, pane_node)?;
+            self.assert_no_bare_attributes_in_pane_node(
+                &command,
+                &args,
+                &close_on_exit,
+                pane_node,
+            )?;
         }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
         match (command, edit, cwd) {
@@ -372,7 +378,8 @@ impl<'a> KdlLayoutParser<'a> {
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
         let args = self.parse_args(kdl_node)?;
-        let close_on_exit = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
+        let close_on_exit =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
         self.assert_no_bare_attributes_in_pane_node_with_template(
@@ -614,7 +621,7 @@ impl<'a> KdlLayoutParser<'a> {
         command: &Option<PathBuf>,
         args: &Option<Vec<String>>,
         close_on_exit: &Option<bool>,
-        pane_node: &KdlNode
+        pane_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if command.is_none() {
             if close_on_exit.is_some() {
