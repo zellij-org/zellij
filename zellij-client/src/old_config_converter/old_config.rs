@@ -424,7 +424,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                         let actions = &key_action.action;
                         let key_string: String = keys
                             .iter()
-                            .map(|k| format!("\"{}\"", k))
+                            .map(|k| if k == &OldKey::Char('\\') { format!("r\"{}\"", k)  } else { format!("\"{}\"", k) })
                             .collect::<Vec<String>>()
                             .join(" ");
                         let actions_string: String = actions
