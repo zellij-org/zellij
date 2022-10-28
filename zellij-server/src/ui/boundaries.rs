@@ -1,3 +1,4 @@
+use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Viewport;
 
 use crate::output::CharacterChunk;
@@ -47,17 +48,22 @@ impl BoundarySymbol {
         self.color = color;
         *self
     }
-    pub fn as_terminal_character(&self) -> TerminalCharacter {
+    pub fn as_terminal_character(&self) -> Result<TerminalCharacter> {
         if self.invisible {
-            EMPTY_TERMINAL_CHARACTER
+            Ok(EMPTY_TERMINAL_CHARACTER)
         } else {
-            let character = self.boundary_type.chars().next().unwrap();
-            TerminalCharacter {
+            let character = self
+                .boundary_type
+                .chars()
+                .next()
+                .context("no boundary symbols defined")
+                .context("failed to convert boundary symbol into terminal character")?;
+            Ok(TerminalCharacter {
                 character,
                 width: 1,
                 styles: RESET_STYLES
                     .foreground(self.color.map(|palette_color| palette_color.into())),
-            }
+            })
         }
     }
 }
@@ -528,16 +534,18 @@ impl Boundaries {
             }
         }
     }
-    pub fn render(&self) -> Vec<CharacterChunk> {
+    pub fn render(&self) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
             character_chunks.push(CharacterChunk::new(
-                vec![boundary_character.as_terminal_character()],
+                vec![boundary_character
+                    .as_terminal_character()
+                    .context("failed to render boundaries")?],
                 coordinates.x,
                 coordinates.y,
             ));
         }
-        character_chunks
+        Ok(character_chunks)
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.x() + rect.cols() < self.viewport.cols

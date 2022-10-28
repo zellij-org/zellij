@@ -14,6 +14,7 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
+    errors::prelude::*,
     input::command::RunCommand,
     input::layout::SplitDirection,
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -378,7 +379,9 @@ impl TiledPanes {
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
-    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) {
+    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) -> Result<()> {
+        let err_context = || "failed to render tiled panes".to_string();
+
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
@@ -444,8 +447,13 @@ impl TiledPanes {
         // render boundaries if needed
         for (client_id, boundaries) in &mut client_id_to_boundaries {
             // TODO: add some conditional rendering here so this isn't rendered for every character
-            output.add_character_chunks_to_client(*client_id, boundaries.render(), None);
+            output.add_character_chunks_to_client(
+                *client_id,
+                boundaries.render().with_context(err_context)?,
+                None,
+            );
         }
+        Ok(())
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()

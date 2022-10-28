@@ -1334,7 +1334,8 @@ impl Tab {
 
         self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes
-            .render(output, self.floating_panes.panes_are_visible());
+            .render(output, self.floating_panes.panes_are_visible())
+            .with_context(|| err_context(self))?;
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
             self.floating_panes.render(output);
         }
