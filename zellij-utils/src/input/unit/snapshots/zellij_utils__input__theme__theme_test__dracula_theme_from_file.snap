@@ -1,11 +1,9 @@
 ---
 source: zellij-utils/src/input/./unit/theme_test.rs
-assertion_line: 15
 expression: "format!(\"{:#?}\", theme)"
 ---
-(
-    "dracula",
-    Theme {
+{
+    "dracula": Theme {
         palette: Palette {
             source: Default,
             theme_hue: Dark,
@@ -106,4 +104,4 @@ expression: "format!(\"{:#?}\", theme)"
             ),
         },
     },
-)
+}

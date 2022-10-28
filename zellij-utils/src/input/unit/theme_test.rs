@@ -11,13 +11,13 @@ fn theme_test_dir(theme: String) -> PathBuf {
 #[test]
 fn dracula_theme_from_file() {
     let path = theme_test_dir("dracula.kdl".into());
-    let theme = Theme::from_path(path).unwrap();
+    let theme = Themes::from_path(path).unwrap();
     assert_snapshot!(format!("{:#?}", theme));
 }
 
 #[test]
 fn no_theme_is_err() {
     let path = theme_test_dir("nonexistent.kdl".into());
-    let theme = Theme::from_path(path);
+    let theme = Themes::from_path(path);
     assert!(theme.is_err());
 }
