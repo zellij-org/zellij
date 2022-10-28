@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support multiple themes in one file (https://github.com/zellij-org/zellij/pull/1855)
 * debugging: Remove calls to unwrap in `zellij_server::ui::*` (https://github.com/zellij-org/zellij/pull/1870)
 * debugging: Remove calls to unwrap in `zellij_server::pty_writer` (https://github.com/zellij-org/zellij/pull/1872)
+* docs(example): update the format of the themes for the example directory (https://github.com/zellij-org/zellij/pull/1877)
 
 ## [0.32.0] - 2022-10-25
 
