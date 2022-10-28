@@ -10,7 +10,7 @@ use std::{
 };
 use zellij_utils::{
     async_std,
-    errors::{get_current_ctx, ContextType},
+    errors::{get_current_ctx, prelude::*, ContextType},
     logging::debug_to_file,
 };
 
@@ -63,7 +63,7 @@ impl TerminalBytes {
             last_render: Instant::now(),
         }
     }
-    pub async fn listen(&mut self) {
+    pub async fn listen(&mut self) -> Result<()> {
         // This function reads bytes from the pty and then sends them as
         // ScreenInstruction::PtyBytes to screen to be parsed there
         // We also send a separate instruction to Screen to render as ScreenInstruction::Render
@@ -75,6 +75,8 @@ impl TerminalBytes {
         // only send a render instruction sparingly, giving screen time to process bytes and render
         // while still allowing the user to see an indication that things are happening (the
         // sparing render instructions)
+        let err_context = || "failed to listen for bytes from PTY".to_string();
+
         let mut err_ctx = get_current_ctx();
         err_ctx.add_call(ContextType::AsyncTask);
         let mut buf = [0u8; 65536];
@@ -82,8 +84,10 @@ impl TerminalBytes {
             match self.deadline_read(&mut buf).await {
                 ReadResult::Ok(0) | ReadResult::Err(_) => break, // EOF or error
                 ReadResult::Timeout => {
-                    let time_to_send_render =
-                        self.async_send_to_screen(ScreenInstruction::Render).await;
+                    let time_to_send_render = self
+                        .async_send_to_screen(ScreenInstruction::Render)
+                        .await
+                        .with_context(err_context)?;
                     self.update_render_send_time(time_to_send_render);
                     // next read does not need a deadline as we just rendered everything
                     self.render_deadline = None;
@@ -98,11 +102,14 @@ impl TerminalBytes {
                         self.terminal_id,
                         bytes.to_vec(),
                     ))
-                    .await;
+                    .await
+                    .with_context(err_context)?;
                     if !self.backed_up {
                         // we're not backed up, let's send an immediate render instruction
-                        let time_to_send_render =
-                            self.async_send_to_screen(ScreenInstruction::Render).await;
+                        let time_to_send_render = self
+                            .async_send_to_screen(ScreenInstruction::Render)
+                            .await
+                            .with_context(err_context)?;
                         self.update_render_send_time(time_to_send_render);
                         self.last_render = Instant::now();
                     }
@@ -113,16 +120,22 @@ impl TerminalBytes {
                 },
             }
         }
-        self.async_send_to_screen(ScreenInstruction::Render).await;
+        self.async_send_to_screen(ScreenInstruction::Render)
+            .await
+            .with_context(err_context)?;
+        Ok(())
     }
-    async fn async_send_to_screen(&self, screen_instruction: ScreenInstruction) -> Duration {
+    async fn async_send_to_screen(
+        &self,
+        screen_instruction: ScreenInstruction,
+    ) -> Result<Duration> {
         // returns the time it blocked the thread for
         let sent_at = Instant::now();
         let senders = self.senders.clone();
         task::spawn_blocking(move || senders.send_to_screen(screen_instruction))
             .await
-            .unwrap();
-        sent_at.elapsed()
+            .context("failed to async-send to screen")?;
+        Ok(sent_at.elapsed())
     }
     fn update_render_send_time(&mut self, time_to_send_render: Duration) {
         match self.minimum_render_send_time.as_mut() {

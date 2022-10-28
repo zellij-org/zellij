@@ -455,20 +455,23 @@ impl Pty {
             .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
             .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
         let terminal_bytes = task::spawn({
-            let err_context = || format!("failed to run async task for terminal {terminal_id}");
+            let err_context =
+                |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
             let senders = self.bus.senders.clone();
             let os_input = self
                 .bus
                 .os_input
                 .as_ref()
-                .with_context(err_context)
+                .with_context(|| err_context(terminal_id))
                 .fatal()
                 .clone();
             let debug_to_file = self.debug_to_file;
             async move {
                 TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, terminal_id)
                     .listen()
-                    .await;
+                    .await
+                    .with_context(|| err_context(terminal_id))
+                    .fatal();
             }
         });
 
@@ -657,7 +660,9 @@ impl Pty {
                                 terminal_id,
                             )
                             .listen()
-                            .await;
+                            .await
+                            .context("failed to spawn terminals for layout")
+                            .fatal();
                         }
                     });
                     self.task_handles.insert(terminal_id, terminal_bytes);
@@ -758,20 +763,23 @@ impl Pty {
                     .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
                     .re_run_command_in_terminal(id, run_command, quit_cb)?;
                 let terminal_bytes = task::spawn({
-                    let err_context = || format!("failed to run async task for pane {pane_id:?}");
+                    let err_context =
+                        |pane_id| format!("failed to run async task for pane {pane_id:?}");
                     let senders = self.bus.senders.clone();
                     let os_input = self
                         .bus
                         .os_input
                         .as_ref()
-                        .with_context(err_context)
+                        .with_context(|| err_context(pane_id))
                         .fatal()
                         .clone();
                     let debug_to_file = self.debug_to_file;
                     async move {
                         TerminalBytes::new(pid_primary, senders, os_input, debug_to_file, id)
                             .listen()
-                            .await;
+                            .await
+                            .with_context(|| err_context(pane_id))
+                            .fatal();
                     }
                 });
 
