@@ -30,8 +30,14 @@ pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
             .with_context(err_context)?;
         match event {
             PtyWriteInstruction::Write(bytes, terminal_id) => {
-                os_input.write_to_tty_stdin(terminal_id, &bytes).with_context(err_context).non_fatal();
-                os_input.tcdrain(terminal_id).with_context(err_context).non_fatal();
+                os_input
+                    .write_to_tty_stdin(terminal_id, &bytes)
+                    .with_context(err_context)
+                    .non_fatal();
+                os_input
+                    .tcdrain(terminal_id)
+                    .with_context(err_context)
+                    .non_fatal();
             },
             PtyWriteInstruction::Exit => {
                 return Ok(());
