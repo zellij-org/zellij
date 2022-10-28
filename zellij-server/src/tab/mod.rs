@@ -1310,7 +1310,12 @@ impl Tab {
     }
 
     pub fn render(&mut self, output: &mut Output, overlay: Option<String>) -> Result<()> {
-        let err_context = || "failed to render tab".to_string();
+        let err_context = |tab: &Tab| {
+            format!(
+                "failed to render tab (id: {}, name: '{}')",
+                tab.index, tab.name
+            )
+        };
 
         let connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
@@ -1318,7 +1323,7 @@ impl Tab {
             return Ok(());
         }
         self.update_active_panes_in_pty_thread()
-            .with_context(err_context)?;
+            .with_context(|| err_context(self))?;
 
         let floating_panes_stack = self.floating_panes.stack();
         output.add_clients(
