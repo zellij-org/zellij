@@ -46,17 +46,19 @@ impl<'a> PaneContentsAndUi<'a> {
         &mut self,
         clients: impl Iterator<Item = ClientId>,
     ) -> Result<()> {
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
-            .pane
-            .render(None)
-            .context("failed to render pane contents to multiple clients")?
+        let err_context = "failed to render pane contents to multiple clients";
+
+        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
+            self.pane.render(None).context(err_context)?
         {
             let clients: Vec<ClientId> = clients.collect();
-            self.output.add_character_chunks_to_multiple_clients(
-                character_chunks,
-                clients.iter().copied(),
-                self.z_index,
-            );
+            self.output
+                .add_character_chunks_to_multiple_clients(
+                    character_chunks,
+                    clients.iter().copied(),
+                    self.z_index,
+                )
+                .context(err_context)?;
             self.output.add_sixel_image_chunks_to_multiple_clients(
                 sixel_image_chunks,
                 clients.iter().copied(),
@@ -77,13 +79,16 @@ impl<'a> PaneContentsAndUi<'a> {
         Ok(())
     }
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to render pane contents for client {client_id}");
+
         if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
             .pane
             .render(Some(client_id))
-            .with_context(|| format!("failed to render pane contents for client {client_id}"))?
+            .with_context(err_context)?
         {
             self.output
-                .add_character_chunks_to_client(client_id, character_chunks, self.z_index);
+                .add_character_chunks_to_client(client_id, character_chunks, self.z_index)
+                .with_context(err_context)?;
             self.output.add_sixel_image_chunks_to_client(
                 client_id,
                 sixel_image_chunks,
@@ -150,6 +155,7 @@ impl<'a> PaneContentsAndUi<'a> {
         session_is_mirrored: bool,
     ) -> Result<()> {
         let err_context = || format!("failed to render pane frame for client {client_id}");
+
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let other_focused_clients: Vec<ClientId> = self
             .focused_clients
@@ -186,16 +192,15 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
             }
         };
+
         if let Some((frame_terminal_characters, vte_output)) = self
             .pane
             .render_frame(client_id, frame_params, client_mode)
             .with_context(err_context)?
         {
-            self.output.add_character_chunks_to_client(
-                client_id,
-                frame_terminal_characters,
-                self.z_index,
-            );
+            self.output
+                .add_character_chunks_to_client(client_id, frame_terminal_characters, self.z_index)
+                .with_context(err_context)?;
             if let Some(vte_output) = vte_output {
                 self.output
                     .add_post_vte_instruction_to_client(client_id, &vte_output);
