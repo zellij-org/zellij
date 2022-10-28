@@ -16,17 +16,23 @@ use std::{
     collections::{HashMap, HashSet},
     str,
 };
+use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::PaneGeom;
 use zellij_utils::pane_size::SizeInPixels;
 
-fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut String) {
+fn vte_goto_instruction(x_coords: usize, y_coords: usize, vte_output: &mut String) -> Result<()> {
     write!(
         vte_output,
         "\u{1b}[{};{}H\u{1b}[m",
         y_coords + 1, // + 1 because VTE is 1 indexed
         x_coords + 1,
     )
-    .unwrap();
+    .with_context(|| {
+        format!(
+            "failed to execute VTE instruction to go to ({}, {})",
+            x_coords, y_coords
+        )
+    })
 }
 
 fn adjust_styles_for_possible_selection(
@@ -56,18 +62,21 @@ fn write_changed_styles(
     chunk_changed_colors: Option<[Option<AnsiCode>; 256]>,
     link_handler: Option<&std::cell::Ref<LinkHandler>>,
     vte_output: &mut String,
-) {
+) -> Result<()> {
+    let err_context = "failed to format changed styles to VTE string";
+
     if let Some(new_styles) =
         character_styles.update_and_return_diff(&current_character_styles, chunk_changed_colors)
     {
         if let Some(osc8_link) =
             link_handler.and_then(|l_h| l_h.output_osc8(new_styles.link_anchor))
         {
-            write!(vte_output, "{}{}", new_styles, osc8_link).unwrap();
+            write!(vte_output, "{}{}", new_styles, osc8_link).context(err_context)?;
         } else {
-            write!(vte_output, "{}", new_styles).unwrap();
+            write!(vte_output, "{}", new_styles).context(err_context)?;
         }
     }
+    Ok(())
 }
 
 fn serialize_chunks(
@@ -75,14 +84,17 @@ fn serialize_chunks(
     sixel_chunks: Option<&Vec<SixelImageChunk>>,
     link_handler: Option<&mut Rc<RefCell<LinkHandler>>>,
     sixel_image_store: &mut SixelImageStore,
-) -> String {
+) -> Result<String> {
+    let err_context = || "failed to serialize input chunks".to_string();
+
     let mut vte_output = String::new();
     let mut sixel_vte: Option<String> = None;
     let link_handler = link_handler.map(|l_h| l_h.borrow());
     for character_chunk in character_chunks {
         let chunk_changed_colors = character_chunk.changed_colors();
         let mut character_styles = CharacterStyles::new();
-        vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output);
+        vte_goto_instruction(character_chunk.x, character_chunk.y, &mut vte_output)
+            .with_context(err_context)?;
         let mut chunk_width = character_chunk.x;
         for t_character in character_chunk.terminal_characters.iter() {
             let current_character_styles = adjust_styles_for_possible_selection(
@@ -97,7 +109,8 @@ fn serialize_chunks(
                 chunk_changed_colors,
                 link_handler.as_ref(),
                 &mut vte_output,
-            );
+            )
+            .with_context(err_context)?;
             chunk_width += t_character.width;
             vte_output.push(t_character.character);
         }
@@ -114,7 +127,8 @@ fn serialize_chunks(
             );
             if let Some(serialized_sixel_image) = serialized_sixel_image {
                 let sixel_vte = sixel_vte.get_or_insert_with(String::new);
-                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, sixel_vte);
+                vte_goto_instruction(sixel_chunk.cell_x, sixel_chunk.cell_y, sixel_vte)
+                    .with_context(err_context)?;
                 sixel_vte.push_str(&serialized_sixel_image);
             }
         }
@@ -129,7 +143,7 @@ fn serialize_chunks(
         vte_output.push_str(sixel_vte);
         vte_output.push_str(restore_cursor_position);
     }
-    vte_output
+    Ok(vte_output)
 }
 
 type AbsoluteMiddleStart = usize;
@@ -140,12 +154,19 @@ fn adjust_middle_segment_for_wide_chars(
     middle_start: usize,
     middle_end: usize,
     terminal_characters: &[TerminalCharacter],
-) -> (
+) -> Result<(
     AbsoluteMiddleStart,
     AbsoluteMiddleEnd,
     PadLeftEndBy,
     PadRightStartBy,
-) {
+)> {
+    let err_context = || {
+        format!(
+            "failed to adjust middle segment (from {} to {}) for wide chars: '{:?}'",
+            middle_start, middle_end, terminal_characters
+        )
+    };
+
     let mut absolute_middle_start_index = None;
     let mut absolute_middle_end_index = None;
     let mut current_x = 0;
@@ -168,12 +189,12 @@ fn adjust_middle_segment_for_wide_chars(
             }
         }
     }
-    (
-        absolute_middle_start_index.unwrap(),
-        absolute_middle_end_index.unwrap(),
+    Ok((
+        absolute_middle_start_index.with_context(err_context)?,
+        absolute_middle_end_index.with_context(err_context)?,
         pad_left_end_by,
         pad_right_start_by,
-    )
+    ))
 }
 
 #[derive(Clone, Debug, Default)]
@@ -216,27 +237,33 @@ impl Output {
         client_id: ClientId,
         mut character_chunks: Vec<CharacterChunk>,
         z_index: Option<usize>,
-    ) {
+    ) -> Result<()> {
         if let Some(client_character_chunks) = self.client_character_chunks.get_mut(&client_id) {
             if let Some(floating_panes_stack) = &self.floating_panes_stack {
-                let mut visible_character_chunks =
-                    floating_panes_stack.visible_character_chunks(character_chunks, z_index);
+                let mut visible_character_chunks = floating_panes_stack
+                    .visible_character_chunks(character_chunks, z_index)
+                    .with_context(|| {
+                        format!("failed to add character chunks for client {}", client_id)
+                    })?;
                 client_character_chunks.append(&mut visible_character_chunks);
             } else {
                 client_character_chunks.append(&mut character_chunks);
             }
         }
+        Ok(())
     }
     pub fn add_character_chunks_to_multiple_clients(
         &mut self,
         character_chunks: Vec<CharacterChunk>,
         client_ids: impl Iterator<Item = ClientId>,
         z_index: Option<usize>,
-    ) {
+    ) -> Result<()> {
         for client_id in client_ids {
-            self.add_character_chunks_to_client(client_id, character_chunks.clone(), z_index);
+            self.add_character_chunks_to_client(client_id, character_chunks.clone(), z_index)
+                .context("failed to add character chunks for multiple clients")?;
             // TODO: forgo clone by adding an all_clients thing?
         }
+        Ok(())
     }
     pub fn add_post_vte_instruction_to_multiple_clients(
         &mut self,
@@ -328,7 +355,9 @@ impl Output {
             }
         }
     }
-    pub fn serialize(&mut self) -> HashMap<ClientId, String> {
+    pub fn serialize(&mut self) -> Result<HashMap<ClientId, String>> {
+        let err_context = || "failed to serialize output to clients".to_string();
+
         let mut serialized_render_instructions = HashMap::new();
 
         for (client_id, client_character_chunks) in self.client_character_chunks.drain() {
@@ -344,12 +373,15 @@ impl Output {
             }
 
             // append the actual vte
-            client_serialized_render_instructions.push_str(&serialize_chunks(
-                client_character_chunks,
-                self.sixel_chunks.get(&client_id),
-                self.link_handler.as_mut(),
-                &mut self.sixel_image_store.borrow_mut(),
-            )); // TODO: less allocations?
+            client_serialized_render_instructions.push_str(
+                &serialize_chunks(
+                    client_character_chunks,
+                    self.sixel_chunks.get(&client_id),
+                    self.link_handler.as_mut(),
+                    &mut self.sixel_image_store.borrow_mut(),
+                )
+                .with_context(err_context)?,
+            ); // TODO: less allocations?
 
             // append post-vte instructions for this client
             if let Some(post_vte_instructions_for_client) =
@@ -362,7 +394,7 @@ impl Output {
 
             serialized_render_instructions.insert(client_id, client_serialized_render_instructions);
         }
-        serialized_render_instructions
+        Ok(serialized_render_instructions)
     }
 }
 
@@ -380,7 +412,14 @@ impl FloatingPanesStack {
         &self,
         mut character_chunks: Vec<CharacterChunk>,
         z_index: Option<usize>,
-    ) -> Vec<CharacterChunk> {
+    ) -> Result<Vec<CharacterChunk>> {
+        let err_context = || {
+            format!(
+                "failed to determine visible character chunks at z-index {:?}",
+                z_index
+            )
+        };
+
         let z_index = z_index.unwrap_or(0);
         let mut chunks_to_check: Vec<CharacterChunk> = character_chunks.drain(..).collect();
         let mut visible_chunks = vec![];
@@ -389,7 +428,9 @@ impl FloatingPanesStack {
                 Some(mut c_chunk) => {
                     let panes_to_check = self.layers.iter().skip(z_index);
                     for pane_geom in panes_to_check {
-                        let new_chunk_to_check = self.remove_covered_parts(pane_geom, &mut c_chunk);
+                        let new_chunk_to_check = self
+                            .remove_covered_parts(pane_geom, &mut c_chunk)
+                            .with_context(err_context)?;
                         if let Some(new_chunk_to_check) = new_chunk_to_check {
                             // this happens when the pane covers the middle of the chunk, and so we
                             // end up with an extra chunk we need to check (eg. against panes above
@@ -407,7 +448,7 @@ impl FloatingPanesStack {
                 },
             }
         }
-        visible_chunks
+        Ok(visible_chunks)
     }
     pub fn visible_sixel_image_chunks(
         &self,
@@ -433,7 +474,14 @@ impl FloatingPanesStack {
         &self,
         pane_geom: &PaneGeom,
         c_chunk: &mut CharacterChunk,
-    ) -> Option<CharacterChunk> {
+    ) -> Result<Option<CharacterChunk>> {
+        let err_context = || {
+            format!(
+                "failed to remove covered parts from floating panes: {:#?}",
+                self
+            )
+        };
+
         let pane_top_edge = pane_geom.y;
         let pane_left_edge = pane_geom.x;
         let pane_bottom_edge = pane_geom.y + pane_geom.rows.as_usize().saturating_sub(1);
@@ -444,7 +492,7 @@ impl FloatingPanesStack {
             if pane_left_edge <= c_chunk_left_side && pane_right_edge >= c_chunk_right_side {
                 // pane covers chunk completely
                 drop(c_chunk.terminal_characters.drain(..));
-                return None;
+                return Ok(None);
             } else if pane_right_edge > c_chunk_left_side
                 && pane_right_edge < c_chunk_right_side
                 && pane_left_edge <= c_chunk_left_side
@@ -453,30 +501,32 @@ impl FloatingPanesStack {
                 let covered_part = c_chunk.drain_by_width(pane_right_edge + 1 - c_chunk_left_side);
                 drop(covered_part);
                 c_chunk.x = pane_right_edge + 1;
-                return None;
+                return Ok(None);
             } else if pane_left_edge > c_chunk_left_side
                 && pane_left_edge < c_chunk_right_side
                 && pane_right_edge >= c_chunk_right_side
             {
                 // pane covers chunk partially to the right
                 c_chunk.retain_by_width(pane_left_edge - c_chunk_left_side);
-                return None;
+                return Ok(None);
             } else if pane_left_edge >= c_chunk_left_side && pane_right_edge <= c_chunk_right_side {
                 // pane covers chunk middle
-                let (left_chunk_characters, right_chunk_characters) = c_chunk.cut_middle_out(
-                    pane_left_edge - c_chunk_left_side,
-                    (pane_right_edge + 1) - c_chunk_left_side,
-                );
+                let (left_chunk_characters, right_chunk_characters) = c_chunk
+                    .cut_middle_out(
+                        pane_left_edge - c_chunk_left_side,
+                        (pane_right_edge + 1) - c_chunk_left_side,
+                    )
+                    .with_context(err_context)?;
                 let left_chunk_x = c_chunk_left_side;
                 let right_chunk_x = pane_right_edge + 1;
                 let left_chunk =
                     CharacterChunk::new(left_chunk_characters, left_chunk_x, c_chunk.y);
                 c_chunk.x = right_chunk_x;
                 c_chunk.terminal_characters = right_chunk_characters;
-                return Some(left_chunk);
+                return Ok(Some(left_chunk));
             }
         };
-        None
+        Ok(None)
     }
     fn remove_covered_sixel_parts(
         &self,
@@ -732,7 +782,9 @@ impl CharacterChunk {
         &mut self,
         middle_start: usize,
         middle_end: usize,
-    ) -> (Vec<TerminalCharacter>, Vec<TerminalCharacter>) {
+    ) -> Result<(Vec<TerminalCharacter>, Vec<TerminalCharacter>)> {
+        let err_context = || "failed to cut middle out of character chunk".to_string();
+
         let (
             absolute_middle_start_index,
             absolute_middle_end_index,
@@ -742,7 +794,8 @@ impl CharacterChunk {
             middle_start,
             middle_end,
             &self.terminal_characters,
-        );
+        )
+        .with_context(err_context)?;
         let mut terminal_characters: Vec<TerminalCharacter> =
             self.terminal_characters.drain(..).collect();
         let mut characters_on_the_right: Vec<TerminalCharacter> = terminal_characters
@@ -759,7 +812,7 @@ impl CharacterChunk {
                 characters_on_the_right.insert(0, EMPTY_TERMINAL_CHARACTER);
             }
         }
-        (characters_on_the_left, characters_on_the_right)
+        Ok((characters_on_the_left, characters_on_the_right))
     }
 }
 
