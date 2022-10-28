@@ -347,7 +347,7 @@ impl Pane for TerminalPane {
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
@@ -398,12 +398,13 @@ impl Pane for TerminalPane {
             frame.add_exit_status(exit_status.as_ref().copied());
         }
 
-        match self.frame.get(&client_id) {
+        let err_context = || format!("failed to render frame for client {client_id}");
+        let res = match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {
                 if &frame != last_frame {
                     if !self.borderless {
-                        let frame_output = frame.render();
+                        let frame_output = frame.render().with_context(err_context)?;
                         self.frame.insert(client_id, frame);
                         Some(frame_output)
                     } else {
@@ -415,14 +416,15 @@ impl Pane for TerminalPane {
             },
             None => {
                 if !self.borderless {
-                    let frame_output = frame.render();
+                    let frame_output = frame.render().with_context(err_context)?;
                     self.frame.insert(client_id, frame);
                     Some(frame_output)
                 } else {
                     None
                 }
             },
-        }
+        };
+        Ok(res)
     }
     fn render_fake_cursor(
         &mut self,

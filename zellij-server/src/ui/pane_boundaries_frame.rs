@@ -3,6 +3,7 @@ use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
 use zellij_utils::data::{client_id_to_colors, PaletteColor, Style};
+use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Viewport;
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -600,24 +601,26 @@ impl PaneFrame {
             _ => self.empty_title_line(),
         }
     }
-    fn render_title(&self) -> Vec<TerminalCharacter> {
+    fn render_title(&self) -> Result<Vec<TerminalCharacter>> {
         let total_title_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
 
         self.render_title_middle(total_title_length)
             .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
             .or_else(|| Some(self.title_line_without_middle()))
-            .unwrap()
+            .with_context(|| format!("failed to render title {}", self.title))
     }
-    fn render_held_undertitle(&self) -> Vec<TerminalCharacter> {
+    fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let exit_status = self.exit_status.unwrap(); // unwrap is safe because we only call this if
+        let exit_status = self
+            .exit_status
+            .with_context(|| format!("failed to render held under title {}", self.title))?; // unwrap is safe because we only call this if
 
         let (mut first_part, first_part_len) = self.first_held_title_part_full(exit_status);
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_RIGHT), self.color);
-        if self.is_main_client {
+        let res = if self.is_main_client {
             let (mut second_part, second_part_len) = self.second_held_title_part_full();
             let full_text_len = first_part_len + second_part_len;
             if full_text_len <= max_undertitle_length {
@@ -665,14 +668,16 @@ impl PaneFrame {
             } else {
                 self.empty_undertitle(max_undertitle_length)
             }
-        }
+        };
+        Ok(res)
     }
-    pub fn render(&self) -> (Vec<CharacterChunk>, Option<String>) {
+    pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
+        let err_context = || "failed to render";
         let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
             if row == 0 {
                 // top row
-                let title = self.render_title();
+                let title = self.render_title().with_context(err_context)?;
                 let x = self.geom.x;
                 let y = self.geom.y + row;
                 character_chunks.push(CharacterChunk::new(title, x, y));
@@ -681,7 +686,11 @@ impl PaneFrame {
                 if self.exit_status.is_some() {
                     let x = self.geom.x;
                     let y = self.geom.y + row;
-                    character_chunks.push(CharacterChunk::new(self.render_held_undertitle(), x, y));
+                    character_chunks.push(CharacterChunk::new(
+                        self.render_held_undertitle().with_context(err_context)?,
+                        x,
+                        y,
+                    ));
                 } else {
                     let mut bottom_row = vec![];
                     for col in 0..self.geom.cols {
@@ -716,7 +725,7 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
             }
         }
-        (character_chunks, None)
+        Ok((character_chunks, None))
     }
     fn first_held_title_part_full(
         &self,

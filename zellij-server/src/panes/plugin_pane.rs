@@ -231,10 +231,10 @@ impl Pane for PluginPane {
         _client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)> {
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
-        if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
+        let res = if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
             let pane_title = if self.pane_name.is_empty()
                 && input_mode == InputMode::RenamePane
                 && frame_params.is_main_client
@@ -251,10 +251,15 @@ impl Pane for PluginPane {
                 pane_title,
                 frame_params,
             );
-            Some(frame.render())
+            Some(
+                frame
+                    .render()
+                    .with_context(|| format!("failed to render frame form client {_client_id}"))?,
+            )
         } else {
             None
-        }
+        };
+        Ok(res)
     }
     fn render_fake_cursor(
         &mut self,

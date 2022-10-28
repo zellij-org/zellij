@@ -2,6 +2,7 @@ use zellij_utils::pane_size::Size;
 
 use super::{Overlay, OverlayType, Overlayable};
 use crate::{ClientId, ServerInstruction};
+use zellij_utils::errors::prelude::*;
 
 use std::fmt::Write;
 
@@ -33,7 +34,7 @@ impl Prompt {
 }
 
 impl Overlayable for Prompt {
-    fn generate_overlay(&self, size: Size) -> String {
+    fn generate_overlay(&self, size: Size) -> Result<String> {
         let mut output = String::new();
         let rows = size.rows;
         let mut vte_output = self.message.clone();
@@ -46,9 +47,9 @@ impl Overlayable for Prompt {
                 x + 1,
                 h,
             )
-            .unwrap();
+            .context("failed to generate overlay for prompt")?;
         }
-        output
+        Ok(output)
     }
 }
 

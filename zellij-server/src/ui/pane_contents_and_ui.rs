@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use zellij_utils::data::{
     client_id_to_colors, single_client_color, InputMode, PaletteColor, Style,
 };
+use zellij_utils::errors::prelude::*;
 pub struct PaneContentsAndUi<'a> {
     pane: &'a mut Box<dyn Pane>,
     output: &'a mut Output,
@@ -44,9 +45,11 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_pane_contents_to_multiple_clients(
         &mut self,
         clients: impl Iterator<Item = ClientId>,
-    ) {
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
-            self.pane.render(None).unwrap()
+    ) -> Result<()> {
+        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
+            .pane
+            .render(None)
+            .context("failed to render pane contents to multiple clients")?
         {
             let clients: Vec<ClientId> = clients.collect();
             self.output.add_character_chunks_to_multiple_clients(
@@ -71,10 +74,13 @@ impl<'a> PaneContentsAndUi<'a> {
                 );
             }
         }
+        Ok(())
     }
-    pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) {
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
-            self.pane.render(Some(client_id)).unwrap()
+    pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
+            .pane
+            .render(Some(client_id))
+            .with_context(|| format!("failed to render pane contents for client {client_id}"))?
         {
             self.output
                 .add_character_chunks_to_client(client_id, character_chunks, self.z_index);
@@ -95,8 +101,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 );
             }
         }
+        Ok(())
     }
-    pub fn render_fake_cursor_if_needed(&mut self, client_id: ClientId) {
+    pub fn render_fake_cursor_if_needed(&mut self, client_id: ClientId) -> Result<()> {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let pane_focused_for_different_client = self
             .focused_clients
@@ -109,7 +116,9 @@ impl<'a> PaneContentsAndUi<'a> {
                 .focused_clients
                 .iter()
                 .find(|&&c_id| c_id != client_id)
-                .unwrap();
+                .with_context(|| {
+                    format!("failed to render fake cursor if needed for client {client_id}")
+                })?;
             if let Some(colors) = client_id_to_colors(*fake_cursor_client_id, self.style.colors) {
                 if let Some(vte_output) = self.pane.render_fake_cursor(colors.0, colors.1) {
                     self.output.add_post_vte_instruction_to_client(
@@ -124,6 +133,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 }
             }
         }
+        Ok(())
     }
     pub fn render_terminal_title_if_needed(&mut self, client_id: ClientId, client_mode: InputMode) {
         if !self.focused_clients.contains(&client_id) {
@@ -138,7 +148,8 @@ impl<'a> PaneContentsAndUi<'a> {
         client_id: ClientId,
         client_mode: InputMode,
         session_is_mirrored: bool,
-    ) {
+    ) -> Result<()> {
+        let err_context = || format!("failed to render pane frame for client {client_id}");
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
         let other_focused_clients: Vec<ClientId> = self
             .focused_clients
@@ -152,7 +163,7 @@ impl<'a> PaneContentsAndUi<'a> {
         let focused_client = if pane_focused_for_client_id {
             Some(client_id)
         } else if pane_focused_for_differet_client {
-            Some(*other_focused_clients.first().unwrap())
+            Some(*other_focused_clients.first().with_context(err_context)?)
         } else {
             None
         };
@@ -175,8 +186,10 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
             }
         };
-        if let Some((frame_terminal_characters, vte_output)) =
-            self.pane.render_frame(client_id, frame_params, client_mode)
+        if let Some((frame_terminal_characters, vte_output)) = self
+            .pane
+            .render_frame(client_id, frame_params, client_mode)
+            .with_context(err_context)?
         {
             self.output.add_character_chunks_to_client(
                 client_id,
@@ -188,6 +201,7 @@ impl<'a> PaneContentsAndUi<'a> {
                     .add_post_vte_instruction_to_client(client_id, &vte_output);
             }
         }
+        Ok(())
     }
     pub fn render_pane_boundaries(
         &self,

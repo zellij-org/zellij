@@ -5,6 +5,7 @@ use crate::panes::terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACT
 use crate::tab::Pane;
 use ansi_term::Colour::{Fixed, RGB};
 use std::collections::HashMap;
+use zellij_utils::errors::prelude::*;
 use zellij_utils::{data::PaletteColor, shared::colors};
 
 use std::fmt::{Display, Error, Formatter};
@@ -47,18 +48,24 @@ impl BoundarySymbol {
         self.color = color;
         *self
     }
-    pub fn as_terminal_character(&self) -> TerminalCharacter {
-        if self.invisible {
+    pub fn as_terminal_character(&self) -> Result<TerminalCharacter> {
+        let tc = if self.invisible {
             EMPTY_TERMINAL_CHARACTER
         } else {
-            let character = self.boundary_type.chars().next().unwrap();
+            let character = self.boundary_type.chars().next().with_context(|| {
+                format!(
+                    "failed to as terminal character for boundary type {}",
+                    self.boundary_type
+                )
+            })?;
             TerminalCharacter {
                 character,
                 width: 1,
                 styles: RESET_STYLES
                     .foreground(self.color.map(|palette_color| palette_color.into())),
             }
-        }
+        };
+        Ok(tc)
     }
 }
 
@@ -528,16 +535,18 @@ impl Boundaries {
             }
         }
     }
-    pub fn render(&self) -> Vec<CharacterChunk> {
+    pub fn render(&self) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
             character_chunks.push(CharacterChunk::new(
-                vec![boundary_character.as_terminal_character()],
+                vec![boundary_character
+                    .as_terminal_character()
+                    .context("failed to render as terminal character")?],
                 coordinates.x,
                 coordinates.y,
             ));
         }
-        character_chunks
+        Ok(character_chunks)
     }
     fn rect_right_boundary_is_before_screen_edge(&self, rect: &dyn Pane) -> bool {
         rect.x() + rect.cols() < self.viewport.cols

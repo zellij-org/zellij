@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
+use zellij_utils::errors::prelude::*;
 use zellij_utils::{
     data::{ModeInfo, Style},
     input::command::RunCommand,
@@ -378,7 +379,8 @@ impl TiledPanes {
     pub fn has_panes(&self) -> bool {
         !self.panes.is_empty()
     }
-    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) {
+    pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) -> Result<()> {
+        let err_context = || "failed to render output based on visible";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
@@ -409,15 +411,18 @@ impl TiledPanes {
                         .get(client_id)
                         .unwrap_or(&self.default_mode_info)
                         .mode;
+                    let err_context = || {
+                        format!("failed to render output based on visible for client {client_id}")
+                    };
                     if let PaneId::Plugin(..) = kind {
-                        pane_contents_and_ui.render_pane_contents_for_client(*client_id);
+                        pane_contents_and_ui
+                            .render_pane_contents_for_client(*client_id)
+                            .with_context(err_context)?;
                     }
                     if self.draw_pane_frames {
-                        pane_contents_and_ui.render_pane_frame(
-                            *client_id,
-                            client_mode,
-                            self.session_is_mirrored,
-                        );
+                        pane_contents_and_ui
+                            .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                            .with_context(err_context)?;
                     } else {
                         let boundaries = client_id_to_boundaries
                             .entry(*client_id)
@@ -432,20 +437,27 @@ impl TiledPanes {
                     pane_contents_and_ui.render_terminal_title_if_needed(*client_id, client_mode);
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
-                    pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
+                    pane_contents_and_ui
+                        .render_fake_cursor_if_needed(*client_id)
+                        .with_context(err_context)?;
                 }
                 if let PaneId::Terminal(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_to_multiple_clients(
-                        connected_clients.iter().copied(),
-                    );
+                    pane_contents_and_ui
+                        .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                        .with_context(err_context)?;
                 }
             }
         }
         // render boundaries if needed
         for (client_id, boundaries) in &mut client_id_to_boundaries {
             // TODO: add some conditional rendering here so this isn't rendered for every character
-            output.add_character_chunks_to_client(*client_id, boundaries.render(), None);
+            output.add_character_chunks_to_client(
+                *client_id,
+                boundaries.render().with_context(err_context)?,
+                None,
+            );
         }
+        Ok(())
     }
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()

@@ -148,7 +148,7 @@ pub trait Pane {
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Option<(Vec<CharacterChunk>, Option<String>)>; // TODO: better
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>>; // TODO: better
     fn render_fake_cursor(
         &mut self,
         cursor_color: PaletteColor,
@@ -1329,9 +1329,12 @@ impl Tab {
 
         self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes
-            .render(output, self.floating_panes.panes_are_visible());
+            .render(output, self.floating_panes.panes_are_visible())
+            .with_context(err_context)?;
         if self.floating_panes.panes_are_visible() && self.floating_panes.has_active_panes() {
-            self.floating_panes.render(output);
+            self.floating_panes
+                .render(output)
+                .with_context(err_context)?;
         }
 
         // FIXME: Once clients can be distinguished

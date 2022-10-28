@@ -736,7 +736,7 @@ impl Screen {
         let overlay = self.overlay.clone();
         for (tab_index, tab) in &mut self.tabs {
             if tab.has_selectable_tiled_panes() {
-                let vte_overlay = overlay.generate_overlay(size);
+                let vte_overlay = overlay.generate_overlay(size).context(err_context)?;
                 tab.render(&mut output, Some(vte_overlay))
                     .context(err_context)?;
             } else {
