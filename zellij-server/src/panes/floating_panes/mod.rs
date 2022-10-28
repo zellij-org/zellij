@@ -17,6 +17,7 @@ use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
     data::{ModeInfo, Style},
+    errors::prelude::*,
     input::command::RunCommand,
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
@@ -234,7 +235,8 @@ impl FloatingPanes {
             resize_pty!(pane, os_api);
         }
     }
-    pub fn render(&mut self, output: &mut Output) {
+    pub fn render(&mut self, output: &mut Output) -> Result<()> {
+        let err_context = || "failed to render output";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let mut floating_panes: Vec<_> = self.panes.iter_mut().collect();
@@ -242,8 +244,16 @@ impl FloatingPanes {
             self.z_indices
                 .iter()
                 .position(|id| id == *a_id)
-                .unwrap()
-                .cmp(&self.z_indices.iter().position(|id| id == *b_id).unwrap())
+                .with_context(err_context)
+                .fatal()
+                .cmp(
+                    &self
+                        .z_indices
+                        .iter()
+                        .position(|id| id == *b_id)
+                        .with_context(err_context)
+                        .fatal(),
+                )
         });
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
@@ -266,23 +276,27 @@ impl FloatingPanes {
                     .get(client_id)
                     .unwrap_or(&self.default_mode_info)
                     .mode;
-                pane_contents_and_ui.render_pane_frame(
-                    *client_id,
-                    client_mode,
-                    self.session_is_mirrored,
-                );
+                pane_contents_and_ui
+                    .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                    .with_context(err_context)?;
                 if let PaneId::Plugin(..) = kind {
-                    pane_contents_and_ui.render_pane_contents_for_client(*client_id);
+                    pane_contents_and_ui
+                        .render_pane_contents_for_client(*client_id)
+                        .with_context(err_context)?;
                 }
                 // this is done for panes that don't have their own cursor (eg. panes of
                 // another user)
-                pane_contents_and_ui.render_fake_cursor_if_needed(*client_id);
+                pane_contents_and_ui
+                    .render_fake_cursor_if_needed(*client_id)
+                    .with_context(err_context)?;
             }
             if let PaneId::Terminal(..) = kind {
                 pane_contents_and_ui
-                    .render_pane_contents_to_multiple_clients(connected_clients.iter().copied());
+                    .render_pane_contents_to_multiple_clients(connected_clients.iter().copied())
+                    .with_context(err_context)?;
             }
         }
+        Ok(())
     }
     pub fn resize(&mut self, new_screen_size: Size) {
         let display_area = *self.display_area.borrow();

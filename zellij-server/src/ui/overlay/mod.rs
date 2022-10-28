@@ -9,6 +9,7 @@
 pub mod prompt;
 
 use crate::ServerInstruction;
+use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::Size;
 
 #[derive(Clone, Debug)]
@@ -19,7 +20,7 @@ pub struct Overlay {
 pub trait Overlayable {
     /// Generates vte_output that can be passed into
     /// the `render()` function
-    fn generate_overlay(&self, size: Size) -> String;
+    fn generate_overlay(&self, size: Size) -> Result<String>;
 }
 
 #[derive(Clone, Debug)]
@@ -28,9 +29,11 @@ pub enum OverlayType {
 }
 
 impl Overlayable for OverlayType {
-    fn generate_overlay(&self, size: Size) -> String {
+    fn generate_overlay(&self, size: Size) -> Result<String> {
         match &self {
-            OverlayType::Prompt(prompt) => prompt.generate_overlay(size),
+            OverlayType::Prompt(prompt) => prompt
+                .generate_overlay(size)
+                .context("failed to generate VTE output from overlay type"),
         }
     }
 }
@@ -44,15 +47,17 @@ pub struct OverlayWindow {
 }
 
 impl Overlayable for OverlayWindow {
-    fn generate_overlay(&self, size: Size) -> String {
+    fn generate_overlay(&self, size: Size) -> Result<String> {
         let mut output = String::new();
         //let clear_display = "\u{1b}[2J";
         //output.push_str(&clear_display);
         for overlay in &self.overlay_stack {
-            let vte_output = overlay.generate_overlay(size);
+            let vte_output = overlay
+                .generate_overlay(size)
+                .context("failed to generate VTE output from overlay window")?;
             output.push_str(&vte_output);
         }
-        output
+        Ok(output)
     }
 }
 
@@ -70,8 +75,10 @@ impl Overlay {
 }
 
 impl Overlayable for Overlay {
-    fn generate_overlay(&self, size: Size) -> String {
-        self.overlay_type.generate_overlay(size)
+    fn generate_overlay(&self, size: Size) -> Result<String> {
+        self.overlay_type
+            .generate_overlay(size)
+            .context("failed to generate VTE output from overlay")
     }
 }
 

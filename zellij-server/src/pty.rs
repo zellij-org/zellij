@@ -452,7 +452,7 @@ impl Pty {
             .bus
             .os_input
             .as_mut()
-            .unwrap()
+            .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
             .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
         let terminal_bytes = task::spawn({
             let err_context = || format!("failed to run async task for terminal {terminal_id}");
