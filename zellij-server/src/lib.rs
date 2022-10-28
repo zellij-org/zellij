@@ -737,7 +737,7 @@ fn init_session(
                 None,
                 Some(os_input.clone()),
             );
-            || pty_writer_main(pty_writer_bus)
+            || pty_writer_main(pty_writer_bus).fatal()
         })
         .unwrap();
 
