@@ -1,4 +1,4 @@
-use zellij_utils::errors::{ContextType, PtyWriteContext};
+use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 
 use crate::thread_bus::Bus;
 
@@ -17,22 +17,30 @@ impl From<&PtyWriteInstruction> for PtyWriteContext {
     }
 }
 
-pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) {
+pub(crate) fn pty_writer_main(bus: Bus<PtyWriteInstruction>) -> Result<()> {
+    let err_context = || "failed to write to pty".to_string();
+
     loop {
-        let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
+        let (event, mut err_ctx) = bus.recv().with_context(err_context)?;
         err_ctx.add_call(ContextType::PtyWrite((&event).into()));
-        let os_input = bus.os_input.clone().unwrap();
+        let os_input = bus
+            .os_input
+            .clone()
+            .context("no OS input API found")
+            .with_context(err_context)?;
         match event {
             PtyWriteInstruction::Write(bytes, terminal_id) => {
-                if let Err(e) = os_input.write_to_tty_stdin(terminal_id, &bytes) {
-                    log::error!("failed to write to terminal: {}", e);
-                }
-                if let Err(e) = os_input.tcdrain(terminal_id) {
-                    log::error!("failed to drain terminal: {}", e);
-                };
+                os_input
+                    .write_to_tty_stdin(terminal_id, &bytes)
+                    .with_context(err_context)
+                    .non_fatal();
+                os_input
+                    .tcdrain(terminal_id)
+                    .with_context(err_context)
+                    .non_fatal();
             },
             PtyWriteInstruction::Exit => {
-                break;
+                return Ok(());
             },
         }
     }
