@@ -146,6 +146,10 @@ pub enum Sessions {
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
+
+        /// Close the pane immediately when its command exits
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        close_on_exit: bool,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -246,6 +250,17 @@ pub enum CliAction {
         /// Name of the new pane
         #[clap(short, long, value_parser)]
         name: Option<String>,
+
+        /// Close the pane immediately when its command exits
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("command")
+        )]
+        close_on_exit: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
