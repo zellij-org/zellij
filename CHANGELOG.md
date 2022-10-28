@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow command panes to optionally close on exit (https://github.com/zellij-org/zellij/pull/1869)
 * add: everforest-dark, everforest-light themes to the example theme directory (https://github.com/zellij-org/zellij/pull/1873)
 * feat: support multiple themes in one file (https://github.com/zellij-org/zellij/pull/1855)
+* debugging: Remove calls to unwrap in `zellij_server::ui::*` (https://github.com/zellij-org/zellij/pull/1870)
 
 ## [0.32.0] - 2022-10-25
 
