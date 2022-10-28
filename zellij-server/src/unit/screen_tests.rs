@@ -1821,6 +1821,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         cwd: None,
         floating: false,
         name: None,
+        close_on_exit: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1859,6 +1860,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         cwd: None,
         floating: false,
         name: None,
+        close_on_exit: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1897,6 +1899,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         cwd: Some("/some/folder".into()),
         floating: false,
         name: None,
+        close_on_exit: false,
     };
     send_cli_action_to_server(
         &session_metadata,

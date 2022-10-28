@@ -53,6 +53,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "children"
             || word == "tab"
             || word == "args"
+            || word == "close_on_exit"
             || word == "borderless"
             || word == "focus"
             || word == "name"
@@ -70,6 +71,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "edit"
             || property_name == "cwd"
             || property_name == "args"
+            || property_name == "close_on_exit"
             || property_name == "split_direction"
             || property_name == "pane"
             || property_name == "children"
@@ -237,22 +239,28 @@ impl<'a> KdlLayoutParser<'a> {
             .map(|c| PathBuf::from(c));
         let cwd = self.parse_cwd(pane_node)?;
         let args = self.parse_args(pane_node)?;
-        match (command, edit, cwd, args, is_template) {
-            (None, None, Some(cwd), _, _) => Ok(Some(Run::Cwd(cwd))),
-            (None, _, _, Some(_args), false) => Err(ConfigError::new_layout_kdl_error(
-                "args can only be set if a command was specified".into(),
-                pane_node.span().offset(),
-                pane_node.span().len(),
-            )),
-            (Some(command), None, cwd, args, _) => Ok(Some(Run::Command(RunCommand {
+        let close_on_exit =
+            kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
+        if !is_template {
+            self.assert_no_bare_attributes_in_pane_node(
+                &command,
+                &args,
+                &close_on_exit,
+                pane_node,
+            )?;
+        }
+        let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
+        match (command, edit, cwd) {
+            (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
+            (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
                 command,
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
-                hold_on_close: true,
+                hold_on_close,
             }))),
-            (None, Some(edit), Some(cwd), _, _) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None, _, _) => Ok(Some(Run::EditFile(edit, None))),
-            (Some(_command), Some(_edit), _, _, _) => Err(ConfigError::new_layout_kdl_error(
+            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
+            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
+            (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
@@ -370,12 +378,15 @@ impl<'a> KdlLayoutParser<'a> {
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
         let args = self.parse_args(kdl_node)?;
+        let close_on_exit =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
-        self.assert_no_bare_args_in_pane_node_with_template(
+        self.assert_no_bare_attributes_in_pane_node_with_template(
             &run,
             &pane_template.run,
             &args,
+            &close_on_exit,
             kdl_node,
         )?;
         self.insert_children_to_pane_template(
@@ -384,13 +395,12 @@ impl<'a> KdlLayoutParser<'a> {
             pane_template_kdl_node,
         )?;
         pane_template.run = Run::merge(&pane_template.run, &run);
-        if let (Some(Run::Command(pane_template_run_command)), Some(args)) =
-            (pane_template.run.as_mut(), args)
-        {
-            if !args.is_empty() {
-                pane_template_run_command.args = args.clone();
-            }
-        }
+        if let Some(pane_template_run_command) = pane_template.run.as_mut() {
+            // we need to do this because panes consuming a pane_templates
+            // can have bare args without a command
+            pane_template_run_command.add_args(args);
+            pane_template_run_command.add_close_on_exit(close_on_exit);
+        };
         if let Some(borderless) = borderless {
             pane_template.borderless = borderless;
         }
@@ -584,11 +594,12 @@ impl<'a> KdlLayoutParser<'a> {
         }
         false
     }
-    fn assert_no_bare_args_in_pane_node_with_template(
+    fn assert_no_bare_attributes_in_pane_node_with_template(
         &self,
         pane_run: &Option<Run>,
         pane_template_run: &Option<Run>,
         args: &Option<Vec<String>>,
+        close_on_exit: &Option<bool>,
         pane_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if let (None, None, true) = (pane_run, pane_template_run, args.is_some()) {
@@ -596,6 +607,37 @@ impl<'a> KdlLayoutParser<'a> {
                 format!("args can only be specified if a command was specified either in the pane_template or in the pane"),
                 pane_node
             ));
+        }
+        if let (None, None, true) = (pane_run, pane_template_run, close_on_exit.is_some()) {
+            return Err(kdl_parsing_error!(
+                format!("close_on_exit can only be specified if a command was specified either in the pane_template or in the pane"),
+                pane_node
+            ));
+        }
+        Ok(())
+    }
+    fn assert_no_bare_attributes_in_pane_node(
+        &self,
+        command: &Option<PathBuf>,
+        args: &Option<Vec<String>>,
+        close_on_exit: &Option<bool>,
+        pane_node: &KdlNode,
+    ) -> Result<(), ConfigError> {
+        if command.is_none() {
+            if close_on_exit.is_some() {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "close_on_exit can only be set if a command was specified".into(),
+                    pane_node.span().offset(),
+                    pane_node.span().len(),
+                ));
+            }
+            if args.is_some() {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "args can only be set if a command was specified".into(),
+                    pane_node.span().offset(),
+                    pane_node.span().len(),
+                ));
+            }
         }
         Ok(())
     }

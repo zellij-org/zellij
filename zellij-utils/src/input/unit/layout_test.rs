@@ -269,6 +269,19 @@ fn layout_with_command_panes_and_cwd_and_args() {
 }
 
 #[test]
+fn layout_with_command_panes_and_close_on_exit() {
+    let kdl_layout = r#"
+        layout {
+            pane command="htop" {
+                close_on_exit true
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn layout_with_plugin_panes() {
     let kdl_layout = r#"
         layout {
@@ -1034,6 +1047,24 @@ fn args_override_args_in_template() {
 }
 
 #[test]
+fn close_on_exit_overrides_close_on_exit_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+                close_on_exit false
+            }
+            tail
+            tail {
+                close_on_exit true
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn args_added_to_args_in_template() {
     let kdl_layout = r#"
         layout {
@@ -1043,6 +1074,23 @@ fn args_added_to_args_in_template() {
             tail
             tail {
                 args "-f" "/tmp/bar"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn close_on_exit_added_to_close_on_exit_in_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="tail" {
+                command "tail"
+            }
+            tail
+            tail {
+                close_on_exit true
             }
         }
     "#;
@@ -1126,12 +1174,39 @@ fn error_on_bare_args_without_command() {
 }
 
 #[test]
+fn error_on_bare_close_on_exit_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane {
+                close_on_exit true
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None);
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
 fn error_on_bare_args_in_template_without_command() {
     let kdl_layout = r#"
         layout {
             pane_template name="my_template"
             my_template {
                 args "--help"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None);
+    assert!(layout.is_err(), "error provided");
+}
+
+#[test]
+fn error_on_bare_close_on_exit_in_template_without_command() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="my_template"
+            my_template {
+                close_on_exit true
             }
         }
     "#;

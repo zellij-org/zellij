@@ -258,17 +258,19 @@ impl Action {
                 cwd,
                 floating,
                 name,
+                close_on_exit,
             } => {
                 if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let cwd = cwd.or_else(|| std::env::current_dir().ok());
+                    let hold_on_close = !close_on_exit;
                     let run_command_action = RunCommandAction {
                         command,
                         args,
                         cwd,
                         direction,
-                        hold_on_close: true,
+                        hold_on_close,
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPane(

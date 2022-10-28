@@ -25,6 +25,7 @@ fn main() {
             cwd,
             floating,
             name,
+            close_on_exit,
         })) = opts.command
         {
             let command_cli_action = CliAction::NewPane {
@@ -33,6 +34,7 @@ fn main() {
                 cwd,
                 floating,
                 name,
+                close_on_exit,
             };
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
