@@ -1,7 +1,19 @@
 # Themes
-Please make sure that the theme name and the file name are the same (+`.kdl`).
+
+Themes can contain different flavors in one file, or can be created as individual files.
 
 Example:
 
-- theme: gruvbox
-- filename: `gruvbox.kdl`
+```
+gruvbox.kdl
+├─ gruvbox-light
+└─ gruvbox-dark
+
+or
+
+gruvbox-light.kdl
+└─ gruvbox-light
+
+gruvbox-dark.kdl
+└─ gruvbox-dark
+```
