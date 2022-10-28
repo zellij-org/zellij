@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 * debugging: improve error handling in `zellij_server::pty` (https://github.com/zellij-org/zellij/pull/1840)
+* feat: allow command panes to optionally close on exit (https://github.com/zellij-org/zellij/pull/1869)
 
 ## [0.32.0] - 2022-10-25
 
