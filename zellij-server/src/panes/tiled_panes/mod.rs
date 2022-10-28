@@ -380,7 +380,7 @@ impl TiledPanes {
         !self.panes.is_empty()
     }
     pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) -> Result<()> {
-        let err_context = || "failed to render output based on visible";
+        let err_context = || "failed to render tiled panes";
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
@@ -411,9 +411,8 @@ impl TiledPanes {
                         .get(client_id)
                         .unwrap_or(&self.default_mode_info)
                         .mode;
-                    let err_context = || {
-                        format!("failed to render output based on visible for client {client_id}")
-                    };
+                    let err_context =
+                        || format!("failed to render tiled panes for client {client_id}");
                     if let PaneId::Plugin(..) = kind {
                         pane_contents_and_ui
                             .render_pane_contents_for_client(*client_id)

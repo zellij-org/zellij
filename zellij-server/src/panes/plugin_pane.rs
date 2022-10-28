@@ -254,7 +254,7 @@ impl Pane for PluginPane {
             Some(
                 frame
                     .render()
-                    .with_context(|| format!("failed to render frame form client {_client_id}"))?,
+                    .with_context(|| format!("failed to render frame for client {_client_id}"))?,
             )
         } else {
             None

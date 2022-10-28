@@ -52,12 +52,17 @@ impl BoundarySymbol {
         let tc = if self.invisible {
             EMPTY_TERMINAL_CHARACTER
         } else {
-            let character = self.boundary_type.chars().next().with_context(|| {
-                format!(
-                    "failed to as terminal character for boundary type {}",
-                    self.boundary_type
-                )
-            })?;
+            let character = self
+                .boundary_type
+                .chars()
+                .next()
+                .context("no boundary symbols defined")
+                .with_context(|| {
+                    format!(
+                        "failed to convert boundary symbol {} into terminal character",
+                        self.boundary_type
+                    )
+                })?;
             TerminalCharacter {
                 character,
                 width: 1,

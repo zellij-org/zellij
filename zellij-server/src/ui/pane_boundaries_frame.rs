@@ -607,13 +607,13 @@ impl PaneFrame {
         self.render_title_middle(total_title_length)
             .map(|(middle, middle_length)| self.title_line_with_middle(middle, &middle_length))
             .or_else(|| Some(self.title_line_without_middle()))
-            .with_context(|| format!("failed to render title {}", self.title))
+            .with_context(|| format!("failed to render title '{}'", self.title))
     }
     fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
         let exit_status = self
             .exit_status
-            .with_context(|| format!("failed to render held under title {}", self.title))?; // unwrap is safe because we only call this if
+            .with_context(|| format!("failed to render command pane status '{}'", self.title))?; // unwrap is safe because we only call this if
 
         let (mut first_part, first_part_len) = self.first_held_title_part_full(exit_status);
         let mut left_boundary =
@@ -672,7 +672,7 @@ impl PaneFrame {
         Ok(res)
     }
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
-        let err_context = || "failed to render";
+        let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
             if row == 0 {

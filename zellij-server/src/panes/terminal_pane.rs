@@ -348,6 +348,7 @@ impl Pane for TerminalPane {
         frame_params: FrameParams,
         input_mode: InputMode,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
+        let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
@@ -398,7 +399,6 @@ impl Pane for TerminalPane {
             frame.add_exit_status(exit_status.as_ref().copied());
         }
 
-        let err_context = || format!("failed to render frame for client {client_id}");
         let res = match self.frame.get(&client_id) {
             // TODO: use and_then or something?
             Some(last_frame) => {

@@ -47,7 +47,7 @@ impl Overlayable for Prompt {
                 x + 1,
                 h,
             )
-            .context("failed to generate overlay for prompt")?;
+            .context("failed to generate VTE output from prompt")?;
         }
         Ok(output)
     }

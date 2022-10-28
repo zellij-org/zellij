@@ -33,7 +33,7 @@ impl Overlayable for OverlayType {
         match &self {
             OverlayType::Prompt(prompt) => prompt
                 .generate_overlay(size)
-                .context("failed to generate overlay for overlay type"),
+                .context("failed to generate VTE output from overlay type"),
         }
     }
 }
@@ -54,7 +54,7 @@ impl Overlayable for OverlayWindow {
         for overlay in &self.overlay_stack {
             let vte_output = overlay
                 .generate_overlay(size)
-                .context("failed to generate overlay for overlay window")?;
+                .context("failed to generate VTE output from overlay window")?;
             output.push_str(&vte_output);
         }
         Ok(output)
@@ -78,7 +78,7 @@ impl Overlayable for Overlay {
     fn generate_overlay(&self, size: Size) -> Result<String> {
         self.overlay_type
             .generate_overlay(size)
-            .context("failed to generate overlay for overlay")
+            .context("failed to generate VTE output from overlay")
     }
 }
 
