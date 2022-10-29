@@ -149,7 +149,9 @@ pub(crate) fn wasm_thread_main(
     let plugin_global_data_dir = plugin_dir.join("data");
 
     #[cfg(not(feature = "disable_automatic_asset_installation"))]
-    fs::create_dir_all(&plugin_global_data_dir).unwrap_or_else(|e| log::error!("{:?}", e));
+    fs::create_dir_all(&plugin_global_data_dir)
+        .context("failed to create plugin asset directory")
+        .non_fatal();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
