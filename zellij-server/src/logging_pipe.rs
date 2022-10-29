@@ -5,7 +5,7 @@ use std::{
 
 use log::{debug, error};
 use wasmer_wasi::{WasiFile, WasiFsError};
-use zellij_utils::serde;
+use zellij_utils::{errors::prelude::*, serde};
 
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -75,27 +75,30 @@ impl Write for LoggingPipe {
     fn flush(&mut self) -> std::io::Result<()> {
         self.buffer.make_contiguous();
 
-        if let Ok(converted_buffer) = std::str::from_utf8(self.buffer.as_slices().0) {
-            if converted_buffer.contains('\n') {
-                let mut consumed_bytes = 0;
-                let mut split_converted_buffer = converted_buffer.split('\n').peekable();
+        match std::str::from_utf8(self.buffer.as_slices().0) {
+            Ok(converted_buffer) => {
+                if converted_buffer.contains('\n') {
+                    let mut consumed_bytes = 0;
+                    let mut split_converted_buffer = converted_buffer.split('\n').peekable();
 
-                while let Some(msg) = split_converted_buffer.next() {
-                    if split_converted_buffer.peek().is_none() {
-                        // Log last chunk iff the last char is endline. Otherwise do not do it.
-                        if converted_buffer.ends_with('\n') && !msg.is_empty() {
+                    while let Some(msg) = split_converted_buffer.next() {
+                        if split_converted_buffer.peek().is_none() {
+                            // Log last chunk iff the last char is endline. Otherwise do not do it.
+                            if converted_buffer.ends_with('\n') && !msg.is_empty() {
+                                self.log_message(msg);
+                                consumed_bytes += msg.len() + 1;
+                            }
+                        } else {
                             self.log_message(msg);
                             consumed_bytes += msg.len() + 1;
                         }
-                    } else {
-                        self.log_message(msg);
-                        consumed_bytes += msg.len() + 1;
                     }
+                    drop(self.buffer.drain(..consumed_bytes));
                 }
-                drop(self.buffer.drain(..consumed_bytes));
-            }
-        } else {
-            error!("Buffer conversion didn't work. This is unexpected");
+            },
+            Err(e) => Err::<(), _>(e)
+                .context("failed to flush logging pipe buffer")
+                .non_fatal(),
         }
 
         Ok(())
