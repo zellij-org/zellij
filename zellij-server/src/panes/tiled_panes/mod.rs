@@ -226,17 +226,18 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let result = match direction {
+        match direction {
             SplitDirection::Horizontal => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).cols)
             },
             SplitDirection::Vertical => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).rows)
             },
-        };
-        if let Err(e) = &result {
-            log::error!("{:?} relayout of the tab failed: {}", direction, e);
         }
+        .or_else(|e| Err(anyError::msg(e)))
+        .with_context(|| format!("{:?} relayout of tab failed", direction))
+        .non_fatal();
+
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
@@ -492,16 +493,23 @@ impl TiledPanes {
                     display_area.cols = cols;
                 },
                 Err(e) => {
-                    log::error!("Failed to horizontally resize the tab: {:?}", e);
+                    Err::<(), _>(anyError::msg(e))
+                        .context("failed to resize tab horizontally")
+                        .non_fatal();
                 },
             };
-            if pane_grid.layout(SplitDirection::Vertical, rows).is_ok() {
-                let row_difference = rows as isize - display_area.rows as isize;
-                viewport.rows = (viewport.rows as isize + row_difference) as usize;
-                display_area.rows = rows;
-            } else {
-                log::error!("Failed to vertically resize the tab!!!");
-            }
+            match pane_grid.layout(SplitDirection::Vertical, rows) {
+                Ok(_) => {
+                    let row_difference = rows as isize - display_area.rows as isize;
+                    viewport.rows = (viewport.rows as isize + row_difference) as usize;
+                    display_area.rows = rows;
+                },
+                Err(e) => {
+                    Err::<(), _>(anyError::msg(e))
+                        .context("failed to resize tab vertically")
+                        .non_fatal();
+                },
+            };
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
