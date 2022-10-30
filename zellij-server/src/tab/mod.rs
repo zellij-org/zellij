@@ -2371,17 +2371,20 @@ impl Tab {
             } else {
                 let relative_position = active_pane.relative_position(position);
                 if let PaneId::Terminal(_) = active_pane.pid() {
-                    if selecting && copy_on_release {
+                    if selecting {
                         active_pane.end_selection(&relative_position, client_id);
-                        let selected_text = active_pane.get_selected_text();
-                        active_pane.reset_selection();
+                        if copy_on_release {
+                            let selected_text = active_pane.get_selected_text();
+                            active_pane.reset_selection();
 
-                        if let Some(selected_text) = selected_text {
-                            self.write_selection_to_clipboard(&selected_text)
-                                .with_context(err_context)?;
+                            if let Some(selected_text) = selected_text {
+                                self.write_selection_to_clipboard(&selected_text)
+                                    .with_context(err_context)?;
+                            }
                         }
                     }
                 } else {
+                    // notify the release event to a plugin pane, should be renamed
                     active_pane.end_selection(&relative_position, client_id);
                 }
 
