@@ -535,7 +535,7 @@ fn new_floating_pane() {
     .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -567,7 +567,7 @@ fn floating_panes_persist_across_toggles() {
     tab.toggle_floating_panes(client_id, None).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -596,7 +596,7 @@ fn toggle_floating_panes_off() {
     tab.toggle_floating_panes(client_id, None).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -626,7 +626,7 @@ fn toggle_floating_panes_on() {
     tab.toggle_floating_panes(client_id, None).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -674,7 +674,7 @@ fn five_new_floating_panes() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -703,7 +703,7 @@ fn increase_floating_pane_size() {
     tab.resize_increase(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -732,7 +732,7 @@ fn decrease_floating_pane_size() {
     tab.resize_decrease(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -761,7 +761,7 @@ fn resize_floating_pane_left() {
     tab.resize_left(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -790,7 +790,7 @@ fn resize_floating_pane_right() {
     tab.resize_right(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -819,7 +819,7 @@ fn resize_floating_pane_up() {
     tab.resize_up(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -848,7 +848,7 @@ fn resize_floating_pane_down() {
     tab.resize_down(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -897,7 +897,7 @@ fn move_floating_pane_focus_left() {
     tab.move_focus_left(client_id);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -953,7 +953,7 @@ fn move_floating_pane_focus_right() {
     tab.move_focus_right(client_id);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1008,7 +1008,7 @@ fn move_floating_pane_focus_up() {
     tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1064,7 +1064,7 @@ fn move_floating_pane_focus_down() {
     tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1122,7 +1122,7 @@ fn move_floating_pane_focus_with_mouse() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1180,7 +1180,7 @@ fn move_pane_focus_with_mouse_to_non_floating_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1238,7 +1238,7 @@ fn drag_pane_with_mouse() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1304,7 +1304,7 @@ fn mark_text_inside_floating_pane() {
     );
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1362,7 +1362,7 @@ fn resize_tab_with_floating_panes() {
     });
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1412,7 +1412,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
     tab.resize_whole_tab(Size { cols: 50, rows: 10 });
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1466,7 +1466,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
     });
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1496,7 +1496,7 @@ fn embed_floating_pane() {
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1524,7 +1524,7 @@ fn float_embedded_pane() {
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1549,7 +1549,7 @@ fn cannot_float_only_embedded_pane() {
     tab.toggle_pane_embed_or_floating(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1573,7 +1573,7 @@ fn replacing_existing_wide_characters() {
     tab.handle_pty_bytes(1, pane_content).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1599,7 +1599,7 @@ fn rename_embedded_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1629,7 +1629,7 @@ fn rename_floating_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1651,7 +1651,7 @@ fn wide_characters_in_left_title_side() {
     tab.handle_pty_bytes(1, pane_content).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1678,7 +1678,7 @@ fn save_cursor_position_across_resizes() {
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1714,7 +1714,7 @@ fn move_floating_pane_with_sixel_image() {
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot_with_sixel(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1752,7 +1752,7 @@ fn floating_pane_above_sixel_image() {
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot_with_sixel(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1777,7 +1777,7 @@ fn suppress_tiled_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1805,7 +1805,7 @@ fn suppress_floating_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1831,7 +1831,7 @@ fn close_suppressing_tiled_pane() {
     tab.close_pane(new_pane_id, false);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1862,7 +1862,7 @@ fn close_suppressing_floating_pane() {
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1889,7 +1889,7 @@ fn suppress_tiled_pane_float_it_and_close() {
     tab.close_pane(new_pane_id, false);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1921,7 +1921,7 @@ fn suppress_floating_pane_embed_it_and_close_it() {
     tab.close_pane(editor_pane_id, false);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1948,7 +1948,7 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
     });
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -1980,7 +1980,7 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     });
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2005,7 +2005,7 @@ fn enter_search_pane() {
     tab.handle_pty_bytes(1, pane_content).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2019,7 +2019,7 @@ fn enter_search_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2032,7 +2032,7 @@ fn enter_search_pane() {
     tab.toggle_search_case_sensitivity(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2046,7 +2046,7 @@ fn enter_search_pane() {
 
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2076,7 +2076,7 @@ fn enter_search_floating_pane() {
     tab.handle_pty_bytes(2, pane_content).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2088,7 +2088,7 @@ fn enter_search_floating_pane() {
         .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2366,7 +2366,7 @@ fn tab_with_basic_layout() {
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2406,7 +2406,7 @@ fn tab_with_nested_layout() {
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),
@@ -2440,7 +2440,7 @@ fn tab_with_nested_uneven_layout() {
     let mut output = Output::default();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
-        output.serialize().get(&client_id).unwrap(),
+        output.serialize().unwrap().get(&client_id).unwrap(),
         size.rows,
         size.cols,
         Palette::default(),

@@ -2471,6 +2471,8 @@ impl Tab {
     }
 
     fn write_selection_to_clipboard(&self, selection: &str) -> Result<()> {
+        let err_context = || format!("failed to write selection to clipboard: '{}'", selection);
+
         let mut output = Output::default();
         let connected_clients: HashSet<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
@@ -2481,15 +2483,20 @@ impl Tab {
                 .clipboard_provider
                 .set_content(selection, &mut output, client_ids)
             {
-                Ok(_) => {
-                    let serialized_output = output.serialize();
-                    self.senders
-                        .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                        .context("failed to write selection to clipboard")?;
-                    Event::CopyToClipboard(self.clipboard_provider.as_copy_destination())
-                },
+                Ok(_) => output
+                    .serialize()
+                    .and_then(|serialized_output| {
+                        self.senders
+                            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                    })
+                    .and_then(|_| {
+                        Ok(Event::CopyToClipboard(
+                            self.clipboard_provider.as_copy_destination(),
+                        ))
+                    })
+                    .with_context(err_context)?,
                 Err(err) => {
-                    log::error!("could not write selection to clipboard: {}", err);
+                    Err::<(), _>(err).with_context(err_context).non_fatal();
                     Event::SystemClipboardFailure
                 },
             };

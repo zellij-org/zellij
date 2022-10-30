@@ -381,6 +381,7 @@ impl TiledPanes {
     }
     pub fn render(&mut self, output: &mut Output, floating_panes_are_visible: bool) -> Result<()> {
         let err_context = || "failed to render tiled panes";
+
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let multiple_users_exist_in_session = { self.connected_clients_in_app.borrow().len() > 1 };
@@ -450,11 +451,13 @@ impl TiledPanes {
         // render boundaries if needed
         for (client_id, boundaries) in &mut client_id_to_boundaries {
             // TODO: add some conditional rendering here so this isn't rendered for every character
-            output.add_character_chunks_to_client(
-                *client_id,
-                boundaries.render().with_context(err_context)?,
-                None,
-            );
+            output
+                .add_character_chunks_to_client(
+                    *client_id,
+                    boundaries.render().with_context(err_context)?,
+                    None,
+                )
+                .with_context(err_context)?;
         }
         Ok(())
     }
