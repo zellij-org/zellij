@@ -14,6 +14,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use zellij_utils::errors::FatalError;
 
 use crate::stdin_ansi_parser::{AnsiStdinInstruction, StdinAnsiParser};
 use crate::{
@@ -324,7 +325,7 @@ pub fn start_client(
         os_input.unset_raw_mode(0).unwrap();
         let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
         let restore_snapshot = "\u{1b}[?1049l";
-        os_input.disable_mouse();
+        os_input.disable_mouse().non_fatal();
         let error = format!(
             "{}\n{}{}\n",
             restore_snapshot, goto_start_of_last_line, backtrace
@@ -389,7 +390,7 @@ pub fn start_client(
         goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
     );
 
-    os_input.disable_mouse();
+    os_input.disable_mouse().non_fatal();
     info!("{}", exit_msg);
     os_input.unset_raw_mode(0).unwrap();
     let mut stdout = os_input.get_stdout_writer();

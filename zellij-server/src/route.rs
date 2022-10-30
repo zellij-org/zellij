@@ -611,6 +611,7 @@ pub(crate) fn route_action(
                 .send_to_screen(instruction)
                 .with_context(err_context)?;
         },
+        Action::ToggleMouseMode => {}, // Handled client side
     }
     Ok(should_break)
 }

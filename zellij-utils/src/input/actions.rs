@@ -224,6 +224,7 @@ pub enum Action {
     Search(SearchDirection),
     /// Toggle case sensitivity of search
     SearchToggleOption(SearchOption),
+    ToggleMouseMode,
 }
 
 impl Action {
