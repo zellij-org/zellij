@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * docs(example): update the format of the themes for the example directory (https://github.com/zellij-org/zellij/pull/1877)
 * debugging: Remove calls to unwrap in `zellij_server::terminal_bytes` (https://github.com/zellij-org/zellij/pull/1876)
 * debugging: Remove calls to unwrap in `zellij_server::output` (https://github.com/zellij-org/zellij/pull/1878)
+* fix: resolve `zellij setup --clean` panic (https://github.com/zellij-org/zellij/pull/1882)
 
 ## [0.32.0] - 2022-10-25
 
