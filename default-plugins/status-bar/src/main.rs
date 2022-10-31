@@ -204,7 +204,7 @@ impl ZellijPlugin for State {
         }
     }
 
-    fn render(&mut self, _rows: usize, cols: usize) {
+    fn render(&mut self, rows: usize, cols: usize) {
         let supports_arrow_fonts = !self.mode_info.capabilities.arrow_fonts;
         let separator = if supports_arrow_fonts {
             ARROW_SEPARATOR
@@ -230,7 +230,10 @@ impl ZellijPlugin for State {
                 println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
             },
         }
-        println!("\u{1b}[m{}\u{1b}[0K", second_line);
+
+        if rows > 1 {
+            println!("\u{1b}[m{}\u{1b}[0K", second_line);
+        }
     }
 }
 
