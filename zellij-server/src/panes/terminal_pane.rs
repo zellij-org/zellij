@@ -812,7 +812,9 @@ impl TerminalPane {
         let columns = self.get_content_columns();
         let rows = self.get_content_rows();
         let banner = match &self.is_held {
-            Some((_exit_status, _is_first_run, run_command)) => render_first_run_banner(columns, rows, &self.style, Some(run_command)),
+            Some((_exit_status, _is_first_run, run_command)) => {
+                render_first_run_banner(columns, rows, &self.style, Some(run_command))
+            },
             None => render_first_run_banner(columns, rows, &self.style, None),
         };
         self.banner = Some(banner.clone());
