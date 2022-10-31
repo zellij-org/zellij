@@ -1,6 +1,7 @@
 use super::input_loop;
 use crate::stdin_ansi_parser::StdinAnsiParser;
 use crate::stdin_loop;
+use zellij_utils::anyhow::Result;
 use zellij_utils::data::{InputMode, Palette};
 use zellij_utils::input::actions::{Action, Direction};
 use zellij_utils::input::config::Config;
@@ -181,8 +182,12 @@ impl ClientOsApi for FakeClientOsApi {
     fn load_palette(&self) -> Palette {
         unimplemented!()
     }
-    fn enable_mouse(&self) {}
-    fn disable_mouse(&self) {}
+    fn enable_mouse(&self) -> Result<()> {
+        Ok(())
+    }
+    fn disable_mouse(&self) -> Result<()> {
+        Ok(())
+    }
     fn stdin_poller(&self) -> StdinPoller {
         unimplemented!()
     }

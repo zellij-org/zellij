@@ -6,7 +6,7 @@ use crate::{
 use zellij_utils::{
     channels::{Receiver, SenderWithContext, OPENCALLS},
     data::{InputMode, Key},
-    errors::{ContextType, ErrorContext},
+    errors::{ContextType, ErrorContext, FatalError},
     input::{
         actions::Action,
         cast_termwiz_key,
@@ -44,6 +44,7 @@ struct InputHandler {
     should_exit: bool,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
     holding_mouse: Option<HeldMouseButton>,
+    mouse_mode_active: bool,
 }
 
 impl InputHandler {
@@ -67,6 +68,7 @@ impl InputHandler {
             should_exit: false,
             receive_input_instructions,
             holding_mouse: None,
+            mouse_mode_active: false,
         }
     }
 
@@ -78,7 +80,8 @@ impl InputHandler {
         let bracketed_paste_start = vec![27, 91, 50, 48, 48, 126]; // \u{1b}[200~
         let bracketed_paste_end = vec![27, 91, 50, 48, 49, 126]; // \u{1b}[201~
         if self.options.mouse_mode.unwrap_or(true) {
-            self.os_input.enable_mouse();
+            self.os_input.enable_mouse().non_fatal();
+            self.mouse_mode_active = true;
         }
         loop {
             if self.should_exit {
@@ -283,6 +286,15 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action, client_id));
                 self.command_is_executing
                     .wait_until_input_thread_is_unblocked();
+            },
+            Action::ToggleMouseMode => {
+                if self.mouse_mode_active {
+                    self.os_input.disable_mouse().non_fatal();
+                    self.mouse_mode_active = false;
+                } else {
+                    self.os_input.enable_mouse().non_fatal();
+                    self.mouse_mode_active = true;
+                }
             },
             _ => self
                 .os_input

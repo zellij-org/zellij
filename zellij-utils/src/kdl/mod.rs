@@ -65,6 +65,7 @@ macro_rules! parse_kdl_action_arguments {
                 "Copy" => Ok(Action::Copy),
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
+                "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -651,6 +652,9 @@ impl TryFrom<&KdlNode> for Action {
             "CloseTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "ToggleTab" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "UndoRenameTab" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ToggleMouseMode" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),

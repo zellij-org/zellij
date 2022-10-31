@@ -1,3 +1,4 @@
+use zellij_utils::anyhow::{Context, Result};
 use zellij_utils::pane_size::Size;
 use zellij_utils::{interprocess, libc, nix, signal_hook};
 
@@ -106,8 +107,8 @@ pub trait ClientOsApi: Send + Sync {
     /// Establish a connection with the server socket.
     fn connect_to_server(&self, path: &Path);
     fn load_palette(&self) -> Palette;
-    fn enable_mouse(&self);
-    fn disable_mouse(&self);
+    fn enable_mouse(&self) -> Result<()>;
+    fn disable_mouse(&self) -> Result<()>;
     // Repeatedly send action, until stdin is readable again
     fn stdin_poller(&self) -> StdinPoller;
 }
@@ -215,18 +216,24 @@ impl ClientOsApi for ClientOsInputOutput {
         // };
         default_palette()
     }
-    fn enable_mouse(&self) {
-        let _ = self
-            .get_stdout_writer()
-            .write(ENABLE_MOUSE_SUPPORT.as_bytes())
-            .unwrap();
+    fn enable_mouse(&self) -> Result<()> {
+        let err_context = "failed to enable mouse mode";
+        let mut stdout = self.get_stdout_writer();
+        stdout
+            .write_all(ENABLE_MOUSE_SUPPORT.as_bytes())
+            .context(err_context)?;
+        stdout.flush().context(err_context)?;
+        Ok(())
     }
 
-    fn disable_mouse(&self) {
-        let _ = self
-            .get_stdout_writer()
-            .write(DISABLE_MOUSE_SUPPORT.as_bytes())
-            .unwrap();
+    fn disable_mouse(&self) -> Result<()> {
+        let err_context = "failed to enable mouse mode";
+        let mut stdout = self.get_stdout_writer();
+        stdout
+            .write_all(DISABLE_MOUSE_SUPPORT.as_bytes())
+            .context(err_context)?;
+        stdout.flush().context(err_context)?;
+        Ok(())
     }
 
     fn stdin_poller(&self) -> StdinPoller {
