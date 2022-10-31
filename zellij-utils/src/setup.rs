@@ -211,14 +211,9 @@ impl Setup {
     ///    (`layout.yaml` / `zellij --layout`)
     /// 3. config options (`config.yaml`)
     pub fn from_cli_args(cli_args: &CliArgs) -> Result<(Config, Layout, Options), ConfigError> {
-        let clean = cli_args.should_clean_config();
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
-        let config = if clean {
-            Config::default()
-        } else {
-            Config::try_from(cli_args)?
-        };
+        let config = Config::try_from(cli_args)?;
         let cli_config_options: Option<Options> =
             if let Some(Command::Options(options)) = cli_args.command.clone() {
                 Some(options.into())
