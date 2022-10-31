@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * debugging: Remove calls to unwrap in `zellij_server::terminal_bytes` (https://github.com/zellij-org/zellij/pull/1876)
 * debugging: Remove calls to unwrap in `zellij_server::output` (https://github.com/zellij-org/zellij/pull/1878)
 * fix: resolve `zellij setup --clean` panic (https://github.com/zellij-org/zellij/pull/1882)
+* feat: allow toggling mouse mode at runtime (https://github.com/zellij-org/zellij/pull/1883)
 
 ## [0.32.0] - 2022-10-25
 
