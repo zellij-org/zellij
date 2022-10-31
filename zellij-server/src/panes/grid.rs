@@ -1533,6 +1533,7 @@ impl Grid {
         self.sixel_scrolling = false;
         self.mouse_mode = MouseMode::NoEncoding;
         self.mouse_tracking = MouseTracking::Off;
+        self.cursor_is_hidden = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
         }

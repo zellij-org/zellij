@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 281
+assertion_line: 294
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -22,8 +22,8 @@ Layout {
                                 command: "htop",
                                 args: [],
                                 cwd: None,
-                                hold_on_close: false,
-                                hold_on_start: false,
+                                hold_on_close: true,
+                                hold_on_start: true,
                             },
                         ),
                     ),

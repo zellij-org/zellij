@@ -89,6 +89,7 @@ pub struct PaneFrame {
     pub other_cursors_exist_in_session: bool,
     pub other_focused_clients: Vec<ClientId>,
     exit_status: Option<ExitStatus>,
+    is_first_run: bool,
 }
 
 impl PaneFrame {
@@ -109,6 +110,7 @@ impl PaneFrame {
             other_focused_clients: frame_params.other_focused_clients,
             other_cursors_exist_in_session: frame_params.other_cursors_exist_in_session,
             exit_status: None,
+            is_first_run: false,
         }
     }
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
@@ -116,6 +118,9 @@ impl PaneFrame {
             Some(exit_status) => Some(ExitStatus::Code(exit_status)),
             None => Some(ExitStatus::Exited),
         };
+    }
+    pub fn indicate_first_run(&mut self) {
+        self.is_first_run = true;
     }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors);
@@ -614,8 +619,9 @@ impl PaneFrame {
         let exit_status = self
             .exit_status
             .with_context(|| format!("failed to render command pane status '{}'", self.title))?; // unwrap is safe because we only call this if
+        let is_first_run = self.is_first_run;
 
-        let (mut first_part, first_part_len) = self.first_held_title_part_full(exit_status);
+        let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);
         let mut right_boundary =
@@ -683,7 +689,7 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(title, x, y));
             } else if row == self.geom.rows - 1 {
                 // bottom row
-                if self.exit_status.is_some() {
+                if self.exit_status.is_some() || self.is_first_run {
                     let x = self.geom.x;
                     let y = self.geom.y + row;
                     character_chunks.push(CharacterChunk::new(
@@ -727,13 +733,10 @@ impl PaneFrame {
         }
         Ok((character_chunks, None))
     }
-    fn first_held_title_part_full(
-        &self,
-        exit_status: ExitStatus,
-    ) -> (Vec<TerminalCharacter>, usize) {
+    fn first_exited_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
         // (title part, length)
-        match exit_status {
-            ExitStatus::Code(exit_code) => {
+        match self.exit_status {
+            Some(ExitStatus::Code(exit_code)) => {
                 let mut first_part = vec![];
                 let left_bracket = " [ ";
                 let exited_text = "EXIT CODE: ";
@@ -759,7 +762,7 @@ impl PaneFrame {
                         + right_bracket.len(),
                 )
             },
-            ExitStatus::Exited => {
+            Some(ExitStatus::Exited) => {
                 let mut first_part = vec![];
                 let left_bracket = " [ ";
                 let exited_text = "EXITED";
@@ -775,15 +778,20 @@ impl PaneFrame {
                     left_bracket.len() + exited_text.len() + right_bracket.len(),
                 )
             },
+            None => (foreground_color(boundary_type::HORIZONTAL, self.color), 1),
         }
     }
     fn second_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
         // (title part, length)
         let mut second_part = vec![];
-        let left_enter_bracket = "<";
+        let left_enter_bracket = if self.is_first_run { " <" } else { "<" };
         let enter_text = "ENTER";
         let right_enter_bracket = ">";
-        let enter_tip = " to re-run, ";
+        let enter_tip = if self.is_first_run {
+            " to run, "
+        } else {
+            " to re-run, "
+        };
         let left_break_bracket = "<";
         let break_text = "Ctrl-c";
         let right_break_bracket = ">";

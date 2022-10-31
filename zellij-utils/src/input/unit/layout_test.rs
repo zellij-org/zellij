@@ -282,6 +282,19 @@ fn layout_with_command_panes_and_close_on_exit() {
 }
 
 #[test]
+fn layout_with_command_panes_and_start_suspended() {
+    let kdl_layout = r#"
+        layout {
+            pane command="htop" {
+                start_suspended true
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn layout_with_plugin_panes() {
     let kdl_layout = r#"
         layout {

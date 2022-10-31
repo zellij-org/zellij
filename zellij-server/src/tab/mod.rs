@@ -61,6 +61,8 @@ macro_rules! resize_pty {
     };
 }
 
+type HoldForCommand = Option<RunCommand>;
+
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
@@ -354,7 +356,7 @@ pub trait Pane {
         // False by default (only terminal-panes support alternate mode)
         false
     }
-    fn hold(&mut self, _exit_status: Option<i32>, _run_command: RunCommand) {
+    fn hold(&mut self, _exit_status: Option<i32>, _is_first_run: bool, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
 }
@@ -470,7 +472,7 @@ impl Tab {
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
-        new_ids: Vec<u32>,
+        new_ids: Vec<(u32, HoldForCommand)>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -532,7 +534,7 @@ impl Tab {
                         set_focus_pane_id(layout, PaneId::Plugin(pid));
                     } else {
                         // there are still panes left to fill, use the pids we received in this method
-                        if let Some(pid) = new_ids.next() {
+                        if let Some((pid, hold_for_command)) = new_ids.next() {
                             let next_terminal_position = self.get_next_terminal_position();
                             let initial_title = match &layout.run {
                                 Some(Run::Command(run_command)) => Some(run_command.to_string()),
@@ -552,6 +554,9 @@ impl Tab {
                                 initial_title,
                             );
                             new_pane.set_borderless(layout.borderless);
+                            if let Some(held_command) = hold_for_command {
+                                new_pane.hold(None, true, held_command.clone());
+                            }
                             self.tiled_panes.add_pane_with_existing_geom(
                                 PaneId::Terminal(*pid),
                                 Box::new(new_pane),
@@ -560,7 +565,7 @@ impl Tab {
                         }
                     }
                 }
-                for unused_pid in new_ids {
+                for (unused_pid, _) in new_ids {
                     // this is a bit of a hack and happens because we don't have any central location that
                     // can query the screen as to how many panes it needs to create a layout
                     // fixing this will require a bit of an architecture change
@@ -601,7 +606,7 @@ impl Tab {
                 Ok(())
             },
             Err(e) => {
-                for unused_pid in new_ids {
+                for (unused_pid, _) in new_ids {
                     self.senders
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(unused_pid)))
                         .with_context(err_context)?;
@@ -1746,11 +1751,19 @@ impl Tab {
             closed_pane
         }
     }
-    pub fn hold_pane(&mut self, id: PaneId, exit_status: Option<i32>, run_command: RunCommand) {
+    pub fn hold_pane(
+        &mut self,
+        id: PaneId,
+        exit_status: Option<i32>,
+        is_first_run: bool,
+        run_command: RunCommand,
+    ) {
         if self.floating_panes.panes_contain(&id) {
-            self.floating_panes.hold_pane(id, exit_status, run_command);
+            self.floating_panes
+                .hold_pane(id, exit_status, is_first_run, run_command);
         } else {
-            self.tiled_panes.hold_pane(id, exit_status, run_command);
+            self.tiled_panes
+                .hold_pane(id, exit_status, is_first_run, run_command);
         }
     }
     pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {

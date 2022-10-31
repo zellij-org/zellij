@@ -284,7 +284,7 @@ impl MockScreen {
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         for i in 0..pane_count {
-            pane_ids.push(i as u32);
+            pane_ids.push((i as u32, None));
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             pane_layout,
@@ -297,7 +297,7 @@ impl MockScreen {
         let pane_count = tab_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         for i in 0..pane_count {
-            pane_ids.push(i as u32);
+            pane_ids.push((i as u32, None));
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             tab_layout,
@@ -427,7 +427,7 @@ macro_rules! log_actions_in_thread {
 fn new_tab(screen: &mut Screen, pid: u32) {
     let client_id = 1;
     screen
-        .new_tab(PaneLayout::default(), vec![pid], client_id)
+        .new_tab(PaneLayout::default(), vec![(pid, None)], client_id)
         .expect("TEST");
 }
 
@@ -1822,6 +1822,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         floating: false,
         name: None,
         close_on_exit: false,
+        start_suspended: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1861,6 +1862,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         floating: false,
         name: None,
         close_on_exit: false,
+        start_suspended: false,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1900,6 +1902,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         floating: false,
         name: None,
         close_on_exit: false,
+        start_suspended: false,
     };
     send_cli_action_to_server(
         &session_metadata,

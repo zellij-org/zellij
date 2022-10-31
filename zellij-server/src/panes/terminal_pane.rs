@@ -2,7 +2,7 @@ use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
-    terminal_character::{TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
+    terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
 use crate::panes::{AnsiCode, LinkHandler};
 use crate::pty::VteBytes;
@@ -83,6 +83,8 @@ pub enum PaneId {
     Plugin(u32), // FIXME: Drop the trait object, make this a wrapper for the struct?
 }
 
+type IsFirstRun = bool;
+
 // FIXME: This should hold an os_api handle so that terminal panes can set their own size via FD in
 // their `reflow_lines()` method. Drop a Box<dyn ServerOsApi> in here somewhere.
 #[allow(clippy::too_many_arguments)]
@@ -104,8 +106,10 @@ pub struct TerminalPane {
     borderless: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
-    is_held: Option<(Option<i32>, RunCommand)>, // a "held" pane means that its command has exited and its waiting for a
-                                                // possible user instruction to be re-run
+    is_held: Option<(Option<i32>, IsFirstRun, RunCommand)>, // a "held" pane means that its command has either exited and the pane is waiting for a
+    // possible user instruction to be re-run, or that the command has not yet been run
+    banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
+                            // held on startup and can possibly be used to display some errors
 }
 
 impl Pane for TerminalPane {
@@ -170,13 +174,14 @@ impl Pane for TerminalPane {
         // needs to be adjusted.
         // here we match against those cases - if need be, we adjust the input and if not
         // we send back the original input
-        if let Some((_exit_status, run_command)) = &self.is_held {
+        if let Some((_exit_status, _is_first_run, run_command)) = &self.is_held {
             match input_bytes.as_slice() {
                 ENTER_CARRIAGE_RETURN | ENTER_NEWLINE | SPACE => {
                     let run_command = run_command.clone();
                     self.is_held = None;
                     self.grid.reset_terminal_state();
                     self.set_should_render(true);
+                    self.remove_banner();
                     Some(AdjustedInput::ReRunCommandInThisPane(run_command))
                 },
                 CTRL_C => Some(AdjustedInput::CloseThisPane),
@@ -395,8 +400,12 @@ impl Pane for TerminalPane {
             pane_title,
             frame_params,
         );
-        if let Some((exit_status, _run_command)) = &self.is_held {
-            frame.add_exit_status(exit_status.as_ref().copied());
+        if let Some((exit_status, is_first_run, _run_command)) = &self.is_held {
+            if *is_first_run {
+                frame.indicate_first_run();
+            } else {
+                frame.add_exit_status(exit_status.as_ref().copied());
+            }
         }
 
         let res = match self.frame.get(&client_id) {
@@ -701,8 +710,11 @@ impl Pane for TerminalPane {
     fn is_alternate_mode_active(&self) -> bool {
         self.grid.is_alternate_mode_active()
     }
-    fn hold(&mut self, exit_status: Option<i32>, run_command: RunCommand) {
-        self.is_held = Some((exit_status, run_command));
+    fn hold(&mut self, exit_status: Option<i32>, is_first_run: bool, run_command: RunCommand) {
+        self.is_held = Some((exit_status, is_first_run, run_command));
+        if is_first_run {
+            self.render_first_run_banner();
+        }
         self.set_should_render(true);
     }
 }
@@ -752,6 +764,7 @@ impl TerminalPane {
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
             is_held: None,
+            banner: None,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -782,6 +795,10 @@ impl TerminalPane {
         let rows = self.get_content_rows();
         let cols = self.get_content_columns();
         self.grid.change_size(rows, cols);
+        if self.banner.is_some() {
+            self.grid.reset_terminal_state();
+            self.render_first_run_banner();
+        }
         self.set_should_render(true);
     }
     pub fn read_buffer_as_lines(&self) -> Vec<Vec<TerminalCharacter>> {
@@ -790,6 +807,31 @@ impl TerminalPane {
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
         self.grid.cursor_coordinates()
+    }
+    fn render_first_run_banner(&mut self) {
+        let columns = self.get_content_columns();
+        let rows = self.get_content_rows();
+        let middle_row = rows / 2;
+        let middle_column = columns / 2;
+        let banner = match &self.is_held {
+            Some((_exit_status, _is_first_run, run_command)) => {
+                // TODO: CONTINUE HERE - add some colors and a controls line - DONE
+                // then re-render on SIGWINCH - DONE
+                // then add relevant flags to cli, layout Run, etc.
+                // then add tests, adjust the e2e test to use this and go
+                render_first_run_banner(columns, rows, &self.style, Some(run_command))
+            },
+            None => render_first_run_banner(columns, rows, &self.style, None),
+        };
+        self.banner = Some(banner.clone());
+        self.handle_pty_bytes(banner.as_bytes().to_vec());
+    }
+    fn remove_banner(&mut self) {
+        if self.banner.is_some() {
+            self.grid.reset_terminal_state();
+            self.set_should_render(true);
+            self.banner = None;
+        }
     }
 }
 

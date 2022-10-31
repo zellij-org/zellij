@@ -156,11 +156,12 @@ impl FloatingPanes {
         &mut self,
         pane_id: PaneId,
         exit_status: Option<i32>,
+        is_first_run: bool,
         run_command: RunCommand,
     ) {
         self.panes
             .get_mut(&pane_id)
-            .map(|p| p.hold(exit_status, run_command));
+            .map(|p| p.hold(exit_status, is_first_run, run_command));
     }
     pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(pane_id)

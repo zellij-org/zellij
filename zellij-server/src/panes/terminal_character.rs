@@ -3,7 +3,12 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::ops::{Index, IndexMut};
 use unicode_width::UnicodeWidthChar;
 
-use zellij_utils::{data::PaletteColor, vte::ParamsIter};
+use unicode_width::UnicodeWidthStr;
+use zellij_utils::input::command::RunCommand;
+use zellij_utils::{
+    data::{PaletteColor, Style},
+    vte::ParamsIter,
+};
 
 use crate::panes::alacritty_functions::parse_sgr_color;
 
@@ -734,5 +739,115 @@ impl TerminalCharacter {
 impl ::std::fmt::Debug for TerminalCharacter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.character)
+    }
+}
+
+pub fn render_first_run_banner(
+    columns: usize,
+    rows: usize,
+    style: &Style,
+    run_command: Option<&RunCommand>,
+) -> String {
+    let middle_row = rows / 2;
+    let middle_column = columns / 2;
+    match run_command {
+        Some(run_command) => {
+            let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
+            let command_color_text = RESET_STYLES
+                .foreground(Some(AnsiCode::from(style.colors.green)))
+                .bold(Some(AnsiCode::On));
+            let waiting_to_run_text = "Waiting to run: ";
+            let command_text = run_command.to_string();
+            let waiting_to_run_text_width = waiting_to_run_text.width() + command_text.width();
+            let column_start_postion = middle_column.saturating_sub(waiting_to_run_text_width / 2);
+            let waiting_to_run_line = format!(
+                "\u{1b}[{};{}H{}{}{}{}{}",
+                middle_row,
+                column_start_postion,
+                bold_text,
+                waiting_to_run_text,
+                command_color_text,
+                command_text,
+                RESET_STYLES
+            );
+
+            let controls_bare_text_first_part = "<";
+            let enter_bare_text = "ENTER";
+            let controls_bare_text_second_part = "> to run, <";
+            let ctrl_c_bare_text = "Ctrl-c";
+            let controls_bare_text_third_part = "> to exit";
+            let controls_color = RESET_STYLES
+                .foreground(Some(AnsiCode::from(style.colors.orange)))
+                .bold(Some(AnsiCode::On));
+            let controls_line_length = controls_bare_text_first_part.len()
+                + enter_bare_text.len()
+                + controls_bare_text_second_part.len()
+                + ctrl_c_bare_text.len()
+                + controls_bare_text_third_part.len();
+            let controls_column_start_position =
+                middle_column.saturating_sub(controls_line_length / 2);
+            let controls_line = format!(
+                "\u{1b}[{};{}H{}<{}{}{}{}> to run, <{}{}{}{}> to exit",
+                middle_row + 2,
+                controls_column_start_position,
+                bold_text,
+                controls_color,
+                enter_bare_text,
+                RESET_STYLES,
+                bold_text,
+                controls_color,
+                ctrl_c_bare_text,
+                RESET_STYLES,
+                bold_text
+            );
+            format!(
+                "\u{1b}[?25l{}{}{}{}",
+                RESET_STYLES, waiting_to_run_line, controls_line, RESET_STYLES
+            )
+        },
+        None => {
+            let bare_text = format!("Waiting to start...");
+            let bare_text_width = bare_text.width();
+            let column_start_postion = middle_column.saturating_sub(bare_text_width / 2);
+            let bold_text = RESET_STYLES.bold(Some(AnsiCode::On));
+            let waiting_to_run_line = format!(
+                "\u{1b}[?25l\u{1b}[{};{}H{}{}{}",
+                middle_row, column_start_postion, bold_text, bare_text, RESET_STYLES
+            );
+
+            let controls_bare_text_first_part = "<";
+            let enter_bare_text = "ENTER";
+            let controls_bare_text_second_part = "> to run, <";
+            let ctrl_c_bare_text = "Ctrl-c";
+            let controls_bare_text_third_part = "> to exit";
+            let controls_color = RESET_STYLES
+                .foreground(Some(AnsiCode::from(style.colors.orange)))
+                .bold(Some(AnsiCode::On));
+            let controls_line_length = controls_bare_text_first_part.len()
+                + enter_bare_text.len()
+                + controls_bare_text_second_part.len()
+                + ctrl_c_bare_text.len()
+                + controls_bare_text_third_part.len();
+            let controls_column_start_position =
+                middle_column.saturating_sub(controls_line_length / 2);
+            let controls_line = format!(
+                "\u{1b}[{};{}H{}<{}{}{}{}> to run, <{}{}{}{}> to exit",
+                middle_row + 2,
+                controls_column_start_position,
+                bold_text,
+                controls_color,
+                enter_bare_text,
+                RESET_STYLES,
+                bold_text,
+                controls_color,
+                ctrl_c_bare_text,
+                RESET_STYLES,
+                bold_text
+            );
+            format!(
+                "\u{1b}[?25l{}{}{}{}",
+                RESET_STYLES, waiting_to_run_line, controls_line, RESET_STYLES
+            )
+        },
     }
 }

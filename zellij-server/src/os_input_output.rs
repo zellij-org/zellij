@@ -280,6 +280,7 @@ fn spawn_terminal(
                 args,
                 cwd: None,
                 hold_on_close: false,
+                hold_on_start: false,
             }
         },
         TerminalAction::RunCommand(command) => command,
@@ -381,6 +382,10 @@ pub trait ServerOsApi: Send + Sync {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError>;
+    // reserves a terminal id without actually opening a terminal
+    fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
+        unimplemented!()
+    }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
@@ -480,6 +485,35 @@ impl ServerOsApi for ServerOsInputOutput {
                     },
                     Err(e) => Err(e),
                 }
+            },
+            None => Err(SpawnTerminalError::NoMoreTerminalIds),
+        }
+    }
+    fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
+        let mut terminal_id = None;
+        {
+            let current_ids: HashSet<u32> = self
+                .terminal_id_to_raw_fd
+                .lock()
+                .unwrap()
+                .keys()
+                .copied()
+                .collect();
+            for i in 0..u32::MAX {
+                let i = i as u32;
+                if !current_ids.contains(&i) {
+                    terminal_id = Some(i);
+                    break;
+                }
+            }
+        }
+        match terminal_id {
+            Some(terminal_id) => {
+                self.terminal_id_to_raw_fd
+                    .lock()
+                    .unwrap()
+                    .insert(terminal_id, None);
+                Ok(terminal_id)
             },
             None => Err(SpawnTerminalError::NoMoreTerminalIds),
         }

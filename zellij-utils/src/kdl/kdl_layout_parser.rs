@@ -54,6 +54,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "tab"
             || word == "args"
             || word == "close_on_exit"
+            || word == "start_suspended"
             || word == "borderless"
             || word == "focus"
             || word == "name"
@@ -72,6 +73,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "cwd"
             || property_name == "args"
             || property_name == "close_on_exit"
+            || property_name == "start_suspended"
             || property_name == "split_direction"
             || property_name == "pane"
             || property_name == "children"
@@ -241,15 +243,19 @@ impl<'a> KdlLayoutParser<'a> {
         let args = self.parse_args(pane_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
+        let start_suspended =
+            kdl_get_bool_property_or_child_value_with_error!(pane_node, "start_suspended");
         if !is_template {
             self.assert_no_bare_attributes_in_pane_node(
                 &command,
                 &args,
                 &close_on_exit,
+                &start_suspended,
                 pane_node,
             )?;
         }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
+        let hold_on_start = start_suspended.map(|c| c).unwrap_or(false);
         match (command, edit, cwd) {
             (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
             (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
@@ -257,6 +263,7 @@ impl<'a> KdlLayoutParser<'a> {
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
                 hold_on_close,
+                hold_on_start,
             }))),
             (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
             (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
@@ -380,6 +387,8 @@ impl<'a> KdlLayoutParser<'a> {
         let args = self.parse_args(kdl_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
+        let start_suspended =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "start_suspended");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
         self.assert_no_bare_attributes_in_pane_node_with_template(
@@ -387,6 +396,7 @@ impl<'a> KdlLayoutParser<'a> {
             &pane_template.run,
             &args,
             &close_on_exit,
+            &start_suspended,
             kdl_node,
         )?;
         self.insert_children_to_pane_template(
@@ -396,10 +406,11 @@ impl<'a> KdlLayoutParser<'a> {
         )?;
         pane_template.run = Run::merge(&pane_template.run, &run);
         if let Some(pane_template_run_command) = pane_template.run.as_mut() {
-            // we need to do this because panes consuming a pane_templates
+            // we need to do this because panes consuming a pane_template
             // can have bare args without a command
             pane_template_run_command.add_args(args);
             pane_template_run_command.add_close_on_exit(close_on_exit);
+            pane_template_run_command.add_start_suspended(start_suspended);
         };
         if let Some(borderless) = borderless {
             pane_template.borderless = borderless;
@@ -600,6 +611,7 @@ impl<'a> KdlLayoutParser<'a> {
         pane_template_run: &Option<Run>,
         args: &Option<Vec<String>>,
         close_on_exit: &Option<bool>,
+        start_suspended: &Option<bool>,
         pane_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if let (None, None, true) = (pane_run, pane_template_run, args.is_some()) {
@@ -614,6 +626,12 @@ impl<'a> KdlLayoutParser<'a> {
                 pane_node
             ));
         }
+        if let (None, None, true) = (pane_run, pane_template_run, start_suspended.is_some()) {
+            return Err(kdl_parsing_error!(
+                format!("start_suspended can only be specified if a command was specified either in the pane_template or in the pane"),
+                pane_node
+            ));
+        }
         Ok(())
     }
     fn assert_no_bare_attributes_in_pane_node(
@@ -621,12 +639,20 @@ impl<'a> KdlLayoutParser<'a> {
         command: &Option<PathBuf>,
         args: &Option<Vec<String>>,
         close_on_exit: &Option<bool>,
+        start_suspended: &Option<bool>,
         pane_node: &KdlNode,
     ) -> Result<(), ConfigError> {
         if command.is_none() {
             if close_on_exit.is_some() {
                 return Err(ConfigError::new_layout_kdl_error(
                     "close_on_exit can only be set if a command was specified".into(),
+                    pane_node.span().offset(),
+                    pane_node.span().len(),
+                ));
+            }
+            if start_suspended.is_some() {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "start_suspended can only be set if a command was specified".into(),
                     pane_node.span().offset(),
                     pane_node.span().len(),
                 ));
