@@ -616,11 +616,6 @@ impl PaneFrame {
     }
     fn render_held_undertitle(&self) -> Result<Vec<TerminalCharacter>> {
         let max_undertitle_length = self.geom.cols.saturating_sub(2); // 2 for the left and right corners
-        let exit_status = self
-            .exit_status
-            .with_context(|| format!("failed to render command pane status '{}'", self.title))?; // unwrap is safe because we only call this if
-        let is_first_run = self.is_first_run;
-
         let (mut first_part, first_part_len) = self.first_exited_held_title_part_full();
         let mut left_boundary =
             foreground_color(self.get_corner(boundary_type::BOTTOM_LEFT), self.color);

@@ -811,16 +811,8 @@ impl TerminalPane {
     fn render_first_run_banner(&mut self) {
         let columns = self.get_content_columns();
         let rows = self.get_content_rows();
-        let middle_row = rows / 2;
-        let middle_column = columns / 2;
         let banner = match &self.is_held {
-            Some((_exit_status, _is_first_run, run_command)) => {
-                // TODO: CONTINUE HERE - add some colors and a controls line - DONE
-                // then re-render on SIGWINCH - DONE
-                // then add relevant flags to cli, layout Run, etc.
-                // then add tests, adjust the e2e test to use this and go
-                render_first_run_banner(columns, rows, &self.style, Some(run_command))
-            },
+            Some((_exit_status, _is_first_run, run_command)) => render_first_run_banner(columns, rows, &self.style, Some(run_command)),
             None => render_first_run_banner(columns, rows, &self.style, None),
         };
         self.banner = Some(banner.clone());
