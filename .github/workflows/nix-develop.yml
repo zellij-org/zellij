@@ -29,7 +29,7 @@ jobs:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
       - uses: cachix/install-nix-action@v17
-      - uses: cachix/cachix-action@v10
+      - uses: cachix/cachix-action@v12
         with:
           name: zellij
           # If you chose API tokens for write access OR if you have a private cache
@@ -47,7 +47,7 @@ jobs:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
       - uses: cachix/install-nix-action@v17
-      - uses: cachix/cachix-action@v10
+      - uses: cachix/cachix-action@v12
         with:
           name: zellij
           # If you chose API tokens for write access OR if you have a private cache
