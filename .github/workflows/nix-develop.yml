@@ -28,7 +28,7 @@ jobs:
         with:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
-      - uses: cachix/install-nix-action@v17
+      - uses: cachix/install-nix-action@v18
       - uses: cachix/cachix-action@v12
         with:
           name: zellij
@@ -46,7 +46,7 @@ jobs:
         with:
           # Nix Flakes doesn't work on shallow clones
           fetch-depth: 0
-      - uses: cachix/install-nix-action@v17
+      - uses: cachix/install-nix-action@v18
       - uses: cachix/cachix-action@v12
         with:
           name: zellij
