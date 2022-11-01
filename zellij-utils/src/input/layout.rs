@@ -142,11 +142,20 @@ impl Run {
         }
     }
     pub fn add_close_on_exit(&mut self, close_on_exit: Option<bool>) {
-        // overrides the args of a Run::Command if they are Some
+        // overrides the hold_on_close of a Run::Command if it is Some
         // and not empty
         if let Some(close_on_exit) = close_on_exit {
             if let Run::Command(run_command) = self {
                 run_command.hold_on_close = !close_on_exit;
+            }
+        }
+    }
+    pub fn add_start_suspended(&mut self, start_suspended: Option<bool>) {
+        // overrides the hold_on_start of a Run::Command if they are Some
+        // and not empty
+        if let Some(start_suspended) = start_suspended {
+            if let Run::Command(run_command) = self {
+                run_command.hold_on_start = start_suspended;
             }
         }
     }

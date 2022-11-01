@@ -19,6 +19,8 @@ pub struct RunCommand {
     pub cwd: Option<PathBuf>,
     #[serde(default)]
     pub hold_on_close: bool,
+    #[serde(default)]
+    pub hold_on_start: bool,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -50,6 +52,8 @@ pub struct RunCommandAction {
     pub direction: Option<Direction>,
     #[serde(default)]
     pub hold_on_close: bool,
+    #[serde(default)]
+    pub hold_on_start: bool,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -59,6 +63,7 @@ impl From<RunCommandAction> for RunCommand {
             args: action.args,
             cwd: action.cwd,
             hold_on_close: action.hold_on_close,
+            hold_on_start: action.hold_on_start,
         }
     }
 }

@@ -1915,6 +1915,25 @@ pub fn send_command_through_the_cli() {
                 },
             })
             .add_step(Step {
+                name: "Initial run of suspended command",
+                instruction: |mut remote_terminal: RemoteTerminal| -> bool {
+                    let mut step_is_complete = false;
+                    if remote_terminal.snapshot_contains("<Ctrl-c>")
+                        && remote_terminal.cursor_position_is(0, 0)
+                    // cursor does not appear in
+                    // suspend_start panes
+                    {
+                        remote_terminal.send_key(&SPACE); // run script - here we use SPACE
+                                                          // instead of the default ENTER because
+                                                          // sending ENTER over SSH can be a little
+                                                          // problematic (read: I couldn't get it
+                                                          // to pass consistently)
+                        step_is_complete = true
+                    }
+                    step_is_complete
+                },
+            })
+            .add_step(Step {
                 name: "Wait for command to run",
                 instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                     let mut step_is_complete = false;

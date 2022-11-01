@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1396
+assertion_line: 1471
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -39,6 +39,7 @@ Layout {
                                         "/tmp/./foo",
                                     ),
                                     hold_on_close: true,
+                                    hold_on_start: false,
                                 },
                             ),
                         ),

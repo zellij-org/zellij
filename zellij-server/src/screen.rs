@@ -112,19 +112,27 @@ macro_rules! active_tab_and_connected_client_id {
     };
 }
 
+type InitialTitle = String;
+type ShouldFloat = bool;
+type HoldForCommand = Option<RunCommand>;
+
 /// Instructions that can be sent to the [`Screen`].
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
     Render,
-    NewPane(PaneId, Option<String>, Option<bool>, ClientOrTabIndex), // String is initial title,
-    // bool (if Some) is
-    // should_float
+    NewPane(
+        PaneId,
+        Option<InitialTitle>,
+        Option<ShouldFloat>,
+        HoldForCommand,
+        ClientOrTabIndex,
+    ),
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
-    HorizontalSplit(PaneId, Option<String>, ClientId), // String is initial title
-    VerticalSplit(PaneId, Option<String>, ClientId),   // String is initial title
+    HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+    VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     ResizeLeft(ClientId),
     ResizeRight(ClientId),
@@ -167,7 +175,7 @@ pub enum ScreenInstruction {
     HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(PaneLayout, Vec<u32>, ClientId),
+    NewTab(PaneLayout, Vec<(u32, HoldForCommand)>, ClientId),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
@@ -811,7 +819,7 @@ impl Screen {
     pub fn new_tab(
         &mut self,
         layout: PaneLayout,
-        new_ids: Vec<u32>,
+        new_ids: Vec<(u32, HoldForCommand)>,
         client_id: ClientId,
     ) -> Result<()> {
         let client_id = if self.get_active_tab(client_id).is_some() {
@@ -1227,6 +1235,7 @@ pub(crate) fn screen_thread_main(
                 pid,
                 initial_pane_title,
                 should_float,
+                hold_for_command,
                 client_or_tab_index,
             ) => {
                 match client_or_tab_index {
@@ -1237,10 +1246,27 @@ pub(crate) fn screen_thread_main(
                                                                                                should_float,
                                                                                                Some(client_id)),
                                                                                                ?);
+                        if let Some(hold_for_command) = hold_for_command {
+                            let is_first_run = true;
+                            active_tab_and_connected_client_id!(
+                                screen,
+                                client_id,
+                                |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                                    pid,
+                                    None,
+                                    is_first_run,
+                                    hold_for_command
+                                )
+                            )
+                        }
                     },
                     ClientOrTabIndex::TabIndex(tab_index) => {
                         if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                             active_tab.new_pane(pid, initial_pane_title, should_float, None)?;
+                            if let Some(hold_for_command) = hold_for_command {
+                                let is_first_run = true;
+                                active_tab.hold_pane(pid, None, is_first_run, hold_for_command);
+                            }
                         } else {
                             log::error!("Tab index not found: {:?}", tab_index);
                         }
@@ -1275,24 +1301,60 @@ pub(crate) fn screen_thread_main(
 
                 screen.render()?;
             },
-            ScreenInstruction::HorizontalSplit(pid, initial_pane_title, client_id) => {
+            ScreenInstruction::HorizontalSplit(
+                pid,
+                initial_pane_title,
+                hold_for_command,
+                client_id,
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id),
                     ?
                 );
+                if let Some(hold_for_command) = hold_for_command {
+                    let is_first_run = true;
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid,
+                            None,
+                            is_first_run,
+                            hold_for_command
+                        )
+                    );
+                }
                 screen.unblock_input()?;
                 screen.update_tabs()?;
                 screen.render()?;
             },
-            ScreenInstruction::VerticalSplit(pid, initial_pane_title, client_id) => {
+            ScreenInstruction::VerticalSplit(
+                pid,
+                initial_pane_title,
+                hold_for_command,
+                client_id,
+            ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id),
                     ?
                 );
+                if let Some(hold_for_command) = hold_for_command {
+                    let is_first_run = true;
+                    active_tab_and_connected_client_id!(
+                        screen,
+                        client_id,
+                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
+                            pid,
+                            None,
+                            is_first_run,
+                            hold_for_command
+                        )
+                    );
+                }
                 screen.unblock_input()?;
                 screen.update_tabs()?;
                 screen.render()?;
@@ -1644,18 +1706,20 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
+                let is_first_run = false;
                 match client_id {
                     Some(client_id) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
                             id,
                             exit_status,
+                            is_first_run,
                             run_command
                         ));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.hold_pane(id, exit_status, run_command);
+                                tab.hold_pane(id, exit_status, is_first_run, run_command);
                                 break;
                             }
                         }

@@ -346,7 +346,8 @@ impl RemoteTerminal {
         let mut channel = self.channel.lock().unwrap();
         channel
             .write_all(
-                format!("{} run -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
+                // note that this is run with the -s flag that suspends the command on startup
+                format!("{} run -s -- \"{}\"\n", ZELLIJ_EXECUTABLE_LOCATION, command).as_bytes(),
             )
             .unwrap();
         channel.flush().unwrap();

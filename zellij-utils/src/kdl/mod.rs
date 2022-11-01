@@ -1,7 +1,6 @@
 mod kdl_layout_parser;
 use crate::data::{InputMode, Key, Palette, PaletteColor};
 use crate::envs::EnvironmentVariables;
-use crate::input::command::RunCommand;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
 use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
@@ -337,6 +336,16 @@ pub fn kdl_child_string_value_for_entry<'a>(
         .get(entry_name)
         .and_then(|cwd| cwd.entries().iter().next())
         .and_then(|cwd_value| cwd_value.value().as_string())
+}
+
+pub fn kdl_child_bool_value_for_entry<'a>(
+    command_metadata: &'a KdlDocument,
+    entry_name: &'a str,
+) -> Option<bool> {
+    command_metadata
+        .get(entry_name)
+        .and_then(|cwd| cwd.entries().iter().next())
+        .and_then(|cwd_value| cwd_value.value().as_bool())
 }
 
 impl Action {
@@ -741,12 +750,20 @@ impl TryFrom<&KdlNode> for Action {
                 let direction = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "direction"))
                     .and_then(|direction_string| Direction::from_str(direction_string).ok());
+                let hold_on_close = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "close_on_exit"))
+                    .and_then(|close_on_exit| Some(!close_on_exit))
+                    .unwrap_or(true);
+                let hold_on_start = command_metadata
+                    .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "start_suspended"))
+                    .unwrap_or(false);
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
                     cwd,
                     direction,
-                    hold_on_close: true,
+                    hold_on_close,
+                    hold_on_start,
                 };
                 Ok(Action::Run(run_command_action))
             },
@@ -1461,32 +1478,6 @@ impl Keybinds {
             input_mode_keybinds.clear();
         }
         Ok(input_mode_keybinds)
-    }
-}
-
-impl RunCommand {
-    pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
-        let command = PathBuf::from(kdl_get_child_entry_string_value!(kdl_node, "cmd").ok_or(
-            ConfigError::new_kdl_error(
-                "Command must have a cmd value".into(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            ),
-        )?);
-        let cwd = kdl_get_child_entry_string_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
-        let args = match kdl_get_child!(kdl_node, "args") {
-            Some(kdl_args) => kdl_string_arguments!(kdl_args)
-                .iter()
-                .map(|s| String::from(*s))
-                .collect(),
-            None => vec![],
-        };
-        Ok(RunCommand {
-            command,
-            args,
-            cwd,
-            hold_on_close: true,
-        })
     }
 }
 

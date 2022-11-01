@@ -141,6 +141,10 @@ pub enum Sessions {
         /// Close the pane immediately when its command exits
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         close_on_exit: bool,
+
+        /// Start the command suspended, only running after you first presses ENTER
+        #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
+        start_suspended: bool,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -252,6 +256,16 @@ pub enum CliAction {
             requires("command")
         )]
         close_on_exit: bool,
+        /// Start the command suspended, only running it after the you first press ENTER
+        #[clap(
+            short,
+            long,
+            value_parser,
+            default_value("false"),
+            takes_value(false),
+            requires("command")
+        )]
+        start_suspended: bool,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
