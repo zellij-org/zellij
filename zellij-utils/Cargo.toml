@@ -13,7 +13,7 @@ anyhow = { version = "1.0.45", features = ["backtrace"] }
 backtrace = "0.3.55"
 rmp-serde = "1.1.0"
 clap = { version = "3.2.2", features = ["derive", "env"] }
-clap_complete = "3.2.1"
+clap_complete = "4.0.3"
 colored = "2.0.0"
 colorsys = "0.6.5"
 crossbeam = "0.8.1"
