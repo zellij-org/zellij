@@ -1,4 +1,3 @@
-use crate::os_input_output::SpawnTerminalError;
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
@@ -107,7 +106,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                match pty.spawn_terminal(terminal_action, client_or_tab_index) {
+                match pty
+                    .spawn_terminal(terminal_action, client_or_tab_index)
+                    .with_context(err_context)
+                {
                     Ok((pid, starts_held)) => {
                         let hold_for_command = if starts_held { run_command } else { None };
                         pty.bus
@@ -121,35 +123,35 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             ))
                             .with_context(err_context)?;
                     },
-                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
-                        if hold_on_close {
-                            let hold_for_command = None; // we do not hold an "error" pane
-                            pty.bus
-                                .senders
-                                .send_to_screen(ScreenInstruction::NewPane(
-                                    PaneId::Terminal(pid),
-                                    pane_title,
-                                    should_float,
-                                    hold_for_command,
-                                    client_or_tab_index,
-                                ))
-                                .with_context(err_context)?;
-                            if let Some(run_command) = run_command {
-                                send_command_not_found_to_screen(
-                                    pty.bus.senders.clone(),
-                                    pid,
-                                    run_command.clone(),
-                                )
-                                .with_context(err_context)?;
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            if hold_on_close {
+                                let hold_for_command = None; // we do not hold an "error" pane
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::NewPane(
+                                        PaneId::Terminal(*terminal_id),
+                                        pane_title,
+                                        should_float,
+                                        hold_for_command,
+                                        client_or_tab_index,
+                                    ))
+                                    .with_context(err_context)?;
+                                if let Some(run_command) = run_command {
+                                    send_command_not_found_to_screen(
+                                        pty.bus.senders.clone(),
+                                        *terminal_id,
+                                        run_command.clone(),
+                                    )
+                                    .with_context(err_context)?;
+                                }
+                            } else {
+                                log::error!("Failed to spawn terminal: command not found");
+                                pty.close_pane(PaneId::Terminal(*terminal_id))
+                                    .with_context(err_context)?;
                             }
-                        } else {
-                            log::error!("Failed to spawn terminal: command not found");
-                            pty.close_pane(PaneId::Terminal(pid))
-                                .with_context(err_context)?;
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to spawn terminal: {}", e);
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },
@@ -181,7 +183,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
+                match pty
+                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .with_context(err_context)
+                {
                     Ok((pid, starts_held)) => {
                         let hold_for_command = if starts_held { run_command } else { None };
                         pty.bus
@@ -194,45 +199,45 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             ))
                             .with_context(err_context)?;
                     },
-                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
-                        if hold_on_close {
-                            let hold_for_command = None; // error panes are never held
-                            pty.bus
-                                .senders
-                                .send_to_screen(ScreenInstruction::VerticalSplit(
-                                    PaneId::Terminal(pid),
-                                    pane_title,
-                                    hold_for_command,
-                                    client_id,
-                                ))
-                                .with_context(err_context)?;
-                            if let Some(run_command) = run_command {
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            let hold_for_command = None; // we do not hold an "error" pane
+                            if hold_on_close {
                                 pty.bus
                                     .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
-                                        pid,
-                                        format!(
-                                            "Command not found: {}",
-                                            run_command.command.display()
-                                        )
-                                        .as_bytes()
-                                        .to_vec(),
+                                    .send_to_screen(ScreenInstruction::VerticalSplit(
+                                        PaneId::Terminal(*terminal_id),
+                                        pane_title,
+                                        hold_for_command,
+                                        client_id,
                                     ))
                                     .with_context(err_context)?;
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HoldPane(
-                                        PaneId::Terminal(pid),
-                                        Some(2), // exit status
-                                        run_command,
-                                        None,
-                                    ))
-                                    .with_context(err_context)?;
+                                if let Some(run_command) = run_command {
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::PtyBytes(
+                                            *terminal_id,
+                                            format!(
+                                                "Command not found: {}",
+                                                run_command.command.display()
+                                            )
+                                            .as_bytes()
+                                            .to_vec(),
+                                        ))
+                                        .with_context(err_context)?;
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::HoldPane(
+                                            PaneId::Terminal(*terminal_id),
+                                            Some(2), // exit status
+                                            run_command,
+                                            None,
+                                        ))
+                                        .with_context(err_context)?;
+                                }
                             }
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to spawn terminal: {}", e);
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },
@@ -245,7 +250,10 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     ),
                     _ => (false, None, name),
                 };
-                match pty.spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id)) {
+                match pty
+                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
+                    .with_context(err_context)
+                {
                     Ok((pid, starts_held)) => {
                         let hold_for_command = if starts_held { run_command } else { None };
                         pty.bus
@@ -258,45 +266,45 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             ))
                             .with_context(err_context)?;
                     },
-                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
-                        if hold_on_close {
-                            let hold_for_command = None; // error panes are never held
-                            pty.bus
-                                .senders
-                                .send_to_screen(ScreenInstruction::HorizontalSplit(
-                                    PaneId::Terminal(pid),
-                                    pane_title,
-                                    hold_for_command,
-                                    client_id,
-                                ))
-                                .with_context(err_context)?;
-                            if let Some(run_command) = run_command {
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            if hold_on_close {
+                                let hold_for_command = None; // we do not hold an "error" pane
                                 pty.bus
                                     .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
-                                        pid,
-                                        format!(
-                                            "Command not found: {}",
-                                            run_command.command.display()
-                                        )
-                                        .as_bytes()
-                                        .to_vec(),
+                                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                                        PaneId::Terminal(*terminal_id),
+                                        pane_title,
+                                        hold_for_command,
+                                        client_id,
                                     ))
                                     .with_context(err_context)?;
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HoldPane(
-                                        PaneId::Terminal(pid),
-                                        Some(2), // exit status
-                                        run_command,
-                                        None,
-                                    ))
-                                    .with_context(err_context)?;
+                                if let Some(run_command) = run_command {
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::PtyBytes(
+                                            *terminal_id,
+                                            format!(
+                                                "Command not found: {}",
+                                                run_command.command.display()
+                                            )
+                                            .as_bytes()
+                                            .to_vec(),
+                                        ))
+                                        .with_context(err_context)?;
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::HoldPane(
+                                            PaneId::Terminal(*terminal_id),
+                                            Some(2), // exit status
+                                            run_command,
+                                            None,
+                                        ))
+                                        .with_context(err_context)?;
+                                }
                             }
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to spawn terminal: {}", e);
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },
@@ -347,32 +355,38 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     .with_context(err_context)?;
             },
             PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
-                match pty.rerun_command_in_pane(pane_id, run_command.clone()) {
+                match pty
+                    .rerun_command_in_pane(pane_id, run_command.clone())
+                    .with_context(err_context)
+                {
                     Ok(..) => {},
-                    Err(SpawnTerminalError::CommandNotFound(pid)) => {
-                        if run_command.hold_on_close {
-                            pty.bus
-                                .senders
-                                .send_to_screen(ScreenInstruction::PtyBytes(
-                                    pid,
-                                    format!("Command not found: {}", run_command.command.display())
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            if run_command.hold_on_close {
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::PtyBytes(
+                                        *terminal_id,
+                                        format!(
+                                            "Command not found: {}",
+                                            run_command.command.display()
+                                        )
                                         .as_bytes()
                                         .to_vec(),
-                                ))
-                                .with_context(err_context)?;
-                            pty.bus
-                                .senders
-                                .send_to_screen(ScreenInstruction::HoldPane(
-                                    PaneId::Terminal(pid),
-                                    Some(2), // exit status
-                                    run_command,
-                                    None,
-                                ))
-                                .with_context(err_context)?;
-                        }
-                    },
-                    Err(e) => {
-                        log::error!("Failed to spawn terminal: {}", e);
+                                    ))
+                                    .with_context(err_context)?;
+                                pty.bus
+                                    .senders
+                                    .send_to_screen(ScreenInstruction::HoldPane(
+                                        PaneId::Terminal(*terminal_id),
+                                        Some(2), // exit status
+                                        run_command,
+                                        None,
+                                    ))
+                                    .with_context(err_context)?;
+                            }
+                        },
+                        _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },
@@ -429,8 +443,10 @@ impl Pty {
         &mut self,
         terminal_action: Option<TerminalAction>,
         client_or_tab_index: ClientOrTabIndex,
-    ) -> Result<(u32, bool), SpawnTerminalError> {
+    ) -> Result<(u32, bool)> {
         // bool is starts_held
+        let err_context = || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
@@ -476,8 +492,11 @@ impl Pty {
             .bus
             .os_input
             .as_mut()
-            .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
-            .spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())?;
+            .context("no OS I/O interface found")
+            .and_then(|os_input| {
+                os_input.spawn_terminal(terminal_action, quit_cb, self.default_editor.clone())
+            })
+            .with_context(err_context)?;
         let terminal_bytes = task::spawn({
             let err_context =
                 |terminal_id: u32| format!("failed to run async task for terminal {terminal_id}");
@@ -511,18 +530,14 @@ impl Pty {
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
+
         let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
-        let mut new_pane_pids: Vec<(
-            u32,
-            bool,
-            Option<RunCommand>,
-            Result<RawFd, SpawnTerminalError>,
-        )> = vec![]; // (terminal_id,
-                     // starts_held,
-                     // run_command,
-                     // file_descriptor)
+        let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
+                                                                                             // starts_held,
+                                                                                             // run_command,
+                                                                                             // file_descriptor)
         for run_instruction in extracted_run_instructions {
             let quit_cb = Box::new({
                 let senders = self.bus.senders.clone();
@@ -553,7 +568,14 @@ impl Pty {
                     let cmd = TerminalAction::RunCommand(command.clone());
                     if starts_held {
                         // we don't actually open a terminal in this case, just wait for the user to run it
-                        match self.bus.os_input.as_mut().unwrap().reserve_terminal_id() {
+                        match self
+                            .bus
+                            .os_input
+                            .as_mut()
+                            .context("no OS I/O interface found")
+                            .with_context(err_context)?
+                            .reserve_terminal_id()
+                        {
                             Ok(terminal_id) => {
                                 new_pane_pids.push((
                                     terminal_id,
@@ -572,8 +594,10 @@ impl Pty {
                             .bus
                             .os_input
                             .as_mut()
+                            .context("no OS I/O interface found")
                             .with_context(err_context)?
                             .spawn_terminal(cmd, quit_cb, self.default_editor.clone())
+                            .with_context(err_context)
                         {
                             Ok((terminal_id, pid_primary, child_fd)) => {
                                 self.id_to_child_pid.insert(terminal_id, child_fd);
@@ -584,17 +608,18 @@ impl Pty {
                                     Ok(pid_primary),
                                 ));
                             },
-                            Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
-                                let starts_held = false; // we do not hold error panes
-                                new_pane_pids.push((
-                                    terminal_id,
-                                    starts_held,
-                                    Some(command.clone()),
-                                    Err(SpawnTerminalError::CommandNotFound(terminal_id)),
-                                ));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to spawn terminal: {}", e);
+                            Err(err) => match err.downcast_ref::<ZellijError>() {
+                                Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                                    new_pane_pids.push((
+                                        *terminal_id,
+                                        starts_held,
+                                        Some(command.clone()),
+                                        Err(err),
+                                    ));
+                                },
+                                _ => {
+                                    Err::<(), _>(err).non_fatal();
+                                },
                             },
                         }
                     }
@@ -606,23 +631,22 @@ impl Pty {
                         .bus
                         .os_input
                         .as_mut()
+                        .context("no OS I/O interface found")
                         .with_context(err_context)?
                         .spawn_terminal(shell, quit_cb, self.default_editor.clone())
+                        .with_context(err_context)
                     {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, starts_held, None, Ok(pid_primary)));
                         },
-                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
-                            new_pane_pids.push((
-                                terminal_id,
-                                starts_held,
-                                None,
-                                Err(SpawnTerminalError::CommandNotFound(terminal_id)),
-                            ));
-                        },
-                        Err(e) => {
-                            log::error!("Failed to spawn terminal: {}", e);
+                        Err(err) => match err.downcast_ref::<ZellijError>() {
+                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                                new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
+                            },
+                            _ => {
+                                Err::<(), _>(err).non_fatal();
+                            },
                         },
                     }
                 },
@@ -632,27 +656,26 @@ impl Pty {
                         .bus
                         .os_input
                         .as_mut()
+                        .context("no OS I/O interface found")
                         .with_context(err_context)?
                         .spawn_terminal(
                             TerminalAction::OpenFile(path_to_file, line_number),
                             quit_cb,
                             self.default_editor.clone(),
-                        ) {
+                        )
+                        .with_context(err_context)
+                    {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, starts_held, None, Ok(pid_primary)));
                         },
-                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
-                            let starts_held = false; // we do not hold error panes
-                            new_pane_pids.push((
-                                terminal_id,
-                                starts_held,
-                                None,
-                                Err(SpawnTerminalError::CommandNotFound(terminal_id)),
-                            ));
-                        },
-                        Err(e) => {
-                            log::error!("Failed to spawn terminal: {}", e);
+                        Err(err) => match err.downcast_ref::<ZellijError>() {
+                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                                new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
+                            },
+                            _ => {
+                                Err::<(), _>(err).non_fatal();
+                            },
                         },
                     }
                 },
@@ -662,23 +685,22 @@ impl Pty {
                         .bus
                         .os_input
                         .as_mut()
+                        .context("no OS I/O interface found")
                         .with_context(err_context)?
                         .spawn_terminal(default_shell.clone(), quit_cb, self.default_editor.clone())
+                        .with_context(err_context)
                     {
                         Ok((terminal_id, pid_primary, child_fd)) => {
                             self.id_to_child_pid.insert(terminal_id, child_fd);
                             new_pane_pids.push((terminal_id, starts_held, None, Ok(pid_primary)));
                         },
-                        Err(SpawnTerminalError::CommandNotFound(terminal_id)) => {
-                            new_pane_pids.push((
-                                terminal_id,
-                                starts_held,
-                                None,
-                                Err(SpawnTerminalError::CommandNotFound(terminal_id)),
-                            ));
-                        },
-                        Err(e) => {
-                            log::error!("Failed to spawn terminal: {}", e);
+                        Err(err) => match err.downcast_ref::<ZellijError>() {
+                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                                new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
+                            },
+                            _ => {
+                                Err::<(), _>(err).non_fatal();
+                            },
                         },
                     }
                 },
@@ -781,8 +803,9 @@ impl Pty {
                 self.bus
                     .os_input
                     .as_ref()
-                    .with_context(err_context)?
-                    .clear_terminal_id(id);
+                    .context("no OS I/O interface found")
+                    .and_then(|os_input| os_input.clear_terminal_id(id))
+                    .with_context(err_context)?;
             },
             PaneId::Plugin(pid) => drop(
                 self.bus
@@ -808,7 +831,9 @@ impl Pty {
         &mut self,
         pane_id: PaneId,
         run_command: RunCommand,
-    ) -> Result<(), SpawnTerminalError> {
+    ) -> Result<()> {
+        let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
+
         match pane_id {
             PaneId::Terminal(id) => {
                 let _ = self.task_handles.remove(&id); // if all is well, this shouldn't be here
@@ -835,8 +860,11 @@ impl Pty {
                     .bus
                     .os_input
                     .as_mut()
-                    .ok_or_else(|| SpawnTerminalError::GenericSpawnError("os input is none"))?
-                    .re_run_command_in_terminal(id, run_command, quit_cb)?;
+                    .context("no OS I/O interface found")
+                    .and_then(|os_input| {
+                        os_input.re_run_command_in_terminal(id, run_command, quit_cb)
+                    })
+                    .with_context(err_context)?;
                 let terminal_bytes = task::spawn({
                     let err_context =
                         |pane_id| format!("failed to run async task for pane {pane_id:?}");
@@ -862,9 +890,7 @@ impl Pty {
                 self.id_to_child_pid.insert(id, child_fd);
                 Ok(())
             },
-            _ => Err(SpawnTerminalError::GenericSpawnError(
-                "Cannot respawn plugin panes",
-            )),
+            _ => Err(anyhow!("cannot respawn plugin panes")).with_context(err_context),
         }
     }
 }

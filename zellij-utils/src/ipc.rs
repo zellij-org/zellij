@@ -2,7 +2,7 @@
 use crate::{
     cli::CliArgs,
     data::{ClientId, InputMode, Style},
-    errors::{get_current_ctx, ErrorContext},
+    errors::{get_current_ctx, prelude::*, ErrorContext},
     input::keybinds::Keybinds,
     input::{actions::Action, layout::Layout, options::Options, plugins::PluginsConfig},
     pane_size::{Size, SizeInPixels},
@@ -154,10 +154,10 @@ impl<T: Serialize> IpcSenderWithContext<T> {
     }
 
     /// Sends an event, along with the current [`ErrorContext`], on this [`IpcSenderWithContext`]'s socket.
-    pub fn send(&mut self, msg: T) -> Result<(), &'static str> {
+    pub fn send(&mut self, msg: T) -> Result<()> {
         let err_ctx = get_current_ctx();
         if rmp_serde::encode::write(&mut self.sender, &(msg, err_ctx)).is_err() {
-            Err("Failed to send message to client")
+            Err(anyhow!("failed to send message to client"))
         } else {
             // TODO: unwrapping here can cause issues when the server disconnects which we don't mind
             // do we need to handle errors here in other cases?

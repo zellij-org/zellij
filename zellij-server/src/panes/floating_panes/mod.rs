@@ -31,7 +31,9 @@ macro_rules! resize_pty {
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
-            );
+            )
+        } else {
+            Ok(())
         }
     };
 }
@@ -233,7 +235,7 @@ impl FloatingPanes {
             } else {
                 pane.set_content_offset(Offset::default());
             }
-            resize_pty!(pane, os_api);
+            resize_pty!(pane, os_api).unwrap();
         }
     }
     pub fn render(&mut self, output: &mut Output) -> Result<()> {
@@ -313,7 +315,7 @@ impl FloatingPanes {
     }
     pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) {
         for pane in self.panes.values_mut() {
-            resize_pty!(pane, os_api);
+            resize_pty!(pane, os_api).unwrap();
         }
     }
     pub fn resize_active_pane_left(
@@ -333,7 +335,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_left(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;
@@ -357,7 +359,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_right(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;
@@ -381,7 +383,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_down(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;
@@ -405,7 +407,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_up(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;
@@ -429,7 +431,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_increase(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;
@@ -453,7 +455,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_decrease(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api);
+                resize_pty!(pane, os_api).unwrap();
             }
             self.set_force_render();
             return true;

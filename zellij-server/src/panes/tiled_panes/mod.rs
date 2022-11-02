@@ -29,7 +29,9 @@ macro_rules! resize_pty {
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
-            );
+            )
+        } else {
+            Ok(())
         }
     };
 }
@@ -263,7 +265,7 @@ impl TiledPanes {
                 pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
             }
 
-            resize_pty!(pane, self.os_api);
+            resize_pty!(pane, self.os_api).unwrap();
         }
     }
     pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
@@ -507,7 +509,7 @@ impl TiledPanes {
             );
             pane_grid.resize_pane_left(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -521,7 +523,7 @@ impl TiledPanes {
             );
             pane_grid.resize_pane_right(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -535,7 +537,7 @@ impl TiledPanes {
             );
             pane_grid.resize_pane_up(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -549,7 +551,7 @@ impl TiledPanes {
             );
             pane_grid.resize_pane_down(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -563,7 +565,7 @@ impl TiledPanes {
             );
             pane_grid.resize_increase(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -577,7 +579,7 @@ impl TiledPanes {
             );
             pane_grid.resize_decrease(&active_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api);
+                resize_pty!(pane, self.os_api).unwrap();
             }
         }
     }
@@ -808,7 +810,7 @@ impl TiledPanes {
         if let Some(geom) = prev_geom_override {
             new_position.set_geom_override(geom);
         }
-        resize_pty!(new_position, self.os_api);
+        resize_pty!(new_position, self.os_api).unwrap();
         new_position.set_should_render(true);
 
         let current_position = self.panes.get_mut(&active_pane_id).unwrap();
@@ -816,7 +818,7 @@ impl TiledPanes {
         if let Some(geom) = next_geom_override {
             current_position.set_geom_override(geom);
         }
-        resize_pty!(current_position, self.os_api);
+        resize_pty!(current_position, self.os_api).unwrap();
         current_position.set_should_render(true);
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
@@ -841,7 +843,7 @@ impl TiledPanes {
                 if let Some(geom) = prev_geom_override {
                     new_position.set_geom_override(geom);
                 }
-                resize_pty!(new_position, self.os_api);
+                resize_pty!(new_position, self.os_api).unwrap();
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(active_pane_id).unwrap();
@@ -849,7 +851,7 @@ impl TiledPanes {
                 if let Some(geom) = next_geom_override {
                     current_position.set_geom_override(geom);
                 }
-                resize_pty!(current_position, self.os_api);
+                resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
             }
         }
@@ -876,7 +878,7 @@ impl TiledPanes {
                 if let Some(geom) = prev_geom_override {
                     new_position.set_geom_override(geom);
                 }
-                resize_pty!(new_position, self.os_api);
+                resize_pty!(new_position, self.os_api).unwrap();
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(active_pane_id).unwrap();
@@ -884,7 +886,7 @@ impl TiledPanes {
                 if let Some(geom) = next_geom_override {
                     current_position.set_geom_override(geom);
                 }
-                resize_pty!(current_position, self.os_api);
+                resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
             }
         }
@@ -911,7 +913,7 @@ impl TiledPanes {
                 if let Some(geom) = prev_geom_override {
                     new_position.set_geom_override(geom);
                 }
-                resize_pty!(new_position, self.os_api);
+                resize_pty!(new_position, self.os_api).unwrap();
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(active_pane_id).unwrap();
@@ -919,7 +921,7 @@ impl TiledPanes {
                 if let Some(geom) = next_geom_override {
                     current_position.set_geom_override(geom);
                 }
-                resize_pty!(current_position, self.os_api);
+                resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
             }
         }
@@ -946,7 +948,7 @@ impl TiledPanes {
                 if let Some(geom) = prev_geom_override {
                     new_position.set_geom_override(geom);
                 }
-                resize_pty!(new_position, self.os_api);
+                resize_pty!(new_position, self.os_api).unwrap();
                 new_position.set_should_render(true);
 
                 let current_position = self.panes.get_mut(active_pane_id).unwrap();
@@ -954,7 +956,7 @@ impl TiledPanes {
                 if let Some(geom) = next_geom_override {
                     current_position.set_geom_override(geom);
                 }
-                resize_pty!(current_position, self.os_api);
+                resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
             }
         }

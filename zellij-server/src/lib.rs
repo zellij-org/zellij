@@ -135,7 +135,7 @@ impl Drop for SessionMetaData {
 
 macro_rules! remove_client {
     ($client_id:expr, $os_input:expr, $session_state:expr) => {
-        $os_input.remove_client($client_id);
+        $os_input.remove_client($client_id).unwrap();
         $session_state.write().unwrap().remove_client($client_id);
     };
 }
@@ -260,7 +260,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         Ok(stream) => {
                             let mut os_input = os_input.clone();
                             let client_id = session_state.write().unwrap().new_client();
-                            let receiver = os_input.new_client(client_id, stream);
+                            let receiver = os_input.new_client(client_id, stream).unwrap();
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
