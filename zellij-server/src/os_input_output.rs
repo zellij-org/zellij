@@ -372,7 +372,7 @@ impl AsyncReader for RawFdAsyncReader {
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16);
+    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()>;
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
@@ -381,49 +381,45 @@ pub trait ServerOsApi: Send + Sync {
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError>;
+    ) -> Result<(u32, RawFd, RawFd)>;
     // reserves a terminal id without actually opening a terminal
     fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
         unimplemented!()
     }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
-    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error>;
+    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize>;
     /// Creates an `AsyncReader` that can be used to read from `fd` in an async context
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader>;
     /// Write bytes to the standard input of the virtual terminal referred to by `fd`.
-    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error>;
+    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize>;
     /// Wait until all output written to the object referred to by `fd` has been transmitted.
-    fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error>;
+    fn tcdrain(&self, terminal_id: u32) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGTERM)
-    fn kill(&self, pid: Pid) -> Result<(), nix::Error>;
+    fn kill(&self, pid: Pid) -> Result<()>;
     /// Terminate the process with process ID `pid`. (SIGKILL)
-    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error>;
+    fn force_kill(&self, pid: Pid) -> Result<()>;
     /// Returns a [`Box`] pointer to this [`ServerOsApi`] struct.
     fn box_clone(&self) -> Box<dyn ServerOsApi>;
-    fn send_to_client(
-        &self,
-        client_id: ClientId,
-        msg: ServerToClientMsg,
-    ) -> Result<(), &'static str>;
+    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()>;
     fn new_client(
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
-    ) -> IpcReceiverWithContext<ClientToServerMsg>;
-    fn remove_client(&mut self, client_id: ClientId);
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>>;
+    fn remove_client(&mut self, client_id: ClientId) -> Result<()>;
     fn load_palette(&self) -> Palette;
     /// Returns the current working directory for a given pid
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf>;
     /// Writes the given buffer to a string
-    fn write_to_file(&mut self, buf: String, file: Option<String>);
+    fn write_to_file(&mut self, buf: String, file: Option<String>) -> Result<()>;
 
     fn re_run_command_in_terminal(
         &self,
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd), SpawnTerminalError>;
-    fn clear_terminal_id(&self, terminal_id: u32);
+    ) -> Result<(RawFd, RawFd)>;
+    fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
 }
 
 impl ServerOsApi for ServerOsInputOutput {
