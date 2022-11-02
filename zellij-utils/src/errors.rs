@@ -24,6 +24,7 @@ pub mod prelude {
     pub use super::LoggableError;
     #[cfg(not(target_family = "wasm"))]
     pub use super::ToAnyhow;
+    pub use super::ZellijError;
     pub use anyhow::anyhow;
     pub use anyhow::bail;
     pub use anyhow::Context;
@@ -374,6 +375,25 @@ pub enum ServerContext {
 pub enum PtyWriteContext {
     Write,
     Exit,
+}
+
+use thiserror::Error;
+#[derive(Debug, Error)]
+pub enum ZellijError {
+    #[error("could not find command '{command}' for terminal {terminal_id}")]
+    CommandNotFound { terminal_id: u32, command: String },
+
+    #[error("could not determine default editor")]
+    NoEditorFound,
+
+    #[error("failed to allocate another terminal id")]
+    NoMoreTerminalIds,
+
+    #[error("failed to start PTY")]
+    FailedToStartPty,
+
+    #[error("an error occured")]
+    GenericError { source: anyhow::Error },
 }
 
 #[cfg(not(target_family = "wasm"))]
