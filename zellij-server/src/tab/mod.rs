@@ -731,6 +731,9 @@ impl Tab {
         self.connected_clients.borrow().is_empty()
     }
     pub fn toggle_pane_embed_or_floating(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context =
+            || format!("failed to toggle embedded/floating pane for client {client_id}");
+
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
@@ -741,7 +744,8 @@ impl Tab {
                         .close_pane(focused_floating_pane_id, true)
                         .with_context(|| format!(
                         "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
-                    ))?;
+                    ))
+                        .with_context(err_context)?;
                     self.tiled_panes
                         .insert_pane(focused_floating_pane_id, floating_pane_to_embed);
                     self.should_clear_display_before_rendering = true;
@@ -1828,20 +1832,29 @@ impl Tab {
         file: Option<String>,
         client_id: ClientId,
         full: bool,
-    ) {
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to dump active terminal screen for client {client_id}");
+
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             let dump = active_pane.dump_screen(client_id, full);
-            self.os_api.write_to_file(dump, file);
+            self.os_api
+                .write_to_file(dump, file)
+                .with_context(err_context)?;
         }
+        Ok(())
     }
     pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {
+        let err_context = || format!("failed to edit scrollback for client {client_id}");
+
         let mut file = temp_dir();
         file.push(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(
             Some(String::from(file.to_string_lossy())),
             client_id,
             true,
-        );
+        )
+        .with_context(err_context)?;
         let line_number = self
             .get_active_pane(client_id)
             .and_then(|a_t| a_t.get_line_number());
@@ -1851,7 +1864,7 @@ impl Tab {
                 line_number,
                 client_id,
             ))
-            .with_context(|| format!("failed to edit scrollback for client {client_id}"))
+            .with_context(err_context)
     }
     pub fn scroll_active_terminal_up(&mut self, client_id: ClientId) {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
