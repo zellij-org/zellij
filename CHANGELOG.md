@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow toggling mouse mode at runtime (https://github.com/zellij-org/zellij/pull/1883)
 * fix: display status bar properly if limited to only 1 line (https://github.com/zellij-org/zellij/pull/1875)
 * feat: allow starting command panes suspended (https://github.com/zellij-org/zellij/pull/1887)
+* debugging: Remove calls to unwrap in `zellij_server::os_input_output` (https://github.com/zellij-org/zellij/pull/1895)
 
 ## [0.32.0] - 2022-10-25
 
