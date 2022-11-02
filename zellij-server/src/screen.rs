@@ -1507,7 +1507,8 @@ pub(crate) fn screen_thread_main(
                         Some(file.to_string()),
                         client_id,
                         full
-                    )
+                    ),
+                    ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
