@@ -545,9 +545,10 @@ impl Display for CharacterStyles {
                     write!(f, "\u{1b}[2m")?;
                 },
                 AnsiCode::Reset => {
-                    if let Some(AnsiCode::Reset) = self.bold {
-                        // we only reset dim if both dim and bold should be reset
-                        write!(f, "\u{1b}[22m")?;
+                    write!(f, "\u{1b}[22m")?;
+                    // ⬑ this SGR also clears bold, so reapply it
+                    if let Some(AnsiCode::On) = self.bold {
+                        write!(f, "\u{1b}[1m")?;
                     }
                 },
                 _ => {},
