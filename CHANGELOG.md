@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly convert the backslash key from old YAML config files (https://github.com/zellij-org/zellij/pull/1879)
 * fix: clear floating panes indication when closing a floating command pane (https://github.com/zellij-org/zellij/pull/1897)
 * Terminal compatibility: do not reset bold when resetting DIM (https://github.com/zellij-org/zellij/pull/1803)
+* fix: Distorted colors when using `bat` and `mosh` (https://github.com/zellij-org/zellij/pull/1900)
 
 ## [0.32.0] - 2022-10-25
 
