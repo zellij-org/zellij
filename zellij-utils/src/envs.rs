@@ -27,7 +27,7 @@ pub fn set_session_name(v: String) {
 }
 
 pub fn set_initial_environment_vars() {
-    set_var("COLORTERM", "24bit");
+    //set_var("COLORTERM", "24bit");
 }
 
 pub const SOCKET_DIR_ENV_KEY: &str = "ZELLIJ_SOCKET_DIR";
