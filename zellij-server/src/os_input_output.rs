@@ -423,8 +423,19 @@ pub trait ServerOsApi: Send + Sync {
 }
 
 impl ServerOsApi for ServerOsInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) {
-        match self.terminal_id_to_raw_fd.lock().unwrap().get(&id) {
+    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()> {
+        match self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(|| {
+                format!(
+                    "failed to set terminal id {} to size ({}, {})",
+                    id, rows, cols
+                )
+            })?
+            .get(&id)
+        {
             Some(Some(fd)) => {
                 if cols > 0 && rows > 0 {
                     set_terminal_size_using_fd(*fd, cols, rows);
@@ -434,20 +445,28 @@ impl ServerOsApi for ServerOsInputOutput {
                 log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
             },
         }
+        Ok(())
     }
     fn spawn_terminal(
         &self,
         terminal_action: TerminalAction,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
         default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError> {
-        let orig_termios = self.orig_termios.lock().unwrap();
+    ) -> Result<(u32, RawFd, RawFd)> {
+        let err_context = || "failed to spawn terminal".to_string();
+
+        let orig_termios = self
+            .orig_termios
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?;
         let mut terminal_id = None;
         {
             let current_ids: HashSet<u32> = self
                 .terminal_id_to_raw_fd
                 .lock()
-                .unwrap()
+                .to_anyhow()
+                .with_context(err_context)?
                 .keys()
                 .copied()
                 .collect();
@@ -463,26 +482,26 @@ impl ServerOsApi for ServerOsInputOutput {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
                     .lock()
-                    .unwrap()
+                    .to_anyhow()
+                    .with_context(err_context)?
                     .insert(terminal_id, None);
-                match spawn_terminal(
+                spawn_terminal(
                     terminal_action,
                     orig_termios.clone(),
                     quit_cb,
                     default_editor,
                     terminal_id,
-                ) {
-                    Ok((pid_primary, pid_secondary)) => {
-                        self.terminal_id_to_raw_fd
-                            .lock()
-                            .unwrap()
-                            .insert(terminal_id, Some(pid_primary));
-                        Ok((terminal_id, pid_primary, pid_secondary))
-                    },
-                    Err(e) => Err(e),
-                }
+                )
+                .and_then(|(pid_primary, pid_secondary)| {
+                    self.terminal_id_to_raw_fd
+                        .lock()
+                        .to_anyhow()?
+                        .insert(terminal_id, Some(pid_primary));
+                    Ok((terminal_id, pid_primary, pid_secondary))
+                })
+                .with_context(err_context)
             },
-            None => Err(SpawnTerminalError::NoMoreTerminalIds),
+            None => Err(anyhow!("no more terminal IDs left to allocate")),
         }
     }
     fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
@@ -514,76 +533,98 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(SpawnTerminalError::NoMoreTerminalIds),
         }
     }
-    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize, nix::Error> {
-        unistd::read(fd, buf)
+    fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize> {
+        unistd::read(fd, buf).with_context(|| format!("failed to read stdout of raw FD {}", fd))
     }
     fn async_file_reader(&self, fd: RawFd) -> Box<dyn AsyncReader> {
         Box::new(RawFdAsyncReader::new(fd))
     }
-    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize, nix::Error> {
-        match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(Some(fd)) => unistd::write(*fd, buf),
-            _ => {
-                // TODO: propagate this error
-                log::error!("Failed to write to terminal with {terminal_id} - could not find its file descriptor");
-                Ok(0)
-            },
+    fn write_to_tty_stdin(&self, terminal_id: u32, buf: &[u8]) -> Result<usize> {
+        let err_context = || format!("failed to write to stdin of TTY ID {}", terminal_id);
+
+        match self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .get(&terminal_id)
+        {
+            Some(Some(fd)) => unistd::write(*fd, buf).with_context(err_context),
+            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
-    fn tcdrain(&self, terminal_id: u32) -> Result<(), nix::Error> {
-        match self.terminal_id_to_raw_fd.lock().unwrap().get(&terminal_id) {
-            Some(Some(fd)) => termios::tcdrain(*fd),
-            _ => {
-                // TODO: propagate this error
-                log::error!("Failed to tcdrain to terminal with {terminal_id} - could not find its file descriptor");
-                Ok(())
-            },
+    fn tcdrain(&self, terminal_id: u32) -> Result<()> {
+        let err_context = || format!("failed to tcdrain to TTY ID {}", terminal_id);
+
+        match self
+            .terminal_id_to_raw_fd
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .get(&terminal_id)
+        {
+            Some(Some(fd)) => termios::tcdrain(*fd).with_context(err_context),
+            _ => Err(anyhow!("could not find raw file descriptor")).with_context(err_context),
         }
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn kill(&self, pid: Pid) -> Result<(), nix::Error> {
+    fn kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGHUP));
         Ok(())
     }
-    fn force_kill(&self, pid: Pid) -> Result<(), nix::Error> {
+    fn force_kill(&self, pid: Pid) -> Result<()> {
         let _ = kill(pid, Some(Signal::SIGKILL));
         Ok(())
     }
-    fn send_to_client(
-        &self,
-        client_id: ClientId,
-        msg: ServerToClientMsg,
-    ) -> Result<(), &'static str> {
-        if let Some(sender) = self.client_senders.lock().unwrap().get_mut(&client_id) {
-            sender.send(msg)
+    fn send_to_client(&self, client_id: ClientId, msg: ServerToClientMsg) -> Result<()> {
+        let err_context = || format!("failed to send message to client {client_id}");
+
+        if let Some(sender) = self
+            .client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(err_context)?
+            .get_mut(&client_id)
+        {
+            sender.send(msg).with_context(err_context)
         } else {
             Ok(())
         }
     }
+
     fn new_client(
         &mut self,
         client_id: ClientId,
         stream: LocalSocketStream,
-    ) -> IpcReceiverWithContext<ClientToServerMsg> {
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         let receiver = IpcReceiverWithContext::new(stream);
         let sender = receiver.get_sender();
         self.client_senders
             .lock()
-            .unwrap()
+            .to_anyhow()
+            .with_context(|| format!("failed to create new client {client_id}"))?
             .insert(client_id, sender);
-        receiver
+        Ok(receiver)
     }
-    fn remove_client(&mut self, client_id: ClientId) {
-        let mut client_senders = self.client_senders.lock().unwrap();
+
+    fn remove_client(&mut self, client_id: ClientId) -> Result<()> {
+        let mut client_senders = self
+            .client_senders
+            .lock()
+            .to_anyhow()
+            .with_context(|| format!("failed to remove client {client_id}"))?;
         if client_senders.contains_key(&client_id) {
             client_senders.remove(&client_id);
         }
+        Ok(())
     }
+
     fn load_palette(&self) -> Palette {
         default_palette()
     }
+
     fn get_cwd(&self, pid: Pid) -> Option<PathBuf> {
         let mut system_info = System::new();
         // Update by minimizing information.
@@ -595,45 +636,52 @@ impl ServerOsApi for ServerOsInputOutput {
         }
         None
     }
-    fn write_to_file(&mut self, buf: String, name: Option<String>) {
+
+    fn write_to_file(&mut self, buf: String, name: Option<String>) -> Result<()> {
+        let err_context = || "failed to write to file".to_string();
+
         let mut f: File = match name {
-            Some(x) => File::create(x).unwrap(),
-            None => tempfile().unwrap(),
+            Some(x) => File::create(x).with_context(err_context)?,
+            None => tempfile().with_context(err_context)?,
         };
-        if let Err(e) = write!(f, "{}", buf) {
-            log::error!("could not write to file: {}", e);
-        }
+        write!(f, "{}", buf).with_context(err_context)
     }
+
     fn re_run_command_in_terminal(
         &self,
         terminal_id: u32,
         run_command: RunCommand,
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd), SpawnTerminalError> {
-        let orig_termios = self.orig_termios.lock().unwrap();
+    ) -> Result<(RawFd, RawFd)> {
         let default_editor = None; // no need for a default editor when running an explicit command
-        match spawn_terminal(
-            TerminalAction::RunCommand(run_command),
-            orig_termios.clone(),
-            quit_cb,
-            default_editor,
-            terminal_id,
-        ) {
-            Ok((pid_primary, pid_secondary)) => {
+        self.orig_termios
+            .lock()
+            .to_anyhow()
+            .and_then(|orig_termios| {
+                spawn_terminal(
+                    TerminalAction::RunCommand(run_command),
+                    orig_termios.clone(),
+                    quit_cb,
+                    default_editor,
+                    terminal_id,
+                )
+            })
+            .and_then(|(pid_primary, pid_secondary)| {
                 self.terminal_id_to_raw_fd
                     .lock()
-                    .unwrap()
+                    .to_anyhow()?
                     .insert(terminal_id, Some(pid_primary));
                 Ok((pid_primary, pid_secondary))
-            },
-            Err(e) => Err(e),
-        }
+            })
+            .with_context(|| format!("failed to rerun command in terminal id {}", terminal_id))
     }
-    fn clear_terminal_id(&self, terminal_id: u32) {
+    fn clear_terminal_id(&self, terminal_id: u32) -> Result<()> {
         self.terminal_id_to_raw_fd
             .lock()
-            .unwrap()
+            .to_anyhow()
+            .with_context(|| format!("failed to clear terminal ID {}", terminal_id))?
             .remove(&terminal_id);
+        Ok(())
     }
 }
 
