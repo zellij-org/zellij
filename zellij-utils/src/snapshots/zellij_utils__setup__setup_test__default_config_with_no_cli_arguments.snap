@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 503
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -209,13 +208,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -469,13 +461,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -794,13 +779,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -1161,13 +1139,6 @@ Config {
                 ),
             ],
             Char(
-                ' ',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
                 'd',
             ): [
                 HalfPageScrollDown,
@@ -1412,13 +1383,6 @@ Config {
                     Search,
                 ),
             ],
-            Char(
-                ' ',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
             Alt(
                 Char(
                     '+',
@@ -1623,13 +1587,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -1895,13 +1852,6 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                ' ',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
             Alt(
                 Char(
                     '+',
@@ -2094,13 +2044,6 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                ' ',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
             Alt(
                 Char(
                     '+',
@@ -2288,13 +2231,6 @@ Config {
         Session: {
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -2512,13 +2448,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
@@ -2756,13 +2685,6 @@ Config {
                     Normal,
                 ),
             ],
-            Char(
-                ' ',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
             Alt(
                 Char(
                     '+',
@@ -2974,13 +2896,6 @@ Config {
             ],
             Char(
                 '\n',
-            ): [
-                SwitchToMode(
-                    Normal,
-                ),
-            ],
-            Char(
-                ' ',
             ): [
                 SwitchToMode(
                     Normal,
