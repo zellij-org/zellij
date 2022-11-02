@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 
+use zellij_utils::errors::prelude::*;
 use zellij_utils::{async_std, interprocess, libc, nix, signal_hook};
 
 use async_std::fs::File as AsyncFile;
@@ -61,11 +62,20 @@ fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
 
 /// Handle some signals for the child process. This will loop until the child
 /// process exits.
-fn handle_command_exit(mut child: Child) -> Option<i32> {
+fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
+    let id = child.id();
+    let err_context = || {
+        format!(
+            "failed to handle signals and command exit for child process pid {}",
+            id
+        )
+    };
+
     // returns the exit status, if any
     let mut should_exit = false;
     let mut attempts = 3;
-    let mut signals = signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).unwrap();
+    let mut signals =
+        signal_hook::iterator::Signals::new(&[SIGINT, SIGTERM]).with_context(err_context)?;
     'handle_exit: loop {
         // test whether the child process has exited
         match child.try_wait() {
@@ -73,7 +83,7 @@ fn handle_command_exit(mut child: Child) -> Option<i32> {
                 // if the child process has exited, break outside of the loop
                 // and exit this function
                 // TODO: handle errors?
-                break 'handle_exit status.code();
+                break 'handle_exit Ok(status.code());
             },
             Ok(None) => {
                 ::std::thread::sleep(::std::time::Duration::from_millis(10));
@@ -90,12 +100,13 @@ fn handle_command_exit(mut child: Child) -> Option<i32> {
         } else if attempts > 0 {
             // let's try nicely first...
             attempts -= 1;
-            kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM)).unwrap();
+            kill(Pid::from_raw(child.id() as i32), Some(Signal::SIGTERM))
+                .with_context(err_context)?;
             continue;
         } else {
             // when I say whoa, I mean WHOA!
             let _ = child.kill();
-            break 'handle_exit None;
+            break 'handle_exit Ok(None);
         }
     }
 }
@@ -132,7 +143,14 @@ fn handle_openpty(
     cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
-) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+) -> Result<(RawFd, RawFd)> {
+    let err_context = |cmd: &RunCommand| {
+        format!(
+            "failed to open PTY for command '{}'",
+            cmd.command.to_string_lossy().to_string()
+        )
+    };
+
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
     let pid_secondary = open_pty_res.slave;
@@ -167,15 +185,21 @@ fn handle_openpty(
 
         let child_id = child.id();
         std::thread::spawn(move || {
-            child.wait().unwrap();
-            let exit_status = handle_command_exit(child);
+            child.wait().with_context(|| err_context(&cmd)).fatal();
+            let exit_status = handle_command_exit(child)
+                .with_context(|| err_context(&cmd))
+                .fatal();
             let _ = nix::unistd::close(pid_secondary);
             quit_cb(PaneId::Terminal(terminal_id), exit_status, cmd);
         });
 
         Ok((pid_primary, child_id as RawFd))
     } else {
-        Err(SpawnTerminalError::CommandNotFound(terminal_id))
+        Err(ZellijError::CommandNotFound {
+            terminal_id,
+            command: cmd.command.to_string_lossy().to_string(),
+        })
+        .with_context(|| err_context(&cmd))
     }
 }
 
@@ -188,7 +212,9 @@ fn handle_terminal(
     orig_termios: termios::Termios,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+) -> Result<(RawFd, RawFd)> {
+    let err_context = || "failed to spawn child terminal".to_string();
+
     // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
     match openpty(None, Some(&orig_termios)) {
@@ -196,11 +222,12 @@ fn handle_terminal(
         Err(e) => match failover_cmd {
             Some(failover_cmd) => {
                 handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
+                    .with_context(err_context)
             },
-            None => {
-                log::error!("Failed to start pty: {:?}", e);
-                Err(SpawnTerminalError::FailedToStartPty)
-            },
+            None => Err::<(i32, i32), _>(e)
+                .context("failed to start pty")
+                .with_context(err_context)
+                .to_log(),
         },
     }
 }
@@ -241,7 +268,7 @@ fn spawn_terminal(
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit_status
     default_editor: Option<PathBuf>,
     terminal_id: u32,
-) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+) -> Result<(RawFd, RawFd)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
     let mut failover_cmd_args = None;
@@ -294,40 +321,6 @@ fn spawn_terminal(
     };
 
     handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum SpawnTerminalError {
-    CommandNotFound(u32), // u32 is the terminal id
-    NoEditorFound,
-    NoMoreTerminalIds,
-    FailedToStartPty,
-    GenericSpawnError(&'static str),
-}
-
-impl std::fmt::Display for SpawnTerminalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
-        match self {
-            SpawnTerminalError::CommandNotFound(terminal_id) => {
-                write!(f, "Command not found for terminal_id: {}", terminal_id)
-            },
-            SpawnTerminalError::NoEditorFound => {
-                write!(
-                    f,
-                    "No Editor found, consider setting a path to one in $EDITOR or $VISUAL"
-                )
-            },
-            SpawnTerminalError::NoMoreTerminalIds => {
-                write!(f, "No more terminal ids left to allocate.")
-            },
-            SpawnTerminalError::FailedToStartPty => {
-                write!(f, "Failed to start pty")
-            },
-            SpawnTerminalError::GenericSpawnError(msg) => {
-                write!(f, "{}", msg)
-            },
-        }
-    }
 }
 
 #[derive(Clone)]
