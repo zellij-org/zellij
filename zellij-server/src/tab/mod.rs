@@ -56,7 +56,9 @@ macro_rules! resize_pty {
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
-            );
+            )
+        } else {
+            Ok(())
         }
     };
 }
@@ -756,7 +758,7 @@ impl Tab {
                 }
                 if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
                     embedded_pane_to_float.set_geom(new_pane_geom);
-                    resize_pty!(embedded_pane_to_float, self.os_api);
+                    resize_pty!(embedded_pane_to_float, self.os_api).with_context(err_context)?;
                     embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes
                         .add_pane(focused_pane_id, embedded_pane_to_float);
@@ -810,13 +812,15 @@ impl Tab {
         should_float: Option<bool>,
         client_id: Option<ClientId>,
     ) -> Result<()> {
+        let err_context = || format!("failed to create new pane with id {pid:?}");
+
         match should_float {
             Some(true) => self.floating_panes.toggle_show_panes(true),
             Some(false) => self.floating_panes.toggle_show_panes(false),
             None => {},
         };
         self.close_down_to_max_terminals()
-            .with_context(|| format!("failed to create new pane with id {pid:?}"))?;
+            .with_context(err_context)?;
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
                 let next_terminal_position = self.get_next_terminal_position();
@@ -835,7 +839,7 @@ impl Tab {
                         initial_pane_title,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                    resize_pty!(new_pane, self.os_api);
+                    resize_pty!(new_pane, self.os_api).with_context(err_context)?;
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
                     self.floating_panes.focus_pane_for_all_clients(pid);
                 }
@@ -874,6 +878,8 @@ impl Tab {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
         // created pane is closed, in which case it will be replaced back by it
+        let err_context = || format!("failed to suppress active pane for client {client_id}");
+
         match pid {
             PaneId::Terminal(pid) => {
                 let next_terminal_position = self.get_next_terminal_position(); // TODO: this is not accurate in this case
@@ -904,12 +910,12 @@ impl Tab {
                     Some(replaced_pane) => {
                         self.suppressed_panes
                             .insert(PaneId::Terminal(pid), replaced_pane);
-                        // this will be the newly replaced pane we just created
-                        let current_active_pane =
-                            self.get_active_pane(client_id).with_context(|| {
-                                format!("failed to suppress active pane for client {client_id}")
-                            })?;
-                        resize_pty!(current_active_pane, self.os_api);
+                        self.get_active_pane(client_id)
+                            .with_context(|| format!("no active pane found for client {client_id}"))
+                            .and_then(|current_active_pane| {
+                                resize_pty!(current_active_pane, self.os_api)
+                            })
+                            .with_context(err_context)?;
                     },
                     None => {
                         log::error!("Could not find editor pane to replace - is no pane focused?")
@@ -1093,6 +1099,7 @@ impl Tab {
     }
     fn process_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to process pty bytes from pid {pid}");
+
         if let Some(terminal_output) = self
             .tiled_panes
             .get_pane_mut(PaneId::Terminal(pid))
@@ -1104,7 +1111,7 @@ impl Tab {
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
-                resize_pty!(terminal_output, self.os_api);
+                resize_pty!(terminal_output, self.os_api).with_context(err_context)?;
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -1789,7 +1796,7 @@ impl Tab {
                     // the pane there we replaced. Now, we need to update its pty about its new size.
                     // We couldn't do that before, and we can't use the original moved item now - so we
                     // need to refetch it
-                    resize_pty!(suppressed_pane, self.os_api);
+                    resize_pty!(suppressed_pane, self.os_api).unwrap();
                 }
                 replaced_pane
             })
