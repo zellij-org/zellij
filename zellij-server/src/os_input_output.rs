@@ -437,8 +437,9 @@ impl ServerOsApi for ServerOsInputOutput {
                 }
             },
             _ => {
-                return Err(anyhow!("failed to find terminal fd for id {id}"))
-                    .with_context(err_context);
+                Err::<(), _>(anyhow!("failed to find terminal fd for id {id}"))
+                    .with_context(err_context)
+                    .non_fatal();
             },
         }
         Ok(())
