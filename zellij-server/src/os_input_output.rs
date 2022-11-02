@@ -376,7 +376,7 @@ pub trait ServerOsApi: Send + Sync {
         default_editor: Option<PathBuf>,
     ) -> Result<(u32, RawFd, RawFd)>;
     // reserves a terminal id without actually opening a terminal
-    fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
+    fn reserve_terminal_id(&self) -> Result<u32> {
         unimplemented!()
     }
     /// Read bytes from the standard output of the virtual terminal referred to by `fd`.
@@ -497,13 +497,16 @@ impl ServerOsApi for ServerOsInputOutput {
             None => Err(anyhow!("no more terminal IDs left to allocate")),
         }
     }
-    fn reserve_terminal_id(&self) -> Result<u32, SpawnTerminalError> {
+    fn reserve_terminal_id(&self) -> Result<u32> {
+        let err_context = || "failed to reserve a terminal ID".to_string();
+
         let mut terminal_id = None;
         {
             let current_ids: HashSet<u32> = self
                 .terminal_id_to_raw_fd
                 .lock()
-                .unwrap()
+                .to_anyhow()
+                .with_context(err_context)?
                 .keys()
                 .copied()
                 .collect();
@@ -519,11 +522,12 @@ impl ServerOsApi for ServerOsInputOutput {
             Some(terminal_id) => {
                 self.terminal_id_to_raw_fd
                     .lock()
-                    .unwrap()
+                    .to_anyhow()
+                    .with_context(err_context)?
                     .insert(terminal_id, None);
                 Ok(terminal_id)
             },
-            None => Err(SpawnTerminalError::NoMoreTerminalIds),
+            None => Err(anyhow!("no more terminal IDs available")),
         }
     }
     fn read_from_tty_stdout(&self, fd: RawFd, buf: &mut [u8]) -> Result<usize> {
