@@ -126,12 +126,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             if hold_on_close {
+                                let hold_for_command = None; // we do not hold an "error" pane
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::NewPane(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
                                         should_float,
+                                        hold_for_command,
                                         client_or_tab_index,
                                     ))
                                     .with_context(err_context)?;
@@ -199,12 +201,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
+                            let hold_for_command = None; // we do not hold an "error" pane
                             if hold_on_close {
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::VerticalSplit(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
+                                        hold_for_command,
                                         client_id,
                                     ))
                                     .with_context(err_context)?;
@@ -265,11 +269,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             if hold_on_close {
+                                let hold_for_command = None; // we do not hold an "error" pane
                                 pty.bus
                                     .senders
                                     .send_to_screen(ScreenInstruction::HorizontalSplit(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
+                                        hold_for_command,
                                         client_id,
                                     ))
                                     .with_context(err_context)?;
@@ -597,6 +603,7 @@ impl Pty {
                                 self.id_to_child_pid.insert(terminal_id, child_fd);
                                 new_pane_pids.push((
                                     terminal_id,
+                                    starts_held,
                                     Some(command.clone()),
                                     Ok(pid_primary),
                                 ));
@@ -605,6 +612,7 @@ impl Pty {
                                 Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                                     new_pane_pids.push((
                                         *terminal_id,
+                                        starts_held,
                                         Some(command.clone()),
                                         Err(err),
                                     ));
