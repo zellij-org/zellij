@@ -163,10 +163,11 @@ fn handle_openpty(
                     command.current_dir(current_dir);
                 } else {
                     // TODO: propagate this to the user
-                    log::error!(
-                        "Failed to set CWD for new pane. {} does not exist or is not a folder",
+                    return Err(anyhow!(
+                        "Failed to set CWD for new pane. '{}' does not exist or is not a folder",
                         current_dir.display()
-                    );
+                    ))
+                    .context("failed to open PTY");
                 }
             }
             command
@@ -416,16 +417,18 @@ pub trait ServerOsApi: Send + Sync {
 
 impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to set terminal id {} to size ({}, {})",
+                id, rows, cols
+            )
+        };
+
         match self
             .terminal_id_to_raw_fd
             .lock()
             .to_anyhow()
-            .with_context(|| {
-                format!(
-                    "failed to set terminal id {} to size ({}, {})",
-                    id, rows, cols
-                )
-            })?
+            .with_context(err_context)?
             .get(&id)
         {
             Some(Some(fd)) => {
@@ -434,7 +437,8 @@ impl ServerOsApi for ServerOsInputOutput {
                 }
             },
             _ => {
-                log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
+                return Err(anyhow!("failed to find terminal fd for id {id}"))
+                    .with_context(err_context);
             },
         }
         Ok(())
