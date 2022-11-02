@@ -2,12 +2,13 @@ use super::Tab;
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::{
-    os_input_output::{AsyncReader, Pid, ServerOsApi, SpawnTerminalError},
+    os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
     thread_bus::ThreadSenders,
     ClientId,
 };
 use std::path::PathBuf;
+use zellij_utils::errors::prelude::*;
 use zellij_utils::input::layout::PaneLayout;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -16,8 +17,6 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
-
-use zellij_utils::nix;
 
 use zellij_utils::{
     data::{ModeInfo, Palette, Style},
@@ -30,53 +29,50 @@ use zellij_utils::{
 struct FakeInputOutput {}
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) {
+    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) -> Result<()> {
         // noop
+        Ok(())
     }
     fn spawn_terminal(
         &self,
         _file_to_open: TerminalAction,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>,
         _default_editor: Option<PathBuf>,
-    ) -> Result<(u32, RawFd, RawFd), SpawnTerminalError> {
+    ) -> Result<(u32, RawFd, RawFd)> {
         unimplemented!()
     }
-    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize, nix::Error> {
+    fn read_from_tty_stdout(&self, _fd: RawFd, _buf: &mut [u8]) -> Result<usize> {
         unimplemented!()
     }
     fn async_file_reader(&self, _fd: RawFd) -> Box<dyn AsyncReader> {
         unimplemented!()
     }
-    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize, nix::Error> {
+    fn write_to_tty_stdin(&self, _id: u32, _buf: &[u8]) -> Result<usize> {
         unimplemented!()
     }
-    fn tcdrain(&self, _id: u32) -> Result<(), nix::Error> {
+    fn tcdrain(&self, _id: u32) -> Result<()> {
         unimplemented!()
     }
-    fn kill(&self, _pid: Pid) -> Result<(), nix::Error> {
+    fn kill(&self, _pid: Pid) -> Result<()> {
         unimplemented!()
     }
-    fn force_kill(&self, _pid: Pid) -> Result<(), nix::Error> {
+    fn force_kill(&self, _pid: Pid) -> Result<()> {
         unimplemented!()
     }
     fn box_clone(&self) -> Box<dyn ServerOsApi> {
         Box::new((*self).clone())
     }
-    fn send_to_client(
-        &self,
-        _client_id: ClientId,
-        _msg: ServerToClientMsg,
-    ) -> Result<(), &'static str> {
+    fn send_to_client(&self, _client_id: ClientId, _msg: ServerToClientMsg) -> Result<()> {
         unimplemented!()
     }
     fn new_client(
         &mut self,
         _client_id: ClientId,
         _stream: LocalSocketStream,
-    ) -> IpcReceiverWithContext<ClientToServerMsg> {
+    ) -> Result<IpcReceiverWithContext<ClientToServerMsg>> {
         unimplemented!()
     }
-    fn remove_client(&mut self, _client_id: ClientId) {
+    fn remove_client(&mut self, _client_id: ClientId) -> Result<()> {
         unimplemented!()
     }
     fn load_palette(&self) -> Palette {
@@ -86,7 +82,7 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
 
-    fn write_to_file(&mut self, _buf: String, _name: Option<String>) {
+    fn write_to_file(&mut self, _buf: String, _name: Option<String>) -> Result<()> {
         unimplemented!()
     }
     fn re_run_command_in_terminal(
@@ -94,10 +90,10 @@ impl ServerOsApi for FakeInputOutput {
         _terminal_id: u32,
         _run_command: RunCommand,
         _quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
-    ) -> Result<(RawFd, RawFd), SpawnTerminalError> {
+    ) -> Result<(RawFd, RawFd)> {
         unimplemented!()
     }
-    fn clear_terminal_id(&self, _terminal_id: u32) {
+    fn clear_terminal_id(&self, _terminal_id: u32) -> Result<()> {
         unimplemented!()
     }
 }
