@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: allow starting command panes suspended (https://github.com/zellij-org/zellij/pull/1887)
 * debugging: Remove calls to unwrap in `zellij_server::os_input_output` (https://github.com/zellij-org/zellij/pull/1895)
 * fix: remove space key from shared_except (https://github.com/zellij-org/zellij/pull/1884)
+* fix: clear search when sending terminating char (https://github.com/zellij-org/zellij/pull/1853)
 
 ## [0.32.0] - 2022-10-25
 
