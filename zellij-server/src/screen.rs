@@ -1360,17 +1360,25 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::WriteCharacter(bytes, client_id) => {
+                let mut should_update_tabs = false;
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| {
-                        match tab.is_sync_panes_active() {
+                        let write_result = match tab.is_sync_panes_active() {
                             true => tab.write_to_terminals_on_current_tab(bytes),
                             false => tab.write_to_active_terminal(bytes, client_id),
+                        };
+                        if let Ok(true) = write_result {
+                            should_update_tabs = true;
                         }
+                        write_result
                     },
                     ?
                 );
+                if should_update_tabs {
+                    screen.update_tabs()?;
+                }
             },
             ScreenInstruction::ResizeLeft(client_id) => {
                 active_tab_and_connected_client_id!(

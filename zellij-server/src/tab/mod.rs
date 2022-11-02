@@ -1132,20 +1132,29 @@ impl Tab {
         Ok(())
     }
 
-    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) -> Result<()> {
+    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) -> Result<bool> {
+        // returns true if a UI update should be triggered (eg. when closing a command pane with
+        // ctrl-c)
+        let mut should_trigger_ui_change = false;
         let pane_ids = self.get_static_and_floating_pane_ids();
         for pane_id in pane_ids {
-            self.write_to_pane_id(input_bytes.clone(), pane_id)
+            let ui_change_triggered = self
+                .write_to_pane_id(input_bytes.clone(), pane_id)
                 .context("failed to write to terminals on current tab")?;
+            if ui_change_triggered {
+                should_trigger_ui_change = true;
+            }
         }
-        Ok(())
+        Ok(should_trigger_ui_change)
     }
 
     pub fn write_to_active_terminal(
         &mut self,
         input_bytes: Vec<u8>,
         client_id: ClientId,
-    ) -> Result<()> {
+    ) -> Result<bool> {
+        // returns true if a UI update should be triggered (eg. if a command pane
+        // was closed with ctrl-c)
         let err_context = || {
             format!(
                 "failed to write to active terminal for client {client_id} - msg: {input_bytes:?}"
@@ -1183,9 +1192,9 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             let pane_id = self.floating_panes.get_pane_id_at(position, false);
             if let Some(pane_id) = pane_id {
-                return self
-                    .write_to_pane_id(input_bytes, pane_id)
-                    .with_context(err_context);
+                self.write_to_pane_id(input_bytes, pane_id)
+                    .with_context(err_context)?;
+                return Ok(());
             }
         }
 
@@ -1193,16 +1202,18 @@ impl Tab {
             .get_pane_id_at(position, false)
             .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            return self
-                .write_to_pane_id(input_bytes, pane_id)
-                .with_context(err_context);
+            self.write_to_pane_id(input_bytes, pane_id)
+                .with_context(err_context)?;
+            return Ok(());
         }
         Ok(())
     }
 
-    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) -> Result<()> {
+    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) -> Result<bool> {
+        // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
+        let mut should_update_ui = false;
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
                 let active_terminal = self
@@ -1232,6 +1243,7 @@ impl Tab {
                     },
                     Some(AdjustedInput::CloseThisPane) => {
                         self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                        should_update_ui = true;
                     },
                     None => {},
                 }
@@ -1244,7 +1256,7 @@ impl Tab {
                 }
             },
         }
-        Ok(())
+        Ok(should_update_ui)
     }
     pub fn get_active_terminal_cursor_position(
         &self,
