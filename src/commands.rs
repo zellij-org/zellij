@@ -237,7 +237,7 @@ pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
 }
 
 fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {
-    let os_input = get_os_input(zellij_client::os_input_output::get_client_os_input);
+    let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     match Action::actions_from_cli(cli_action) {
         Ok(actions) => {
             zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
