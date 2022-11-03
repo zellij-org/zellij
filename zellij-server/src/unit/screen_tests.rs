@@ -1943,6 +1943,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         direction: None,
         line_number: None,
         floating: false,
+        cwd: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -1980,6 +1981,7 @@ pub fn send_cli_edit_action_with_line_number() {
         direction: None,
         line_number: Some(100),
         floating: false,
+        cwd: None,
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2017,6 +2019,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         direction: Some(Direction::Down),
         line_number: None,
         floating: false,
+        cwd: None,
     };
     send_cli_action_to_server(
         &session_metadata,
