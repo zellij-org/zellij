@@ -46,13 +46,22 @@ fn main() {
             direction,
             line_number,
             floating,
+            cwd,
         })) = opts.command
         {
+            let mut file = file;
+            let cwd = cwd.or_else(|| std::env::current_dir().ok());
+            if file.is_relative() {
+                if let Some(cwd) = cwd.as_ref() {
+                    file = cwd.join(file);
+                }
+            }
             let command_cli_action = CliAction::Edit {
                 file,
                 direction,
                 line_number,
                 floating,
+                cwd,
             };
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);
