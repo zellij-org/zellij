@@ -75,7 +75,7 @@ pub(crate) fn get_terminal_size_using_fd(fd: RawFd) -> Size {
 
 #[derive(Clone)]
 pub struct ClientOsInputOutput {
-    orig_termios: Arc<Mutex<termios::Termios>>,
+    orig_termios: Option<Arc<Mutex<termios::Termios>>>,
     send_instructions_to_server: Arc<Mutex<Option<IpcSenderWithContext<ClientToServerMsg>>>>,
     receive_instructions_from_server: Arc<Mutex<Option<IpcReceiverWithContext<ServerToClientMsg>>>>,
 }
@@ -121,8 +121,16 @@ impl ClientOsApi for ClientOsInputOutput {
         into_raw_mode(fd);
     }
     fn unset_raw_mode(&self, fd: RawFd) -> Result<(), nix::Error> {
-        let orig_termios = self.orig_termios.lock().unwrap();
-        unset_raw_mode(fd, orig_termios.clone())
+        match &self.orig_termios {
+            Some(orig_termios) => {
+                let orig_termios = orig_termios.lock().unwrap();
+                unset_raw_mode(fd, orig_termios.clone())
+            },
+            None => {
+                log::warn!("trying to unset raw mode for a non-terminal session");
+                Ok(())
+            },
+        }
     }
     fn box_clone(&self) -> Box<dyn ClientOsApi> {
         Box::new((*self).clone())
@@ -249,7 +257,16 @@ impl Clone for Box<dyn ClientOsApi> {
 
 pub fn get_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
     let current_termios = termios::tcgetattr(0)?;
-    let orig_termios = Arc::new(Mutex::new(current_termios));
+    let orig_termios = Some(Arc::new(Mutex::new(current_termios)));
+    Ok(ClientOsInputOutput {
+        orig_termios,
+        send_instructions_to_server: Arc::new(Mutex::new(None)),
+        receive_instructions_from_server: Arc::new(Mutex::new(None)),
+    })
+}
+
+pub fn get_cli_client_os_input() -> Result<ClientOsInputOutput, nix::Error> {
+    let orig_termios = None; // not a terminal
     Ok(ClientOsInputOutput {
         orig_termios,
         send_instructions_to_server: Arc::new(Mutex::new(None)),
