@@ -365,6 +365,7 @@ pub struct Grid {
     scrollback_buffer_lines: usize,
     pub mouse_mode: MouseMode,
     pub mouse_tracking: MouseTracking,
+    pub focus_event_tracking: bool,
     pub search_results: SearchResult,
     pub pending_clipboard_update: Option<String>,
 }
@@ -497,6 +498,7 @@ impl Grid {
             scrollback_buffer_lines: 0,
             mouse_mode: MouseMode::default(),
             mouse_tracking: MouseTracking::default(),
+            focus_event_tracking: false,
             character_cell_size,
             search_results: Default::default(),
             sixel_grid,
@@ -1533,6 +1535,7 @@ impl Grid {
         self.sixel_scrolling = false;
         self.mouse_mode = MouseMode::NoEncoding;
         self.mouse_tracking = MouseTracking::Off;
+        self.focus_event_tracking = false;
         self.cursor_is_hidden = false;
         if let Some(images_to_reap) = self.sixel_grid.clear() {
             self.sixel_grid.reap_images(images_to_reap);
@@ -1941,6 +1944,20 @@ impl Grid {
     }
     pub fn is_alternate_mode_active(&self) -> bool {
         self.alternate_screen_state.is_some()
+    }
+    pub fn focus_event(&self) -> Option<String> {
+        if self.focus_event_tracking {
+            Some("\u{1b}[I".into())
+        } else {
+            None
+        }
+    }
+    pub fn unfocus_event(&self) -> Option<String> {
+        if self.focus_event_tracking {
+            Some("\u{1b}[O".into())
+        } else {
+            None
+        }
     }
 }
 
@@ -2356,6 +2373,9 @@ impl Perform for Grid {
                         1003 => {
                             // TBD: any-even mouse tracking
                         },
+                        1004 => {
+                            self.focus_event_tracking = false;
+                        },
                         1005 => {
                             self.mouse_mode = MouseMode::NoEncoding;
                         },
@@ -2449,6 +2469,9 @@ impl Perform for Grid {
                         },
                         1003 => {
                             // TBD: any-even mouse tracking
+                        },
+                        1004 => {
+                            self.focus_event_tracking = true;
                         },
                         1005 => {
                             self.mouse_mode = MouseMode::Utf8;

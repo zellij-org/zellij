@@ -7,7 +7,7 @@ use floating_pane_grid::FloatingPaneGrid;
 use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
-    panes::PaneId,
+    panes::{PaneId, ActivePanes},
     ui::pane_contents_and_ui::PaneContentsAndUi,
     ClientId,
 };
@@ -50,7 +50,7 @@ pub struct FloatingPanes {
     session_is_mirrored: bool,
     desired_pane_positions: HashMap<PaneId, PaneGeom>, // this represents the positions of panes the user moved with intention, rather than by resizing the terminal window
     z_indices: Vec<PaneId>,
-    active_panes: HashMap<ClientId, PaneId>,
+    active_panes: ActivePanes,
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
 }
@@ -67,6 +67,7 @@ impl FloatingPanes {
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
         style: Style,
+        os_input: Box<dyn ServerOsApi>,
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
@@ -81,7 +82,7 @@ impl FloatingPanes {
             desired_pane_positions: HashMap::new(),
             z_indices: vec![],
             show_panes: false,
-            active_panes: HashMap::new(),
+            active_panes: ActivePanes::new(&os_input),
             pane_being_moved_with_mouse: None,
         }
     }
@@ -195,6 +196,11 @@ impl FloatingPanes {
     }
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
         self.show_panes = should_show_floating_panes;
+        if should_show_floating_panes {
+            self.active_panes.focus_all_panes(&mut self.panes);
+        } else {
+            self.active_panes.unfocus_all_panes(&mut self.panes);
+        }
     }
     pub fn active_panes_contain(&self, client_id: &ClientId) -> bool {
         self.active_panes.contains_key(client_id)
@@ -260,7 +266,7 @@ impl FloatingPanes {
         });
 
         for (z_index, (kind, pane)) in floating_panes.iter_mut().enumerate() {
-            let mut active_panes = self.active_panes.clone();
+            let mut active_panes = self.active_panes.clone_active_panes();
             let multiple_users_exist_in_session =
                 { self.connected_clients_in_app.borrow().len() > 1 };
             active_panes.retain(|c_id, _| self.connected_clients.borrow().contains(c_id));
@@ -532,7 +538,7 @@ impl FloatingPanes {
             },
             None => {
                 // TODO: can this happen?
-                self.active_panes.clear();
+                self.active_panes.clear(&mut self.panes);
                 self.z_indices.clear();
             },
         }
@@ -603,7 +609,7 @@ impl FloatingPanes {
             },
             None => {
                 // TODO: can this happen?
-                self.active_panes.clear();
+                self.active_panes.clear(&mut self.panes);
                 self.z_indices.clear();
             },
         }
@@ -673,7 +679,7 @@ impl FloatingPanes {
             },
             None => {
                 // TODO: can this happen?
-                self.active_panes.clear();
+                self.active_panes.clear(&mut self.panes);
                 self.z_indices.clear();
             },
         }
@@ -743,7 +749,7 @@ impl FloatingPanes {
             },
             None => {
                 // TODO: can this happen?
-                self.active_panes.clear();
+                self.active_panes.clear(&mut self.panes);
                 self.z_indices.clear();
             },
         }
@@ -816,7 +822,7 @@ impl FloatingPanes {
             if active_pane_id == pane_id {
                 match next_active_pane {
                     Some(next_active_pane) => {
-                        self.active_panes.insert(client_id, next_active_pane);
+                        self.active_panes.insert(client_id, next_active_pane, &mut self.panes);
                         self.focus_pane(next_active_pane, client_id);
                     },
                     None => {
@@ -830,7 +836,7 @@ impl FloatingPanes {
         let connected_clients: Vec<ClientId> =
             self.connected_clients.borrow().iter().copied().collect();
         for client_id in connected_clients {
-            self.active_panes.insert(client_id, pane_id);
+            self.active_panes.insert(client_id, pane_id, &mut self.panes);
         }
         self.z_indices.retain(|p_id| *p_id != pane_id);
         self.z_indices.push(pane_id);
@@ -838,12 +844,12 @@ impl FloatingPanes {
         self.set_force_render();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.active_panes.insert(client_id, pane_id);
+        self.active_panes.insert(client_id, pane_id, &mut self.panes);
         self.focus_pane_for_all_clients(pane_id);
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.z_indices.retain(|p_id| *p_id != pane_id);
-        self.active_panes.remove(&client_id);
+        self.active_panes.remove(&client_id, &mut self.panes);
         self.set_force_render();
     }
     pub fn get_pane(&self, pane_id: PaneId) -> Option<&Box<dyn Pane>> {
@@ -960,8 +966,8 @@ impl FloatingPanes {
             .map(|(cid, _pid)| *cid)
             .collect();
         for client_id in clients_in_pane {
-            self.active_panes.remove(&client_id);
-            self.active_panes.insert(client_id, to_pane_id);
+            self.active_panes.remove(&client_id, &mut self.panes);
+            self.active_panes.insert(client_id, to_pane_id, &mut self.panes);
         }
     }
 }

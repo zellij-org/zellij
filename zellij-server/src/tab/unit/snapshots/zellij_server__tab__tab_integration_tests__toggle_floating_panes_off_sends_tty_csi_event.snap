@@ -1,0 +1,6 @@
+---
+source: zellij-server/src/tab/./unit/tab_integration_tests.rs
+assertion_line: 2744
+expression: "format!(\"{:?}\", * tty_stdin_bytes.lock().unwrap())"
+---
+{1: [27, 91, 73], 3: [27, 91, 79]}
