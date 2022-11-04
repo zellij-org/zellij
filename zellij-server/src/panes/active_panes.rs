@@ -32,7 +32,12 @@ impl ActivePanes {
     pub fn get(&self, client_id: &ClientId) -> Option<&PaneId> {
         self.active_panes.get(client_id)
     }
-    pub fn insert(&mut self, client_id: ClientId, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    pub fn insert(
+        &mut self,
+        client_id: ClientId,
+        pane_id: PaneId,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+    ) {
         self.unfocus_pane_for_client(client_id, panes);
         self.active_panes.insert(client_id, pane_id);
         self.focus_pane(pane_id, panes);
@@ -46,13 +51,17 @@ impl ActivePanes {
     pub fn is_empty(&self) -> bool {
         self.active_panes.is_empty()
     }
-    pub fn iter(&self) -> impl Iterator<Item=(&ClientId, &PaneId)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&ClientId, &PaneId)> {
         self.active_panes.iter()
     }
-    pub fn values(&self) -> impl Iterator<Item=&PaneId> {
+    pub fn values(&self) -> impl Iterator<Item = &PaneId> {
         self.active_panes.values()
     }
-    pub fn remove(&mut self, client_id: &ClientId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) -> Option<PaneId> {
+    pub fn remove(
+        &mut self,
+        client_id: &ClientId,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+    ) -> Option<PaneId> {
         if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
@@ -74,7 +83,11 @@ impl ActivePanes {
     pub fn contains_key(&self, client_id: &ClientId) -> bool {
         self.active_panes.contains_key(client_id)
     }
-    fn unfocus_pane_for_client(&self, client_id: ClientId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
+    fn unfocus_pane_for_client(
+        &self,
+        client_id: ClientId,
+        panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
+    ) {
         if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
@@ -82,14 +95,18 @@ impl ActivePanes {
     fn unfocus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.unfocus_event()) {
-                let _ = self.os_api.write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
             }
         }
     }
     fn focus_pane(&self, pane_id: PaneId, panes: &mut BTreeMap<PaneId, Box<dyn Pane>>) {
         if let PaneId::Terminal(terminal_id) = pane_id {
             if let Some(focus_event) = panes.get(&pane_id).and_then(|p| p.focus_event()) {
-                let _ = self.os_api.write_to_tty_stdin(terminal_id, focus_event.as_bytes());
+                let _ = self
+                    .os_api
+                    .write_to_tty_stdin(terminal_id, focus_event.as_bytes());
             }
         }
     }

@@ -22,7 +22,7 @@ use crate::pty_writer::PtyWriteInstruction;
 use zellij_utils::channels::{self, ChannelWithContext, SenderWithContext};
 
 use std::cell::RefCell;
-use std::collections::{HashMap, BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::os::unix::io::RawFd;
 use std::rc::Rc;
 
@@ -59,7 +59,12 @@ impl ServerOsApi for FakeInputOutput {
         unimplemented!()
     }
     fn write_to_tty_stdin(&self, id: u32, buf: &[u8]) -> Result<usize> {
-        self.tty_stdin_bytes.lock().unwrap().entry(id).or_insert_with(|| vec![]).extend_from_slice(buf);
+        self.tty_stdin_bytes
+            .lock()
+            .unwrap()
+            .entry(id)
+            .or_insert_with(|| vec![])
+            .extend_from_slice(buf);
         Ok(buf.len())
     }
     fn tcdrain(&self, _id: u32) -> Result<()> {
@@ -224,7 +229,11 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     tab
 }
 
-fn create_new_tab_with_os_api(size: Size, default_mode: ModeInfo, os_api: &Box<FakeInputOutput>) -> Tab {
+fn create_new_tab_with_os_api(
+    size: Size,
+    default_mode: ModeInfo,
+    os_api: &Box<FakeInputOutput>,
+) -> Tab {
     set_session_name("test".into());
     let index = 0;
     let position = 0;

@@ -5,8 +5,12 @@ use crate::tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use tiled_pane_grid::{split, TiledPaneGrid};
 
 use crate::{
-    os_input_output::ServerOsApi, output::Output, panes::{PaneId, ActivePanes}, ui::boundaries::Boundaries,
-    ui::pane_contents_and_ui::PaneContentsAndUi, ClientId,
+    os_input_output::ServerOsApi,
+    output::Output,
+    panes::{ActivePanes, PaneId},
+    ui::boundaries::Boundaries,
+    ui::pane_contents_and_ui::PaneContentsAndUi,
+    ClientId,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -330,13 +334,15 @@ impl TiledPanes {
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
-        self.active_panes.insert(client_id, pane_id, &mut self.panes);
+        self.active_panes
+            .insert(client_id, pane_id, &mut self.panes);
         if self.session_is_mirrored {
             // move all clients
             let connected_clients: Vec<ClientId> =
                 self.connected_clients.borrow().iter().copied().collect();
             for client_id in connected_clients {
-                self.active_panes.insert(client_id, pane_id, &mut self.panes);
+                self.active_panes
+                    .insert(client_id, pane_id, &mut self.panes);
             }
         }
     }
@@ -595,7 +601,8 @@ impl TiledPanes {
         );
         let next_active_pane_id = pane_grid.next_selectable_pane_id(&active_pane_id);
         for client_id in connected_clients {
-            self.active_panes.insert(client_id, next_active_pane_id, &mut self.panes);
+            self.active_panes
+                .insert(client_id, next_active_pane_id, &mut self.panes);
         }
         self.set_pane_active_at(next_active_pane_id);
     }
@@ -611,7 +618,8 @@ impl TiledPanes {
         );
         let next_active_pane_id = pane_grid.previous_selectable_pane_id(&active_pane_id);
         for client_id in connected_clients {
-            self.active_panes.insert(client_id, next_active_pane_id, &mut self.panes);
+            self.active_panes
+                .insert(client_id, next_active_pane_id, &mut self.panes);
         }
         self.set_pane_active_at(next_active_pane_id);
     }
@@ -977,7 +985,8 @@ impl TiledPanes {
             Some(next_active_pane) => {
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {
-                        self.active_panes.insert(client_id, next_active_pane, &mut self.panes);
+                        self.active_panes
+                            .insert(client_id, next_active_pane, &mut self.panes);
                     }
                 }
             },
@@ -1156,7 +1165,8 @@ impl TiledPanes {
             .collect();
         for client_id in clients_in_pane {
             self.active_panes.remove(&client_id, &mut self.panes);
-            self.active_panes.insert(client_id, to_pane_id, &mut self.panes);
+            self.active_panes
+                .insert(client_id, to_pane_id, &mut self.panes);
         }
     }
 }
