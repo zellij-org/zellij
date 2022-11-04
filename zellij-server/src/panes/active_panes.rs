@@ -1,20 +1,7 @@
-use crate::tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
+use crate::tab::Pane;
 
-use crate::{
-    os_input_output::ServerOsApi, output::Output, panes::PaneId, ui::boundaries::Boundaries,
-    ui::pane_contents_and_ui::PaneContentsAndUi, ClientId,
-};
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::rc::Rc;
-use std::time::Instant;
-use zellij_utils::errors::prelude::*;
-use zellij_utils::{
-    data::{ModeInfo, Style},
-    input::command::RunCommand,
-    input::layout::SplitDirection,
-    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
-};
+use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
+use std::collections::{BTreeMap, HashMap};
 
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
