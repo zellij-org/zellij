@@ -142,7 +142,7 @@ impl TiledPanes {
         mut with_pane: Box<dyn Pane>,
     ) -> Option<Box<dyn Pane>> {
         let with_pane_id = with_pane.pid();
-        if self.draw_pane_frames {
+        if self.draw_pane_frames && !with_pane.borderless() {
             with_pane.set_content_offset(Offset::frame(1));
         }
         let removed_pane = self.panes.remove(&pane_id).map(|removed_pane| {
@@ -248,7 +248,7 @@ impl TiledPanes {
             }
 
             #[allow(clippy::if_same_then_else)]
-            if draw_pane_frames & !pane.borderless() {
+            if draw_pane_frames && !pane.borderless() {
                 // there's definitely a frame around this pane, offset its contents
                 pane.set_content_offset(Offset::frame(1));
             } else if draw_pane_frames && pane.borderless() {
