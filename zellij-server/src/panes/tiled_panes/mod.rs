@@ -828,6 +828,7 @@ impl TiledPanes {
         }
         resize_pty!(current_position, self.os_api).unwrap();
         current_position.set_should_render(true);
+        self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
@@ -861,6 +862,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -896,6 +898,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -931,6 +934,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -966,6 +970,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
