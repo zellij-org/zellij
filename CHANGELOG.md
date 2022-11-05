@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: treat CWD properly when opening your editor through `zellij edit` or `ze` (https://github.com/zellij-org/zellij/pull/1904)
 * fix: allow cli actions to be run outside of a tty environment (https://github.com/zellij-org/zellij/pull/1905)
 * Terminal compatibility: send focus in/out events to terminal panes (https://github.com/zellij-org/zellij/pull/1908)
+* fix: various bugs with no-frames and floating panes (https://github.com/zellij-org/zellij/pull/1909)
 
 ## [0.32.0] - 2022-10-25
 
