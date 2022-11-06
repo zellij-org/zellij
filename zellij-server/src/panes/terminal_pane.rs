@@ -655,6 +655,12 @@ impl Pane for TerminalPane {
     fn mouse_scroll_down(&self, position: &Position) -> Option<String> {
         self.grid.mouse_scroll_down_signal(position)
     }
+    fn focus_event(&self) -> Option<String> {
+        self.grid.focus_event()
+    }
+    fn unfocus_event(&self) -> Option<String> {
+        self.grid.unfocus_event()
+    }
     fn get_line_number(&self) -> Option<usize> {
         // + 1 because the absolute position in the scrollback is 0 indexed and this should be 1 indexed
         Some(self.grid.absolute_position_in_scrollback() + 1)

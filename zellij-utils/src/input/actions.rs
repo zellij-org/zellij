@@ -301,10 +301,12 @@ impl Action {
                 file,
                 line_number,
                 floating,
+                cwd,
             } => {
                 let mut file = file;
+                let cwd = cwd.or_else(|| std::env::current_dir().ok());
                 if file.is_relative() {
-                    if let Some(cwd) = std::env::current_dir().ok() {
+                    if let Some(cwd) = cwd {
                         file = cwd.join(file);
                     }
                 }

@@ -162,6 +162,10 @@ pub enum Sessions {
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Change the working directory of the editor
+        #[clap(long, value_parser)]
+        cwd: Option<PathBuf>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -282,6 +286,10 @@ pub enum CliAction {
         /// Open the new pane in floating mode
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         floating: bool,
+
+        /// Change the working directory of the editor
+        #[clap(long, value_parser)]
+        cwd: Option<PathBuf>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode { input_mode: InputMode },

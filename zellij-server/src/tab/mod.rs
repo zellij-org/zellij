@@ -330,6 +330,12 @@ pub trait Pane {
     fn mouse_scroll_down(&self, _position: &Position) -> Option<String> {
         None
     }
+    fn focus_event(&self) -> Option<String> {
+        None
+    }
+    fn unfocus_event(&self) -> Option<String> {
+        None
+    }
     fn get_line_number(&self) -> Option<usize> {
         None
     }
@@ -429,6 +435,7 @@ impl Tab {
             session_is_mirrored,
             default_mode_info.clone(),
             style,
+            os_api.clone(),
         );
 
         let clipboard_provider = match copy_options.command {
@@ -751,7 +758,7 @@ impl Tab {
                     self.should_clear_display_before_rendering = true;
                     self.tiled_panes
                         .focus_pane(focused_floating_pane_id, client_id);
-                    self.floating_panes.toggle_show_panes(false);
+                    self.hide_floating_panes();
                 }
             }
         } else if let Some(focused_pane_id) = self.tiled_panes.focused_pane_id(client_id) {
@@ -761,13 +768,18 @@ impl Tab {
                     return Ok(());
                 }
                 if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
+                    if self.draw_pane_frames && !embedded_pane_to_float.borderless() {
+                        embedded_pane_to_float.set_content_offset(Offset::frame(1));
+                    } else if !self.draw_pane_frames {
+                        embedded_pane_to_float.set_content_offset(Offset::default());
+                    }
                     embedded_pane_to_float.set_geom(new_pane_geom);
                     resize_pty!(embedded_pane_to_float, self.os_api).with_context(err_context)?;
                     embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes
                         .add_pane(focused_pane_id, embedded_pane_to_float);
                     self.floating_panes.focus_pane(focused_pane_id, client_id);
-                    self.floating_panes.toggle_show_panes(true);
+                    self.show_floating_panes();
                 }
             }
         }
@@ -779,10 +791,10 @@ impl Tab {
         default_shell: Option<TerminalAction>,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.toggle_show_panes(false);
+            self.hide_floating_panes();
             self.set_force_render();
         } else {
-            self.floating_panes.toggle_show_panes(true);
+            self.show_floating_panes();
             match self.floating_panes.first_floating_pane_id() {
                 Some(first_floating_pane_id) => {
                     if !self.floating_panes.active_panes_contain(&client_id) {
@@ -819,8 +831,8 @@ impl Tab {
         let err_context = || format!("failed to create new pane with id {pid:?}");
 
         match should_float {
-            Some(true) => self.floating_panes.toggle_show_panes(true),
-            Some(false) => self.floating_panes.toggle_show_panes(false),
+            Some(true) => self.show_floating_panes(),
+            Some(false) => self.hide_floating_panes(),
             None => {},
         };
         self.close_down_to_max_terminals()
@@ -1759,7 +1771,7 @@ impl Tab {
             let closed_pane = self.floating_panes.remove_pane(id);
             self.floating_panes.move_clients_out_of_pane(id);
             if !self.floating_panes.has_panes() {
-                self.floating_panes.toggle_show_panes(false);
+                self.hide_floating_panes();
             }
             self.set_force_render();
             self.floating_panes.set_force_render();
@@ -2206,7 +2218,7 @@ impl Tab {
             self.tiled_panes.focus_pane(clicked_pane, client_id);
             self.set_pane_active_at(clicked_pane);
             if self.floating_panes.panes_are_visible() {
-                self.floating_panes.toggle_show_panes(false);
+                self.hide_floating_panes();
                 self.set_force_render();
             }
         }
@@ -2710,6 +2722,19 @@ impl Tab {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_search();
         }
+    }
+
+    fn show_floating_panes(&mut self) {
+        // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
+        self.floating_panes.toggle_show_panes(true);
+        self.tiled_panes.unfocus_all_panes();
+    }
+
+    fn hide_floating_panes(&mut self) {
+        // this function is to be preferred to directly invoking
+        // floating_panes.toggle_show_panes(false)
+        self.floating_panes.toggle_show_panes(false);
+        self.tiled_panes.focus_all_panes();
     }
 }
 

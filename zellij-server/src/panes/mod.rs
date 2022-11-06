@@ -5,12 +5,14 @@ pub mod selection;
 pub mod sixel;
 pub mod terminal_character;
 
+mod active_panes;
 mod floating_panes;
 mod plugin_pane;
 mod search;
 mod terminal_pane;
 mod tiled_panes;
 
+pub use active_panes::*;
 pub use alacritty_functions::*;
 pub use floating_panes::*;
 pub use grid::*;
