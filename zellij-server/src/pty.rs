@@ -148,7 +148,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     .with_context(err_context)?;
                                 }
                             } else {
-                                log::error!("Failed to spawn terminal: command not found");
+                                log::error!("Failed to spawn terminal: {:?}", err);
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
                                     .with_context(err_context)?;
                             }
