@@ -1,44 +1,43 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::{fs::File, io::Write};
+use crate::{panes::PaneId, ClientId};
 
-use crate::panes::PaneId;
-use zellij_utils::tempfile::tempfile;
-
-use std::env;
-use std::os::unix::io::RawFd;
-use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
-use std::process::{Child, Command};
-use std::sync::{Arc, Mutex};
-
-use zellij_utils::errors::prelude::*;
-use zellij_utils::{async_std, interprocess, libc, nix, signal_hook};
-
-use async_std::fs::File as AsyncFile;
-use async_std::os::unix::io::FromRawFd;
+use async_std::{fs::File as AsyncFile, io::ReadExt, os::unix::io::FromRawFd};
 use interprocess::local_socket::LocalSocketStream;
-
-use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
-
-use nix::pty::{openpty, OpenptyResult, Winsize};
-use nix::sys::signal::{kill, Signal};
-use nix::sys::termios;
-
-use nix::unistd;
+use nix::{
+    pty::{openpty, OpenptyResult, Winsize},
+    sys::{
+        signal::{kill, Signal},
+        termios,
+    },
+    unistd,
+};
 use signal_hook::consts::*;
+use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
+    async_std,
     data::Palette,
+    errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
+    interprocess,
     ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg},
+    libc, nix,
     shared::default_palette,
+    signal_hook,
+    tempfile::tempfile,
 };
 
-use async_std::io::ReadExt;
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    env,
+    fs::File,
+    io::Write,
+    os::unix::{io::RawFd, process::CommandExt},
+    path::PathBuf,
+    process::{Child, Command},
+    sync::{Arc, Mutex},
+};
+
 pub use async_trait::async_trait;
-
 pub use nix::unistd::Pid;
-
-use crate::ClientId;
 
 fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
     // TODO: do this with the nix ioctl
@@ -164,10 +163,11 @@ fn handle_openpty(
                     command.current_dir(current_dir);
                 } else {
                     // TODO: propagate this to the user
-                    log::error!(
-                        "Failed to set CWD for new pane. {} does not exist or is not a folder",
+                    return Err(anyhow!(
+                        "Failed to set CWD for new pane. '{}' does not exist or is not a folder",
                         current_dir.display()
-                    );
+                    ))
+                    .context("failed to open PTY");
                 }
             }
             command
@@ -417,16 +417,18 @@ pub trait ServerOsApi: Send + Sync {
 
 impl ServerOsApi for ServerOsInputOutput {
     fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to set terminal id {} to size ({}, {})",
+                id, rows, cols
+            )
+        };
+
         match self
             .terminal_id_to_raw_fd
             .lock()
             .to_anyhow()
-            .with_context(|| {
-                format!(
-                    "failed to set terminal id {} to size ({}, {})",
-                    id, rows, cols
-                )
-            })?
+            .with_context(err_context)?
             .get(&id)
         {
             Some(Some(fd)) => {
@@ -435,7 +437,9 @@ impl ServerOsApi for ServerOsInputOutput {
                 }
             },
             _ => {
-                log::error!("Failed to find terminal fd for id: {id}, so cannot resize terminal");
+                Err::<(), _>(anyhow!("failed to find terminal fd for id {id}"))
+                    .with_context(err_context)
+                    .non_fatal();
             },
         }
         Ok(())

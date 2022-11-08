@@ -490,10 +490,13 @@ impl Tab {
                 "failed to apply layout {layout:#?} in tab {tab_index} for client id {client_id}"
             )
         };
+
         if self.tiled_panes.has_panes() {
-            log::error!(
+            Err::<(), _>(anyhow!(
                 "Applying a layout to a tab with existing panes - this is not yet supported!"
-            );
+            ))
+            .with_context(err_context)
+            .non_fatal();
         }
         let (viewport_cols, viewport_rows) = {
             let viewport = self.viewport.borrow();
@@ -620,7 +623,9 @@ impl Tab {
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(unused_pid)))
                         .with_context(err_context)?;
                 }
-                log::error!("{}", e); // TODO: propagate this to the user
+                Err::<(), _>(anyError::msg(e))
+                    .with_context(err_context)
+                    .non_fatal(); // TODO: propagate this to the user
                 Ok(())
             },
         }
@@ -934,7 +939,11 @@ impl Tab {
                             .with_context(err_context)?;
                     },
                     None => {
-                        log::error!("Could not find editor pane to replace - is no pane focused?")
+                        Err::<(), _>(anyhow!(
+                            "Could not find editor pane to replace - is no pane focused?"
+                        ))
+                        .with_context(err_context)
+                        .non_fatal();
                     },
                 }
             },

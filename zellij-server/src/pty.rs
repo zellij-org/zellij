@@ -87,7 +87,6 @@ pub(crate) struct Pty {
 }
 
 pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
-    let err_context = || "failed in pty thread main".to_string();
     loop {
         let (event, mut err_ctx) = pty.bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Pty((&event).into()));
@@ -98,6 +97,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 name,
                 client_or_tab_index,
             ) => {
+                let err_context =
+                    || format!("failed to spawn terminal for {:?}", client_or_tab_index);
+
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -146,7 +148,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     .with_context(err_context)?;
                                 }
                             } else {
-                                log::error!("Failed to spawn terminal: command not found");
+                                log::error!("Failed to spawn terminal: {:?}", err);
                                 pty.close_pane(PaneId::Terminal(*terminal_id))
                                     .with_context(err_context)?;
                             }
@@ -156,6 +158,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 }
             },
             PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
+                let err_context =
+                    || format!("failed to open in-place editor for client {}", client_id);
+
                 match pty.spawn_terminal(
                     Some(TerminalAction::OpenFile(temp_file, line_number)),
                     ClientOrTabIndex::ClientId(client_id),
@@ -170,11 +175,14 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             .with_context(err_context)?;
                     },
                     Err(e) => {
-                        log::error!("Failed to open editor: {}", e);
+                        Err::<(), _>(e).with_context(err_context).non_fatal();
                     },
                 }
             },
             PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
+                let err_context =
+                    || format!("failed to spawn terminal vertically for client {client_id}");
+
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -242,6 +250,9 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 }
             },
             PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
+                let err_context =
+                    || format!("failed to spawn terminal horizontally for client {client_id}");
+
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
                         run_command.hold_on_close,
@@ -315,9 +326,13 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 pty.bus
                     .senders
                     .send_to_screen(ScreenInstruction::GoToTab(tab_index, Some(client_id)))
-                    .with_context(err_context)?;
+                    .with_context(|| {
+                        format!("failed to move client {} to tab {}", client_id, tab_index)
+                    })?;
             },
             PtyInstruction::NewTab(terminal_action, tab_layout, tab_name, client_id) => {
+                let err_context = || format!("failed to open new tab for client {}", client_id);
+
                 pty.spawn_terminals_for_layout(
                     tab_layout.unwrap_or_else(|| layout.new_tab()),
                     terminal_action.clone(),
@@ -341,20 +356,26 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 }
             },
             PtyInstruction::ClosePane(id) => {
-                pty.close_pane(id).with_context(err_context)?;
-                pty.bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .with_context(err_context)?;
+                pty.close_pane(id)
+                    .and_then(|_| {
+                        pty.bus
+                            .senders
+                            .send_to_server(ServerInstruction::UnblockInputThread)
+                    })
+                    .with_context(|| format!("failed to close pane {:?}", id))?;
             },
             PtyInstruction::CloseTab(ids) => {
-                pty.close_tab(ids).with_context(err_context)?;
-                pty.bus
-                    .senders
-                    .send_to_server(ServerInstruction::UnblockInputThread)
-                    .with_context(err_context)?;
+                pty.close_tab(ids)
+                    .and_then(|_| {
+                        pty.bus
+                            .senders
+                            .send_to_server(ServerInstruction::UnblockInputThread)
+                    })
+                    .context("failed to close tabs")?;
             },
             PtyInstruction::ReRunCommandInPane(pane_id, run_command) => {
+                let err_context = || format!("failed to rerun command in pane {:?}", pane_id);
+
                 match pty
                     .rerun_command_in_pane(pane_id, run_command.clone())
                     .with_context(err_context)
@@ -585,9 +606,7 @@ impl Pty {
                                                             // stripped later
                                 ));
                             },
-                            Err(e) => {
-                                log::error!("Failed to spawn terminal: {}", e);
-                            },
+                            Err(e) => Err::<(), _>(e).with_context(err_context).non_fatal(),
                         }
                     } else {
                         match self
