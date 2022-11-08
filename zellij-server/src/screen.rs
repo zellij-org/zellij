@@ -46,41 +46,41 @@ use zellij_utils::{
 ///   argument is optional and not needed when the closure returns `()`
 macro_rules! active_tab {
     ($screen:ident, $client_id:ident, $closure:expr) => {
-        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
-            // This could be made more ergonomic by declaring the type of 'active_tab' in the
-            // closure, known as "Type Ascription". Then we could hint the type here and forego the
-            // "&mut Tab" in all the closures below...
-            // See: https://github.com/rust-lang/rust/issues/23416
-            $closure(active_tab);
-        } else {
-            log::error!("Active tab not found for client id: {:?}", $client_id);
-        }
+        match $screen.get_active_tab_mut($client_id) {
+            Ok(active_tab) => {
+                // This could be made more ergonomic by declaring the type of 'active_tab' in the
+                // closure, known as "Type Ascription". Then we could hint the type here and forego the
+                // "&mut Tab" in all the closures below...
+                // See: https://github.com/rust-lang/rust/issues/23416
+                $closure(active_tab);
+            },
+            Err(err) => Err::<(), _>(err).non_fatal(),
+        };
     };
     // Same as above, but with an added `?` for when the close returns a `Result` type.
     ($screen:ident, $client_id:ident, $closure:expr, ?) => {
-        if let Some(active_tab) = $screen.get_active_tab_mut($client_id) {
+        match $screen.get_active_tab_mut($client_id) {
+            Ok(active_tab) => {
             $closure(active_tab)?;
-        } else {
-            log::error!("Active tab not found for client id: {:?}", $client_id);
-        }
+            },
+            Err(err) => Err::<(), _>(err).non_fatal(),
+        };
     };
 }
 
 macro_rules! active_tab_and_connected_client_id {
     ($screen:ident, $client_id:ident, $closure:expr) => {
         match $screen.get_active_tab_mut($client_id) {
-            Some(active_tab) => {
+            Ok(active_tab) => {
                 $closure(active_tab, $client_id);
             },
-            None => {
+            Err(_) => {
                 if let Some(client_id) = $screen.get_first_client_id() {
                     match $screen.get_active_tab_mut(client_id) {
-                        Some(active_tab) => {
+                        Ok(active_tab) => {
                             $closure(active_tab, client_id);
                         },
-                        None => {
-                            log::error!("Active tab not found for client id: {:?}", $client_id);
-                        },
+                        Err(err) => Err::<(), _>(err).non_fatal(),
                     }
                 } else {
                     log::error!("No client ids in screen found");
@@ -91,18 +91,16 @@ macro_rules! active_tab_and_connected_client_id {
     // Same as above, but with an added `?` for when the closure returns a `Result` type.
     ($screen:ident, $client_id:ident, $closure:expr, ?) => {
         match $screen.get_active_tab_mut($client_id) {
-            Some(active_tab) => {
+            Ok(active_tab) => {
                 $closure(active_tab, $client_id)?;
             },
-            None => {
+            Err(_) => {
                 if let Some(client_id) = $screen.get_first_client_id() {
                     match $screen.get_active_tab_mut(client_id) {
-                        Some(active_tab) => {
+                        Ok(active_tab) => {
                             $closure(active_tab, client_id)?;
                         },
-                        None => {
-                            log::error!("Active tab not found for client id: {:?}", $client_id);
-                        },
+                        Err(err) => Err::<(), _>(err).non_fatal(),
                     }
                 } else {
                     log::error!("No client ids in screen found");
@@ -440,10 +438,13 @@ impl Screen {
         let err_context = || "failed to move clients from closed tab".to_string();
 
         if self.tabs.is_empty() {
-            log::error!(
+            Err::<(), _>(anyhow!(
                 "No tabs left, cannot move clients: {:?} from closed tab",
                 client_ids_and_mode_infos
-            );
+            ))
+            .with_context(err_context)
+            .non_fatal();
+
             return Ok(());
         }
         let first_tab_index = *self
@@ -530,44 +531,48 @@ impl Screen {
         };
 
         if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
-            if let Some(current_tab) = self.get_active_tab(client_id) {
-                // If new active tab is same as the current one, do nothing.
-                if current_tab.position == new_tab_pos {
-                    return Ok(());
-                }
+            //if let Some(current_tab) = self.get_active_tab(client_id) {
+            match self.get_active_tab(client_id) {
+                Ok(current_tab) => {
+                    // If new active tab is same as the current one, do nothing.
+                    if current_tab.position == new_tab_pos {
+                        return Ok(());
+                    }
 
-                let current_tab_index = current_tab.index;
-                let new_tab_index = new_tab.index;
-                if self.session_is_mirrored {
-                    self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
+                    let current_tab_index = current_tab.index;
+                    let new_tab_index = new_tab.index;
+                    if self.session_is_mirrored {
+                        self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
+                            .with_context(err_context)?;
+                        let all_connected_clients: Vec<ClientId> =
+                            self.connected_clients.borrow().iter().copied().collect();
+                        for client_id in all_connected_clients {
+                            self.update_client_tab_focus(client_id, new_tab_index);
+                        }
+                    } else {
+                        self.move_clients_between_tabs(
+                            current_tab_index,
+                            new_tab_index,
+                            Some(vec![client_id]),
+                        )
                         .with_context(err_context)?;
-                    let all_connected_clients: Vec<ClientId> =
-                        self.connected_clients.borrow().iter().copied().collect();
-                    for client_id in all_connected_clients {
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
-                } else {
-                    self.move_clients_between_tabs(
-                        current_tab_index,
-                        new_tab_index,
-                        Some(vec![client_id]),
-                    )
-                    .with_context(err_context)?;
-                    self.update_client_tab_focus(client_id, new_tab_index);
-                }
 
-                if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_index) {
-                    if current_tab.has_no_connected_clients() {
-                        current_tab.visible(false).with_context(err_context)?;
+                    if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_index) {
+                        if current_tab.has_no_connected_clients() {
+                            current_tab.visible(false).with_context(err_context)?;
+                        }
+                    } else {
+                        Err::<(), _>(anyhow!("Tab index {:?} not found", current_tab_index))
+                            .with_context(err_context)
+                            .non_fatal();
                     }
-                } else {
-                    log::error!("Tab index: {:?} not found", current_tab_index);
-                }
 
-                self.update_tabs().with_context(err_context)?;
-                return self.render().with_context(err_context);
-            } else {
-                log::error!("Active tab not found for client id: {client_id:?}");
+                    self.update_tabs().with_context(err_context)?;
+                    return self.render().with_context(err_context);
+                },
+                Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
         }
         Ok(())
@@ -575,45 +580,51 @@ impl Screen {
 
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
     pub fn switch_tab_next(&mut self, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || format!("failed to switch to next tab for client {client_id}");
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
+
         if let Some(client_id) = client_id {
-            if let Some(active_tab) = self.get_active_tab(client_id) {
-                let active_tab_pos = active_tab.position;
-                let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                return self.switch_active_tab(new_tab_pos, client_id);
-            } else {
-                log::error!("Active tab not found for client_id: {:?}", client_id);
+            match self.get_active_tab(client_id) {
+                Ok(active_tab) => {
+                    let active_tab_pos = active_tab.position;
+                    let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    return self.switch_active_tab(new_tab_pos, client_id);
+                },
+                Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
-            log::error!("Active tab not found for client id: {client_id:?}");
         }
         Ok(())
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
     pub fn switch_tab_prev(&mut self, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || format!("failed to switch to previous tab for client {client_id}");
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
-        if let Some(client_id) = client_id {
-            if let Some(active_tab) = self.get_active_tab(client_id) {
-                let active_tab_pos = active_tab.position;
-                let new_tab_pos = if active_tab_pos == 0 {
-                    self.tabs.len() - 1
-                } else {
-                    active_tab_pos - 1
-                };
 
-                return self.switch_active_tab(new_tab_pos, client_id);
-            } else {
-                log::error!("Active tab not found for client_id: {:?}", client_id);
+        if let Some(client_id) = client_id {
+            match self.get_active_tab(client_id) {
+                Ok(active_tab) => {
+                    let active_tab_pos = active_tab.position;
+                    let new_tab_pos = if active_tab_pos == 0 {
+                        self.tabs.len() - 1
+                    } else {
+                        active_tab_pos - 1
+                    };
+
+                    return self.switch_active_tab(new_tab_pos, client_id);
+                },
+                Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
-            log::error!("Active tab not found for client id: {client_id:?}");
         }
         Ok(())
     }
@@ -663,11 +674,13 @@ impl Screen {
     // Closes the client_id's focused tab
     pub fn close_tab(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to close tab for client {client_id:?}");
-        let client_id = if self.get_active_tab(client_id).is_some() {
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
+
         match client_id {
             Some(client_id) => {
                 let active_tab_index = *self
@@ -767,10 +780,13 @@ impl Screen {
     }
 
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
-    pub fn get_active_tab(&self, client_id: ClientId) -> Option<&Tab> {
+    pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get(tab),
-            None => None,
+            Some(tab) => self
+                .tabs
+                .get(tab)
+                .ok_or_else(|| anyhow!("active tab {} does not exist", tab)),
+            None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
 
@@ -797,10 +813,13 @@ impl Screen {
     }
 
     /// Returns a mutable reference to this [`Screen`]'s active [`Tab`].
-    pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Option<&mut Tab> {
+    pub fn get_active_tab_mut(&mut self, client_id: ClientId) -> Result<&mut Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self.tabs.get_mut(tab),
-            None => None,
+            Some(tab) => self
+                .tabs
+                .get_mut(tab)
+                .ok_or_else(|| anyhow!("active tab {} does not exist", tab)),
+            None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
 
@@ -822,14 +841,16 @@ impl Screen {
         new_ids: Vec<(u32, HoldForCommand)>,
         client_id: ClientId,
     ) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || format!("failed to create new tab for client {client_id:?}",);
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
             first_client_id
         } else {
             client_id
         };
-        let err_context = || format!("failed to create new tab for client {client_id:?}",);
+
         let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
         let mut tab = Tab::new(
@@ -859,7 +880,7 @@ impl Screen {
         tab.apply_layout(layout, new_ids, tab_index, client_id)
             .with_context(err_context)?;
         if self.session_is_mirrored {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
                 tab.add_multiple_clients(client_mode_infos_in_source_tab)
                     .with_context(err_context)?;
@@ -872,7 +893,7 @@ impl Screen {
             for client_id in all_connected_clients {
                 self.update_client_tab_focus(client_id, tab_index);
             }
-        } else if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+        } else if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
             let client_mode_info_in_source_tab =
                 active_tab.drain_connected_clients(Some(vec![client_id]));
             tab.add_multiple_clients(client_mode_info_in_source_tab)
@@ -985,58 +1006,68 @@ impl Screen {
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context =
+            || format!("failed to update active tabs name for client id: {client_id:?}");
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
+
         match client_id {
             Some(client_id) => {
                 let s = str::from_utf8(&buf)
-                    .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))?;
-                if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-                    match s {
-                        "\0" => {
-                            active_tab.name = String::new();
-                        },
-                        "\u{007F}" | "\u{0008}" => {
-                            // delete and backspace keys
-                            active_tab.name.pop();
-                        },
-                        c => {
-                            // It only allows printable unicode
-                            if buf.iter().all(|u| matches!(u, 0x20..=0x7E)) {
-                                active_tab.name.push_str(c);
-                            }
-                        },
-                    }
-                    self.update_tabs()
-                        .context("failed to update active tabs name for client id: {client_id:?}")
-                } else {
-                    log::error!("Active tab not found for client id: {client_id:?}");
-                    Ok(())
+                    .with_context(|| format!("failed to construct tab name from buf: {buf:?}"))
+                    .with_context(err_context)?;
+                match self.get_active_tab_mut(client_id) {
+                    Ok(active_tab) => {
+                        match s {
+                            "\0" => {
+                                active_tab.name = String::new();
+                            },
+                            "\u{007F}" | "\u{0008}" => {
+                                // delete and backspace keys
+                                active_tab.name.pop();
+                            },
+                            c => {
+                                // It only allows printable unicode
+                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E)) {
+                                    active_tab.name.push_str(c);
+                                }
+                            },
+                        }
+                        self.update_tabs().with_context(err_context)
+                    },
+                    Err(err) => {
+                        Err::<(), _>(err).with_context(err_context).non_fatal();
+                        Ok(())
+                    },
                 }
             },
             None => Ok(()),
         }
     }
     pub fn undo_active_rename_tab(&mut self, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || format!("failed to undo active tab rename for client {}", client_id);
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
         match client_id {
             Some(client_id) => {
-                if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-                    if active_tab.name != active_tab.prev_name {
-                        active_tab.name = active_tab.prev_name.clone();
-                        self.update_tabs()
-                            .context("failed to undo renaming of active tab")?;
-                    }
-                } else {
-                    log::error!("Active tab not found for client id: {client_id:?}");
-                }
+                match self.get_active_tab_mut(client_id) {
+                    Ok(active_tab) => {
+                        if active_tab.name != active_tab.prev_name {
+                            active_tab.name = active_tab.prev_name.clone();
+                            self.update_tabs()
+                                .context("failed to undo renaming of active tab")?;
+                        }
+                    },
+                    Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+                };
                 Ok(())
             },
             None => Ok(()),
@@ -1068,7 +1099,7 @@ impl Screen {
         if previous_mode == InputMode::Scroll
             && (mode_info.mode == InputMode::Normal || mode_info.mode == InputMode::Locked)
         {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 active_tab
                     .clear_active_terminal_scroll(client_id)
                     .with_context(err_context)?;
@@ -1076,13 +1107,13 @@ impl Screen {
         }
 
         if mode_info.mode == InputMode::RenameTab {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 active_tab.prev_name = active_tab.name.clone();
             }
         }
 
         if mode_info.mode == InputMode::RenamePane {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
+            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
                 if let Some(active_pane) =
                     active_tab.get_active_pane_or_floating_pane_mut(client_id)
                 {
@@ -1119,38 +1150,55 @@ impl Screen {
         Ok(())
     }
     pub fn move_focus_left_or_previous_tab(&mut self, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || {
+            format!(
+                "failed to move focus left or to previous tab for client {}",
+                client_id
+            )
+        };
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
         if let Some(client_id) = client_id {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-                if !active_tab.move_focus_left(client_id) {
-                    self.switch_tab_prev(client_id)
-                        .context("failed to move focus left")?;
-                }
-            } else {
-                log::error!("Active tab not found for client id: {:?}", client_id);
-            }
+            match self.get_active_tab_mut(client_id) {
+                Ok(active_tab) => {
+                    if !active_tab.move_focus_left(client_id) {
+                        self.switch_tab_prev(client_id)
+                            .context("failed to move focus left")?;
+                    }
+                },
+                Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            };
         }
         Ok(())
     }
     pub fn move_focus_right_or_next_tab(&mut self, client_id: ClientId) -> Result<()> {
-        let client_id = if self.get_active_tab(client_id).is_some() {
+        let err_context = || {
+            format!(
+                "failed to move focus right or to next tab for client {}",
+                client_id
+            )
+        };
+
+        let client_id = if self.get_active_tab(client_id).is_ok() {
             Some(client_id)
         } else {
             self.get_first_client_id()
         };
+
         if let Some(client_id) = client_id {
-            if let Some(active_tab) = self.get_active_tab_mut(client_id) {
-                if !active_tab.move_focus_right(client_id) {
-                    self.switch_tab_next(client_id)
-                        .context("failed to move focus right")?;
-                }
-            } else {
-                log::error!("Active tab not found for client id: {:?}", client_id);
-            }
+            match self.get_active_tab_mut(client_id) {
+                Ok(active_tab) => {
+                    if !active_tab.move_focus_right(client_id) {
+                        self.switch_tab_next(client_id)
+                            .context("failed to move focus right")?;
+                    }
+                },
+                Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
+            };
         }
         Ok(())
     }
