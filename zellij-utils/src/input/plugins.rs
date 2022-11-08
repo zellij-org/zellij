@@ -10,6 +10,7 @@ use url::Url;
 
 use super::layout::{RunPlugin, RunPluginLocation};
 pub use crate::data::PluginTag;
+use crate::errors::prelude::*;
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -98,11 +99,39 @@ impl PluginConfig {
     ///   /home/bob/.zellij/plugins/tab-bar.wasm
     /// ```
     ///
-    pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Option<Vec<u8>> {
-        fs::read(&self.path)
-            .or_else(|_| fs::read(&self.path.with_extension("wasm")))
-            .or_else(|_| fs::read(plugin_dir.join(&self.path).with_extension("wasm")))
-            .ok()
+    pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
+        let err_context =
+            |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
+
+        // Locations we check for valid plugins
+        let paths_arr = [
+            &self.path,
+            &self.path.with_extension("wasm"),
+            &plugin_dir.join(&self.path).with_extension("wasm"),
+        ];
+        // Throw out dupes, because it's confusing to read that zellij checked the same plugin
+        // location multiple times
+        let mut paths = paths_arr.to_vec();
+        paths.sort_unstable();
+        paths.dedup();
+
+        // This looks weird and usually we would handle errors like this differently, but in this
+        // case it's helpful for users and developers alike. This way we preserve all the lookup
+        // errors and can report all of them back. We must initialize `last_err` with something,
+        // and since the user will only get to see it when loading a plugin failed, we may as well
+        // spell it out right here.
+        let mut last_err: Result<Vec<u8>> = Err(anyhow!("failed to load plugin from disk"));
+        for path in paths {
+            match fs::read(&path) {
+                Ok(val) => return Ok(val),
+                Err(err) => {
+                    last_err = last_err.with_context(|| err_context(err, &path));
+                },
+            }
+        }
+
+        // Not reached if a plugin is found!
+        return last_err;
     }
 
     /// Sets the tab index inside of the plugin type of the run field.
