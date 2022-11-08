@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: various bugs with no-frames and floating panes (https://github.com/zellij-org/zellij/pull/1909)
 * debugging: Improve error logging in server (https://github.com/zellij-org/zellij/pull/1881)
 * docs: add kanagawa theme (https://github.com/zellij-org/zellij/pull/1913)
+* fix: use 'temp_dir' instead of hard-coded '/tmp/' (https://github.com/zellij-org/zellij/pull/1898)
 
 ## [0.32.0] - 2022-10-25
 
