@@ -29,7 +29,7 @@
 # What is this?
 
 [Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
-At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
+At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [GNU Screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
 
 Zellij includes a [layout system](https://zellij.dev/documentation/layouts.html), and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
 
@@ -37,7 +37,7 @@ You can get started by [installing](https://zellij.dev/documentation/installatio
 
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
-Zellij was initially called "Mosaic".
+Zellij was initially called ***Mosaic***.
 
 ## How do I install it?
 
@@ -47,7 +47,7 @@ You can install with `cargo`:
 cargo install --locked zellij
 ```
 
-Or if want to a prebuilt binary, you can download it from our [Releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
+Or if want to a prebuilt binary, you can download it from our [releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
 
 ```
 cargo-binstall zellij
@@ -68,13 +68,13 @@ bash (curl -L zellij.dev/launch | psub)
 
 ## How do I get involved?
 
-Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level, so long as they adhere to our [code of conduct](CODE_OF_CONDUCT.md).
+Zellij is a labour of love built by an enthusiastic team of volunteers. We eagerly welcome anyone who would like to join us, regardless of experience level, so long as they adhere to our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 Please report any code of conduct violations to [aram@poor.dev](mailto:aram@poor.dev)
 
 To get started, you can:
-1. Take a look at the "Issues" in this repository - especially those marked "Good first issue". Those with the "Help Wanted" tag probably don't have anyone else working on them.
-2. Drop by our [discord](https://discord.gg/CrUAFH3), or [matrix](https://matrix.to/#/#zellij_general:matrix.org) chat and ask what you can work on, or how to get started.
+1. Take a look at the [Issues](https://github.com/zellij-org/zellij/issues) in this repository - especially those marked "good first issue". Those with the "help wanted" tag probably don't have anyone else working on them.
+2. Drop by our [Discord](https://discord.gg/CrUAFH3), or [Matrix](https://matrix.to/#/#zellij_general:matrix.org) chat and ask what you can work on, or how to get started.
 3. Open an issue with your idea(s) for the project or tell us about them in our chat.
 
 ## How do I start a development environment?
@@ -84,10 +84,10 @@ To get started, you can:
 * In the project folder, for debug builds run: `cargo make run`
 * To run all tests: `cargo make test`
 
-For more build commands, see [`Contributing.md`](CONTRIBUTING.md).
+For more build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Configuration
-For configuring Zellij, please see the [Configuration documentation](https://zellij.dev/documentation/configuration.html).
+For configuring Zellij, please see the [Configuration Documentation](https://zellij.dev/documentation/configuration.html).
 
 ## What is the current status of the project?
 
@@ -100,7 +100,7 @@ Presented here is the project roadmap, divided into three main sections.
 
 These are issues that are either being actively worked on or are planned for the near future.
 
-*If you'll click on the image, you'll be led to an SVG version of it on the website where you can directly click on every issue*
+***If you'll click on the image, you'll be led to an SVG version of it on the website where you can directly click on every issue***
 
 [![roadmap](https://user-images.githubusercontent.com/795598/168313474-f6cb9754-77ea-4ce3-bc84-8840f2eadd75.png)](https://zellij.dev/roadmap)
 
