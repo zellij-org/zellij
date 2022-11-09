@@ -132,6 +132,9 @@ impl TerminalBytes {
         // 1. Makes the log rather pointless, because even when the application exits "normally",
         //    there will be errors inside and
         // 2. Leaves the impression we have a bug in the code and can't terminate properly
+        //
+        // FIXME: Ideally we detect whether the application is being quit and only ignore the error
+        // in that particular case?
         let _ = self.async_send_to_screen(ScreenInstruction::Render).await;
 
         Ok(())
