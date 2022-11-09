@@ -124,8 +124,23 @@ something interesting to work on and guide through.
 - Generate ad-hoc errors with `anyhow!(<SOME MESSAGE>)`
 - *Further reading*: [See here][error-docs-result]
 
+### Logging errors
+
+- When there's a `Result` type around, use `.non_fatal()` on that instead of `log::error!`
+- When there's a `Err` type around, use `Err::<(), _>(err).non_fatal()`
+- Also attach context before logging!
+- *Further reading*: [See here][error-docs-logging]
+
+### Adding Concrete Errors, Handling Specific Errors
+
+- Add a new variant to `zellij_utils::errors::ZellijError`, if needed
+- Use `anyhow::Error::downcast_ref::<ZellijError>()` to recover underlying errors
+- *Further reading*: [See here][error-docs-zellijerror]
+
 [error-docs-context]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#attaching-context
 [error-docs-result]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#converting-a-function-to-return-a-result-type
+[error-docs-logging]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#logging-errors
+[error-docs-zellijerror]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#adding-concrete-errors-handling-specific-errors
 
 
 ## Filing Issues
