@@ -26,8 +26,23 @@ fn populate_tabs_in_tab_line(
     loop {
         let left_count = tabs_before_active.len();
         let right_count = tabs_after_active.len();
-        let collapsed_left = left_more_message(left_count, palette, tab_separator(capabilities));
-        let collapsed_right = right_more_message(right_count, palette, tab_separator(capabilities));
+
+        // left_more_tab_index is the tab to the left of the leftmost visible tab
+        let left_more_tab_index = left_count.saturating_sub(1);
+        let collapsed_left = left_more_message(
+            left_count,
+            palette,
+            tab_separator(capabilities),
+            left_more_tab_index,
+        );
+        // right_more_tab_index is the tab to the right of the rightmost visible tab
+        let right_more_tab_index = left_count + tabs_to_render.len();
+        let collapsed_right = right_more_message(
+            right_count,
+            palette,
+            tab_separator(capabilities),
+            right_more_tab_index,
+        );
 
         let total_size = collapsed_left.len + middle_size + collapsed_right.len;
 
@@ -90,7 +105,12 @@ fn populate_tabs_in_tab_line(
     }
 }
 
-fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: &str) -> LinePart {
+fn left_more_message(
+    tab_count_to_the_left: usize,
+    palette: Palette,
+    separator: &str,
+    tab_index: usize,
+) -> LinePart {
     if tab_count_to_the_left == 0 {
         return LinePart::default();
     }
@@ -114,6 +134,7 @@ fn left_more_message(tab_count_to_the_left: usize, palette: Palette, separator: 
     LinePart {
         part: more_styled_text,
         len: more_text_len,
+        tab_index: Some(tab_index),
     }
 }
 
@@ -121,6 +142,7 @@ fn right_more_message(
     tab_count_to_the_right: usize,
     palette: Palette,
     separator: &str,
+    tab_index: usize,
 ) -> LinePart {
     if tab_count_to_the_right == 0 {
         return LinePart::default();
@@ -144,6 +166,7 @@ fn right_more_message(
     LinePart {
         part: more_styled_text,
         len: more_text_len,
+        tab_index: Some(tab_index),
     }
 }
 
@@ -173,6 +196,7 @@ fn tab_line_prefix(
     let mut parts = vec![LinePart {
         part: prefix_styled_text.to_string(),
         len: prefix_text_len,
+        tab_index: None,
     }];
     if let Some(name) = session_name {
         let name_part = format!("({}) ", name);
@@ -186,6 +210,7 @@ fn tab_line_prefix(
             parts.push(LinePart {
                 part: name_part_styled_text.to_string(),
                 len: name_part_len,
+                tab_index: None,
             })
         }
     }
@@ -209,6 +234,7 @@ fn tab_line_prefix(
         parts.push(LinePart {
             part: format!("{}", mode_part_styled_text),
             len: mode_part_len,
+            tab_index: None,
         })
     }
     parts

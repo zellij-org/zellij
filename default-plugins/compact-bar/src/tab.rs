@@ -19,19 +19,19 @@ fn cursors(focused_clients: &[ClientId], palette: Palette) -> (Vec<ANSIString>, 
 
 pub fn render_tab(
     text: String,
+    tab: &TabInfo,
+    is_alternate_tab: bool,
     palette: Palette,
     separator: &str,
-    focused_clients: &[ClientId],
-    active: bool,
-    is_alternate_tab: bool,
 ) -> LinePart {
+    let focused_clients = tab.other_focused_clients.as_slice();
     let separator_width = separator.width();
     let alternate_tab_color = match palette.theme_hue {
         // TODO: only do this if we don't have the arrow capabilities
         ThemeHue::Dark => palette.white,
         ThemeHue::Light => palette.black,
     };
-    let background_color = if active {
+    let background_color = if tab.active {
         palette.green
     } else if is_alternate_tab {
         alternate_tab_color
@@ -43,8 +43,7 @@ pub fn render_tab(
         ThemeHue::Light => palette.white,
     };
     let left_separator = style!(foreground_color, background_color).paint(separator);
-    let mut tab_text_len =
-        text.width() + (separator_width * 2) + separator.width() * (separator_width * 2); // 2 for left and right separators, 2 for the text padding
+    let mut tab_text_len = text.width() + (separator_width * 2) + 2; // + 2 for padding
 
     let tab_styled_text = style!(foreground_color, background_color)
         .bold()
@@ -78,35 +77,25 @@ pub fn render_tab(
     LinePart {
         part: tab_styled_text,
         len: tab_text_len,
+        tab_index: Some(tab.position),
     }
 }
 
 pub fn tab_style(
-    text: String,
-    is_active_tab: bool,
-    is_alternate_tab: bool,
-    is_sync_panes_active: bool,
+    mut tabname: String,
+    tab: &TabInfo,
+    mut is_alternate_tab: bool,
     palette: Palette,
     capabilities: PluginCapabilities,
-    focused_clients: &[ClientId],
 ) -> LinePart {
     let separator = tab_separator(capabilities);
-    let mut tab_text = text;
-    if is_sync_panes_active {
-        tab_text.push_str(" (Sync)");
+    if tab.is_sync_panes_active {
+        tabname.push_str(" (Sync)");
     }
     // we only color alternate tabs differently if we can't use the arrow fonts to separate them
-    let is_alternate_tab = if !capabilities.arrow_fonts {
-        false
-    } else {
-        is_alternate_tab
-    };
-    render_tab(
-        tab_text,
-        palette,
-        separator,
-        focused_clients,
-        is_active_tab,
-        is_alternate_tab,
-    )
+    if !capabilities.arrow_fonts {
+        is_alternate_tab = false;
+    }
+
+    render_tab(tabname, tab, is_alternate_tab, palette, separator)
 }
