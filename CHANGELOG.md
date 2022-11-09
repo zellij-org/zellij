@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * debugging: Improve error logging in server (https://github.com/zellij-org/zellij/pull/1881)
 * docs: add kanagawa theme (https://github.com/zellij-org/zellij/pull/1913)
 * fix: use 'temp_dir' instead of hard-coded '/tmp/' (https://github.com/zellij-org/zellij/pull/1898)
+* debugging: Don't strip debug symbols from release binaries (https://github.com/zellij-org/zellij/pull/1916)
 
 ## [0.32.0] - 2022-10-25
 
