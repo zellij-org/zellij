@@ -45,6 +45,8 @@ members = [
 
 [profile.release]
 lto = true
+# Keep debug symbols so we see function names in backtraces
+strip = false
 
 [package.metadata.deb]
 depends = "$auto"
