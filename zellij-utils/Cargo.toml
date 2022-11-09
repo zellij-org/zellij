@@ -39,7 +39,7 @@ kdl = { version = "4.5.0", features = ["span"] }
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-termwiz = "0.16.0"
+termwiz = "0.19.0"
 log4rs = "1.2.0"
 signal-hook = "0.3"
 interprocess = "1.1.1"
