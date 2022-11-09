@@ -353,7 +353,6 @@ fn start_plugin(
     // The plugins blob as stored on the filesystem
     let wasm_bytes = plugin
         .resolve_wasm_bytes(&data_dir.join("plugins/"))
-        .context("cannot resolve wasm bytes")
         .with_context(err_context)
         .fatal();
 
