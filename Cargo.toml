@@ -45,7 +45,6 @@ members = [
 
 [profile.release]
 lto = true
-strip = true
 
 [package.metadata.deb]
 depends = "$auto"
