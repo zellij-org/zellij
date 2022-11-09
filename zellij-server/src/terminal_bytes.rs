@@ -120,9 +120,20 @@ impl TerminalBytes {
                 },
             }
         }
-        self.async_send_to_screen(ScreenInstruction::Render)
-            .await
-            .with_context(err_context)?;
+
+        // Ignore any errors that happen here.
+        // We only leave the loop above when the pane exits. This can happen in a lot of ways, but
+        // the most problematic is when quitting zellij with `Ctrl+q`. That is because the channel
+        // for `Screen` will have exited already, so this send *will* fail. This isn't a problem
+        // per-se because the application terminates anyway, but it will print a lengthy error
+        // message into the log for every pane that was still active when we quit the application.
+        // This:
+        //
+        // 1. Makes the log rather pointless, because even when the application exits "normally",
+        //    there will be errors inside and
+        // 2. Leaves the impression we have a bug in the code and can't terminate properly
+        let _ = self.async_send_to_screen(ScreenInstruction::Render).await;
+
         Ok(())
     }
     async fn async_send_to_screen(
