@@ -136,7 +136,7 @@ impl Run {
         if let Some(args) = args {
             if let Run::Command(run_command) = self {
                 if !args.is_empty() {
-                    run_command.args = args.clone();
+                    run_command.args = args;
                 }
             }
         }
@@ -561,7 +561,7 @@ fn split_space(
         }
     }
     if pane_positions.is_empty() {
-        pane_positions.push((layout.clone(), space_to_split.clone()));
+        pane_positions.push((layout.clone(), *space_to_split));
     }
     pane_positions
 }
@@ -601,7 +601,7 @@ impl FromStr for SplitDirection {
 impl FromStr for SplitSize {
     type Err = Box<dyn std::error::Error>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.chars().last() == Some('%') {
+        if s.ends_with('%') {
             let char_count = s.chars().count();
             let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
             if percent_size > 0 && percent_size <= 100 {

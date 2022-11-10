@@ -132,7 +132,7 @@ impl FromStr for Key {
                                 let f_index: u8 = f_index
                                     .parse()
                                     .map_err(|e| format!("Failed to parse F index: {}", e))?;
-                                if f_index >= 1 && f_index <= 12 {
+                                if (1..=12).contains(&f_index) {
                                     return Ok(Key::F(f_index));
                                 }
                             }

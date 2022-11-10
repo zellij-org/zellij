@@ -174,9 +174,7 @@ impl Options {
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
         let session_name = other.session_name.or_else(|| self.session_name.clone());
-        let attach_to_session = other
-            .attach_to_session
-            .or_else(|| self.attach_to_session.clone());
+        let attach_to_session = other.attach_to_session.or(self.attach_to_session);
 
         Options {
             simplified_ui,
@@ -235,9 +233,7 @@ impl Options {
             .scrollback_editor
             .or_else(|| self.scrollback_editor.clone());
         let session_name = other.session_name.or_else(|| self.session_name.clone());
-        let attach_to_session = other
-            .attach_to_session
-            .or_else(|| self.attach_to_session.clone());
+        let attach_to_session = other.attach_to_session.or(self.attach_to_session);
 
         Options {
             simplified_ui,

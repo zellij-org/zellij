@@ -59,7 +59,7 @@ impl Keybinds {
         for (mode, mode_binds) in &self.0 {
             let mut mode_binds_vec: Vec<(Key, Vec<Action>)> = vec![];
             for (key, actions) in mode_binds {
-                mode_binds_vec.push((key.clone(), actions.clone()));
+                mode_binds_vec.push((*key, actions.clone()));
             }
             ret.push((*mode, mode_binds_vec))
         }

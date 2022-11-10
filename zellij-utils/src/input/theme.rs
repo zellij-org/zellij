@@ -16,7 +16,7 @@ pub struct UiConfig {
 
 impl UiConfig {
     pub fn merge(&self, other: UiConfig) -> Self {
-        let mut merged = self.clone();
+        let mut merged = *self;
         merged.pane_frames = merged.pane_frames.merge(other.pane_frames);
         merged
     }
@@ -29,7 +29,7 @@ pub struct FrameConfig {
 
 impl FrameConfig {
     pub fn merge(&self, other: FrameConfig) -> Self {
-        let mut merged = self.clone();
+        let mut merged = *self;
         merged.rounded_corners = other.rounded_corners;
         merged
     }

@@ -482,7 +482,7 @@ impl Setup {
             .or_else(|| config.options.default_layout.clone());
         // we merge-override the config here because the layout might contain configuration
         // that needs to take precedence
-        Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
+        Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir, config)
     }
     fn handle_setup_commands(cli_args: &CliArgs) {
         if let Some(Command::Setup(ref setup)) = &cli_args.command {

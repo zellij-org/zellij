@@ -263,7 +263,7 @@ impl Action {
                 start_suspended,
             } => {
                 if !command.is_empty() {
-                    let mut command = command.clone();
+                    let mut command = command;
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let cwd = cwd.or_else(|| std::env::current_dir().ok());
                     let hold_on_start = start_suspended;
@@ -288,12 +288,10 @@ impl Action {
                             name,
                         )])
                     }
+                } else if floating {
+                    Ok(vec![Action::NewFloatingPane(None, name)])
                 } else {
-                    if floating {
-                        Ok(vec![Action::NewFloatingPane(None, name)])
-                    } else {
-                        Ok(vec![Action::NewTiledPane(direction, None, name)])
-                    }
+                    Ok(vec![Action::NewTiledPane(direction, None, name)])
                 }
             },
             CliAction::Edit {
@@ -345,7 +343,7 @@ impl Action {
                     let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
-                                let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
+                                let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), raw_layout);
                                 let report: Report = error.into();
                                 format!("{:?}", report)
                             }
@@ -362,7 +360,7 @@ impl Action {
                                 };
                                 let kdl_error = KdlError {
                                     error_message,
-                                    src: Some(NamedSource::new(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout))),
+                                    src: Some(NamedSource::new(&layout_path.as_path().as_os_str().to_string_lossy(), raw_layout)),
                                     offset: Some(kdl_error.span.offset()),
                                     len: Some(kdl_error.span.len()),
                                     help_message: None,
@@ -376,7 +374,7 @@ impl Action {
                     })?;
                     let mut tabs = layout.tabs();
                     if tabs.len() > 1 {
-                        return Err(format!("Tab layout cannot itself have tabs"));
+                        Err("Tab layout cannot itself have tabs".to_string())
                     } else if !tabs.is_empty() {
                         let (tab_name, layout) = tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);

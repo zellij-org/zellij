@@ -125,13 +125,13 @@ impl PluginConfig {
             match fs::read(&path) {
                 Ok(val) => return Ok(val),
                 Err(err) => {
-                    last_err = last_err.with_context(|| err_context(err, &path));
+                    last_err = last_err.with_context(|| err_context(err, path));
                 },
             }
         }
 
         // Not reached if a plugin is found!
-        return last_err;
+        last_err
     }
 
     /// Sets the tab index inside of the plugin type of the run field.
