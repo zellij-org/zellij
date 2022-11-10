@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.33.0] - 2022-11-10
+
 * debugging: improve error handling in `zellij_server::pty` (https://github.com/zellij-org/zellij/pull/1840)
 * feat: allow command panes to optionally close on exit (https://github.com/zellij-org/zellij/pull/1869)
 * add: everforest-dark, everforest-light themes to the example theme directory (https://github.com/zellij-org/zellij/pull/1873)
