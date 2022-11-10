@@ -19,6 +19,7 @@ use crate::{
 use ::insta::assert_snapshot;
 use std::path::Path;
 
+use std::fmt::Write;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
@@ -348,7 +349,7 @@ pub fn terminal_info_queried_from_terminal_emulator() {
     let mut expected_query =
         String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
     for i in 0..256 {
-        expected_query.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+        write!(expected_query, "\u{1b}.unwrap()4;{};?\u{1b}\u{5c}", i).unwrap();
     }
     assert_eq!(
         String::from_utf8(extracted_stdout_buffer),
