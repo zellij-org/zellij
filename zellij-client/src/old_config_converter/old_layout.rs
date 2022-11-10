@@ -158,7 +158,8 @@ fn stringify_template(
         ));
     } else if !template.parts.is_empty() {
         if !is_base {
-            write!(stringified,
+            write!(
+                stringified,
                 "{}{} {{",
                 indentation,
                 pane_line_with_children(
@@ -168,7 +169,8 @@ fn stringify_template(
                     template.borderless,
                     template.direction
                 )
-            ).unwrap();
+            )
+            .unwrap();
         }
         for part in &template.parts {
             let child_indentation = format!("{}    ", &indentation);
@@ -187,7 +189,8 @@ fn stringify_template(
     } else {
         match template.run.as_ref() {
             Some(OldRunFromYaml::Plugin(plugin_from_yaml)) => {
-                writeln!(stringified,
+                writeln!(
+                    stringified,
                     "{}{} {{",
                     &indentation,
                     pane_line(
@@ -196,15 +199,19 @@ fn stringify_template(
                         template.focus,
                         template.borderless
                     )
-                ).unwrap();
-                writeln!(stringified, 
+                )
+                .unwrap();
+                writeln!(
+                    stringified,
                     "{}    plugin location=\"{}\"",
                     &indentation, plugin_from_yaml.location
-                ).unwrap();
+                )
+                .unwrap();
                 write!(stringified, "{}}}", &indentation).unwrap();
             },
             Some(OldRunFromYaml::Command(command_from_yaml)) => {
-                write!(stringified,
+                write!(
+                    stringified,
                     "{}{}",
                     &indentation,
                     &pane_command_line(
@@ -214,13 +221,15 @@ fn stringify_template(
                         template.borderless,
                         &command_from_yaml.command
                     )
-                ).unwrap();
+                )
+                .unwrap();
                 if let Some(cwd) = command_from_yaml.cwd.as_ref() {
                     write!(stringified, " cwd={:?}", cwd).unwrap();
                 }
                 if !command_from_yaml.args.is_empty() {
                     stringified.push_str(" {\n");
-                    writeln!(stringified,
+                    writeln!(
+                        stringified,
                         "{}    args {}",
                         &indentation,
                         command_from_yaml
@@ -231,12 +240,14 @@ fn stringify_template(
                             .map(|s| format!("{:?}", s))
                             .collect::<Vec<String>>()
                             .join(" ")
-                    ).unwrap();
+                    )
+                    .unwrap();
                     write!(stringified, "{}}}", &indentation).unwrap();
                 }
             },
             None => {
-                write!(stringified,
+                write!(
+                    stringified,
                     "{}{}",
                     &indentation,
                     pane_line(
@@ -245,7 +256,8 @@ fn stringify_template(
                         template.focus,
                         template.borderless
                     )
-                ).unwrap();
+                )
+                .unwrap();
             },
         };
     }

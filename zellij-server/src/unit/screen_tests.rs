@@ -1292,12 +1292,7 @@ pub fn send_cli_scroll_up_action() {
         &mut mock_screen,
         client_id,
     );
-    send_cli_action_to_server(
-        &session_metadata,
-        cli_action,
-        &mut mock_screen,
-        client_id,
-    );
+    send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_instruction, screen_thread]);
     let snapshots = take_snapshots_and_cursor_coordinates_from_render_events(

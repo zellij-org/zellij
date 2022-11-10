@@ -233,7 +233,8 @@ impl TiledPanes {
             SplitDirection::Vertical => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).rows)
             },
-        }.map_err(anyError::msg)
+        }
+        .map_err(anyError::msg)
         .with_context(|| format!("{:?} relayout of tab failed", direction))
         .non_fatal();
 
@@ -1036,8 +1037,9 @@ impl TiledPanes {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
-        if let Some(p) = self.panes
-            .get_mut(&pane_id) { p.hold(exit_status, is_first_run, run_command) }
+        if let Some(p) = self.panes.get_mut(&pane_id) {
+            p.hold(exit_status, is_first_run, run_command)
+        }
     }
     pub fn panes_to_hide_contains(&self, pane_id: PaneId) -> bool {
         self.panes_to_hide.contains(&pane_id)

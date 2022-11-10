@@ -369,7 +369,7 @@ fn theme_config_yaml_to_theme_config_kdl(
         .collect();
     themes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     for (theme_name, theme) in themes {
-        writeln!(kdl_theme_config,"    {} {{", theme_name).unwrap();
+        writeln!(kdl_theme_config, "    {} {{", theme_name).unwrap();
         theme_color!(theme, fg, "fg", kdl_theme_config);
         theme_color!(theme, bg, "bg", kdl_theme_config);
         theme_color!(theme, black, "black", kdl_theme_config);
@@ -418,7 +418,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                 .map(|k| format!("\"{}\"", k))
                 .collect::<Vec<String>>()
                 .join(" ");
-            writeln!(kdl_keybinds,"    unbind {}", key_string).unwrap();
+            writeln!(kdl_keybinds, "    unbind {}", key_string).unwrap();
         },
         OldUnbind::All(should_unbind_all_defaults) => {
             if *should_unbind_all_defaults {
@@ -454,10 +454,12 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                             .map(|a| format!("{};", a))
                             .collect::<Vec<String>>()
                             .join(" ");
-                        writeln!(kdl_mode_keybinds,
+                        writeln!(
+                            kdl_mode_keybinds,
                             "        bind {} {{ {} }}",
                             key_string, actions_string
-                        ).unwrap();
+                        )
+                        .unwrap();
                     },
                     OldKeyActionUnbind::Unbind(unbind) => match &unbind.unbind {
                         OldUnbind::Keys(keys_to_unbind) => {
@@ -466,7 +468,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                                 .map(|k| format!("\"{}\"", k))
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            writeln!(kdl_mode_keybinds,"        unbind {}", key_string).unwrap();
+                            writeln!(kdl_mode_keybinds, "        unbind {}", key_string).unwrap();
                         },
                         OldUnbind::All(unbind_all) => {
                             if *unbind_all {
@@ -477,9 +479,9 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                 }
             }
             if should_clear_mode_defaults {
-                writeln!(kdl_keybinds,"    {} clear-defaults=true {{", mode).unwrap();
+                writeln!(kdl_keybinds, "    {} clear-defaults=true {{", mode).unwrap();
             } else {
-                writeln!(kdl_keybinds,"    {} {{", mode).unwrap();
+                writeln!(kdl_keybinds, "    {} {{", mode).unwrap();
             }
             kdl_keybinds.push_str(&kdl_mode_keybinds);
             kdl_keybinds.push_str("    }\n");
