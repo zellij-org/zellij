@@ -109,7 +109,7 @@ fn find_indexed_session(
     create: bool,
 ) -> ClientInfo {
     match sessions.get(index) {
-        Some(session) => ClientInfo::Attach(session.clone(), config_options),
+        Some(session) => ClientInfo::Attach(session.clone(), Box::new(config_options)),
         None if create => create_new_client(),
         None => {
             println!(
@@ -278,14 +278,14 @@ fn attach_with_session_name(
     match &session_name {
         Some(session) if create => {
             if session_exists(session).unwrap() {
-                ClientInfo::Attach(session_name.unwrap(), config_options)
+                ClientInfo::Attach(session_name.unwrap(), Box::new(config_options))
             } else {
                 ClientInfo::New(session_name.unwrap())
             }
         },
         Some(prefix) => match match_session_name(prefix).unwrap() {
             SessionNameMatch::UniquePrefix(s) | SessionNameMatch::Exact(s) => {
-                ClientInfo::Attach(s, config_options)
+                ClientInfo::Attach(s, Box::new(config_options))
             },
             SessionNameMatch::AmbiguousPrefix(sessions) => {
                 println!(
@@ -306,7 +306,7 @@ fn attach_with_session_name(
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
             },
-            ActiveSession::One(session_name) => ClientInfo::Attach(session_name, config_options),
+            ActiveSession::One(session_name) => ClientInfo::Attach(session_name, Box::new(config_options)),
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
