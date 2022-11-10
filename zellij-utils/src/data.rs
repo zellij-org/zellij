@@ -122,24 +122,26 @@ impl FromStr for Key {
                 _ => {
                     let mut key_chars = main_key.chars();
                     let key_count = main_key.chars().count();
-                    if key_count == 1 {
-                        let key_char = key_chars.next().unwrap();
-                        Ok(Key::Char(key_char))
-                    } else if key_count > 1 {
-                        if let Some(first_char) = key_chars.next() {
-                            if first_char == 'F' {
-                                let f_index: String = key_chars.collect();
-                                let f_index: u8 = f_index
-                                    .parse()
-                                    .map_err(|e| format!("Failed to parse F index: {}", e))?;
-                                if (1..=12).contains(&f_index) {
-                                    return Ok(Key::F(f_index));
+                    match key_count {
+                        0 => Err(format!("Failed to parse key: {}", key_str).into()),
+                        1 => {
+                            let key_char = key_chars.next().unwrap();
+                            Ok(Key::Char(key_char))
+                        },
+                        _ => {
+                            if let Some(first_char) = key_chars.next() {
+                                if first_char == 'F' {
+                                    let f_index: String = key_chars.collect();
+                                    let f_index: u8 = f_index
+                                        .parse()
+                                        .map_err(|e| format!("Failed to parse F index: {}", e))?;
+                                    if (1..=12).contains(&f_index) {
+                                        return Ok(Key::F(f_index));
+                                    }
                                 }
                             }
-                        }
-                        Err(format!("Failed to parse key: {}", key_str).into())
-                    } else {
-                        Err(format!("Failed to parse key: {}", key_str).into())
+                            Err(format!("Failed to parse key: {}", key_str).into())
+                        },
                     }
                 },
             },

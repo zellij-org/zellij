@@ -173,20 +173,21 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_bool_property_or_child_value_with_error!(plugin_block, "_allow_exec_host_cmd")
                 .unwrap_or(false);
         let string_url =
-            kdl_get_string_property_or_child_value_with_error!(plugin_block, "location").ok_or(
-                ConfigError::new_layout_kdl_error(
-                    "Plugins must have a location".into(),
-                    plugin_block.span().offset(),
-                    plugin_block.span().len(),
-                ),
-            )?;
-        let url_node = kdl_get_property_or_child!(plugin_block, "location").ok_or(
+            kdl_get_string_property_or_child_value_with_error!(plugin_block, "location")
+                .ok_or_else(|| {
+                    ConfigError::new_layout_kdl_error(
+                        "Plugins must have a location".into(),
+                        plugin_block.span().offset(),
+                        plugin_block.span().len(),
+                    )
+                })?;
+        let url_node = kdl_get_property_or_child!(plugin_block, "location").ok_or_else(|| {
             ConfigError::new_layout_kdl_error(
                 "Plugins must have a location".into(),
                 plugin_block.span().offset(),
                 plugin_block.span().len(),
-            ),
-        )?;
+            )
+        })?;
         let url = Url::parse(string_url).map_err(|e| {
             ConfigError::new_layout_kdl_error(
                 format!("Failed to parse url: {:?}", e),
@@ -278,12 +279,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, false)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
-            let has_non_cwd_run_prop = run
-                .map(|r| match r {
-                    Run::Cwd(_) => false,
-                    _ => true,
-                })
-                .unwrap_or(false);
+            let has_non_cwd_run_prop = run.map(|r| !matches!(r, Run::Cwd(_))).unwrap_or(false);
             if has_non_cwd_run_prop {
                 return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
@@ -301,12 +297,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<Option<Run>, ConfigError> {
         let mut run = self.parse_pane_command(kdl_node, true)?;
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
-            let has_non_cwd_run_prop = run
-                .map(|r| match r {
-                    Run::Cwd(_) => false,
-                    _ => true,
-                })
-                .unwrap_or(false);
+            let has_non_cwd_run_prop = run.map(|r| !matches!(r, Run::Cwd(_))).unwrap_or(false);
             if has_non_cwd_run_prop {
                 return Err(ConfigError::new_layout_kdl_error(
                     "Cannot have both a command/edit and a plugin block for a single pane".into(),
@@ -341,7 +332,6 @@ impl<'a> KdlLayoutParser<'a> {
             children_split_direction,
             external_children_index,
             children,
-            ..Default::default()
         })
     }
     fn insert_children_to_pane_template(
@@ -448,11 +438,13 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_pane_properties(kdl_node)?;
         let template_name = kdl_get_string_property_or_child_value!(kdl_node, "name")
             .map(|s| s.to_string())
-            .ok_or(ConfigError::new_layout_kdl_error(
-                "Pane templates must have a name".into(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            ))?;
+            .ok_or_else(|| {
+                ConfigError::new_layout_kdl_error(
+                    "Pane templates must have a name".into(),
+                    kdl_node.span().offset(),
+                    kdl_node.span().len(),
+                )
+            })?;
         self.assert_legal_node_name(&template_name, kdl_node)?;
         self.assert_legal_template_name(&template_name, kdl_node)?;
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
@@ -587,7 +579,6 @@ impl<'a> KdlLayoutParser<'a> {
             for child in children {
                 let child_node_name = kdl_name!(child);
                 if child_node_name == "pane"
-                    || child_node_name == "children"
                     || child_node_name == "tab"
                     || child_node_name == "children"
                 {
@@ -726,10 +717,7 @@ impl<'a> KdlLayoutParser<'a> {
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
         let has_non_cwd_run_prop = self
             .parse_command_plugin_or_edit_block(kdl_node)?
-            .map(|r| match r {
-                Run::Cwd(_) => false,
-                _ => true,
-            })
+            .map(|r| !matches!(r, Run::Cwd(_)))
             .unwrap_or(false);
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
         if has_nested_nodes_or_children_block

@@ -111,14 +111,14 @@ impl Run {
             (None, None) => None,
         }
     }
-    pub fn add_cwd(&mut self, cwd: &PathBuf) {
+    pub fn add_cwd(&mut self, cwd: &Path) {
         match self {
             Run::Command(run_command) => match run_command.cwd.as_mut() {
                 Some(run_cwd) => {
                     *run_cwd = cwd.join(&run_cwd);
                 },
                 None => {
-                    run_command.cwd = Some(cwd.clone());
+                    run_command.cwd = Some(cwd.to_owned());
                 },
             },
             Run::EditFile(path_to_file, _line_number) => {
@@ -277,9 +277,10 @@ impl PaneLayout {
         run_instructions
     }
     pub fn with_one_pane() -> Self {
-        let mut default_layout = PaneLayout::default();
-        default_layout.children = vec![PaneLayout::default()];
-        default_layout
+        PaneLayout {
+            children: vec![PaneLayout::default()],
+            ..Default::default()
+        }
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         match self.run.as_mut() {
@@ -603,14 +604,14 @@ impl FromStr for SplitSize {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.ends_with('%') {
             let char_count = s.chars().count();
-            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
+            let percent_size = (&s[..char_count.saturating_sub(1)]).parse::<usize>()?;
             if percent_size > 0 && percent_size <= 100 {
                 Ok(SplitSize::Percent(percent_size))
             } else {
                 Err("Percent must be between 0 and 100".into())
             }
         } else {
-            let fixed_size = usize::from_str_radix(s, 10)?;
+            let fixed_size = s.parse::<usize>()?;
             Ok(SplitSize::Fixed(fixed_size))
         }
     }

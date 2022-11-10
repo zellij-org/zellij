@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Used in the config struct for plugin metadata
-#[derive(Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize, Default)]
 pub struct PluginsConfig(pub HashMap<PluginTag, PluginConfig>);
 
 impl fmt::Debug for PluginsConfig {
@@ -64,12 +64,6 @@ impl PluginsConfig {
         let mut plugin_config = self.0.clone();
         plugin_config.extend(other.0);
         Self(plugin_config)
-    }
-}
-
-impl Default for PluginsConfig {
-    fn default() -> Self {
-        PluginsConfig(HashMap::new())
     }
 }
 
