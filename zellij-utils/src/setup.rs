@@ -189,7 +189,8 @@ pub fn populate_data_dir(data_dir: &Path, asset: Option<&str>) {
     assets.insert("VERSION", VERSION.as_bytes().to_vec());
 
     if let Some(pattern) = asset {
-        assets = assets.drain()
+        assets = assets
+            .drain()
             .filter(|(asset_path, _)| asset_path.contains(pattern))
             .collect();
     }
@@ -205,9 +206,8 @@ pub fn populate_data_dir(data_dir: &Path, asset: Option<&str>) {
             fs::create_dir_all(parent_path).unwrap_or_else(|e| log::error!("{:?}", e));
             set_permissions(parent_path, 0o700).unwrap_or_else(|e| log::error!("{:?}", e));
             if out_of_date || !path.exists() || asset.is_some() {
-                fs::write(path, bytes).unwrap_or_else(|e| {
-                    log::error!("Failed to install default assets! {:?}", e)
-                });
+                fs::write(path, bytes)
+                    .unwrap_or_else(|e| log::error!("Failed to install default assets! {:?}", e));
             }
         } else {
             log::error!("The path {:?} has no parent directory", path);
