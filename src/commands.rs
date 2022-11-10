@@ -306,7 +306,9 @@ fn attach_with_session_name(
                 eprintln!("No active zellij sessions found.");
                 process::exit(1);
             },
-            ActiveSession::One(session_name) => ClientInfo::Attach(session_name, Box::new(config_options)),
+            ActiveSession::One(session_name) => {
+                ClientInfo::Attach(session_name, Box::new(config_options))
+            },
             ActiveSession::Many => {
                 println!("Please specify the session to attach to, either by using the full name or a unique prefix.\nThe following sessions are active:");
                 print_sessions(get_sessions().unwrap());
