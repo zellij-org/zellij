@@ -273,7 +273,7 @@ fn calculate_row_display_height(row_width: usize, viewport_width: usize) -> usiz
 
 fn subtract_isize_from_usize(u: usize, i: isize) -> usize {
     if i.is_negative() {
-        u - i.abs() as usize
+        u - i.unsigned_abs()
     } else {
         u + i as usize
     }
@@ -1601,7 +1601,7 @@ impl Grid {
                 Row::from_columns(VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; self.width]));
 
             // get the row from lines_above, viewport, or lines below depending on index
-            let row = if l < 0 && self.lines_above.len() > l.abs() as usize {
+            let row = if l < 0 && self.lines_above.len() > l.unsigned_abs() {
                 let offset_from_end = l.abs();
                 &self.lines_above[self
                     .lines_above

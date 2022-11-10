@@ -111,7 +111,7 @@ fn send_cli_action_to_server(
     for action in actions {
         route_action(
             action,
-            &session_metadata,
+            session_metadata,
             &*os_input,
             &to_server.clone(),
             client_id,
@@ -322,7 +322,7 @@ impl MockScreen {
         // hack that only clones the clonable parts of SessionMetaData
         SessionMetaData {
             senders: self.session_metadata.senders.clone(),
-            capabilities: self.session_metadata.capabilities.clone(),
+            capabilities: self.session_metadata.capabilities,
             client_attributes: self.session_metadata.client_attributes.clone(),
             default_shell: self.session_metadata.default_shell.clone(),
             screen_thread: None,
@@ -1294,7 +1294,7 @@ pub fn send_cli_scroll_up_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        cli_action.clone(),
+        cli_action,
         &mut mock_screen,
         client_id,
     );
@@ -1360,7 +1360,7 @@ pub fn send_cli_scroll_down_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        scroll_up_cli_action.clone(),
+        scroll_up_cli_action,
         &mut mock_screen,
         client_id,
     );
@@ -1374,7 +1374,7 @@ pub fn send_cli_scroll_down_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        scroll_down_cli_action.clone(),
+        scroll_down_cli_action,
         &mut mock_screen,
         client_id,
     );
@@ -1440,7 +1440,7 @@ pub fn send_cli_scroll_to_bottom_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        scroll_up_cli_action.clone(),
+        scroll_up_cli_action,
         &mut mock_screen,
         client_id,
     );
@@ -1448,7 +1448,7 @@ pub fn send_cli_scroll_to_bottom_action() {
     // scroll to bottom
     send_cli_action_to_server(
         &session_metadata,
-        scroll_to_bottom_action.clone(),
+        scroll_to_bottom_action,
         &mut mock_screen,
         client_id,
     );
@@ -1549,7 +1549,7 @@ pub fn send_cli_page_scroll_down_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        page_scroll_up_action.clone(),
+        page_scroll_up_action,
         &mut mock_screen,
         client_id,
     );
@@ -1658,7 +1658,7 @@ pub fn send_cli_half_page_scroll_down_action() {
     );
     send_cli_action_to_server(
         &session_metadata,
-        half_page_scroll_up_action.clone(),
+        half_page_scroll_up_action,
         &mut mock_screen,
         client_id,
     );
@@ -2095,7 +2095,7 @@ pub fn send_cli_toggle_pane_embed_or_float() {
     // second time to embed
     send_cli_action_to_server(
         &session_metadata,
-        toggle_pane_embed_or_floating.clone(),
+        toggle_pane_embed_or_floating,
         &mut mock_screen,
         client_id,
     );
@@ -2150,7 +2150,7 @@ pub fn send_cli_toggle_floating_panes() {
     // toggle floating panes (will show the floated pane)
     send_cli_action_to_server(
         &session_metadata,
-        toggle_floating_panes.clone(),
+        toggle_floating_panes,
         &mut mock_screen,
         client_id,
     );
@@ -2276,9 +2276,9 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         .iter()
         .find(|i| {
             if let PtyInstruction::NewTab(..) = i {
-                return true;
+                true
             } else {
-                return false;
+                false
             }
         })
         .unwrap()

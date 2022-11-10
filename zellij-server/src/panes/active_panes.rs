@@ -49,7 +49,7 @@ impl ActivePanes {
         client_id: &ClientId,
         panes: &mut BTreeMap<PaneId, Box<dyn Pane>>,
     ) -> Option<PaneId> {
-        if let Some(pane_id_to_unfocus) = self.active_panes.get(&client_id) {
+        if let Some(pane_id_to_unfocus) = self.active_panes.get(client_id) {
             self.unfocus_pane(*pane_id_to_unfocus, panes);
         }
         self.active_panes.remove(client_id)

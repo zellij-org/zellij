@@ -2554,12 +2554,9 @@ impl Tab {
                     .and_then(|serialized_output| {
                         self.senders
                             .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-                    })
-                    .and_then(|_| {
-                        Ok(Event::CopyToClipboard(
+                    }).map(|_| Event::CopyToClipboard(
                             self.clipboard_provider.as_copy_destination(),
                         ))
-                    })
                     .with_context(err_context)?,
                 Err(err) => {
                     Err::<(), _>(err).with_context(err_context).non_fatal();

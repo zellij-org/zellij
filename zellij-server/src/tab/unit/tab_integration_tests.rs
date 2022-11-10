@@ -63,7 +63,7 @@ impl ServerOsApi for FakeInputOutput {
             .lock()
             .unwrap()
             .entry(id)
-            .or_insert_with(|| vec![])
+            .or_insert_with(std::vec::Vec::new)
             .extend_from_slice(buf);
         Ok(buf.len())
     }

@@ -817,7 +817,7 @@ impl<'a> FloatingPaneGrid<'a> {
             &self.viewport,
             &pane_geoms
         );
-        return None;
+        None
     }
 }
 

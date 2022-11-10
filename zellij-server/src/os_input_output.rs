@@ -146,7 +146,7 @@ fn handle_openpty(
     let err_context = |cmd: &RunCommand| {
         format!(
             "failed to open PTY for command '{}'",
-            cmd.command.to_string_lossy().to_string()
+            cmd.command.to_string_lossy()
         )
     };
 

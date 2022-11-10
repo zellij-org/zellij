@@ -162,9 +162,8 @@ impl FloatingPanes {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
-        self.panes
-            .get_mut(&pane_id)
-            .map(|p| p.hold(exit_status, is_first_run, run_command));
+        if let Some(p) = self.panes
+            .get_mut(&pane_id) { p.hold(exit_status, is_first_run, run_command) }
     }
     pub fn get(&self, pane_id: &PaneId) -> Option<&Box<dyn Pane>> {
         self.panes.get(pane_id)

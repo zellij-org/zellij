@@ -943,7 +943,7 @@ fn send_command_not_found_to_screen(
         .send_to_screen(ScreenInstruction::HoldPane(
             PaneId::Terminal(terminal_id),
             Some(2),
-            run_command.clone(),
+            run_command,
             None,
         ))
         .with_context(err_context)?;

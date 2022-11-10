@@ -652,23 +652,21 @@ impl PaneFrame {
             } else {
                 self.empty_undertitle(max_undertitle_length)
             }
-        } else {
-            if first_part_len <= max_undertitle_length {
-                // render first part
-                let full_text_len = first_part_len;
-                let mut padding = String::new();
-                for _ in full_text_len..max_undertitle_length {
-                    padding.push_str(boundary_type::HORIZONTAL);
-                }
-                let mut ret = vec![];
-                ret.append(&mut left_boundary);
-                ret.append(&mut first_part);
-                ret.append(&mut foreground_color(&padding, self.color));
-                ret.append(&mut right_boundary);
-                ret
-            } else {
-                self.empty_undertitle(max_undertitle_length)
+        } else if first_part_len <= max_undertitle_length {
+            // render first part
+            let full_text_len = first_part_len;
+            let mut padding = String::new();
+            for _ in full_text_len..max_undertitle_length {
+                padding.push_str(boundary_type::HORIZONTAL);
             }
+            let mut ret = vec![];
+            ret.append(&mut left_boundary);
+            ret.append(&mut first_part);
+            ret.append(&mut foreground_color(&padding, self.color));
+            ret.append(&mut right_boundary);
+            ret
+        } else {
+            self.empty_undertitle(max_undertitle_length)
         };
         Ok(res)
     }
