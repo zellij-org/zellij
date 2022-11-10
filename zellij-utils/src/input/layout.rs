@@ -168,7 +168,7 @@ pub struct RunPlugin {
     pub location: RunPluginLocation,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),

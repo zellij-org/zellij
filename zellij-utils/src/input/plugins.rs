@@ -74,7 +74,7 @@ impl Default for PluginsConfig {
 }
 
 /// Plugin metadata
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct PluginConfig {
     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
     pub path: PathBuf,
@@ -146,7 +146,7 @@ impl PluginConfig {
 }
 
 /// Type of the plugin. Defaults to Pane.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Hash, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum PluginType {
     // TODO: A plugin with output that's cloned across every pane in a tab, or across the entire
