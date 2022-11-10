@@ -821,11 +821,13 @@ impl<'a> KdlLayoutParser<'a> {
     fn populate_one_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         let template_name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|s| s.to_string())
-            .ok_or(ConfigError::new_layout_kdl_error(
-                "Tab templates must have a name".into(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            ))?;
+            .ok_or_else(|| {
+                ConfigError::new_layout_kdl_error(
+                    "Tab templates must have a name".into(),
+                    kdl_node.span().offset(),
+                    kdl_node.span().len(),
+                )
+            })?;
         self.assert_legal_node_name(&template_name, kdl_node)?;
         self.assert_legal_template_name(&template_name, kdl_node)?;
         if self.tab_templates.contains_key(&template_name) {
@@ -929,13 +931,14 @@ impl<'a> KdlLayoutParser<'a> {
         let mut dependency_tree = HashMap::new();
         for child in kdl_children {
             if kdl_name!(child) == "pane_template" {
-                let template_name = kdl_get_string_property_or_child_value!(child, "name").ok_or(
-                    ConfigError::new_layout_kdl_error(
-                        "Pane templates must have a name".into(),
-                        child.span().offset(),
-                        child.span().len(),
-                    ),
-                )?;
+                let template_name = kdl_get_string_property_or_child_value!(child, "name")
+                    .ok_or_else(|| {
+                        ConfigError::new_layout_kdl_error(
+                            "Pane templates must have a name".into(),
+                            child.span().offset(),
+                            child.span().len(),
+                        )
+                    })?;
                 let mut template_children = HashSet::new();
                 self.get_pane_template_dependencies(child, &mut template_children)?;
                 if dependency_tree.contains_key(template_name) {
@@ -1062,7 +1065,6 @@ impl<'a> KdlLayoutParser<'a> {
             tabs,
             template: Some(template),
             focused_tab_index,
-            ..Default::default()
         })
     }
     fn layout_with_one_tab(&self, panes: Vec<PaneLayout>) -> Result<Layout, ConfigError> {
@@ -1180,11 +1182,13 @@ impl<'a> KdlLayoutParser<'a> {
             .nodes()
             .iter()
             .find(|n| kdl_name!(n) == "layout")
-            .ok_or(ConfigError::new_layout_kdl_error(
-                "No layout found".into(),
-                kdl_layout.span().offset(),
-                kdl_layout.span().len(),
-            ))?;
+            .ok_or_else(|| {
+                ConfigError::new_layout_kdl_error(
+                    "No layout found".into(),
+                    kdl_layout.span().offset(),
+                    kdl_layout.span().len(),
+                )
+            })?;
         let has_multiple_layout_nodes = kdl_layout
             .nodes()
             .iter()

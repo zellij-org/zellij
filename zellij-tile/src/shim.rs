@@ -52,7 +52,7 @@ pub fn exec_cmd(cmd: &[&str]) {
 }
 
 pub fn report_panic(info: &std::panic::PanicInfo) {
-    println!("");
+    println!();
     println!("A panic occured in a plugin");
     println!("{:#?}", info);
     unsafe { host_report_panic() };

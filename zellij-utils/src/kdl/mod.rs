@@ -488,13 +488,13 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
     fn try_from(
         (color_name, theme_colors): (&str, &KdlDocument),
     ) -> Result<PaletteColor, Self::Error> {
-        let color = theme_colors
-            .get(color_name)
-            .ok_or(ConfigError::new_kdl_error(
+        let color = theme_colors.get(color_name).ok_or_else(|| {
+            ConfigError::new_kdl_error(
                 format!("Missing theme color: {}", color_name),
                 theme_colors.span().offset(),
                 theme_colors.span().len(),
-            ))?;
+            )
+        })?;
         let entry_count = entry_count!(color);
         let is_rgb = || entry_count == 3;
         let is_three_digit_hex = || {
@@ -514,21 +514,27 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
         let is_eight_bit = || kdl_first_entry_as_i64!(color).is_some() && entry_count == 1;
         if is_rgb() {
             let mut channels = kdl_entries_as_i64!(color);
-            let r = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                "invalid rgb color".to_string(),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let g = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                "invalid rgb color".to_string(),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
-            let b = channels.next().unwrap().ok_or(ConfigError::new_kdl_error(
-                "invalid rgb color".to_string(),
-                color.span().offset(),
-                color.span().len(),
-            ))? as u8;
+            let r = channels.next().unwrap().ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "invalid rgb color".to_string(),
+                    color.span().offset(),
+                    color.span().len(),
+                )
+            })? as u8;
+            let g = channels.next().unwrap().ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "invalid rgb color".to_string(),
+                    color.span().offset(),
+                    color.span().len(),
+                )
+            })? as u8;
+            let b = channels.next().unwrap().ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "invalid rgb color".to_string(),
+                    color.span().offset(),
+                    color.span().len(),
+                )
+            })? as u8;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_three_digit_hex() {
             // eg. #fff (hex, will be converted to rgb)
@@ -583,11 +589,13 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
             })?;
             Ok(PaletteColor::Rgb((r, g, b)))
         } else if is_eight_bit() {
-            let n = kdl_first_entry_as_i64!(color).ok_or(ConfigError::new_kdl_error(
-                "Failed to parse color".into(),
-                color.span().offset(),
-                color.span().len(),
-            ))?;
+            let n = kdl_first_entry_as_i64!(color).ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "Failed to parse color".into(),
+                    color.span().offset(),
+                    color.span().len(),
+                )
+            })?;
             Ok(PaletteColor::EightBit(n as u8))
         } else {
             Err(ConfigError::new_kdl_error(
@@ -1265,13 +1273,14 @@ impl RunPlugin {
     pub fn from_kdl(kdl_node: &KdlNode) -> Result<Self, ConfigError> {
         let _allow_exec_host_cmd =
             kdl_get_child_entry_bool_value!(kdl_node, "_allow_exec_host_cmd").unwrap_or(false);
-        let string_url = kdl_get_child_entry_string_value!(kdl_node, "location").ok_or(
-            ConfigError::new_kdl_error(
-                "Plugins must have a location".into(),
-                kdl_node.span().offset(),
-                kdl_node.span().len(),
-            ),
-        )?;
+        let string_url =
+            kdl_get_child_entry_string_value!(kdl_node, "location").ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    "Plugins must have a location".into(),
+                    kdl_node.span().offset(),
+                    kdl_node.span().len(),
+                )
+            })?;
         let url = Url::parse(string_url).map_err(|e| {
             ConfigError::new_kdl_error(
                 format!("Failed to parse url: {:?}", e),
@@ -1326,15 +1335,14 @@ impl EnvironmentVariables {
         for env_var in kdl_children_nodes_or_error!(kdl_env_variables, "empty env variable block") {
             let env_var_name = kdl_name!(env_var);
             let env_var_str_value = kdl_first_entry_as_string!(env_var).map(|s| s.to_string());
-            let env_var_int_value = kdl_first_entry_as_i64!(env_var).map(|s| format!("{}", s));
-            let env_var_value =
-                env_var_str_value
-                    .or(env_var_int_value)
-                    .ok_or(ConfigError::new_kdl_error(
-                        format!("Failed to parse env var: {:?}", env_var_name),
-                        env_var.span().offset(),
-                        env_var.span().len(),
-                    ))?;
+            let env_var_int_value = kdl_first_entry_as_i64!(env_var).map(|s| s.to_string());
+            let env_var_value = env_var_str_value.or(env_var_int_value).ok_or_else(|| {
+                ConfigError::new_kdl_error(
+                    format!("Failed to parse env var: {:?}", env_var_name),
+                    env_var.span().offset(),
+                    env_var.span().len(),
+                )
+            })?;
             env.insert(env_var_name.into(), env_var_value);
         }
         Ok(EnvironmentVariables::from_data(env))
@@ -1520,11 +1528,13 @@ impl PluginsConfig {
             let plugin_tag = PluginTag::new(plugin_name);
             let path = kdl_children_property_first_arg_as_string!(plugin_config, "path")
                 .map(PathBuf::from)
-                .ok_or(ConfigError::new_kdl_error(
-                    "Plugin path not found or invalid".into(),
-                    plugin_config.span().offset(),
-                    plugin_config.span().len(),
-                ))?;
+                .ok_or_else(|| {
+                    ConfigError::new_kdl_error(
+                        "Plugin path not found or invalid".into(),
+                        plugin_config.span().offset(),
+                        plugin_config.span().len(),
+                    )
+                })?;
             let allow_exec_host_cmd =
                 kdl_children_property_first_arg_as_bool!(plugin_config, "_allow_exec_host_cmd")
                     .unwrap_or(false);
@@ -1587,11 +1597,13 @@ impl Themes {
         let mut kdl_config = String::new();
         file.read_to_string(&mut kdl_config)?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
-        let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
-            "No theme node found in file".into(),
-            kdl_config.span().offset(),
-            kdl_config.span().len(),
-        ))?;
+        let kdl_themes = kdl_config.get("themes").ok_or_else(|| {
+            ConfigError::new_kdl_error(
+                "No theme node found in file".into(),
+                kdl_config.span().offset(),
+                kdl_config.span().len(),
+            )
+        })?;
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
         Ok(all_themes_in_file)
     }

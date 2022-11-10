@@ -172,7 +172,7 @@ impl Pane for PluginPane {
                 .recv()
                 .with_context(err_context)
                 .to_log()
-                .unwrap_or("No output from plugin received. See logs".to_string());
+                .unwrap_or_else(|_| "No output from plugin received. See logs".to_string());
             for (index, line) in contents.lines().enumerate() {
                 let actual_len = ansi_len(line);
                 let line_to_print = if actual_len > self.get_content_columns() {
