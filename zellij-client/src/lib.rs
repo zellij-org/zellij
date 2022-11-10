@@ -103,7 +103,7 @@ fn spawn_server(socket_path: &Path, debug: bool) -> io::Result<()> {
 
 #[derive(Debug, Clone)]
 pub enum ClientInfo {
-    Attach(String, Options),
+    Attach(String, Box<Options>),
     New(String),
 }
 
@@ -166,7 +166,7 @@ pub fn start_client(
         ClientInfo::Attach(name, config_options) => {
             envs::set_session_name(name);
 
-            ClientToServerMsg::AttachClient(client_attributes, config_options)
+            ClientToServerMsg::AttachClient(client_attributes, *config_options)
         },
         ClientInfo::New(name) => {
             envs::set_session_name(name);
@@ -332,7 +332,7 @@ pub fn start_client(
             .get_stdout_writer()
             .write(error.as_bytes())
             .unwrap();
-        let _ = os_input.get_stdout_writer().flush().unwrap();
+        os_input.get_stdout_writer().flush().unwrap();
         std::process::exit(1);
     };
 

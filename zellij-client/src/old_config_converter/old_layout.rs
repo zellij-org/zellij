@@ -5,7 +5,10 @@
 use super::old_config::{config_yaml_to_config_kdl, OldConfigFromYaml, OldRunCommand};
 use serde::{Deserialize, Serialize};
 use std::vec::Vec;
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt::{self, Write},
+    path::PathBuf,
+};
 use url::Url;
 
 fn pane_line(
@@ -14,16 +17,16 @@ fn pane_line(
     focus: Option<bool>,
     borderless: bool,
 ) -> String {
-    let mut pane_line = format!("pane");
+    let mut pane_line = "pane".to_string();
     if let Some(pane_name) = pane_name {
         // we use debug print here so that quotes and backslashes will be escaped
-        pane_line.push_str(&format!(" name={:?}", pane_name));
+        write!(pane_line, " name={:?}", pane_name).unwrap();
     }
     if let Some(split_size) = split_size {
-        pane_line.push_str(&format!(" size={}", split_size));
+        write!(pane_line, " size={}", split_size).unwrap();
     }
     if let Some(focus) = focus {
-        pane_line.push_str(&format!(" focus={}", focus));
+        write!(pane_line, " focus={}", focus).unwrap();
     }
     if borderless {
         pane_line.push_str(" borderless=true");
@@ -37,16 +40,16 @@ fn tab_line(
     focus: Option<bool>,
     borderless: bool,
 ) -> String {
-    let mut pane_line = format!("tab");
+    let mut pane_line = "tab".to_string();
     if let Some(pane_name) = pane_name {
         // we use debug print here so that quotes and backslashes will be escaped
-        pane_line.push_str(&format!(" name={:?}", pane_name));
+        write!(pane_line, " name={:?}", pane_name).unwrap();
     }
     if let Some(split_size) = split_size {
-        pane_line.push_str(&format!(" size={}", split_size));
+        write!(pane_line, " size={}", split_size).unwrap();
     }
     if let Some(focus) = focus {
-        pane_line.push_str(&format!(" focus={}", focus));
+        write!(pane_line, " focus={}", focus).unwrap();
     }
     if borderless {
         pane_line.push_str(" borderless=true");
@@ -61,18 +64,18 @@ fn pane_line_with_children(
     borderless: bool,
     split_direction: OldDirection,
 ) -> String {
-    let mut pane_line = format!("pane");
+    let mut pane_line = "pane".to_string();
     if let Some(pane_name) = pane_name {
         // we use debug print here so that quotes and backslashes will be escaped
-        pane_line.push_str(&format!(" name={:?}", pane_name));
+        write!(pane_line, " name={:?}", pane_name).unwrap();
     }
     if let Some(split_size) = split_size {
-        pane_line.push_str(&format!(" size={}", split_size));
+        write!(pane_line, " size={}", split_size).unwrap();
     }
     if let Some(focus) = focus {
-        pane_line.push_str(&format!(" focus={}", focus));
+        write!(pane_line, " focus={}", focus).unwrap();
     }
-    pane_line.push_str(&format!(" split_direction=\"{}\"", split_direction));
+    write!(pane_line, " split_direction=\"{}\"", split_direction).unwrap();
     if borderless {
         pane_line.push_str(" borderless=true");
     }
@@ -89,13 +92,13 @@ fn pane_command_line(
     let mut pane_line = format!("pane command={:?}", command);
     if let Some(pane_name) = pane_name {
         // we use debug print here so that quotes and backslashes will be escaped
-        pane_line.push_str(&format!(" name={:?}", pane_name));
+        write!(pane_line, " name={:?}", pane_name).unwrap();
     }
     if let Some(split_size) = split_size {
-        pane_line.push_str(&format!(" size={}", split_size));
+        write!(pane_line, " size={}", split_size).unwrap();
     }
     if let Some(focus) = focus {
-        pane_line.push_str(&format!(" focus={}", focus));
+        write!(pane_line, " focus={}", focus).unwrap();
     }
     if borderless {
         pane_line.push_str(" borderless=true");
@@ -110,18 +113,18 @@ fn tab_line_with_children(
     borderless: bool,
     split_direction: OldDirection,
 ) -> String {
-    let mut pane_line = format!("tab");
+    let mut pane_line = "tab".to_string();
     if let Some(pane_name) = pane_name {
         // we use debug print here so that quotes and backslashes will be escaped
-        pane_line.push_str(&format!(" name={:?}", pane_name));
+        write!(pane_line, " name={:?}", pane_name).unwrap();
     }
     if let Some(split_size) = split_size {
-        pane_line.push_str(&format!(" size={}", split_size));
+        write!(pane_line, " size={}", split_size).unwrap();
     }
     if let Some(focus) = focus {
-        pane_line.push_str(&format!(" focus={}", focus));
+        write!(pane_line, " focus={}", focus).unwrap();
     }
-    pane_line.push_str(&format!(" split_direction=\"{}\"", split_direction));
+    write!(pane_line, " split_direction=\"{}\"", split_direction).unwrap();
     if borderless {
         pane_line.push_str(" borderless=true");
     }
@@ -155,7 +158,7 @@ fn stringify_template(
         ));
     } else if !template.parts.is_empty() {
         if !is_base {
-            stringified.push_str(&format!(
+            write!(stringified,
                 "{}{} {{",
                 indentation,
                 pane_line_with_children(
@@ -165,27 +168,27 @@ fn stringify_template(
                     template.borderless,
                     template.direction
                 )
-            ));
+            ).unwrap();
         }
         for part in &template.parts {
             let child_indentation = format!("{}    ", &indentation);
             stringified.push_str(&stringify_template(
-                &part,
+                part,
                 child_indentation,
                 has_no_tabs,
                 false,
             ));
         }
         if !is_base {
-            stringified.push_str(&format!("\n{}}}", indentation));
+            write!(stringified, "\n{}}}", indentation).unwrap();
         }
     } else if template.body && !has_no_tabs {
-        stringified.push_str(&format!("{}children", indentation));
+        write!(stringified, "{}children", indentation).unwrap();
     } else {
         match template.run.as_ref() {
             Some(OldRunFromYaml::Plugin(plugin_from_yaml)) => {
-                stringified.push_str(&format!(
-                    "{}{} {{\n",
+                writeln!(stringified,
+                    "{}{} {{",
                     &indentation,
                     pane_line(
                         template.pane_name.as_ref(),
@@ -193,15 +196,15 @@ fn stringify_template(
                         template.focus,
                         template.borderless
                     )
-                ));
-                stringified.push_str(&format!(
-                    "{}    plugin location=\"{}\"\n",
+                ).unwrap();
+                writeln!(stringified, 
+                    "{}    plugin location=\"{}\"",
                     &indentation, plugin_from_yaml.location
-                ));
-                stringified.push_str(&format!("{}}}", &indentation));
+                ).unwrap();
+                write!(stringified, "{}}}", &indentation).unwrap();
             },
             Some(OldRunFromYaml::Command(command_from_yaml)) => {
-                stringified.push_str(&format!(
+                write!(stringified,
                     "{}{}",
                     &indentation,
                     &pane_command_line(
@@ -211,14 +214,14 @@ fn stringify_template(
                         template.borderless,
                         &command_from_yaml.command
                     )
-                ));
+                ).unwrap();
                 if let Some(cwd) = command_from_yaml.cwd.as_ref() {
-                    stringified.push_str(&format!(" cwd={:?}", cwd));
+                    write!(stringified, " cwd={:?}", cwd).unwrap();
                 }
                 if !command_from_yaml.args.is_empty() {
                     stringified.push_str(" {\n");
-                    stringified.push_str(&format!(
-                        "{}    args {}\n",
+                    writeln!(stringified,
+                        "{}    args {}",
                         &indentation,
                         command_from_yaml
                             .args
@@ -228,12 +231,12 @@ fn stringify_template(
                             .map(|s| format!("{:?}", s))
                             .collect::<Vec<String>>()
                             .join(" ")
-                    ));
-                    stringified.push_str(&format!("{}}}", &indentation));
+                    ).unwrap();
+                    write!(stringified, "{}}}", &indentation).unwrap();
                 }
             },
             None => {
-                stringified.push_str(&format!(
+                write!(stringified,
                     "{}{}",
                     &indentation,
                     pane_line(
@@ -242,7 +245,7 @@ fn stringify_template(
                         template.focus,
                         template.borderless
                     )
-                ));
+                ).unwrap();
             },
         };
     }
@@ -254,7 +257,8 @@ fn stringify_tabs(tabs: Vec<OldTabLayout>) -> String {
     for tab in tabs {
         let child_indentation = String::from("    ");
         if !tab.parts.is_empty() {
-            stringified.push_str(&format!(
+            write!(
+                stringified,
                 "\n{}{} {{",
                 child_indentation,
                 tab_line_with_children(
@@ -264,7 +268,8 @@ fn stringify_tabs(tabs: Vec<OldTabLayout>) -> String {
                     tab.borderless,
                     tab.direction
                 )
-            ));
+            )
+            .unwrap();
             let tab_template = OldLayoutTemplate::from(tab);
             stringified.push_str(&stringify_template(
                 &tab_template,
@@ -272,9 +277,10 @@ fn stringify_tabs(tabs: Vec<OldTabLayout>) -> String {
                 true,
                 true,
             ));
-            stringified.push_str(&format!("\n{}}}", child_indentation));
+            write!(stringified, "\n{}}}", child_indentation).unwrap();
         } else {
-            stringified.push_str(&format!(
+            write!(
+                stringified,
                 "\n{}{}",
                 child_indentation,
                 tab_line(
@@ -283,7 +289,8 @@ fn stringify_tabs(tabs: Vec<OldTabLayout>) -> String {
                     tab.focus,
                     tab.borderless
                 )
-            ));
+            )
+            .unwrap();
         }
     }
     stringified
@@ -323,9 +330,9 @@ pub fn layout_yaml_to_layout_kdl(raw_yaml_layout: &str) -> Result<String, String
     let layout_config = config_yaml_to_config_kdl(raw_yaml_layout, true)?;
     if let Some(session_name) = layout_from_yaml.session.name {
         // we use debug print here so that quotes and backslashes will be escaped
-        kdl_layout.push_str(&format!("\nsession_name {:?}", session_name));
+        write!(kdl_layout, "\nsession_name {:?}", session_name).unwrap();
         if let Some(attach_to_session) = layout_from_yaml.session.attach {
-            kdl_layout.push_str(&format!("\nattach_to_session {}", attach_to_session));
+            write!(kdl_layout, "\nattach_to_session {}", attach_to_session).unwrap();
         }
     }
     if !layout_config.is_empty() {

@@ -23,12 +23,9 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
         os_input.send_to_server(msg);
     }
     loop {
-        match os_input.recv_from_server() {
-            Some((ServerToClientMsg::UnblockInputThread, _)) => {
-                os_input.send_to_server(ClientToServerMsg::ClientExited);
-                process::exit(0);
-            },
-            _ => {},
+        if let Some((ServerToClientMsg::UnblockInputThread, _)) = os_input.recv_from_server() {
+            os_input.send_to_server(ClientToServerMsg::ClientExited);
+            process::exit(0);
         }
     }
 }

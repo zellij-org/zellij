@@ -324,7 +324,7 @@ pub(crate) fn input_loop(
     default_mode: InputMode,
     receive_input_instructions: Receiver<(InputInstruction, ErrorContext)>,
 ) {
-    let _handler = InputHandler::new(
+    InputHandler::new(
         os_input,
         command_is_executing,
         config,

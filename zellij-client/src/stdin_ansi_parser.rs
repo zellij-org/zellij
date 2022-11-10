@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    fmt::Write,
+    time::{Duration, Instant},
+};
 
 const STARTUP_PARSE_DEADLINE_MS: u64 = 500;
 const SIGWINCH_PARSE_DEADLINE_MS: u64 = 200;
@@ -31,13 +34,19 @@ impl StdinAnsiParser {
         // <ESC>[16t => get character cell size in pixels
         // <ESC>]11;?<ESC>\ => get background color
         // <ESC>]10;?<ESC>\ => get foreground color
-        let mut query_string =
-            String::from("\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+        //let mut query_string: Vec<u8> = Vec::with_capacity(11 * 256);
+        //write!(&mut query_string, "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}");
+        let mut query_string = String::with_capacity(11 * 256);
+        write!(
+            query_string,
+            "\u{1b}[14t\u{1b}[16t\u{1b}]11;?\u{1b}\u{5c}\u{1b}]10;?\u{1b}\u{5c}"
+        )
+        .unwrap();
 
         // query colors
         // eg. <ESC>]4;5;?<ESC>\ => query color register number 5
         for i in 0..256 {
-            query_string.push_str(&format!("\u{1b}]4;{};?\u{1b}\u{5c}", i));
+            write!(query_string, "\u{1b}]4;{};?\u{1b}\u{5c}", i).unwrap();
         }
         self.parse_deadline =
             Some(Instant::now() + Duration::from_millis(STARTUP_PARSE_DEADLINE_MS));

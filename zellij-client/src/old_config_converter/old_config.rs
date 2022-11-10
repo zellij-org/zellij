@@ -2,7 +2,7 @@
 //
 // It is supposed to be mostly self containing - please refrain from adding to it, importing
 // from it or changing it
-use std::fmt;
+use std::fmt::{self, Write};
 use std::path::PathBuf;
 
 use serde::de::{Error, Visitor};
@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use url::Url;
 
-const ON_FORCE_CLOSE_DESCRIPTION: &'static str = "
+const ON_FORCE_CLOSE_DESCRIPTION: &str = "
 // Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
 // eg. when terminal window with an active zellij session is closed
 // Options:
@@ -19,7 +19,7 @@ const ON_FORCE_CLOSE_DESCRIPTION: &'static str = "
 //
 ";
 
-const SIMPLIFIED_UI_DESCRIPTION: &'static str = "
+const SIMPLIFIED_UI_DESCRIPTION: &str = "
 // Send a request for a simplified ui (without arrow fonts) to plugins
 // Options:
 //   - true
@@ -27,13 +27,13 @@ const SIMPLIFIED_UI_DESCRIPTION: &'static str = "
 //
 ";
 
-const DEFAULT_SHELL_DESCRIPTION: &'static str = "
+const DEFAULT_SHELL_DESCRIPTION: &str = "
 // Choose the path to the default shell that zellij will use for opening new panes
 // Default: $SHELL
 //
 ";
 
-const PANE_FRAMES_DESCRIPTION: &'static str = "
+const PANE_FRAMES_DESCRIPTION: &str = "
 // Toggle between having pane frames around the panes
 // Options:
 //   - true (default)
@@ -41,19 +41,19 @@ const PANE_FRAMES_DESCRIPTION: &'static str = "
 //
 ";
 
-const DEFAULT_THEME_DESCRIPTION: &'static str = "
+const DEFAULT_THEME_DESCRIPTION: &str = "
 // Choose the theme that is specified in the themes section.
 // Default: default
 //
 ";
 
-const DEFAULT_MODE_DESCRIPTION: &'static str = "
+const DEFAULT_MODE_DESCRIPTION: &str = "
 // Choose the mode that zellij uses when starting up.
 // Default: normal
 //
 ";
 
-const MOUSE_MODE_DESCRIPTION: &'static str = "
+const MOUSE_MODE_DESCRIPTION: &str = "
 // Toggle enabling the mouse mode.
 // On certain configurations, or terminals this could
 // potentially interfere with copying text.
@@ -63,7 +63,7 @@ const MOUSE_MODE_DESCRIPTION: &'static str = "
 //
 ";
 
-const SCROLL_BUFFER_SIZE_DESCRIPTION: &'static str = "
+const SCROLL_BUFFER_SIZE_DESCRIPTION: &str = "
 // Configure the scroll back buffer size
 // This is the number of lines zellij stores for each pane in the scroll back
 // buffer. Excess number of lines are discarded in a FIFO fashion.
@@ -72,7 +72,7 @@ const SCROLL_BUFFER_SIZE_DESCRIPTION: &'static str = "
 //
 ";
 
-const COPY_COMMAND_DESCRIPTION: &'static str = "
+const COPY_COMMAND_DESCRIPTION: &str = "
 // Provide a command to execute when copying text. The text will be piped to
 // the stdin of the program to perform the copy. This can be used with
 // terminal emulators which do not support the OSC 52 ANSI control sequence
@@ -84,7 +84,7 @@ const COPY_COMMAND_DESCRIPTION: &'static str = "
 // copy_command \"pbcopy\"                     // osx
 ";
 
-const COPY_CLIPBOARD_DESCRIPTION: &'static str = "
+const COPY_CLIPBOARD_DESCRIPTION: &str = "
 // Choose the destination for copied text
 // Allows using the primary selection buffer (on x11/wayland) instead of the system clipboard.
 // Does not apply when using copy_command.
@@ -94,19 +94,19 @@ const COPY_CLIPBOARD_DESCRIPTION: &'static str = "
 //
 ";
 
-const COPY_ON_SELECT_DESCRIPTION: &'static str = "
+const COPY_ON_SELECT_DESCRIPTION: &str = "
 // Enable or disable automatic copy (and clear) of selection when releasing mouse
 // Default: true
 //
 ";
 
-const SCROLLBACK_EDITOR_DESCRIPTION: &'static str = "
+const SCROLLBACK_EDITOR_DESCRIPTION: &str = "
 // Path to the default editor to use to edit pane scrollbuffer
 // Default: $EDITOR or $VISUAL
 //
 ";
 
-const MIRROR_SESSION_DESCRIPTION: &'static str = "
+const MIRROR_SESSION_DESCRIPTION: &str = "
 // When attaching to an existing session with other users,
 // should the session be mirrored (true)
 // or should each user have their own cursor (false)
@@ -114,18 +114,18 @@ const MIRROR_SESSION_DESCRIPTION: &'static str = "
 //
 ";
 
-const DEFAULT_LAYOUT_DESCRIPTION: &'static str = "
+const DEFAULT_LAYOUT_DESCRIPTION: &str = "
 // The name of the default layout to load on startup
 // Default: \"default\"
 //
 ";
 
-const LAYOUT_DIR_DESCRIPTION: &'static str = "
+const LAYOUT_DIR_DESCRIPTION: &str = "
 // The folder in which Zellij will look for layouts
 //
 ";
 
-const THEME_DIR_DESCRIPTION: &'static str = "
+const THEME_DIR_DESCRIPTION: &str = "
 // The folder in which Zellij will look for themes
 //
 ";
@@ -139,7 +139,7 @@ fn options_yaml_to_options_kdl(options_yaml: &OldOptions, no_comments: bool) -> 
                 options_kdl.push_str($description_text);
             }
             if let Some($attribute_name) = &options_yaml.$attribute_name {
-                options_kdl.push_str(&format!($present_pattern, $attribute_name));
+                write!(options_kdl, $present_pattern, $attribute_name).unwrap();
                 options_kdl.push('\n');
             };
         };
@@ -149,11 +149,11 @@ fn options_yaml_to_options_kdl(options_yaml: &OldOptions, no_comments: bool) -> 
             }
             match &options_yaml.$attribute_name {
                 Some($attribute_name) => {
-                    options_kdl.push_str(&format!($present_pattern, $attribute_name));
+                    write!(options_kdl, $present_pattern, $attribute_name).unwrap();
                 },
                 None => {
                     if !no_comments {
-                        options_kdl.push_str(&format!($absent_pattern));
+                        options_kdl.push_str($absent_pattern);
                     }
                 },
             };
@@ -268,7 +268,7 @@ fn env_yaml_to_env_kdl(env_yaml: &OldEnvironmentVariablesFromYaml) -> String {
     env_vars.sort_unstable();
     env_kdl.push_str("env {\n");
     for (name, val) in env_vars {
-        env_kdl.push_str(&format!("    {} \"{}\"\n", name, val));
+        writeln!(env_kdl, "    {} \"{}\"", name, val).unwrap();
     }
     env_kdl.push_str("}\n");
     env_kdl
@@ -277,20 +277,24 @@ fn env_yaml_to_env_kdl(env_yaml: &OldEnvironmentVariablesFromYaml) -> String {
 fn plugins_yaml_to_plugins_kdl(plugins_yaml_to_plugins_kdl: &OldPluginsConfigFromYaml) -> String {
     let mut plugins_kdl = String::new();
     if !&plugins_yaml_to_plugins_kdl.0.is_empty() {
-        plugins_kdl.push_str("\n");
+        plugins_kdl.push('\n');
         plugins_kdl.push_str("plugins {\n")
     }
     for plugin_config in &plugins_yaml_to_plugins_kdl.0 {
         if plugin_config._allow_exec_host_cmd {
-            plugins_kdl.push_str(&format!(
-                "    {} {{ path {:?}; _allow_exec_host_cmd true; }}\n",
+            writeln!(
+                plugins_kdl,
+                "    {} {{ path {:?}; _allow_exec_host_cmd true; }}",
                 plugin_config.tag.0, plugin_config.path
-            ));
+            )
+            .unwrap();
         } else {
-            plugins_kdl.push_str(&format!(
-                "    {} {{ path {:?}; }}\n",
+            writeln!(
+                plugins_kdl,
+                "    {} {{ path {:?}; }}",
                 plugin_config.tag.0, plugin_config.path
-            ));
+            )
+            .unwrap();
         }
     }
     if !&plugins_yaml_to_plugins_kdl.0.is_empty() {
@@ -302,7 +306,7 @@ fn plugins_yaml_to_plugins_kdl(plugins_yaml_to_plugins_kdl: &OldPluginsConfigFro
 fn ui_config_yaml_to_ui_config_kdl(ui_config_yaml: &OldUiConfigFromYaml) -> String {
     let mut kdl_ui_config = String::new();
     if ui_config_yaml.pane_frames.rounded_corners {
-        kdl_ui_config.push_str("\n");
+        kdl_ui_config.push('\n');
         kdl_ui_config.push_str("ui {\n");
         kdl_ui_config.push_str("    pane_frames {\n");
         kdl_ui_config.push_str("        rounded_corners true\n");
@@ -310,7 +314,7 @@ fn ui_config_yaml_to_ui_config_kdl(ui_config_yaml: &OldUiConfigFromYaml) -> Stri
         kdl_ui_config.push_str("}\n");
     } else {
         // I'm not sure this is a thing, but since it's possible, why not?
-        kdl_ui_config.push_str("\n");
+        kdl_ui_config.push('\n');
         kdl_ui_config.push_str("ui {\n");
         kdl_ui_config.push_str("    pane_frames {\n");
         kdl_ui_config.push_str("        rounded_corners false\n");
@@ -327,16 +331,28 @@ fn theme_config_yaml_to_theme_config_kdl(
         ($theme:ident, $color:ident, $color_name:expr, $kdl_theme_config:expr) => {
             match $theme.palette.$color {
                 OldPaletteColorFromYaml::Rgb((r, g, b)) => {
-                    $kdl_theme_config
-                        .push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
+                    write!(
+                        $kdl_theme_config,
+                        "        {} {} {} {}\n",
+                        $color_name, r, g, b
+                    )
+                    .unwrap();
                 },
                 OldPaletteColorFromYaml::EightBit(eight_bit_color) => {
-                    $kdl_theme_config
-                        .push_str(&format!("        {} {}\n", $color_name, eight_bit_color));
+                    write!(
+                        $kdl_theme_config,
+                        "        {} {}\n",
+                        $color_name, eight_bit_color
+                    )
+                    .unwrap();
                 },
                 OldPaletteColorFromYaml::Hex(OldHexColor(r, g, b)) => {
-                    $kdl_theme_config
-                        .push_str(&format!("        {} {} {} {}\n", $color_name, r, g, b));
+                    write!(
+                        $kdl_theme_config,
+                        "        {} {} {} {}\n",
+                        $color_name, r, g, b
+                    )
+                    .unwrap();
                 },
             }
         };
@@ -353,7 +369,7 @@ fn theme_config_yaml_to_theme_config_kdl(
         .collect();
     themes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     for (theme_name, theme) in themes {
-        kdl_theme_config.push_str(&format!("    {} {{\n", theme_name));
+        writeln!(kdl_theme_config,"    {} {{", theme_name).unwrap();
         theme_color!(theme, fg, "fg", kdl_theme_config);
         theme_color!(theme, bg, "bg", kdl_theme_config);
         theme_color!(theme, black, "black", kdl_theme_config);
@@ -402,7 +418,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                 .map(|k| format!("\"{}\"", k))
                 .collect::<Vec<String>>()
                 .join(" ");
-            kdl_keybinds.push_str(&format!("    unbind {}\n", key_string));
+            writeln!(kdl_keybinds,"    unbind {}", key_string).unwrap();
         },
         OldUnbind::All(should_unbind_all_defaults) => {
             if *should_unbind_all_defaults {
@@ -438,10 +454,10 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                             .map(|a| format!("{};", a))
                             .collect::<Vec<String>>()
                             .join(" ");
-                        kdl_mode_keybinds.push_str(&format!(
-                            "        bind {} {{ {} }}\n",
+                        writeln!(kdl_mode_keybinds,
+                            "        bind {} {{ {} }}",
                             key_string, actions_string
-                        ));
+                        ).unwrap();
                     },
                     OldKeyActionUnbind::Unbind(unbind) => match &unbind.unbind {
                         OldUnbind::Keys(keys_to_unbind) => {
@@ -450,7 +466,7 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                                 .map(|k| format!("\"{}\"", k))
                                 .collect::<Vec<String>>()
                                 .join(" ");
-                            kdl_mode_keybinds.push_str(&format!("        unbind {}\n", key_string));
+                            writeln!(kdl_mode_keybinds,"        unbind {}", key_string).unwrap();
                         },
                         OldUnbind::All(unbind_all) => {
                             if *unbind_all {
@@ -461,9 +477,9 @@ fn keybinds_yaml_to_keybinds_kdl(keybinds_yaml: &OldKeybindsFromYaml) -> String 
                 }
             }
             if should_clear_mode_defaults {
-                kdl_keybinds.push_str(&format!("    {} clear-defaults=true {{\n", mode));
+                writeln!(kdl_keybinds,"    {} clear-defaults=true {{", mode).unwrap();
             } else {
-                kdl_keybinds.push_str(&format!("    {} {{\n", mode));
+                writeln!(kdl_keybinds,"    {} {{", mode).unwrap();
             }
             kdl_keybinds.push_str(&kdl_mode_keybinds);
             kdl_keybinds.push_str("    }\n");
@@ -1125,21 +1141,22 @@ impl std::fmt::Display for OldAction {
             Self::Run(run_command_action) => {
                 let mut run_block_serialized = format!("Run {:?}", run_command_action.command);
                 for arg in &run_command_action.args {
-                    run_block_serialized.push_str(&format!(" \"{}\"", arg));
+                    write!(run_block_serialized, " \"{}\"", arg).unwrap();
                 }
                 match (&run_command_action.cwd, run_command_action.direction) {
                     (Some(cwd), Some(direction)) => {
-                        run_block_serialized.push_str(&format!(
+                        write!(
+                            run_block_serialized,
                             "{{ cwd {:?}; direction \"{}\"; }}",
                             cwd, direction
-                        ));
+                        )
+                        .unwrap();
                     },
                     (None, Some(direction)) => {
-                        run_block_serialized
-                            .push_str(&format!("{{ direction \"{}\"; }}", direction));
+                        write!(run_block_serialized, "{{ direction \"{}\"; }}", direction).unwrap();
                     },
                     (Some(cwd), None) => {
-                        run_block_serialized.push_str(&format!("{{ cwd {:?}; }}", cwd));
+                        write!(run_block_serialized, "{{ cwd {:?}; }}", cwd).unwrap();
                     },
                     (None, None) => {},
                 }
