@@ -19,7 +19,7 @@ use crate::ui::pane_boundaries_frame::FrameParams;
 use self::clipboard::ClipboardProvider;
 use crate::{
     os_input_output::ServerOsApi,
-    output::{CharacterChunk, Output, SixelImageChunk},
+    output::{Output, RenderOutput},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
@@ -143,16 +143,13 @@ pub trait Pane {
     fn set_should_render_boundaries(&mut self, _should_render: bool) {}
     fn selectable(&self) -> bool;
     fn set_selectable(&mut self, selectable: bool);
-    fn render(
-        &mut self,
-        client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>>; // TODO: better
+    fn render(&mut self, client_id: Option<ClientId>) -> Result<Option<RenderOutput>>;
     fn render_frame(
         &mut self,
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>>; // TODO: better
+    ) -> Result<Option<RenderOutput>>;
     fn render_fake_cursor(
         &mut self,
         cursor_color: PaletteColor,

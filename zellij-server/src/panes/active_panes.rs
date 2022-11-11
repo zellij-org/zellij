@@ -9,6 +9,7 @@ pub struct ActivePanes {
 }
 
 impl ActivePanes {
+    #[allow(clippy::borrowed_box)]
     pub fn new(os_api: &Box<dyn ServerOsApi>) -> Self {
         let os_api = os_api.clone();
         ActivePanes {

@@ -816,6 +816,14 @@ impl CharacterChunk {
     }
 }
 
+/// Custom data type for aggregating the output of `Pane::render`, for any suitable pane.
+#[derive(Debug, Clone, Default)]
+pub struct RenderOutput {
+    pub character_chunks: Vec<CharacterChunk>,
+    pub raw_vte_output: Option<String>,
+    pub sixel_image_chunks: Vec<SixelImageChunk>,
+}
+
 #[derive(Clone, Debug)]
 pub struct OutputBuffer {
     pub changed_lines: Vec<usize>, // line index

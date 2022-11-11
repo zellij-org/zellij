@@ -1,4 +1,4 @@
-use crate::output::Output;
+use crate::output::{Output, RenderOutput};
 use crate::panes::PaneId;
 use crate::tab::Pane;
 use crate::ui::boundaries::Boundaries;
@@ -48,8 +48,11 @@ impl<'a> PaneContentsAndUi<'a> {
     ) -> Result<()> {
         let err_context = "failed to render pane contents to multiple clients";
 
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) =
-            self.pane.render(None).context(err_context)?
+        if let Some(RenderOutput {
+            character_chunks,
+            raw_vte_output,
+            sixel_image_chunks,
+        }) = self.pane.render(None).context(err_context)?
         {
             let clients: Vec<ClientId> = clients.collect();
             self.output
@@ -81,7 +84,11 @@ impl<'a> PaneContentsAndUi<'a> {
     pub fn render_pane_contents_for_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to render pane contents for client {client_id}");
 
-        if let Some((character_chunks, raw_vte_output, sixel_image_chunks)) = self
+        if let Some(RenderOutput {
+            character_chunks,
+            raw_vte_output,
+            sixel_image_chunks,
+        }) = self
             .pane
             .render(Some(client_id))
             .with_context(err_context)?
@@ -193,15 +200,19 @@ impl<'a> PaneContentsAndUi<'a> {
             }
         };
 
-        if let Some((frame_terminal_characters, vte_output)) = self
+        if let Some(RenderOutput {
+            character_chunks,
+            raw_vte_output,
+            ..
+        }) = self
             .pane
             .render_frame(client_id, frame_params, client_mode)
             .with_context(err_context)?
         {
             self.output
-                .add_character_chunks_to_client(client_id, frame_terminal_characters, self.z_index)
+                .add_character_chunks_to_client(client_id, character_chunks, self.z_index)
                 .with_context(err_context)?;
-            if let Some(vte_output) = vte_output {
+            if let Some(vte_output) = raw_vte_output {
                 self.output
                     .add_post_vte_instruction_to_client(client_id, &vte_output);
             }

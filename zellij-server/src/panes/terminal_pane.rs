@@ -1,4 +1,4 @@
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::RenderOutput;
 use crate::panes::sixel::SixelImageStore;
 use crate::panes::{
     grid::Grid,
@@ -275,10 +275,7 @@ impl Pane for TerminalPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(
-        &mut self,
-        _client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    fn render(&mut self, _client_id: Option<ClientId>) -> Result<Option<RenderOutput>> {
         if self.should_render() {
             let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
@@ -338,11 +335,11 @@ impl Pane for TerminalPane {
                 self.grid.ring_bell = false;
             }
             self.set_should_render(false);
-            Ok(Some((
+            Ok(Some(RenderOutput {
                 character_chunks,
-                Some(raw_vte_output),
+                raw_vte_output: Some(raw_vte_output),
                 sixel_image_chunks,
-            )))
+            }))
         } else {
             Ok(None)
         }
@@ -352,7 +349,7 @@ impl Pane for TerminalPane {
         client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
+    ) -> Result<Option<RenderOutput>> {
         let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
         let pane_title = if self.pane_name.is_empty()

@@ -1,4 +1,4 @@
-use crate::output::CharacterChunk;
+use crate::output::{CharacterChunk, RenderOutput};
 use crate::panes::{AnsiCode, CharacterStyles, TerminalCharacter, EMPTY_TERMINAL_CHARACTER};
 use crate::ui::boundaries::boundary_type;
 use crate::ClientId;
@@ -670,7 +670,7 @@ impl PaneFrame {
         };
         Ok(res)
     }
-    pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
+    pub fn render(&self) -> Result<RenderOutput> {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
         for row in 0..self.geom.rows {
@@ -724,7 +724,10 @@ impl PaneFrame {
                 character_chunks.push(CharacterChunk::new(boundary_character_right, x, y));
             }
         }
-        Ok((character_chunks, None))
+        Ok(RenderOutput {
+            character_chunks,
+            ..Default::default()
+        })
     }
     fn first_exited_held_title_part_full(&self) -> (Vec<TerminalCharacter>, usize) {
         // (title part, length)

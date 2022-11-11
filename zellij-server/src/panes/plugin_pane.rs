@@ -2,7 +2,7 @@ use std::fmt::Write;
 use std::sync::mpsc::channel;
 use std::time::Instant;
 
-use crate::output::{CharacterChunk, SixelImageChunk};
+use crate::output::RenderOutput;
 use crate::panes::PaneId;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
@@ -135,10 +135,7 @@ impl Pane for PluginPane {
     fn set_selectable(&mut self, selectable: bool) {
         self.selectable = selectable;
     }
-    fn render(
-        &mut self,
-        client_id: Option<ClientId>,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    fn render(&mut self, client_id: Option<ClientId>) -> Result<Option<RenderOutput>> {
         // this is a bit of a hack but works in a pinch
         let client_id = match client_id {
             Some(id) => id,
@@ -221,7 +218,10 @@ impl Pane for PluginPane {
                     }
                 }
             }
-            Ok(Some((vec![], Some(vte_output), vec![]))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
+            Ok(Some(RenderOutput {
+                raw_vte_output: Some(vte_output),
+                ..Default::default()
+            })) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
         } else {
             Ok(None)
         }
@@ -231,7 +231,7 @@ impl Pane for PluginPane {
         _client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
-    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
+    ) -> Result<Option<RenderOutput>> {
         // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
         // will eventually need fixing!
         let res = if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
