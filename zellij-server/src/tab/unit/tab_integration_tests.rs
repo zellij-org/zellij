@@ -229,11 +229,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     tab
 }
 
-fn create_new_tab_with_os_api(
-    size: Size,
-    default_mode: ModeInfo,
-    os_api: &Box<FakeInputOutput>,
-) -> Tab {
+fn create_new_tab_with_os_api(size: Size, default_mode: ModeInfo, os_api: &FakeInputOutput) -> Tab {
     set_session_name("test".into());
     let index = 0;
     let position = 0;
@@ -261,7 +257,7 @@ fn create_new_tab_with_os_api(
         size,
         character_cell_info,
         sixel_image_store,
-        os_api,
+        Box::new(os_api),
         senders,
         max_panes,
         style,

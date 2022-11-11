@@ -515,113 +515,129 @@ mod setup_test {
     }
     #[test]
     fn cli_arguments_override_config_options() {
-        let mut cli_args = CliArgs::default();
-        cli_args.command = Some(Command::Options(CliOptions {
-            options: Options {
-                simplified_ui: Some(true),
+        let cli_args = CliArgs {
+            command: Some(Command::Options(CliOptions {
+                options: Options {
+                    simplified_ui: Some(true),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
+            })),
             ..Default::default()
-        }));
+        };
         let (_config, _layout, options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
     }
     #[test]
     fn layout_options_override_config_options() {
-        let mut cli_args = CliArgs::default();
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-options.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
         assert_snapshot!(format!("{:#?}", layout));
     }
     #[test]
     fn cli_arguments_override_layout_options() {
-        let mut cli_args = CliArgs::default();
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-options.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.command = Some(Command::Options(CliOptions {
-            options: Options {
-                pane_frames: Some(true),
+        let cli_args = CliArgs {
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-options.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            command: Some(Command::Options(CliOptions {
+                options: Options {
+                    pane_frames: Some(true),
+                    ..Default::default()
+                },
                 ..Default::default()
-            },
+            })),
             ..Default::default()
-        }));
+        };
         let (_config, layout, options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", options));
         assert_snapshot!(format!("{:#?}", layout));
     }
     #[test]
     fn layout_env_vars_override_config_env_vars() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-env-vars.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-env-vars.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            config: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-with-env-vars.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-env-vars.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
     fn layout_ui_config_overrides_config_ui_config() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-ui-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-ui-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            config: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-with-ui-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-ui-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
     fn layout_plugins_override_config_plugins() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-plugins-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-plugins-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            config: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-with-plugins-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-plugins-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
     fn layout_themes_override_config_themes() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-themes-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-themes-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            config: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-with-themes-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-themes-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }
     #[test]
     fn layout_keybinds_override_config_keybinds() {
-        let mut cli_args = CliArgs::default();
-        cli_args.config = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/config-with-keybindings-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
-        cli_args.layout = Some(PathBuf::from(format!(
-            "{}/src/test-fixtures/layout-with-keybindings-config.kdl",
-            env!("CARGO_MANIFEST_DIR")
-        )));
+        let cli_args = CliArgs {
+            config: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/config-with-keybindings-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            layout: Some(PathBuf::from(format!(
+                "{}/src/test-fixtures/layout-with-keybindings-config.kdl",
+                env!("CARGO_MANIFEST_DIR")
+            ))),
+            ..Default::default()
+        };
         let (config, _layout, _options) = Setup::from_cli_args(&cli_args).unwrap();
         assert_snapshot!(format!("{:#?}", config));
     }

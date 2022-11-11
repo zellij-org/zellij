@@ -445,7 +445,6 @@ fn layout_with_focused_tab() {
         ],
         template: Some(PaneLayout::default()),
         focused_tab_index: Some(1),
-        ..Default::default()
     };
     assert_eq!(layout, expected_layout);
 }
