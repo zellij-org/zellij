@@ -433,9 +433,16 @@ impl Pty {
         }
     }
     pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
+        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
+            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+            "/bin/sh".to_string()
+        }));
+        if !shell.exists() {
+            panic!("Cannot find shell {}", shell.display());
+        }
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
-            command: PathBuf::from(env::var("SHELL").expect("Could not find the SHELL variable")),
+            command: shell,
             cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
             hold_on_close: false,
             hold_on_start: false,
