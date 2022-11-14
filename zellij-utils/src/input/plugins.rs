@@ -86,6 +86,19 @@ pub struct PluginConfig {
     pub location: RunPluginLocation,
 }
 
+#[cfg(not(feature = "disable_automatic_asset_installation"))]
+macro_rules! asset_map {
+    ($($src:literal => $dst:literal),+ $(,)?) => {
+        {
+            let mut assets = std::collections::HashMap::new();
+            $(
+                assets.insert(PathBuf::from($dst), include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", $src)).to_vec());
+            )+
+            assets
+        }
+    }
+}
+
 impl PluginConfig {
     /// Resolve wasm plugin bytes for the plugin path and given plugin directory. Attempts to first
     /// resolve the plugin path as an absolute path, then adds a ".wasm" extension to the path and
@@ -102,6 +115,13 @@ impl PluginConfig {
     pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
         let err_context =
             |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
+
+        let assets = asset_map! {
+            "assets/plugins/compact-bar.wasm" => "compact-bar.wasm",
+            "assets/plugins/status-bar.wasm" => "status-bar.wasm",
+            "assets/plugins/tab-bar.wasm" => "tab-bar.wasm",
+            "assets/plugins/strider.wasm" => "strider.wasm",
+        };
 
         // Locations we check for valid plugins
         let paths_arr = [
@@ -122,6 +142,12 @@ impl PluginConfig {
         // spell it out right here.
         let mut last_err: Result<Vec<u8>> = Err(anyhow!("failed to load plugin from disk"));
         for path in paths {
+            // Check if the plugin path matches an entry in the asset map. If so, load it directly
+            // from memory, don't bother with the disk.
+            if let Some(bytes) = assets.get(path) {
+                return Ok(bytes.to_vec());
+            }
+
             match fs::read(&path) {
                 Ok(val) => return Ok(val),
                 Err(err) => {
