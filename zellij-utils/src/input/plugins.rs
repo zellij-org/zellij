@@ -165,6 +165,10 @@ impl PluginConfig {
             PluginType::Headless => {},
         }
     }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(self.location, RunPluginLocation::Zellij(_))
+    }
 }
 
 /// Type of the plugin. Defaults to Pane.
