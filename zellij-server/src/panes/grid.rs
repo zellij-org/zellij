@@ -992,7 +992,6 @@ impl Grid {
                 .selection
                 .contains_row(character_chunk.y.saturating_sub(content_y))
             {
-                // character_chunk.highlight_selection
                 let background_color = match style.colors.bg {
                     PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
                     PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
@@ -1007,7 +1006,6 @@ impl Grid {
             } else if !self.search_results.selections.is_empty() {
                 for res in self.search_results.selections.iter() {
                     if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                        // character_chunk.highlight_search
                         let (select_background_palette, select_foreground_palette) =
                             if Some(res) == self.search_results.active.as_ref() {
                                 (style.colors.orange, style.colors.black)
@@ -1033,7 +1031,6 @@ impl Grid {
                 }
             }
         }
-        // grid.add_possible_bell_notification(&mut raw_vte_output);
         if self.ring_bell {
             let ring_bell = '\u{7}';
             raw_vte_output.push(ring_bell);
@@ -2637,8 +2634,7 @@ impl Perform for Grid {
             };
             if first_intermediate_is_questionmark {
                 let query_type = params_iter.next();
-                // let is_query = params_iter.next() == Some(&[1]);
-                let is_query = matches!(params_iter.next(), Some(&[1])); // TODO: whaa??
+                let is_query = matches!(params_iter.next(), Some(&[1]));
                 if is_query {
                     // XTSMGRAPHICS
                     match query_type {

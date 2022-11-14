@@ -164,7 +164,7 @@ impl Pane for PluginPane {
         self.set_client_should_render(client_id, true);
         let grid = get_or_create_grid!(self, client_id);
 
-        // this is part of the plugin contract, whenever we updat ehte plugin and call its render function, we delete the existing viewport
+        // this is part of the plugin contract, whenever we update the plugin and call its render function, we delete the existing viewport
         // and scroll, reset the cursor position and make sure all the viewport is rendered
         grid.delete_viewport_and_scroll();
         grid.reset_cursor_position();
@@ -189,6 +189,7 @@ impl Pane for PluginPane {
         self.geom_override
     }
     fn should_render(&self) -> bool {
+        // set should_render for all clients
         self.should_render.values().any(|v| *v)
     }
     fn set_should_render(&mut self, should_render: bool) {
@@ -243,7 +244,6 @@ impl Pane for PluginPane {
         }
         if let Some(grid) = self.grids.get(&client_id) {
             let err_context = || format!("failed to render frame for client {client_id}");
-            // TODO: remove the cursor stuff from here
             let pane_title = if self.pane_name.is_empty()
                 && input_mode == InputMode::RenamePane
                 && frame_params.is_main_client

@@ -47,9 +47,6 @@ use zellij_utils::{
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
-// TODO: CONTINUE HERE (11/11)
-// * consolidate the resize_ptys and add a branch to handle PaneId::Plugin that will send a new
-// resize instruction to wasm_vm, then handle it there
 #[macro_export]
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr, $senders:expr) => {{

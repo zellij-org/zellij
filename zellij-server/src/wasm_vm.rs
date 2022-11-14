@@ -99,7 +99,6 @@ folder from the output of the `zellij setup --check` command.
 pub enum PluginInstruction {
     Load(Sender<u32>, RunPlugin, usize, ClientId, Size), // tx_pid, plugin metadata, tab_index, client_ids
     Update(Option<u32>, Option<ClientId>, Event), // Focused plugin / broadcast, client_id, event data
-    // Render(Sender<String>, u32, ClientId, usize, usize), // String buffer, plugin id, client_id, rows, cols
     Unload(u32),                                         // plugin_id
     Resize(u32, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
@@ -241,64 +240,21 @@ pub(crate) fn wasm_thread_main(
                             }
                         })?;
 
-                        if *rows == 0 || *columns == 0 {
-                            // buf_tx.send(String::new()).with_context(err_context)?;
-                        } else {
-//                             let (instance, plugin_env) = plugin_map
-//                                 .get(&(pid, cid))
-//                                 .context("failed to find plugin for rendering")
-//                                 .with_context(err_context)?;
-
+                        if *rows > 0 && *columns > 0 {
                             let render = instance
                                 .exports
                                 .get_function("render")
                                 .with_context(err_context)?;
-
                             render
                                 .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
                                 .with_context(err_context)?;
                             let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
                             drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())));
-
-//                             buf_tx
-//                                 .send(wasi_read_string(&plugin_env.wasi_env))
-//                                 .with_context(err_context)?;
                         }
-
-
-
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             },
-//             PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
-// //                 let err_context = || {
-// //                     format!(
-// //                         "failed to render plugin with pid {pid} and cid {cid} at ({rows}, {cols})"
-// //                     )
-// //                 };
-// //
-// //                 if rows == 0 || cols == 0 {
-// //                     buf_tx.send(String::new()).with_context(err_context)?;
-// //                 } else {
-// //                     let (instance, plugin_env) = plugin_map
-// //                         .get(&(pid, cid))
-// //                         .context("failed to find plugin for rendering")
-// //                         .with_context(err_context)?;
-// //                     let render = instance
-// //                         .exports
-// //                         .get_function("render")
-// //                         .with_context(err_context)?;
-// //
-// //                     render
-// //                         .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-// //                         .with_context(err_context)?;
-// //
-// //                     buf_tx
-// //                         .send(wasi_read_string(&plugin_env.wasi_env))
-// //                         .with_context(err_context)?;
-// //                 }
-//             },
             PluginInstruction::Unload(pid) => {
                 info!("Bye from plugin {}", &pid);
                 // TODO: remove plugin's own data directory
