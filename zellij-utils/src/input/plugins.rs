@@ -2,13 +2,14 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::layout::{RunPlugin, RunPluginLocation};
+use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
 use crate::errors::prelude::*;
 
@@ -86,18 +87,6 @@ pub struct PluginConfig {
     pub location: RunPluginLocation,
 }
 
-macro_rules! asset_map {
-    ($($src:literal => $dst:literal),+ $(,)?) => {
-        {
-            let mut assets = std::collections::HashMap::new();
-            $(
-                assets.insert(PathBuf::from($dst), include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", $src)).to_vec());
-            )+
-            assets
-        }
-    }
-}
-
 impl PluginConfig {
     /// Resolve wasm plugin bytes.
     ///
@@ -110,20 +99,16 @@ impl PluginConfig {
     ///   /tab-bar.wasm
     /// ```
     ///
-    #[inline(never)] // Don't duplicate the asset map across the codebase, please
-    pub fn resolve_wasm_bytes(&self) -> Result<Vec<u8>> {
+    pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
         let err_context =
             |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
 
-        let assets = asset_map! {
-            "assets/plugins/compact-bar.wasm" => "compact-bar.wasm",
-            "assets/plugins/status-bar.wasm" => "status-bar.wasm",
-            "assets/plugins/tab-bar.wasm" => "tab-bar.wasm",
-            "assets/plugins/strider.wasm" => "strider.wasm",
-        };
-
         // Locations we check for valid plugins
-        let paths_arr = [&self.path, &self.path.with_extension("wasm")];
+        let paths_arr = [
+            &self.path,
+            &self.path.with_extension("wasm"),
+            &plugin_dir.join(&self.path).with_extension("wasm"),
+        ];
         // Throw out dupes, because it's confusing to read that zellij checked the same plugin
         // location multiple times
         let mut paths = paths_arr.to_vec();
@@ -139,13 +124,20 @@ impl PluginConfig {
         for path in paths {
             // Check if the plugin path matches an entry in the asset map. If so, load it directly
             // from memory, don't bother with the disk.
-            if let Some(bytes) = assets.get(path) {
-                log::debug!("Loaded plugin '{}' from internal assets", path.display());
-                return Ok(bytes.to_vec());
+            if !cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin() {
+                let asset_path = PathBuf::from("plugins").join(path);
+                if let Some(bytes) = ASSET_MAP.get(&asset_path) {
+                    log::debug!("Loaded plugin '{}' from internal assets", path.display());
+                    return Ok(bytes.to_vec());
+                }
             }
 
+            // Try to read from disk
             match fs::read(&path) {
-                Ok(val) => return Ok(val),
+                Ok(val) => {
+                    log::debug!("Loaded plugin '{}' from disk", path.display());
+                    return Ok(val);
+                },
                 Err(err) => {
                     last_err = last_err.with_context(|| err_context(err, &path));
                 },
@@ -153,6 +145,28 @@ impl PluginConfig {
         }
 
         // Not reached if a plugin is found!
+        if self.is_builtin() {
+            // Layout requested a builtin plugin that wasn't found
+            let plugin_path = self.path.with_extension("wasm");
+
+            if cfg!(feature = "disable_automatic_asset_installation")
+                && ASSET_MAP.contains_key(&PathBuf::from("plugins").join(&plugin_path))
+            {
+                return Err(ZellijError::BuiltinPluginMissing {
+                    plugin_path,
+                    plugin_dir: plugin_dir.to_owned(),
+                    source: last_err.unwrap_err(),
+                })
+                .context("failed to load a plugin");
+            } else {
+                return Err(ZellijError::BuiltinPluginNonexistent {
+                    plugin_path,
+                    source: last_err.unwrap_err(),
+                })
+                .context("failed to load a plugin");
+            }
+        }
+
         return last_err;
     }
 

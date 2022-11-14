@@ -4,7 +4,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt, fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process,
     str::FromStr,
     sync::{mpsc::Sender, Arc, Mutex},
@@ -186,6 +186,7 @@ pub(crate) fn wasm_thread_main(
                     tab_index,
                     &bus,
                     &store,
+                    &plugin_dir,
                     &mut plugin_cache,
                 )
                 .with_context(err_context)?;
@@ -378,6 +379,7 @@ pub(crate) fn wasm_thread_main(
                             0,
                             &bus,
                             &store,
+                            &plugin_dir,
                             &mut plugin_cache,
                         )
                         .with_context(err_context)?;
@@ -410,6 +412,7 @@ fn start_plugin(
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
     store: &Store,
+    plugin_dir: &Path,
     plugin_cache: &mut HashMap<PathBuf, Module>,
 ) -> Result<(Instance, PluginEnv)> {
     let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
@@ -425,7 +428,10 @@ fn start_plugin(
     // below...
     let module = match plugin_cache.remove(&plugin.path) {
         Some(module) => {
-            log::debug!("Loaded plugin {} from plugin cache", plugin.path.display());
+            log::debug!(
+                "Loaded plugin '{}' from plugin cache",
+                plugin.path.display()
+            );
             module
         },
         None => {
@@ -439,7 +445,7 @@ fn start_plugin(
 
             // The plugins blob as stored on the filesystem
             let wasm_bytes = plugin
-                .resolve_wasm_bytes()
+                .resolve_wasm_bytes(plugin_dir)
                 .with_context(err_context)
                 .fatal();
 
