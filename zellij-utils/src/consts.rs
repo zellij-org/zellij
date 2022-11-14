@@ -3,6 +3,7 @@
 use directories_next::ProjectDirs;
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub const ZELLIJ_CONFIG_FILE_ENV: &str = "ZELLIJ_CONFIG_FILE";
@@ -24,13 +25,47 @@ const fn system_default_data_dir() -> &'static str {
     }
 }
 
+// Convenience macro to add plugins to the asset map (see `ASSET_MAP`)
+macro_rules! add_plugin {
+    ($assets:expr, $key:literal => $asset:literal) => {
+        $assets.insert(
+            PathBuf::from($key),
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../", $asset)).to_vec(),
+        );
+    };
+}
+
 lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
+    // Zellij asset map
+    pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
+        let mut assets = std::collections::HashMap::new();
+        add_plugin!(
+            assets,
+            "plugins/compact-bar.wasm" => "assets/plugins/compact-bar.wasm"
+        );
+        add_plugin!(
+            assets,
+            "plugins/status-bar.wasm" => "assets/plugins/status-bar.wasm"
+        );
+        add_plugin!(
+            assets,
+            "plugins/tab-bar.wasm" => "assets/plugins/tab-bar.wasm"
+        );
+        add_plugin!(
+            assets,
+            "plugins/strider.wasm" => "assets/plugins/strider.wasm"
+        );
+        assets
+    };
 }
 
-pub const FEATURES: &[&str] = &[];
+pub const FEATURES: &[&str] = &[
+    #[cfg(feature = "disable_automatic_asset_installation")]
+    "disable_automatic_asset_installation",
+];
 
 #[cfg(unix)]
 pub use unix_only::*;
