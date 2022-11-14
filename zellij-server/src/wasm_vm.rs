@@ -37,8 +37,8 @@ use zellij_utils::{
         layout::RunPlugin,
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
-    serde,
     pane_size::Size,
+    serde,
 };
 
 /// Custom error for plugin version mismatch.
@@ -99,8 +99,8 @@ folder from the output of the `zellij setup --check` command.
 pub enum PluginInstruction {
     Load(Sender<u32>, RunPlugin, usize, ClientId, Size), // tx_pid, plugin metadata, tab_index, client_ids
     Update(Option<u32>, Option<ClientId>, Event), // Focused plugin / broadcast, client_id, event data
-    Unload(u32),                                         // plugin_id
-    Resize(u32, usize, usize), // plugin_id, columns, rows
+    Unload(u32),                                  // plugin_id
+    Resize(u32, usize, usize),                    // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     Exit,
@@ -145,7 +145,8 @@ pub(crate) fn wasm_thread_main(
 
     let mut plugin_id = 0;
     let mut headless_plugins = HashMap::new();
-    let mut plugin_map: HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))> = HashMap::new(); // u32 => pid, (usize, usize) => rows/columns TODO: clean this up into a struct or something
+    let mut plugin_map: HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))> =
+        HashMap::new(); // u32 => pid, (usize, usize) => rows/columns TODO: clean this up into a struct or something
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
@@ -177,7 +178,10 @@ pub(crate) fn wasm_thread_main(
                 let main_user_env = plugin_env.clone();
                 load_plugin(&mut main_user_instance).with_context(err_context)?;
 
-                plugin_map.insert((plugin_id, client_id), (main_user_instance, main_user_env, (size.rows, size.cols)));
+                plugin_map.insert(
+                    (plugin_id, client_id),
+                    (main_user_instance, main_user_env, (size.rows, size.cols)),
+                );
 
                 // clone plugins for the rest of the client ids if they exist
                 for client_id in connected_clients.iter() {
@@ -192,7 +196,10 @@ pub(crate) fn wasm_thread_main(
                     let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
                         .with_context(err_context)?;
                     load_plugin(&mut instance).with_context(err_context)?;
-                    plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env, (size.rows, size.cols)));
+                    plugin_map.insert(
+                        (plugin_id, *client_id),
+                        (instance, new_plugin_env, (size.rows, size.cols)),
+                    );
                 }
                 pid_tx.send(plugin_id).with_context(err_context)?;
                 plugin_id += 1;
@@ -206,7 +213,9 @@ pub(crate) fn wasm_thread_main(
                     }
                 };
 
-                for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &plugin_map {
+                for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in
+                    &plugin_map
+                {
                     let subs = plugin_env
                         .subscriptions
                         .lock()
@@ -249,7 +258,11 @@ pub(crate) fn wasm_thread_main(
                                 .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
                                 .with_context(err_context)?;
                             let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
-                            drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())));
+                            drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(
+                                plugin_id,
+                                client_id,
+                                rendered_bytes.as_bytes().to_vec(),
+                            )));
                         }
                     }
                 }
@@ -267,7 +280,11 @@ pub(crate) fn wasm_thread_main(
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
                 let err_context = || format!("failed to resize plugin {pid}");
-                for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in plugin_map.iter_mut()  {
+                for (
+                    (plugin_id, client_id),
+                    (instance, plugin_env, (current_rows, current_columns)),
+                ) in plugin_map.iter_mut()
+                {
                     if *plugin_id == pid {
                         *current_rows = new_rows;
                         *current_columns = new_columns;
@@ -279,13 +296,20 @@ pub(crate) fn wasm_thread_main(
                             .with_context(err_context)?;
 
                         render
-                            .call(&[Value::I32(*current_rows as i32), Value::I32(*current_columns as i32)])
+                            .call(&[
+                                Value::I32(*current_rows as i32),
+                                Value::I32(*current_columns as i32),
+                            ])
                             .with_context(err_context)?;
                         let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
-                        drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec())));
+                        drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(
+                            *plugin_id,
+                            *client_id,
+                            rendered_bytes.as_bytes().to_vec(),
+                        )));
                     }
                 }
-            }
+            },
             PluginInstruction::AddClient(client_id) => {
                 let err_context = || format!("failed to add plugins for client {client_id}");
 
@@ -301,9 +325,14 @@ pub(crate) fn wasm_thread_main(
                     let mut new_plugin_env = plugin_env.clone();
 
                     new_plugin_env.client_id = client_id;
-                    new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env, (*rows, *columns)));
+                    new_plugins.insert(
+                        plugin_id,
+                        (instance.module().clone(), new_plugin_env, (*rows, *columns)),
+                    );
                 }
-                for (plugin_id, (module, mut new_plugin_env, (rows, columns))) in new_plugins.drain() {
+                for (plugin_id, (module, mut new_plugin_env, (rows, columns))) in
+                    new_plugins.drain()
+                {
                     let wasi = new_plugin_env
                         .wasi_env
                         .import_object(&module)
@@ -312,7 +341,10 @@ pub(crate) fn wasm_thread_main(
                     let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
                         .with_context(err_context)?;
                     load_plugin(&mut instance).with_context(err_context)?;
-                    plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env, (rows, columns)));
+                    plugin_map.insert(
+                        (plugin_id, client_id),
+                        (instance, new_plugin_env, (rows, columns)),
+                    );
                 }
 
                 // load headless plugins

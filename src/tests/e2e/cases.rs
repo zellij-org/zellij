@@ -849,7 +849,8 @@ pub fn resize_terminal_window() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(53, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Ctrl +") {
+                    && remote_terminal.snapshot_contains("Ctrl +")
+                {
                     // size has been changed
                     step_is_complete = true;
                 }

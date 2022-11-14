@@ -4,9 +4,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
-use zellij_utils::regex::Regex;
-use zellij_utils::errors::prelude::*;
 use zellij_utils::data::Style;
+use zellij_utils::errors::prelude::*;
+use zellij_utils::regex::Regex;
 
 use std::{
     cmp::Ordering,
@@ -981,11 +981,15 @@ impl Grid {
 
         (changed_character_chunks, changed_sixel_image_chunks)
     }
-    pub fn render(&mut self, content_x: usize, content_y: usize, style: &Style) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+    pub fn render(
+        &mut self,
+        content_x: usize,
+        content_y: usize,
+        style: &Style,
+    ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
         let mut raw_vte_output = String::new();
 
-        let (mut character_chunks, sixel_image_chunks) =
-            self.read_changes(content_x, content_y);
+        let (mut character_chunks, sixel_image_chunks) = self.read_changes(content_x, content_y);
         for character_chunk in character_chunks.iter_mut() {
             character_chunk.add_changed_colors(self.changed_colors);
             if self

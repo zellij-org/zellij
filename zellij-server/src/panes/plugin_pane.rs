@@ -1,30 +1,25 @@
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use crate::panes::{
-    PaneId,
-    grid::Grid,
-    sixel::SixelImageStore,
-    LinkHandler,
-};
+use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 use crate::wasm_vm::PluginInstruction;
 use crate::ClientId;
+use std::cell::RefCell;
+use std::rc::Rc;
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Event, InputMode, Mouse, PaletteColor, Palette, Style},
+    data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
     pane_size::{Dimension, PaneGeom},
     shared::make_terminal_title,
     vte,
 };
-use std::rc::Rc;
-use std::cell::RefCell;
 
 macro_rules! get_or_create_grid {
     ($self:ident, $client_id:ident) => {{
@@ -44,7 +39,7 @@ macro_rules! get_or_create_grid {
             grid.hide_cursor();
             grid
         })
-    }}
+    }};
 }
 
 pub(crate) struct PluginPane {
@@ -170,7 +165,10 @@ impl Pane for PluginPane {
         grid.reset_cursor_position();
         grid.render_full_viewport();
 
-        let vte_parser = self.vte_parsers.entry(client_id).or_insert_with(|| vte::Parser::new());
+        let vte_parser = self
+            .vte_parsers
+            .entry(client_id)
+            .or_insert_with(|| vte::Parser::new());
         for &byte in &bytes {
             vte_parser.advance(grid, byte);
         }
@@ -193,7 +191,9 @@ impl Pane for PluginPane {
         self.should_render.values().any(|v| *v)
     }
     fn set_should_render(&mut self, should_render: bool) {
-        self.should_render.values_mut().for_each(|v| *v = should_render);
+        self.should_render
+            .values_mut()
+            .for_each(|v| *v = should_render);
     }
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
@@ -226,7 +226,7 @@ impl Pane for PluginPane {
                             self.should_render.insert(client_id, false);
                             return Ok(rendered_assets);
                         },
-                        e => { return e },
+                        e => return e,
                     }
                 }
             }
@@ -250,8 +250,7 @@ impl Pane for PluginPane {
             {
                 String::from("Enter name...")
             } else if self.pane_name.is_empty() {
-                grid
-                    .title
+                grid.title
                     .clone()
                     .unwrap_or_else(|| self.pane_title.clone())
             } else {

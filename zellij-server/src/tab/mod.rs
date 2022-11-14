@@ -51,23 +51,21 @@ use zellij_utils::{
 macro_rules! resize_pty {
     ($pane:expr, $os_input:expr, $senders:expr) => {{
         match $pane.pid() {
-            PaneId::Terminal(ref pid) => {
-                $os_input.set_terminal_size_using_terminal_id(
-                    *pid,
-                    $pane.get_content_columns() as u16,
-                    $pane.get_content_rows() as u16,
-                )
-            }
+            PaneId::Terminal(ref pid) => $os_input.set_terminal_size_using_terminal_id(
+                *pid,
+                $pane.get_content_columns() as u16,
+                $pane.get_content_rows() as u16,
+            ),
             PaneId::Plugin(ref pid) => {
                 let err_context = || format!("failed to resize plugin {pid}");
-                    $senders
-                        .send_to_plugin(PluginInstruction::Resize(
-                            *pid,
-                            $pane.get_content_columns(),
-                            $pane.get_content_rows(),
-                        ))
-                        .with_context(err_context)
-            }
+                $senders
+                    .send_to_plugin(PluginInstruction::Resize(
+                        *pid,
+                        $pane.get_content_columns(),
+                        $pane.get_content_rows(),
+                    ))
+                    .with_context(err_context)
+            },
         }
     }};
 }
@@ -537,7 +535,11 @@ impl Tab {
                         let pane_title = run.location.to_string();
                         self.senders
                             .send_to_plugin(PluginInstruction::Load(
-                                pid_tx, run, tab_index, client_id, position_and_size.into()
+                                pid_tx,
+                                run,
+                                tab_index,
+                                client_id,
+                                position_and_size.into(),
                             ))
                             .with_context(err_context)?;
                         let pid = pid_rx.recv().with_context(err_context)?;
@@ -797,7 +799,8 @@ impl Tab {
                         embedded_pane_to_float.set_content_offset(Offset::default());
                     }
                     embedded_pane_to_float.set_geom(new_pane_geom);
-                    resize_pty!(embedded_pane_to_float, self.os_api, self.senders).with_context(err_context)?;
+                    resize_pty!(embedded_pane_to_float, self.os_api, self.senders)
+                        .with_context(err_context)?;
                     embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes
                         .add_pane(focused_pane_id, embedded_pane_to_float);
@@ -1104,7 +1107,9 @@ impl Tab {
     }
     pub fn has_plugin(&self, plugin_id: u32) -> bool {
         self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
-            || self.floating_panes.panes_contain(&PaneId::Plugin(plugin_id))
+            || self
+                .floating_panes
+                .panes_contain(&PaneId::Plugin(plugin_id))
             || self
                 .suppressed_panes
                 .values()
@@ -1138,7 +1143,12 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
-    pub fn handle_plugin_bytes(&mut self, pid: u32, client_id: ClientId, bytes: VteBytes) -> Result<()> {
+    pub fn handle_plugin_bytes(
+        &mut self,
+        pid: u32,
+        client_id: ClientId,
+        bytes: VteBytes,
+    ) -> Result<()> {
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))
@@ -1177,7 +1187,8 @@ impl Tab {
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
-                resize_pty!(terminal_output, self.os_api, self.senders).with_context(err_context)?;
+                resize_pty!(terminal_output, self.os_api, self.senders)
+                    .with_context(err_context)?;
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();

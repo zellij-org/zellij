@@ -1,10 +1,10 @@
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::sixel::SixelImageStore;
+use crate::panes::LinkHandler;
 use crate::panes::{
     grid::Grid,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
-use crate::panes::LinkHandler;
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
@@ -287,7 +287,7 @@ impl Pane for TerminalPane {
                     self.set_should_render(false);
                     return Ok(rendered_assets);
                 },
-                e => { return e },
+                e => return e,
             }
         } else {
             Ok(None)

@@ -8,11 +8,11 @@ use crate::{
     os_input_output::ServerOsApi,
     output::Output,
     panes::{ActivePanes, PaneId},
+    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
+    thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
-    thread_bus::ThreadSenders,
     wasm_vm::PluginInstruction,
-    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     ClientId,
 };
 use zellij_utils::{
@@ -81,7 +81,7 @@ impl TiledPanes {
         default_mode_info: ModeInfo,
         style: Style,
         os_api: Box<dyn ServerOsApi>,
-        senders: ThreadSenders
+        senders: ThreadSenders,
     ) -> Self {
         TiledPanes {
             panes: BTreeMap::new(),
