@@ -395,7 +395,8 @@ pub enum ZellijError {
     #[error("failed to start PTY")]
     FailedToStartPty,
 
-    #[error("This version of zellij was built to load the core plugins from
+    #[error(
+        "This version of zellij was built to load the core plugins from
 the globally configured plugin directory. However, a plugin wasn't found:
 
     Plugin name: '{plugin_path}'
@@ -408,7 +409,8 @@ If you're a developer:
     Either make sure to include the plugins with the application (See feature
     'disable_automatic_asset_installation'), or make them available in the
     plugin directory.
-")]
+"
+    )]
     BuiltinPluginMissing {
         plugin_path: PathBuf,
         plugin_dir: PathBuf,
@@ -416,7 +418,8 @@ If you're a developer:
         source: anyhow::Error,
     },
 
-    #[error("It seems you tried to load the following builtin plugin:
+    #[error(
+        "It seems you tried to load the following builtin plugin:
 
     Plugin name: '{plugin_path}'
 
@@ -429,7 +432,8 @@ If you think this is a bug and the plugin is indeed an internal plugin, please
 open an issue on GitHub:
 
     https://github.com/zellij-org/zellij/issues
-")]
+"
+    )]
     BuiltinPluginNonexistent {
         plugin_path: PathBuf,
         #[source]
