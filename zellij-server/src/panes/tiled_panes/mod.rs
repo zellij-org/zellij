@@ -2,7 +2,6 @@ mod pane_resizer;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use crate::tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use tiled_pane_grid::{split, TiledPaneGrid};
 
 use crate::{
@@ -13,18 +12,21 @@ use crate::{
     ui::pane_contents_and_ui::PaneContentsAndUi,
     thread_bus::ThreadSenders,
     wasm_vm::PluginInstruction,
+    tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     ClientId,
 };
-use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::rc::Rc;
-use std::time::Instant;
-use zellij_utils::errors::prelude::*;
 use zellij_utils::{
     data::{ModeInfo, Style},
-    input::command::RunCommand,
-    input::layout::SplitDirection,
+    errors::prelude::*,
+    input::{command::RunCommand, layout::SplitDirection},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
+};
+
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap, HashSet},
+    rc::Rc,
+    time::Instant,
 };
 
 fn pane_content_offset(position_and_size: &PaneGeom, viewport: &Viewport) -> (usize, usize) {
@@ -132,7 +134,7 @@ impl TiledPanes {
         mut with_pane: Box<dyn Pane>,
     ) -> Option<Box<dyn Pane>> {
         let with_pane_id = with_pane.pid();
-        if self.draw_pane_frames {
+        if self.draw_pane_frames && !with_pane.borderless() {
             with_pane.set_content_offset(Offset::frame(1));
         }
         let removed_pane = self.panes.remove(&pane_id).map(|removed_pane| {
@@ -216,17 +218,18 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        let result = match direction {
+        match direction {
             SplitDirection::Horizontal => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).cols)
             },
             SplitDirection::Vertical => {
                 pane_grid.layout(direction, (*self.display_area.borrow()).rows)
             },
-        };
-        if let Err(e) = &result {
-            log::error!("{:?} relayout of the tab failed: {}", direction, e);
         }
+        .or_else(|e| Err(anyError::msg(e)))
+        .with_context(|| format!("{:?} relayout of tab failed", direction))
+        .non_fatal();
+
         self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
@@ -238,7 +241,7 @@ impl TiledPanes {
             }
 
             #[allow(clippy::if_same_then_else)]
-            if draw_pane_frames & !pane.borderless() {
+            if draw_pane_frames && !pane.borderless() {
                 // there's definitely a frame around this pane, offset its contents
                 pane.set_content_offset(Offset::frame(1));
             } else if draw_pane_frames && pane.borderless() {
@@ -482,16 +485,23 @@ impl TiledPanes {
                     display_area.cols = cols;
                 },
                 Err(e) => {
-                    log::error!("Failed to horizontally resize the tab: {:?}", e);
+                    Err::<(), _>(anyError::msg(e))
+                        .context("failed to resize tab horizontally")
+                        .non_fatal();
                 },
             };
-            if pane_grid.layout(SplitDirection::Vertical, rows).is_ok() {
-                let row_difference = rows as isize - display_area.rows as isize;
-                viewport.rows = (viewport.rows as isize + row_difference) as usize;
-                display_area.rows = rows;
-            } else {
-                log::error!("Failed to vertically resize the tab!!!");
-            }
+            match pane_grid.layout(SplitDirection::Vertical, rows) {
+                Ok(_) => {
+                    let row_difference = rows as isize - display_area.rows as isize;
+                    viewport.rows = (viewport.rows as isize + row_difference) as usize;
+                    display_area.rows = rows;
+                },
+                Err(e) => {
+                    Err::<(), _>(anyError::msg(e))
+                        .context("failed to resize tab vertically")
+                        .non_fatal();
+                },
+            };
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
@@ -818,6 +828,7 @@ impl TiledPanes {
         }
         resize_pty!(current_position, self.os_api, self.senders).unwrap();
         current_position.set_should_render(true);
+        self.set_pane_frames(self.draw_pane_frames);
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
@@ -851,6 +862,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api, self.senders).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -886,6 +898,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api, self.senders).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -921,6 +934,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api, self.senders).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }
@@ -956,6 +970,7 @@ impl TiledPanes {
                 }
                 resize_pty!(current_position, self.os_api, self.senders).unwrap();
                 current_position.set_should_render(true);
+                self.set_pane_frames(self.draw_pane_frames);
             }
         }
     }

@@ -45,7 +45,7 @@ mod unix_only {
     use crate::shared::set_permissions;
     use lazy_static::lazy_static;
     use nix::unistd::Uid;
-    use std::fs;
+    use std::{env::temp_dir, fs};
 
     lazy_static! {
         static ref UID: Uid = Uid::current();
@@ -56,7 +56,7 @@ mod unix_only {
             sock_dir.push(envs::get_session_name().unwrap());
             sock_dir
         };
-        pub static ref ZELLIJ_TMP_DIR: PathBuf = PathBuf::from(format!("/tmp/zellij-{}", *UID));
+        pub static ref ZELLIJ_TMP_DIR: PathBuf = temp_dir().join(format!("zellij-{}", *UID));
         pub static ref ZELLIJ_TMP_LOG_DIR: PathBuf = ZELLIJ_TMP_DIR.join("zellij-log");
         pub static ref ZELLIJ_TMP_LOG_FILE: PathBuf = ZELLIJ_TMP_LOG_DIR.join("zellij.log");
         pub static ref ZELLIJ_SOCK_DIR: PathBuf = {

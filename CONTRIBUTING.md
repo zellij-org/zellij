@@ -84,7 +84,7 @@ Once you do, in the repository root:
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
 
 ## Debugging / Troubleshooting while developing
-Zellij uses the excellent [`log`](https://crates.io/crates/log) crate to handle its internal logging. The output of these logs will go to `/tmp/zellij-<UID>/zellij-log/zellij.log`.
+Zellij uses the excellent [`log`](https://crates.io/crates/log) crate to handle its internal logging. The output of these logs will go to `/$temp_dir/zellij-<UID>/zellij-log/zellij.log` which `$temp_dir` refers to [std::env::temp_dir()](https://doc.rust-lang.org/std/env/fn.temp_dir.html). On most of operating systems it points to `/tmp`, but there are exceptions, such as `/var/folders/dr/xxxxxxxxxxxxxx/T/` for Mac.
 
 Example:
 ```rust
@@ -94,7 +94,7 @@ log::info!("my variable is: {:?}", my_variable);
 
 Note that the output is truncated at 100KB. This can be adjusted for the purposes of debugging through the `LOG_MAX_BYTES` constant, at the time of writing here: https://github.com/zellij-org/zellij/blob/main/zellij-utils/src/logging.rs#L24
 
-When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/tmp/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
+When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
 
 ## How we treat clippy lints
 
@@ -124,8 +124,23 @@ something interesting to work on and guide through.
 - Generate ad-hoc errors with `anyhow!(<SOME MESSAGE>)`
 - *Further reading*: [See here][error-docs-result]
 
+### Logging errors
+
+- When there's a `Result` type around, use `.non_fatal()` on that instead of `log::error!`
+- When there's a `Err` type around, use `Err::<(), _>(err).non_fatal()`
+- Also attach context before logging!
+- *Further reading*: [See here][error-docs-logging]
+
+### Adding Concrete Errors, Handling Specific Errors
+
+- Add a new variant to `zellij_utils::errors::ZellijError`, if needed
+- Use `anyhow::Error::downcast_ref::<ZellijError>()` to recover underlying errors
+- *Further reading*: [See here][error-docs-zellijerror]
+
 [error-docs-context]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#attaching-context
 [error-docs-result]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#converting-a-function-to-return-a-result-type
+[error-docs-logging]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#logging-errors
+[error-docs-zellijerror]: https://github.com/zellij-org/zellij/blob/main/docs/ERROR_HANDLING.md#adding-concrete-errors-handling-specific-errors
 
 
 ## Filing Issues

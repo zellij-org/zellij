@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+* feat: support text input from clipboard (https://github.com/zellij-org/zellij/pull/1926)
+* errors: Don't log errors from panes when quitting zellij (https://github.com/zellij-org/zellij/pull/1918)
+* docs(contributing): update log path (https://github.com/zellij-org/zellij/pull/1927) 
+
+## [0.33.0] - 2022-11-10
+
 * debugging: improve error handling in `zellij_server::pty` (https://github.com/zellij-org/zellij/pull/1840)
 * feat: allow command panes to optionally close on exit (https://github.com/zellij-org/zellij/pull/1869)
 * add: everforest-dark, everforest-light themes to the example theme directory (https://github.com/zellij-org/zellij/pull/1873)
@@ -25,9 +31,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly convert the backslash key from old YAML config files (https://github.com/zellij-org/zellij/pull/1879)
 * fix: clear floating panes indication when closing a floating command pane (https://github.com/zellij-org/zellij/pull/1897)
 * Terminal compatibility: do not reset bold when resetting DIM (https://github.com/zellij-org/zellij/pull/1803)
+* fix: Do not advertise 24 bit color support unchecked (https://github.com/zellij-org/zellij/pull/1900)
 * fix: treat CWD properly when opening your editor through `zellij edit` or `ze` (https://github.com/zellij-org/zellij/pull/1904)
 * fix: allow cli actions to be run outside of a tty environment (https://github.com/zellij-org/zellij/pull/1905)
 * Terminal compatibility: send focus in/out events to terminal panes (https://github.com/zellij-org/zellij/pull/1908)
+* fix: various bugs with no-frames and floating panes (https://github.com/zellij-org/zellij/pull/1909)
+* debugging: Improve error logging in server (https://github.com/zellij-org/zellij/pull/1881)
+* docs: add kanagawa theme (https://github.com/zellij-org/zellij/pull/1913)
+* fix: use 'temp_dir' instead of hard-coded '/tmp/' (https://github.com/zellij-org/zellij/pull/1898)
+* debugging: Don't strip debug symbols from release binaries (https://github.com/zellij-org/zellij/pull/1916)
+* deps: upgrade termwiz to 0.19.0 and rust MSRV to 1.60.0 (https://github.com/zellij-org/zellij/pull/1896)
 
 ## [0.32.0] - 2022-10-25
 

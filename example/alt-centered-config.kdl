@@ -1,0 +1,195 @@
+// ############################################################
+// ###   ###  Alt-centered configuration for Zellij  ###   ####
+// ############################################################
+// - 1 prefix key (Alt) for most common actions in normal mode
+// - Less common actions require switching mode or are removed
+// - Press escape, enter or space to switch back to normal mode
+// - Press Alt-q for quitting and Alt-d for detaching
+//
+// To access other modes from normal mode press
+// 1. Alt-r for resize, 2. Alt-p for pane,
+// 3. .. move, 4. .. tab, 5. .. scroll,
+// 6. in scroll mode s to type text, 7. enter to search.
+//
+// Run `zellij setup --check` for troubleshooting and inspecting
+// current config locations and features that are enabled.
+
+keybinds {
+    normal clear-defaults=true {
+        bind "Alt q" { Quit; }
+        bind "Alt d" { Detach; }
+        bind "Alt p" { SwitchToMode "pane"; }
+        bind "Alt r" { SwitchToMode "resize"; }
+        bind "Alt t" { SwitchToMode "tab"; }
+        bind "Alt s" { SwitchToMode "scroll"; }
+        bind "Alt m" { SwitchToMode "move"; }
+        bind "Alt n" { NewPane; }
+        bind "Alt h" { MoveFocusOrTab "Left"; }
+        bind "Alt l" { MoveFocusOrTab "Right"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "Alt +" { Resize "Increase"; }
+        bind "Alt -" { Resize "Decrease"; }
+    }
+    pane clear-defaults=true {
+        bind "Enter" "Esc" "Space" { SwitchToMode "normal"; }
+        bind "h" "Left" { NewPane "Left"; }
+        bind "l" "Right" { NewPane "Right"; }
+        bind "j" "Down" { NewPane "Down"; }
+        bind "k" "Up" { NewPane "Up"; }
+        bind "Alt h" "Left" { MoveFocus "Left"; }
+        bind "Alt l" "Right" { MoveFocus "Right"; }
+        bind "Alt j" "Down" { MoveFocus "Down"; }
+        bind "Alt k" "Up" { MoveFocus "Up"; }
+        bind "p" { SwitchFocus; }
+        bind "n" { NewPane; }
+        bind "x" { CloseFocus; }
+        bind "f" { ToggleFocusFullscreen; }
+        bind "z" { TogglePaneFrames; }
+    }
+
+    tab clear-defaults=true {
+        bind "Enter" "Esc" "Space" { SwitchToMode "normal"; }
+        bind "h" "Left" { GoToPreviousTab; }
+        bind "l" "Right" { GoToNextTab; }
+        bind "n" { NewTab; }
+        bind "x" { CloseTab; }
+        bind "s" { ToggleActiveSyncTab; }
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "1" { GoToTab 1; }
+        bind "2" { GoToTab 2; }
+        bind "3" { GoToTab 3; }
+        bind "4" { GoToTab 4; }
+        bind "5" { GoToTab 5; }
+        bind "6" { GoToTab 6; }
+        bind "7" { GoToTab 7; }
+        bind "8" { GoToTab 8; }
+        bind "9" { GoToTab 9; }
+        bind "Tab" { ToggleTab; }
+    }
+    resize clear-defaults=true {
+        bind "Enter" "Esc" "Space" { SwitchToMode "normal"; }
+        bind "h" "Left" { Resize "Left"; }
+        bind "j" "Down" { Resize "Down"; }
+        bind "k" "Up" { Resize "Up"; }
+        bind "l" "Right" { Resize "Right"; }
+        bind "Alt =" { Resize "Increase"; }
+        bind "Alt +" { Resize "Increase"; }
+        bind "Alt -" { Resize "Decrease"; }
+        bind "Alt n" { NewPane; }
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+    }
+
+    move clear-defaults=true {
+        bind "Enter" "Esc" "Space" { SwitchToMode "normal"; }
+        bind "h" "Left" { MovePane "Left"; }
+        bind "j" "Down" { MovePane "Down"; }
+        bind "k" "Up" { MovePane "Up"; }
+        bind "l" "Right" { MovePane "Right"; }
+        bind "Alt n" { NewPane; }
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+    }
+    scroll clear-defaults=true {
+        bind "e" { EditScrollback; SwitchToMode "normal"; }
+        bind "Enter" "Esc" { SwitchToMode "normal"; }
+        bind "Alt c" { ScrollToBottom; SwitchToMode "normal"; }
+        bind "j" "Down" { ScrollDown; }
+        bind "k" "Up" { ScrollUp; }
+        bind "Alt f" "PageDown" "Right" "l" { PageScrollDown; }
+        bind "Alt b" "PageUp" "Left" "h" { PageScrollUp; }
+        bind "d" { HalfPageScrollDown; }
+        bind "u" { HalfPageScrollUp; }
+        bind "Alt h" { MoveFocus "Left"; }
+        bind "Alt l" { MoveFocus "Right"; }
+        bind "Alt j" { MoveFocus "Down"; }
+        bind "Alt k" { MoveFocus "Up"; }
+        bind "s" { SwitchToMode "entersearch"; SearchInput 0; }
+    }
+    search clear-defaults=true {
+        bind "Alt s" "Enter" "Esc" "Space" { SwitchToMode "normal"; }
+        bind "s" { SwitchToMode "entersearch"; SearchInput 0; }
+        bind "n" { Search "Down"; }
+        bind "p" { Search "Up"; }
+        bind "c" { SearchToggleOption "CaseSensitivity"; }
+        bind "w" { SearchToggleOption "Wrap"; }
+        bind "o" { SearchToggleOption "WholeWord"; }
+        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
+        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
+        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
+        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
+    }
+
+    entersearch clear-defaults=true {
+        bind "Enter" { SwitchToMode "search"; }
+        bind "Alt c" "Esc" { SearchInput 27; SwitchToMode "scroll"; }
+        bind "Alt h" "Alt Left" { MoveFocusOrTab "Left"; }
+        bind "Alt l" "Alt Right" { MoveFocusOrTab "Right"; }
+        bind "Alt j" "Alt Down" { MoveFocus "Down"; }
+        bind "Alt k" "Alt Up" { MoveFocus "Up"; }
+    }
+    locked clear-defaults=true {}
+    renamepane clear-defaults=true {}
+    renametab clear-defaults=true {}
+    session clear-defaults=true {}
+    tmux clear-defaults=true {}
+}
+
+// Choose what to do when zellij receives SIGTERM, SIGINT, SIGQUIT or SIGHUP
+// eg. when terminal window with an active zellij session is closed
+// Options:
+//   - detach (Default)
+//   - quit
+on_force_close "quit"
+// Request simplified ui (without arrow fonts) of plugins
+simplified_ui true
+// Choose the path to the default shell that zellij will use for opening new panes
+// Default: $SHELL
+//default_shell "fish"
+// remove pane frame
+pane_frames false
+// Choose the theme that is specified in the themes section.
+// Default: default
+theme "default"
+// The name of the default layout to load on startup
+// Default: "default"
+default_layout "compact"
+// On certain configurations, or terminals mouse_mode can interfere with copying text.
+mouse_mode true
+// 100_000 should never exceed 6MB per shell pane, unless the lines are very long
+scroll_buffer_size 100000
+// Command to execute when copying text. Text will be piped to stdin of program
+// to perform copy. Can be used with terminal emulators which do not support
+// OSC 52 ANSI control sequence (used on default without this option).
+//copy_command "xclip -selection clipboard" // x11
+//copy_command "wl-copy"                    // wayland
+//copy_command "pbcopy"                     // osx
+// Choose the destination for copied text (x11/wayland only), if copy_command not set
+// Options:
+//   - system (default)
+//   - primary
+//copy_clipboard "primary"
+// Is automatic copy (and clear) of selection when releasing mouse enabled?
+// Default true
+//copy_on_select false
+
+// Path to the default editor to use to edit pane scrollbuffer
+// Default: $EDITOR or $VISUAL
+//scrollback_editor "/usr/bin/vim"
+// When attaching to an existing session with other users,
+// should the session be mirrored (true)
+// or should each user have their own cursor (false)
+// Default: false
+//mirror_session true
+// The folder in which Zellij will look for layouts
+//layout_dir /path/to/my/layout_dir
+// The folder in which Zellij will look for themes
+//theme_dir "/path/to/my/theme_dir"

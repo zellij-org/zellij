@@ -1574,6 +1574,65 @@ fn float_embedded_pane() {
 }
 
 #[test]
+fn embed_floating_pane_without_pane_frames() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.set_pane_frames(false);
+    tab.toggle_floating_panes(client_id, None).unwrap();
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
+    )
+    .unwrap();
+    tab.toggle_pane_embed_or_floating(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn float_embedded_pane_without_pane_frames() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id = PaneId::Terminal(2);
+    let mut output = Output::default();
+    tab.set_pane_frames(false);
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
+    tab.handle_pty_bytes(
+        2,
+        Vec::from("\n\n\n                   I am an embedded pane".as_bytes()),
+    )
+    .unwrap();
+    tab.toggle_pane_embed_or_floating(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn cannot_float_only_embedded_pane() {
     let size = Size {
         cols: 121,

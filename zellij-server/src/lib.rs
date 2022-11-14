@@ -573,11 +573,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             },
             ServerInstruction::ActiveClients(client_id) => {
                 let client_ids = session_state.read().unwrap().client_ids();
-                log::error!(
-                    "Sending client_ids {:?} to client {}",
-                    client_ids,
-                    client_id
-                );
                 send_to_client!(
                     client_id,
                     os_input,

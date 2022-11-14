@@ -114,6 +114,24 @@ impl InputHandler {
                                     None,
                                 );
                             }
+                            if self.mode == InputMode::EnterSearch {
+                                self.dispatch_action(
+                                    Action::SearchInput(pasted_text.as_bytes().to_vec()),
+                                    None,
+                                );
+                            }
+                            if self.mode == InputMode::RenameTab {
+                                self.dispatch_action(
+                                    Action::TabNameInput(pasted_text.as_bytes().to_vec()),
+                                    None,
+                                );
+                            }
+                            if self.mode == InputMode::RenamePane {
+                                self.dispatch_action(
+                                    Action::PaneNameInput(pasted_text.as_bytes().to_vec()),
+                                    None,
+                                );
+                            }
                         },
                         _ => {},
                     }

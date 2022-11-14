@@ -26,10 +26,6 @@ pub fn set_session_name(v: String) {
     set_var(SESSION_NAME_ENV_KEY, v);
 }
 
-pub fn set_initial_environment_vars() {
-    set_var("COLORTERM", "24bit");
-}
-
 pub const SOCKET_DIR_ENV_KEY: &str = "ZELLIJ_SOCKET_DIR";
 pub fn get_socket_dir() -> Result<String> {
     Ok(var(SOCKET_DIR_ENV_KEY)?)
