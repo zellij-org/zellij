@@ -38,6 +38,7 @@ use zellij_utils::{
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
     serde,
+    pane_size::Size,
 };
 
 /// Custom error for plugin version mismatch.
@@ -95,11 +96,12 @@ folder from the output of the `zellij setup --check` command.
 }
 
 #[derive(Clone, Debug)]
-pub(crate) enum PluginInstruction {
-    Load(Sender<u32>, RunPlugin, usize, ClientId), // tx_pid, plugin metadata, tab_index, client_ids
+pub enum PluginInstruction {
+    Load(Sender<u32>, RunPlugin, usize, ClientId, Size), // tx_pid, plugin metadata, tab_index, client_ids
     Update(Option<u32>, Option<ClientId>, Event), // Focused plugin / broadcast, client_id, event data
-    Render(Sender<String>, u32, ClientId, usize, usize), // String buffer, plugin id, client_id, rows, cols
+    // Render(Sender<String>, u32, ClientId, usize, usize), // String buffer, plugin id, client_id, rows, cols
     Unload(u32),                                         // plugin_id
+    Resize(u32, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     Exit,
@@ -110,8 +112,9 @@ impl From<&PluginInstruction> for PluginContext {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Update(..) => PluginContext::Update,
-            PluginInstruction::Render(..) => PluginContext::Render,
+            // PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(..) => PluginContext::Unload,
+            PluginInstruction::Resize(..) => PluginContext::Resize,
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
@@ -143,7 +146,7 @@ pub(crate) fn wasm_thread_main(
 
     let mut plugin_id = 0;
     let mut headless_plugins = HashMap::new();
-    let mut plugin_map: HashMap<(u32, ClientId), (Instance, PluginEnv)> = HashMap::new(); // u32 => pid
+    let mut plugin_map: HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))> = HashMap::new(); // u32 => pid, (usize, usize) => rows/columns TODO: clean this up into a struct or something
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
@@ -155,7 +158,7 @@ pub(crate) fn wasm_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(pid_tx, run, tab_index, client_id) => {
+            PluginInstruction::Load(pid_tx, run, tab_index, client_id, size) => {
                 let err_context = || format!("failed to load plugin for client {client_id}");
 
                 let plugin = plugins
@@ -173,7 +176,7 @@ pub(crate) fn wasm_thread_main(
                 let main_user_env = plugin_env.clone();
                 load_plugin(&mut main_user_instance).with_context(err_context)?;
 
-                plugin_map.insert((plugin_id, client_id), (main_user_instance, main_user_env));
+                plugin_map.insert((plugin_id, client_id), (main_user_instance, main_user_env, (size.rows, size.cols)));
 
                 // clone plugins for the rest of the client ids if they exist
                 for client_id in connected_clients.iter() {
@@ -188,7 +191,7 @@ pub(crate) fn wasm_thread_main(
                     let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
                         .with_context(err_context)?;
                     load_plugin(&mut instance).with_context(err_context)?;
-                    plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env));
+                    plugin_map.insert((plugin_id, *client_id), (instance, new_plugin_env, (size.rows, size.cols)));
                 }
                 pid_tx.send(plugin_id).with_context(err_context)?;
                 plugin_id += 1;
@@ -202,7 +205,7 @@ pub(crate) fn wasm_thread_main(
                     }
                 };
 
-                for (&(plugin_id, client_id), (instance, plugin_env)) in &plugin_map {
+                for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &plugin_map {
                     let subs = plugin_env
                         .subscriptions
                         .lock()
@@ -235,38 +238,65 @@ pub(crate) fn wasm_thread_main(
                                 Err(e) => Err(e).with_context(err_context),
                             }
                         })?;
+
+                        if *rows == 0 || *columns == 0 {
+                            // buf_tx.send(String::new()).with_context(err_context)?;
+                        } else {
+//                             let (instance, plugin_env) = plugin_map
+//                                 .get(&(pid, cid))
+//                                 .context("failed to find plugin for rendering")
+//                                 .with_context(err_context)?;
+
+                            let render = instance
+                                .exports
+                                .get_function("render")
+                                .with_context(err_context)?;
+
+                            render
+                                .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
+                                .with_context(err_context)?;
+                            let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
+                            drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())));
+
+//                             buf_tx
+//                                 .send(wasi_read_string(&plugin_env.wasi_env))
+//                                 .with_context(err_context)?;
+                        }
+
+
+
                     }
                 }
                 drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             },
-            PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
-                let err_context = || {
-                    format!(
-                        "failed to render plugin with pid {pid} and cid {cid} at ({rows}, {cols})"
-                    )
-                };
-
-                if rows == 0 || cols == 0 {
-                    buf_tx.send(String::new()).with_context(err_context)?;
-                } else {
-                    let (instance, plugin_env) = plugin_map
-                        .get(&(pid, cid))
-                        .context("failed to find plugin for rendering")
-                        .with_context(err_context)?;
-                    let render = instance
-                        .exports
-                        .get_function("render")
-                        .with_context(err_context)?;
-
-                    render
-                        .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
-                        .with_context(err_context)?;
-
-                    buf_tx
-                        .send(wasi_read_string(&plugin_env.wasi_env))
-                        .with_context(err_context)?;
-                }
-            },
+//             PluginInstruction::Render(buf_tx, pid, cid, rows, cols) => {
+// //                 let err_context = || {
+// //                     format!(
+// //                         "failed to render plugin with pid {pid} and cid {cid} at ({rows}, {cols})"
+// //                     )
+// //                 };
+// //
+// //                 if rows == 0 || cols == 0 {
+// //                     buf_tx.send(String::new()).with_context(err_context)?;
+// //                 } else {
+// //                     let (instance, plugin_env) = plugin_map
+// //                         .get(&(pid, cid))
+// //                         .context("failed to find plugin for rendering")
+// //                         .with_context(err_context)?;
+// //                     let render = instance
+// //                         .exports
+// //                         .get_function("render")
+// //                         .with_context(err_context)?;
+// //
+// //                     render
+// //                         .call(&[Value::I32(rows as i32), Value::I32(cols as i32)])
+// //                         .with_context(err_context)?;
+// //
+// //                     buf_tx
+// //                         .send(wasi_read_string(&plugin_env.wasi_env))
+// //                         .with_context(err_context)?;
+// //                 }
+//             },
             PluginInstruction::Unload(pid) => {
                 info!("Bye from plugin {}", &pid);
                 // TODO: remove plugin's own data directory
@@ -277,6 +307,27 @@ pub(crate) fn wasm_thread_main(
                     }
                 }
             },
+            PluginInstruction::Resize(pid, new_columns, new_rows) => {
+                let err_context = || format!("failed to resize plugin {pid}");
+                for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in plugin_map.iter_mut()  {
+                    if *plugin_id == pid {
+                        *current_rows = new_rows;
+                        *current_columns = new_columns;
+
+                        // TODO: consolidate with above render function
+                        let render = instance
+                            .exports
+                            .get_function("render")
+                            .with_context(err_context)?;
+
+                        render
+                            .call(&[Value::I32(*current_rows as i32), Value::I32(*current_columns as i32)])
+                            .with_context(err_context)?;
+                        let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
+                        drop(bus.senders.send_to_screen(ScreenInstruction::PluginBytes(*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec())));
+                    }
+                }
+            }
             PluginInstruction::AddClient(client_id) => {
                 let err_context = || format!("failed to add plugins for client {client_id}");
 
@@ -284,7 +335,7 @@ pub(crate) fn wasm_thread_main(
 
                 let mut seen = HashSet::new();
                 let mut new_plugins = HashMap::new();
-                for (&(plugin_id, _), (instance, plugin_env)) in &plugin_map {
+                for (&(plugin_id, _), (instance, plugin_env, (rows, columns))) in &plugin_map {
                     if seen.contains(&plugin_id) {
                         continue;
                     }
@@ -292,9 +343,9 @@ pub(crate) fn wasm_thread_main(
                     let mut new_plugin_env = plugin_env.clone();
 
                     new_plugin_env.client_id = client_id;
-                    new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env));
+                    new_plugins.insert(plugin_id, (instance.module().clone(), new_plugin_env, (*rows, *columns)));
                 }
-                for (plugin_id, (module, mut new_plugin_env)) in new_plugins.drain() {
+                for (plugin_id, (module, mut new_plugin_env, (rows, columns))) in new_plugins.drain() {
                     let wasi = new_plugin_env
                         .wasi_env
                         .import_object(&module)
@@ -303,7 +354,7 @@ pub(crate) fn wasm_thread_main(
                     let mut instance = Instance::new(&module, &zellij.chain_back(wasi))
                         .with_context(err_context)?;
                     load_plugin(&mut instance).with_context(err_context)?;
-                    plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env));
+                    plugin_map.insert((plugin_id, client_id), (instance, new_plugin_env, (rows, columns)));
                 }
 
                 // load headless plugins
@@ -639,7 +690,8 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> String {
     let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();
     let mut buf = String::new();
     wasi_file.read_to_string(&mut buf).unwrap();
-    buf
+    // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+    buf.replace("\n", "\n\r")
 }
 
 pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {

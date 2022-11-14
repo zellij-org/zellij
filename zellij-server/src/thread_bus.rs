@@ -9,7 +9,7 @@ use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
 
 /// A container for senders to the different threads in zellij on the server side
 #[derive(Default, Clone)]
-pub(crate) struct ThreadSenders {
+pub struct ThreadSenders {
     pub to_screen: Option<SenderWithContext<ScreenInstruction>>,
     pub to_pty: Option<SenderWithContext<PtyInstruction>>,
     pub to_plugin: Option<SenderWithContext<PluginInstruction>>,

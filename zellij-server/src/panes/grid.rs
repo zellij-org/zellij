@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use unicode_width::UnicodeWidthChar;
 use zellij_utils::regex::Regex;
+use zellij_utils::errors::prelude::*;
+use zellij_utils::data::Style;
 
 use std::{
     cmp::Ordering,
@@ -549,7 +551,7 @@ impl Grid {
     pub fn cursor_shape(&self) -> CursorShape {
         self.cursor.get_shape()
     }
-    pub fn scrollback_position_and_length(&mut self) -> (usize, usize) {
+    pub fn scrollback_position_and_length(&self) -> (usize, usize) {
         // (position, length)
         (
             self.lines_below.len(),
@@ -978,6 +980,70 @@ impl Grid {
         self.output_buffer.clear();
 
         (changed_character_chunks, changed_sixel_image_chunks)
+    }
+    pub fn render(&mut self, content_x: usize, content_y: usize, style: &Style) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
+        let mut raw_vte_output = String::new();
+
+        let (mut character_chunks, sixel_image_chunks) =
+            self.read_changes(content_x, content_y);
+        for character_chunk in character_chunks.iter_mut() {
+            character_chunk.add_changed_colors(self.changed_colors);
+            if self
+                .selection
+                .contains_row(character_chunk.y.saturating_sub(content_y))
+            {
+                // character_chunk.highlight_selection
+                let background_color = match style.colors.bg {
+                    PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                    PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                };
+                character_chunk.add_selection_and_colors(
+                    self.selection,
+                    background_color,
+                    None,
+                    content_x,
+                    content_y,
+                );
+            } else if !self.search_results.selections.is_empty() {
+                for res in self.search_results.selections.iter() {
+                    if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
+                        // character_chunk.highlight_search
+                        let (select_background_palette, select_foreground_palette) =
+                            if Some(res) == self.search_results.active.as_ref() {
+                                (style.colors.orange, style.colors.black)
+                            } else {
+                                (style.colors.green, style.colors.black)
+                            };
+                        let background_color = match select_background_palette {
+                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                        };
+                        let foreground_color = match select_foreground_palette {
+                            PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
+                            PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
+                        };
+                        character_chunk.add_selection_and_colors(
+                            *res,
+                            background_color,
+                            Some(foreground_color),
+                            content_x,
+                            content_y,
+                        );
+                    }
+                }
+            }
+        }
+        // grid.add_possible_bell_notification(&mut raw_vte_output);
+        if self.ring_bell {
+            let ring_bell = '\u{7}';
+            raw_vte_output.push(ring_bell);
+            self.ring_bell = false;
+        }
+        return Ok(Some((
+            character_chunks,
+            Some(raw_vte_output),
+            sixel_image_chunks,
+        )));
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         if self.cursor_is_hidden {
@@ -1959,6 +2025,14 @@ impl Grid {
             None
         }
     }
+    pub fn delete_viewport_and_scroll(&mut self) {
+        self.lines_above.clear();
+        self.viewport.clear();
+        self.lines_below.clear();
+    }
+    pub fn reset_cursor_position(&mut self) {
+        self.cursor = Cursor::new(0, 0);
+    }
 }
 
 impl Perform for Grid {
@@ -2563,7 +2637,8 @@ impl Perform for Grid {
             };
             if first_intermediate_is_questionmark {
                 let query_type = params_iter.next();
-                let is_query = params_iter.next() == Some(&[1]);
+                // let is_query = params_iter.next() == Some(&[1]);
+                let is_query = matches!(params_iter.next(), Some(&[1])); // TODO: whaa??
                 if is_query {
                     // XTSMGRAPHICS
                     match query_type {

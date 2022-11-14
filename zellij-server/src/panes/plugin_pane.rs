@@ -1,28 +1,55 @@
-use std::fmt::Write;
-use std::sync::mpsc::channel;
 use std::time::Instant;
+use std::collections::HashMap;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
-use crate::panes::PaneId;
+use crate::panes::{
+    PaneId,
+    grid::Grid,
+    sixel::SixelImageStore,
+    LinkHandler,
+};
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
 use crate::wasm_vm::PluginInstruction;
 use crate::ClientId;
-use zellij_utils::pane_size::Offset;
+use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
-use zellij_utils::shared::ansi_len;
 use zellij_utils::{
     channels::SenderWithContext,
-    data::{Event, InputMode, Mouse, PaletteColor},
+    data::{Event, InputMode, Mouse, PaletteColor, Palette, Style},
     errors::prelude::*,
     pane_size::{Dimension, PaneGeom},
     shared::make_terminal_title,
+    vte,
 };
+use std::rc::Rc;
+use std::cell::RefCell;
+
+macro_rules! get_or_create_grid {
+    ($self:ident, $client_id:ident) => {{
+        let rows = $self.get_content_rows();
+        let cols = $self.get_content_columns();
+
+        $self.grids.entry($client_id).or_insert_with(|| {
+            let mut grid = Grid::new(
+                rows,
+                cols,
+                $self.terminal_emulator_colors.clone(),
+                $self.terminal_emulator_color_codes.clone(),
+                $self.link_handler.clone(),
+                $self.character_cell_size.clone(),
+                $self.sixel_image_store.clone(),
+            );
+            grid.hide_cursor();
+            grid
+        })
+    }}
+}
 
 pub(crate) struct PluginPane {
     pub pid: u32,
-    pub should_render: bool,
+    pub should_render: HashMap<ClientId, bool>,
     pub selectable: bool,
     pub geom: PaneGeom,
     pub geom_override: Option<PaneGeom>,
@@ -31,8 +58,16 @@ pub(crate) struct PluginPane {
     pub active_at: Instant,
     pub pane_title: String,
     pub pane_name: String,
+    pub style: Style,
+    sixel_image_store: Rc<RefCell<SixelImageStore>>,
+    terminal_emulator_colors: Rc<RefCell<Palette>>,
+    terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+    link_handler: Rc<RefCell<LinkHandler>>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    vte_parsers: HashMap<ClientId, vte::Parser>,
+    grids: HashMap<ClientId, Grid>,
     prev_pane_name: String,
-    frame: bool,
+    frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
 }
 
@@ -43,21 +78,35 @@ impl PluginPane {
         send_plugin_instructions: SenderWithContext<PluginInstruction>,
         title: String,
         pane_name: String,
+        sixel_image_store: Rc<RefCell<SixelImageStore>>,
+        terminal_emulator_colors: Rc<RefCell<Palette>>,
+        terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+        link_handler: Rc<RefCell<LinkHandler>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        style: Style,
     ) -> Self {
         Self {
             pid,
-            should_render: true,
+            should_render: HashMap::new(),
             selectable: true,
             geom: position_and_size,
             geom_override: None,
             send_plugin_instructions,
             active_at: Instant::now(),
-            frame: false,
+            frame: HashMap::new(),
             content_offset: Offset::default(),
             pane_title: title,
             borderless: false,
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
+            terminal_emulator_colors,
+            terminal_emulator_color_codes,
+            link_handler,
+            character_cell_size,
+            sixel_image_store,
+            vte_parsers: HashMap::new(),
+            grids: HashMap::new(),
+            style,
         }
     }
 }
@@ -98,18 +147,34 @@ impl Pane for PluginPane {
     }
     fn reset_size_and_position_override(&mut self) {
         self.geom_override = None;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn set_geom(&mut self, position_and_size: PaneGeom) {
         self.geom = position_and_size;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn set_geom_override(&mut self, pane_geom: PaneGeom) {
         self.geom_override = Some(pane_geom);
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
-    fn handle_pty_bytes(&mut self, _event: VteBytes) {
-        // noop
+    fn handle_plugin_bytes(&mut self, client_id: ClientId, bytes: VteBytes) {
+        self.set_client_should_render(client_id, true);
+        let grid = get_or_create_grid!(self, client_id);
+
+        // this is part of the plugin contract, whenever we updat ehte plugin and call its render function, we delete the existing viewport
+        // and scroll, reset the cursor position and make sure all the viewport is rendered
+        grid.delete_viewport_and_scroll();
+        grid.reset_cursor_position();
+        grid.render_full_viewport();
+
+        let vte_parser = self.vte_parsers.entry(client_id).or_insert_with(|| vte::Parser::new());
+        for &byte in &bytes {
+            vte_parser.advance(grid, byte);
+        }
+        self.should_render.insert(client_id, true);
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         None
@@ -124,10 +189,18 @@ impl Pane for PluginPane {
         self.geom_override
     }
     fn should_render(&self) -> bool {
-        self.should_render
+        self.should_render.values().any(|v| *v)
     }
     fn set_should_render(&mut self, should_render: bool) {
-        self.should_render = should_render;
+        self.should_render.values_mut().for_each(|v| *v = should_render);
+    }
+    fn render_full_viewport(&mut self) {
+        // this marks the pane for a full re-render, rather than just rendering the
+        // diff as it usually does with the OutputBuffer
+        // self.frame.clear();
+        for grid in self.grids.values_mut() {
+            grid.render_full_viewport();
+        }
     }
     fn selectable(&self) -> bool {
         self.selectable
@@ -139,127 +212,88 @@ impl Pane for PluginPane {
         &mut self,
         client_id: Option<ClientId>,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
-        // this is a bit of a hack but works in a pinch
-        let client_id = match client_id {
-            Some(id) => id,
-            None => return Ok(None),
-        };
-        // if self.should_render {
-        if true {
-            let err_context = || format!("failed to render plugin panes for client {client_id}");
-
-            // while checking should_render rather than rendering each pane every time
-            // is more performant, it causes some problems when the pane to the left should be
-            // rendered and has wide characters (eg. Chinese characters or emoji)
-            // as a (hopefully) temporary hack, we render all panes until we find a better solution
-            let mut vte_output = String::new();
-            let (buf_tx, buf_rx) = channel();
-
-            self.send_plugin_instructions
-                .send(PluginInstruction::Render(
-                    buf_tx,
-                    self.pid,
-                    client_id,
-                    self.get_content_rows(),
-                    self.get_content_columns(),
-                ))
-                .to_anyhow()
-                .with_context(err_context)?;
-
-            self.should_render = false;
-            // This is where we receive the text to render from the plugins.
-            let contents = buf_rx
-                .recv()
-                .with_context(err_context)
-                .to_log()
-                .unwrap_or("No output from plugin received. See logs".to_string());
-            for (index, line) in contents.lines().enumerate() {
-                let actual_len = ansi_len(line);
-                let line_to_print = if actual_len > self.get_content_columns() {
-                    let mut line = String::from(line);
-                    line.truncate(self.get_content_columns());
-                    line
-                } else {
-                    [
-                        line,
-                        &str::repeat(" ", self.get_content_columns() - ansi_len(line)),
-                    ]
-                    .concat()
-                };
-
-                write!(
-                    &mut vte_output,
-                    "\u{1b}[{};{}H\u{1b}[m{}",
-                    self.get_content_y() + 1 + index,
-                    self.get_content_x() + 1,
-                    line_to_print,
-                )
-                .with_context(err_context)?; // goto row/col and reset styles
-                let line_len = line_to_print.len();
-                if line_len < self.get_content_columns() {
-                    // pad line
-                    for _ in line_len..self.get_content_columns() {
-                        vte_output.push(' ');
-                    }
-                }
-            }
-            let total_line_count = contents.lines().count();
-            if total_line_count < self.get_content_rows() {
-                // pad lines
-                for line_index in total_line_count..self.get_content_rows() {
-                    let x = self.get_content_x();
-                    let y = self.get_content_y();
-                    write!(
-                        &mut vte_output,
-                        "\u{1b}[{};{}H\u{1b}[m",
-                        y + line_index + 1,
-                        x + 1
-                    )
-                    .with_context(err_context)?; // goto row/col and reset styles
-                    for _col_index in 0..self.get_content_columns() {
-                        vte_output.push(' ');
-                    }
-                }
-            }
-            Ok(Some((vec![], Some(vte_output), vec![]))) // TODO: PluginPanes should have their own grid so that we can return the non-serialized TerminalCharacters and have them participate in the render buffer
-        } else {
-            Ok(None)
+        if client_id.is_none() {
+            return Ok(None);
         }
+        if let Some(client_id) = client_id {
+            if self.should_render.get(&client_id).copied().unwrap_or(false) {
+                let content_x = self.get_content_x();
+                let content_y = self.get_content_y();
+                if let Some(grid) = self.grids.get_mut(&client_id) {
+                    match grid.render(content_x, content_y, &self.style) {
+                        Ok(rendered_assets) => {
+                            self.should_render.insert(client_id, false);
+                            return Ok(rendered_assets);
+                        },
+                        e => { return e },
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
     fn render_frame(
         &mut self,
-        _client_id: ClientId,
+        client_id: ClientId,
         frame_params: FrameParams,
         input_mode: InputMode,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
-        // FIXME: This is a hack that assumes all fixed-size panes are borderless. This
-        // will eventually need fixing!
-        let res = if self.frame && !(self.geom.rows.is_fixed() || self.geom.cols.is_fixed()) {
+        if self.borderless {
+            return Ok(None);
+        }
+        if let Some(grid) = self.grids.get(&client_id) {
+            let err_context = || format!("failed to render frame for client {client_id}");
+            // TODO: remove the cursor stuff from here
             let pane_title = if self.pane_name.is_empty()
                 && input_mode == InputMode::RenamePane
                 && frame_params.is_main_client
             {
                 String::from("Enter name...")
             } else if self.pane_name.is_empty() {
-                self.pane_title.clone()
+                grid
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| self.pane_title.clone())
             } else {
                 self.pane_name.clone()
             };
+
             let frame = PaneFrame::new(
                 self.current_geom().into(),
-                (0, 0), // scroll position
+                grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
             );
-            Some(
-                frame
-                    .render()
-                    .with_context(|| format!("failed to render frame for client {_client_id}"))?,
-            )
+
+            let res = match self.frame.get(&client_id) {
+                // TODO: use and_then or something?
+                Some(last_frame) => {
+                    if &frame != last_frame {
+                        if !self.borderless {
+                            let frame_output = frame.render().with_context(err_context)?;
+                            self.frame.insert(client_id, frame);
+                            Some(frame_output)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                },
+                None => {
+                    if !self.borderless {
+                        let frame_output = frame.render().with_context(err_context)?;
+                        self.frame.insert(client_id, frame);
+                        Some(frame_output)
+                    } else {
+                        None
+                    }
+                },
+            };
+            Ok(res)
         } else {
-            None
-        };
-        Ok(res)
+            Ok(None)
+        }
     }
     fn render_fake_cursor(
         &mut self,
@@ -298,42 +332,50 @@ impl Pane for PluginPane {
     fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p - percent);
-            self.should_render = true;
+            self.resize_grids();
+            self.set_should_render(true);
         }
     }
     fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
             self.geom.rows = Dimension::percent(p + percent);
-            self.should_render = true;
+            self.resize_grids();
+            self.set_should_render(true);
         }
     }
     fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p - percent);
-            self.should_render = true;
+            self.resize_grids();
+            self.set_should_render(true);
         }
     }
     fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
             self.geom.cols = Dimension::percent(p + percent);
-            self.should_render = true;
+            self.resize_grids();
+            self.set_should_render(true);
         }
     }
     fn push_down(&mut self, count: usize) {
         self.geom.y += count;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn push_right(&mut self, count: usize) {
         self.geom.x += count;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn pull_left(&mut self, count: usize) {
         self.geom.x -= count;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn pull_up(&mut self, count: usize) {
         self.geom.y -= count;
-        self.should_render = true;
+        self.resize_grids();
+        self.set_should_render(true);
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
@@ -394,11 +436,12 @@ impl Pane for PluginPane {
     fn set_active_at(&mut self, time: Instant) {
         self.active_at = time;
     }
-    fn set_frame(&mut self, frame: bool) {
-        self.frame = frame;
+    fn set_frame(&mut self, _frame: bool) {
+        self.frame.clear();
     }
     fn set_content_offset(&mut self, offset: Offset) {
         self.content_offset = offset;
+        self.resize_grids();
     }
 
     fn store_pane_name(&mut self) {
@@ -426,5 +469,18 @@ impl Pane for PluginPane {
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             ))
             .unwrap();
+    }
+}
+
+impl PluginPane {
+    fn resize_grids(&mut self) {
+        let content_rows = self.get_content_rows();
+        let content_columns = self.get_content_columns();
+        for grid in self.grids.values_mut() {
+            grid.change_size(content_rows, content_columns);
+        }
+    }
+    fn set_client_should_render(&mut self, client_id: ClientId, should_render: bool) {
+        self.should_render.insert(client_id, should_render);
     }
 }

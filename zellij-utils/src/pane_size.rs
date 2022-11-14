@@ -176,3 +176,12 @@ impl From<Size> for Viewport {
         }
     }
 }
+
+impl From<&PaneGeom> for Size {
+    fn from(pane_geom: &PaneGeom) -> Self {
+        Self {
+            rows: pane_geom.rows.as_usize(),
+            cols: pane_geom.cols.as_usize(),
+        }
+    }
+}

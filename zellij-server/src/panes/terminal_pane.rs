@@ -4,7 +4,7 @@ use crate::panes::{
     grid::Grid,
     terminal_character::{render_first_run_banner, TerminalCharacter, EMPTY_TERMINAL_CHARACTER},
 };
-use crate::panes::{AnsiCode, LinkHandler};
+use crate::panes::LinkHandler;
 use crate::pty::VteBytes;
 use crate::tab::{AdjustedInput, Pane};
 use crate::ClientId;
@@ -280,69 +280,15 @@ impl Pane for TerminalPane {
         _client_id: Option<ClientId>,
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>, Vec<SixelImageChunk>)>> {
         if self.should_render() {
-            let mut raw_vte_output = String::new();
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
-
-            let (mut character_chunks, sixel_image_chunks) =
-                self.grid.read_changes(content_x, content_y);
-            for character_chunk in character_chunks.iter_mut() {
-                character_chunk.add_changed_colors(self.grid.changed_colors);
-                if self
-                    .grid
-                    .selection
-                    .contains_row(character_chunk.y.saturating_sub(content_y))
-                {
-                    let background_color = match self.style.colors.bg {
-                        PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                        PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
-                    };
-                    character_chunk.add_selection_and_colors(
-                        self.grid.selection,
-                        background_color,
-                        None,
-                        content_x,
-                        content_y,
-                    );
-                } else if !self.grid.search_results.selections.is_empty() {
-                    for res in self.grid.search_results.selections.iter() {
-                        if res.contains_row(character_chunk.y.saturating_sub(content_y)) {
-                            let (select_background_palette, select_foreground_palette) =
-                                if Some(res) == self.grid.search_results.active.as_ref() {
-                                    (self.style.colors.orange, self.style.colors.black)
-                                } else {
-                                    (self.style.colors.green, self.style.colors.black)
-                                };
-                            let background_color = match select_background_palette {
-                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
-                            };
-                            let foreground_color = match select_foreground_palette {
-                                PaletteColor::Rgb(rgb) => AnsiCode::RgbCode(rgb),
-                                PaletteColor::EightBit(col) => AnsiCode::ColorIndex(col),
-                            };
-                            character_chunk.add_selection_and_colors(
-                                *res,
-                                background_color,
-                                Some(foreground_color),
-                                content_x,
-                                content_y,
-                            );
-                        }
-                    }
-                }
+            match self.grid.render(content_x, content_y, &self.style) {
+                Ok(rendered_assets) => {
+                    self.set_should_render(false);
+                    return Ok(rendered_assets);
+                },
+                e => { return e },
             }
-            if self.grid.ring_bell {
-                let ring_bell = '\u{7}';
-                raw_vte_output.push(ring_bell);
-                self.grid.ring_bell = false;
-            }
-            self.set_should_render(false);
-            Ok(Some((
-                character_chunks,
-                Some(raw_vte_output),
-                sixel_image_chunks,
-            )))
         } else {
             Ok(None)
         }

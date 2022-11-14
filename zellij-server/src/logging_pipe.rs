@@ -111,7 +111,7 @@ impl Seek for LoggingPipe {
     }
 }
 
-#[typetag::serde]
+// #[typetag::serde] TODO: why did we need this?
 impl WasiFile for LoggingPipe {
     fn last_accessed(&self) -> u64 {
         0
