@@ -1,11 +1,10 @@
-use highway::{HighwayHash, PortableHash};
 use log::{debug, info, warn};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt, fs,
-    path::{Path, PathBuf},
+    path::PathBuf,
     process,
     str::FromStr,
     sync::{mpsc::Sender, Arc, Mutex},
@@ -29,7 +28,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -39,7 +38,6 @@ use zellij_utils::{
     },
     pane_size::Size,
     serde,
-    setup::populate_data_dir,
 };
 
 /// Custom error for plugin version mismatch.
@@ -52,26 +50,41 @@ pub struct VersionMismatchError {
     zellij_version: String,
     plugin_version: String,
     plugin_path: PathBuf,
+    // true for builtin plugins
+    builtin: bool,
 }
 
 impl std::error::Error for VersionMismatchError {}
 
 impl VersionMismatchError {
-    pub fn new(zellij_version: &str, plugin_version: &str, plugin_path: &PathBuf) -> Self {
+    pub fn new(
+        zellij_version: &str,
+        plugin_version: &str,
+        plugin_path: &PathBuf,
+        builtin: bool,
+    ) -> Self {
         VersionMismatchError {
             zellij_version: zellij_version.to_owned(),
             plugin_version: plugin_version.to_owned(),
             plugin_path: plugin_path.to_owned(),
+            builtin,
         }
     }
 }
 
 impl fmt::Display for VersionMismatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_line = if self.builtin {
+            "It seems your version of zellij was built with outdated core plugins."
+        } else {
+            "If you're seeing this error a plugin version doesn't match the current
+zellij version."
+        };
+
         write!(
             f,
-            "If you're seeing this error the plugin versions don't match the current
-zellij version. Detected versions:
+            "{}
+Detected versions:
 
 - Plugin version: {}
 - Zellij version: {}
@@ -82,15 +95,13 @@ If you're a user:
     to them.
 
 If you're a developer:
-    Please run zellij with the updated plugins. The easiest way to achieve this
+    Please run zellij with updated plugins. The easiest way to achieve this
     is to build zellij with `cargo make install`. Also refer to the docs:
     https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-
-A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
-folder from the output of the `zellij setup --check` command.
 ",
-            self.plugin_version,
-            self.zellij_version,
+            first_line,
+            self.plugin_version.trim_end(),
+            self.zellij_version.trim_end(),
             self.plugin_path.display()
         )
     }
@@ -150,12 +161,10 @@ pub(crate) fn wasm_thread_main(
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-    let mut plugin_cache: HashMap<PluginConfig, Module> = HashMap::new();
-
-    #[cfg(not(feature = "disable_automatic_asset_installation"))]
-    fs::create_dir_all(&plugin_global_data_dir)
-        .context("failed to create plugin asset directory")
-        .non_fatal();
+    // Caches the "wasm bytes" of all plugins that have been loaded since zellij was started.
+    // Greatly decreases loading times of all plugins and avoids accesses to the hard-drive during
+    // "regular" operation.
+    let mut plugin_cache: HashMap<PathBuf, Module> = HashMap::new();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -177,40 +186,8 @@ pub(crate) fn wasm_thread_main(
                     tab_index,
                     &bus,
                     &store,
-                    &data_dir,
                     &mut plugin_cache,
                 )
-                .or_else(|err| {
-                    match err.downcast_ref::<VersionMismatchError>() {
-                        Some(VersionMismatchError { .. }) => {
-                            // If this is one of the builtin plugins, offer the user to just reload them.
-                            use zellij_utils::input::layout::RunPluginLocation;
-                            if let RunPluginLocation::Zellij(ref tag) = plugin.location {
-                                // TODO: Ask the user for permission, explain what we'll do
-                                populate_data_dir(&data_dir, Some(&tag.to_string()));
-                                // Retry starting the plugin
-                                start_plugin(
-                                    plugin_id,
-                                    client_id,
-                                    &plugin,
-                                    tab_index,
-                                    &bus,
-                                    &store,
-                                    &data_dir,
-                                    &mut plugin_cache,
-                                )
-                                // Just a hint so we know we tried
-                                .context("failed to recover from plugin version mismatch")
-                            } else {
-                                // It's not a builtin plugin. There's nothing we can do here to recover, so
-                                // just show the error. We use `panic!` here because we want to
-                                // show the VersionMismatchError very prominently.
-                                panic!("{:?}", Err::<(), _>(err));
-                            }
-                        },
-                        _ => Err::<(Instance, PluginEnv), _>(err),
-                    }
-                })
                 .with_context(err_context)?;
 
                 let mut main_user_instance = instance.clone();
@@ -283,7 +260,8 @@ pub(crate) fn wasm_thread_main(
                                     anyError::new(VersionMismatchError::new(
                                         VERSION,
                                         "Unavailable",
-                                        &plugin_env.plugin.path
+                                        &plugin_env.plugin.path,
+                                        plugin_env.plugin.is_builtin(),
                                     ))
                                 ),
                                 Err(e) => Err(e).with_context(err_context),
@@ -400,7 +378,6 @@ pub(crate) fn wasm_thread_main(
                             0,
                             &bus,
                             &store,
-                            &data_dir,
                             &mut plugin_cache,
                         )
                         .with_context(err_context)?;
@@ -433,13 +410,12 @@ fn start_plugin(
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
     store: &Store,
-    data_dir: &Path,
-    plugin_cache: &mut HashMap<PluginConfig, Module>,
+    plugin_cache: &mut HashMap<PathBuf, Module>,
 ) -> Result<(Instance, PluginEnv)> {
     let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
 
     let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-    let cache_hit = plugin_cache.contains_key(plugin);
+    let cache_hit = plugin_cache.contains_key(&plugin.path);
 
     // We remove the entry here and repopulate it at the very bottom, if everything went well.
     // We must do that because a `get` will only give us a borrow of the Module. This suffices for
@@ -447,8 +423,11 @@ fn start_plugin(
     // arm, because we create the Module from scratch there. Any reference passed outside would
     // outlive the Module we create there. Hence, we remove the plugin here and reinsert it
     // below...
-    let module = match plugin_cache.remove(plugin) {
-        Some(module) => module,
+    let module = match plugin_cache.remove(&plugin.path) {
+        Some(module) => {
+            log::debug!("Loaded plugin {} from plugin cache", plugin.path.display());
+            module
+        },
         None => {
             // Populate plugin module cache for this plugin!
             if plugin._allow_exec_host_cmd {
@@ -460,7 +439,7 @@ fn start_plugin(
 
             // The plugins blob as stored on the filesystem
             let wasm_bytes = plugin
-                .resolve_wasm_bytes(&data_dir.join("plugins/"))
+                .resolve_wasm_bytes()
                 .with_context(err_context)
                 .fatal();
 
@@ -477,8 +456,7 @@ fn start_plugin(
                 .with_context(err_context)
                 .non_fatal();
 
-            Module::new(store, &wasm_bytes)
-                .with_context(err_context)?
+            Module::new(store, &wasm_bytes).with_context(err_context)?
         },
     };
 
@@ -522,7 +500,7 @@ fn start_plugin(
 
     // Only do an insert when everything went well!
     let cloned_plugin = plugin.clone();
-    plugin_cache.insert(cloned_plugin, module);
+    plugin_cache.insert(cloned_plugin.path, module);
 
     Ok((instance, plugin_env))
 }
@@ -544,6 +522,7 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
                 VERSION,
                 "Unavailable",
                 &plugin_env.plugin.path,
+                plugin_env.plugin.is_builtin(),
             )))
         },
     };
@@ -560,6 +539,7 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
             VERSION,
             &plugin_version_str,
             &plugin_env.plugin.path,
+            plugin_env.plugin.is_builtin(),
         )));
     }
 
