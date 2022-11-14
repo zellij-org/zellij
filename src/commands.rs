@@ -20,7 +20,7 @@ use zellij_utils::{
     envs,
     input::{actions::Action, config::ConfigError, options::Options},
     nix,
-    setup::{get_default_data_dir, populate_data_dir, Setup},
+    setup::Setup,
 };
 
 pub(crate) use crate::sessions::list_sessions;
@@ -90,11 +90,6 @@ pub(crate) fn start_server(path: PathBuf, debug: bool) {
 
 fn create_new_client() -> ClientInfo {
     ClientInfo::New(names::Generator::default().next().unwrap())
-}
-
-fn install_default_assets(opts: &CliArgs) {
-    let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-    populate_data_dir(&data_dir, None);
 }
 
 fn find_indexed_session(
@@ -359,10 +354,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             ClientInfo::New(_) => Some(layout),
         };
 
-        if create {
-            install_default_assets(&opts);
-        }
-
         start_client_impl(
             Box::new(os_input),
             opts,
@@ -374,7 +365,6 @@ pub(crate) fn start_client(opts: CliArgs) {
     } else {
         let start_client_plan = |session_name: std::string::String| {
             assert_session_ne(&session_name);
-            install_default_assets(&opts);
         };
 
         if let Some(session_name) = opts.session.clone() {

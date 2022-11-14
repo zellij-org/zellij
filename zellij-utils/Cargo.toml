@@ -50,5 +50,4 @@ insta = { version = "1.6.0", features = ["backtrace"] }
 
 
 [features]
-disable_automatic_asset_installation = []
 unstable = []

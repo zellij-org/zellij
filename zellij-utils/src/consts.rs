@@ -30,10 +30,7 @@ lazy_static! {
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
 }
 
-pub const FEATURES: &[&str] = &[
-    #[cfg(feature = "disable_automatic_asset_installation")]
-    "disable_automatic_asset_installation",
-];
+pub const FEATURES: &[&str] = &[];
 
 #[cfg(unix)]
 pub use unix_only::*;
