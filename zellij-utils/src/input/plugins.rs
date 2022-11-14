@@ -2,7 +2,7 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
 
 use serde::{Deserialize, Serialize};
@@ -86,7 +86,6 @@ pub struct PluginConfig {
     pub location: RunPluginLocation,
 }
 
-#[cfg(not(feature = "disable_automatic_asset_installation"))]
 macro_rules! asset_map {
     ($($src:literal => $dst:literal),+ $(,)?) => {
         {
@@ -100,19 +99,19 @@ macro_rules! asset_map {
 }
 
 impl PluginConfig {
-    /// Resolve wasm plugin bytes for the plugin path and given plugin directory. Attempts to first
-    /// resolve the plugin path as an absolute path, then adds a ".wasm" extension to the path and
-    /// resolves that, finally we use the plugin directory joined with the path with an appended
-    /// ".wasm" extension. So if our path is "tab-bar" and the given plugin dir is
-    /// "/home/bob/.zellij/plugins" the lookup chain will be this:
+    /// Resolve wasm plugin bytes.
+    ///
+    /// Attempts to first resolve the plugin path as an absolute path, then adds a ".wasm"
+    /// extension to the path and resolves that.
+    /// So if our path is "tab-bar" the lookup chain will be this:
     ///
     /// ```bash
     ///   /tab-bar
     ///   /tab-bar.wasm
-    ///   /home/bob/.zellij/plugins/tab-bar.wasm
     /// ```
     ///
-    pub fn resolve_wasm_bytes(&self, plugin_dir: &Path) -> Result<Vec<u8>> {
+    #[inline(never)] // Don't duplicate the asset map across the codebase, please
+    pub fn resolve_wasm_bytes(&self) -> Result<Vec<u8>> {
         let err_context =
             |err: std::io::Error, path: &PathBuf| format!("{}: '{}'", err, path.display());
 
@@ -124,11 +123,7 @@ impl PluginConfig {
         };
 
         // Locations we check for valid plugins
-        let paths_arr = [
-            &self.path,
-            &self.path.with_extension("wasm"),
-            &plugin_dir.join(&self.path).with_extension("wasm"),
-        ];
+        let paths_arr = [&self.path, &self.path.with_extension("wasm")];
         // Throw out dupes, because it's confusing to read that zellij checked the same plugin
         // location multiple times
         let mut paths = paths_arr.to_vec();
@@ -145,6 +140,7 @@ impl PluginConfig {
             // Check if the plugin path matches an entry in the asset map. If so, load it directly
             // from memory, don't bother with the disk.
             if let Some(bytes) = assets.get(path) {
+                log::debug!("Loaded plugin '{}' from internal assets", path.display());
                 return Ok(bytes.to_vec());
             }
 
