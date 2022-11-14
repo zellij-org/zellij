@@ -439,22 +439,6 @@ fn start_plugin(
     let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
 
     let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-    let mut wasi_env = WasiState::new("Zellij")
-        .env("CLICOLOR_FORCE", "1")
-        .map_dir("/host", ".")
-        .and_then(|wasi| wasi.map_dir("/data", &plugin_own_data_dir))
-        .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
-        .and_then(|wasi| {
-            wasi.stdin(Box::new(Pipe::new()))
-                .stdout(Box::new(Pipe::new()))
-                .stderr(Box::new(LoggingPipe::new(
-                    &plugin.location.to_string(),
-                    plugin_id,
-                )))
-                .finalize()
-        })
-        .with_context(err_context)?;
-
     let cache_hit = plugin_cache.contains_key(plugin);
 
     // We remove the entry here and repopulate it at the very bottom, if everything went well.
@@ -480,14 +464,6 @@ fn start_plugin(
                 .with_context(err_context)
                 .fatal();
 
-            let hash: String = PortableHash::default()
-                .hash256(&wasm_bytes)
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-
-            let cached_path = ZELLIJ_PROJ_DIR.cache_dir().join(&hash);
-
             fs::create_dir_all(&plugin_own_data_dir)
                 .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
                 .with_context(err_context)
@@ -501,29 +477,28 @@ fn start_plugin(
                 .with_context(err_context)
                 .non_fatal();
 
-            unsafe {
-                match Module::deserialize_from_file(store, &cached_path) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        let inner_context = || format!("failed to recover from {e:?}");
-
-                        let m = Module::new(store, &wasm_bytes)
-                            .with_context(inner_context)
-                            .with_context(err_context)?;
-                        fs::create_dir_all(ZELLIJ_PROJ_DIR.cache_dir())
-                            .with_context(inner_context)
-                            .with_context(err_context)?;
-                        m.serialize_to_file(&cached_path)
-                            .with_context(inner_context)
-                            .with_context(err_context)?;
-                        m
-                    },
-                }
-            }
+            Module::new(store, &wasm_bytes)
+                .with_context(err_context)?
         },
     };
 
+    let mut wasi_env = WasiState::new("Zellij")
+        .env("CLICOLOR_FORCE", "1")
+        .map_dir("/host", ".")
+        .and_then(|wasi| wasi.map_dir("/data", &plugin_own_data_dir))
+        .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+        .and_then(|wasi| {
+            wasi.stdin(Box::new(Pipe::new()))
+                .stdout(Box::new(Pipe::new()))
+                .stderr(Box::new(LoggingPipe::new(
+                    &plugin.location.to_string(),
+                    plugin_id,
+                )))
+                .finalize()
+        })
+        .with_context(err_context)?;
     let wasi = wasi_env.import_object(&module).with_context(err_context)?;
+
     let mut mut_plugin = plugin.clone();
     mut_plugin.set_tab_index(tab_index);
     let plugin_env = PluginEnv {
