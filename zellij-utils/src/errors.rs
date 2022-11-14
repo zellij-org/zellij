@@ -14,6 +14,7 @@ use colored::*;
 use log::error;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
+use std::path::PathBuf;
 
 use miette::Diagnostic;
 use thiserror::Error as ThisError;
@@ -393,6 +394,47 @@ pub enum ZellijError {
 
     #[error("failed to start PTY")]
     FailedToStartPty,
+
+    #[error("This version of zellij was built to load the core plugins from
+the globally configured plugin directory. However, a plugin wasn't found:
+
+    Plugin name: '{plugin_path}'
+    Plugin directory: '{plugin_dir}'
+
+If you're a user:
+    Please report this error to the distributor of your current zellij version
+
+If you're a developer:
+    Either make sure to include the plugins with the application (See feature
+    'disable_automatic_asset_installation'), or make them available in the
+    plugin directory.
+")]
+    BuiltinPluginMissing {
+        plugin_path: PathBuf,
+        plugin_dir: PathBuf,
+        #[source]
+        source: anyhow::Error,
+    },
+
+    #[error("It seems you tried to load the following builtin plugin:
+
+    Plugin name: '{plugin_path}'
+
+This is not a builtin plugin known to this version of zellij. If you were using
+a custom layout, please refer to the layout documentation at:
+
+    https://zellij.dev/documentation/creating-a-layout.html#plugin
+
+If you think this is a bug and the plugin is indeed an internal plugin, please
+open an issue on GitHub:
+
+    https://github.com/zellij-org/zellij/issues
+")]
+    BuiltinPluginNonexistent {
+        plugin_path: PathBuf,
+        #[source]
+        source: anyhow::Error,
+    },
 
     #[error("an error occured")]
     GenericError { source: anyhow::Error },
