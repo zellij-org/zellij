@@ -25,7 +25,7 @@ mod unix_only {
 }
 
 #[cfg(not(unix))]
-pub fn set_permissions(path: &std::path::Path, mode: u32) -> std::io::Result<()> {
+pub fn set_permissions(_path: &std::path::Path, _mode: u32) -> std::io::Result<()> {
     Ok(())
 }
 
