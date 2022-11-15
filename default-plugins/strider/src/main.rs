@@ -93,6 +93,7 @@ impl ZellijPlugin for State {
                 *self.scroll_mut() = self.selected() + 2 - rows;
             }
 
+            let is_last_row = i == rows.saturating_sub(1);
             let i = self.scroll() + i;
             if let Some(entry) = self.files.get(i) {
                 let mut path = entry.as_line(cols).normal();
@@ -102,11 +103,19 @@ impl ZellijPlugin for State {
                 }
 
                 if i == self.selected() {
-                    println!("{}", path.reversed());
+                    if is_last_row {
+                        print!("{}", path.reversed());
+                    } else {
+                        println!("{}", path.reversed());
+                    }
                 } else {
-                    println!("{}", path);
+                    if is_last_row {
+                        print!("{}", path);
+                    } else {
+                        println!("{}", path);
+                    }
                 }
-            } else {
+            } else if !is_last_row {
                 println!();
             }
         }

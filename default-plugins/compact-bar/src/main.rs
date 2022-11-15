@@ -129,10 +129,10 @@ impl ZellijPlugin for State {
         };
         match background {
             PaletteColor::Rgb((r, g, b)) => {
-                println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
+                print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", s, r, g, b);
             },
             PaletteColor::EightBit(color) => {
-                println!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
+                print!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
             },
         }
         self.should_render = false;

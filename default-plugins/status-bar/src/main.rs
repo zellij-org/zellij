@@ -232,7 +232,7 @@ impl ZellijPlugin for State {
         }
 
         if rows > 1 {
-            println!("\u{1b}[m{}\u{1b}[0K", second_line);
+            print!("\u{1b}[m{}\u{1b}[0K", second_line);
         }
     }
 }
