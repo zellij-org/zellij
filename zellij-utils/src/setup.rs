@@ -2,9 +2,10 @@ use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
     consts::{
-        FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
+        ASSET_MAP, FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_PROJ_DIR,
     },
+    errors::prelude::*,
     input::{
         config::{Config, ConfigError},
         layout::Layout,
@@ -172,6 +173,35 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
+pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
+    for (asset_path, bytes) in ASSET_MAP.iter() {
+        let plugin_path = path.join(asset_path);
+        plugin_path
+            .parent()
+            .with_context(|| {
+                format!(
+                    "failed to acquire parent path of '{}'",
+                    plugin_path.display()
+                )
+            })
+            .and_then(|parent_path| {
+                std::fs::create_dir_all(parent_path).context("failed to create parent path")
+            })
+            .with_context(|| {
+                format!(
+                    "failed to create folder '{}' to dump plugin '{}' to",
+                    path.display(),
+                    plugin_path.display()
+                )
+            })?;
+
+        std::fs::write(plugin_path, bytes)
+            .with_context(|| format!("failed to dump builtin plugin '{}'", asset_path.display()))?;
+    }
+
+    Ok(())
+}
+
 #[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
@@ -191,6 +221,10 @@ pub struct Setup {
     /// Dump the specified layout file to stdout
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
+
+    /// Dump the builtin plugins to DIR
+    #[clap(long, value_name = "DIR", value_parser, exclusive = true)]
+    pub dump_plugins: Option<PathBuf>,
 
     /// Generates completion for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
@@ -263,7 +297,7 @@ impl Setup {
     }
 
     /// General setup helpers
-    pub fn from_cli(&self) -> std::io::Result<()> {
+    pub fn from_cli(&self) -> Result<()> {
         if self.clean {
             return Ok(());
         }
@@ -285,6 +319,11 @@ impl Setup {
 
         if let Some(layout) = &self.dump_layout {
             dump_specified_layout(layout)?;
+            std::process::exit(0);
+        }
+
+        if let Some(path) = &self.dump_plugins {
+            dump_builtin_plugins(path)?;
             std::process::exit(0);
         }
 
