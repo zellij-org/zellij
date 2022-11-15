@@ -533,7 +533,6 @@ impl Screen {
         };
 
         if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
-            //if let Some(current_tab) = self.get_active_tab(client_id) {
             match self.get_active_tab(client_id) {
                 Ok(current_tab) => {
                     // If new active tab is same as the current one, do nothing.
@@ -1287,6 +1286,7 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.render()?;
             },
             ScreenInstruction::Render => {
                 screen.render()?;

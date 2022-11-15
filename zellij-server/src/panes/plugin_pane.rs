@@ -198,7 +198,7 @@ impl Pane for PluginPane {
     fn render_full_viewport(&mut self) {
         // this marks the pane for a full re-render, rather than just rendering the
         // diff as it usually does with the OutputBuffer
-        // self.frame.clear();
+        self.frame.clear();
         for grid in self.grids.values_mut() {
             grid.render_full_viewport();
         }
@@ -478,6 +478,7 @@ impl PluginPane {
         for grid in self.grids.values_mut() {
             grid.change_size(content_rows, content_columns);
         }
+        self.set_should_render(true);
     }
     fn set_client_should_render(&mut self, client_id: ClientId, should_render: bool) {
         self.should_render.insert(client_id, should_render);

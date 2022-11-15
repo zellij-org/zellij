@@ -111,7 +111,6 @@ impl From<&PluginInstruction> for PluginContext {
         match *plugin_instruction {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Update(..) => PluginContext::Update,
-            // PluginInstruction::Render(..) => PluginContext::Render,
             PluginInstruction::Unload(..) => PluginContext::Unload,
             PluginInstruction::Resize(..) => PluginContext::Resize,
             PluginInstruction::Exit => PluginContext::Exit,
@@ -266,7 +265,6 @@ pub(crate) fn wasm_thread_main(
                         }
                     }
                 }
-                drop(bus.senders.send_to_screen(ScreenInstruction::Render));
             },
             PluginInstruction::Unload(pid) => {
                 info!("Bye from plugin {}", &pid);
