@@ -88,11 +88,16 @@ pub struct PluginConfig {
 }
 
 impl PluginConfig {
-    /// Resolve wasm plugin bytes.
+    /// Resolve wasm plugin bytes for the plugin path and given plugin directory.
+    ///
+    /// If zellij was built without the 'disable_automatic_asset_installation' feature, builtin
+    /// plugins (Starting with 'zellij:' in the layout file) are loaded directly from the
+    /// binary-internal asset map. Otherwise:
     ///
     /// Attempts to first resolve the plugin path as an absolute path, then adds a ".wasm"
-    /// extension to the path and resolves that.
-    /// So if our path is "tab-bar" the lookup chain will be this:
+    /// extension to the path and resolves that, finally we use the plugin directory joined with
+    /// the path with an appended ".wasm" extension. So if our path is "tab-bar" and the given
+    /// plugin dir is "/home/bob/.zellij/plugins" the lookup chain will be this:
     ///
     /// ```bash
     ///   /tab-bar
