@@ -1,6 +1,7 @@
 mod floating_pane_grid;
 use zellij_utils::position::Position;
 
+use crate::resize_pty;
 use crate::tab::Pane;
 use floating_pane_grid::FloatingPaneGrid;
 
@@ -8,7 +9,9 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
     panes::{ActivePanes, PaneId},
+    thread_bus::ThreadSenders,
     ui::pane_contents_and_ui::PaneContentsAndUi,
+    wasm_vm::PluginInstruction,
     ClientId,
 };
 use std::cell::RefCell;
@@ -21,22 +24,6 @@ use zellij_utils::{
     input::command::RunCommand,
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
-
-macro_rules! resize_pty {
-    ($pane:expr, $os_input:expr) => {
-        if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
-            // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_terminal_id(
-                *pid,
-                $pane.get_content_columns() as u16,
-                $pane.get_content_rows() as u16,
-            )
-        } else {
-            Ok(())
-        }
-    };
-}
 
 pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
@@ -53,6 +40,7 @@ pub struct FloatingPanes {
     active_panes: ActivePanes,
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
+    senders: ThreadSenders,
 }
 
 #[allow(clippy::borrowed_box)]
@@ -68,6 +56,7 @@ impl FloatingPanes {
         default_mode_info: ModeInfo,
         style: Style,
         os_input: Box<dyn ServerOsApi>,
+        senders: ThreadSenders,
     ) -> Self {
         FloatingPanes {
             panes: BTreeMap::new(),
@@ -84,6 +73,7 @@ impl FloatingPanes {
             show_panes: false,
             active_panes: ActivePanes::new(&os_input),
             pane_being_moved_with_mouse: None,
+            senders,
         }
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
@@ -241,7 +231,7 @@ impl FloatingPanes {
             } else {
                 pane.set_content_offset(Offset::default());
             }
-            resize_pty!(pane, os_api).unwrap();
+            resize_pty!(pane, os_api, self.senders).unwrap();
         }
     }
     pub fn render(&mut self, output: &mut Output) -> Result<()> {
@@ -321,7 +311,7 @@ impl FloatingPanes {
     }
     pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) {
         for pane in self.panes.values_mut() {
-            resize_pty!(pane, os_api).unwrap();
+            resize_pty!(pane, os_api, self.senders).unwrap();
         }
     }
     pub fn resize_active_pane_left(
@@ -341,7 +331,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_left(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;
@@ -365,7 +355,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_right(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;
@@ -389,7 +379,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_down(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;
@@ -413,7 +403,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_pane_up(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;
@@ -437,7 +427,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_increase(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;
@@ -461,7 +451,7 @@ impl FloatingPanes {
             );
             floating_pane_grid.resize_decrease(active_floating_pane_id);
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api).unwrap();
+                resize_pty!(pane, os_api, self.senders).unwrap();
             }
             self.set_force_render();
             return true;

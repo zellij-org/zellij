@@ -118,6 +118,7 @@ type HoldForCommand = Option<RunCommand>;
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
+    PluginBytes(u32, ClientId, VteBytes), // u32 is plugin_id
     Render,
     NewPane(
         PaneId,
@@ -217,6 +218,7 @@ impl From<&ScreenInstruction> for ScreenContext {
     fn from(screen_instruction: &ScreenInstruction) -> Self {
         match *screen_instruction {
             ScreenInstruction::PtyBytes(..) => ScreenContext::HandlePtyBytes,
+            ScreenInstruction::PluginBytes(..) => ScreenContext::PluginBytes,
             ScreenInstruction::Render => ScreenContext::Render,
             ScreenInstruction::NewPane(..) => ScreenContext::NewPane,
             ScreenInstruction::OpenInPlaceEditor(..) => ScreenContext::OpenInPlaceEditor,
@@ -531,7 +533,6 @@ impl Screen {
         };
 
         if let Some(new_tab) = self.tabs.values().find(|t| t.position == new_tab_pos) {
-            //if let Some(current_tab) = self.get_active_tab(client_id) {
             match self.get_active_tab(client_id) {
                 Ok(current_tab) => {
                     // If new active tab is same as the current one, do nothing.
@@ -1275,6 +1276,17 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+            },
+            ScreenInstruction::PluginBytes(pid, client_id, vte_bytes) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.handle_plugin_bytes(pid, client_id, vte_bytes)
+                            .context("failed to process plugin bytes")?;
+                        break;
+                    }
+                }
+                screen.render()?;
             },
             ScreenInstruction::Render => {
                 screen.render()?;

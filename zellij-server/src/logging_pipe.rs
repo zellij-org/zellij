@@ -114,7 +114,6 @@ impl Seek for LoggingPipe {
     }
 }
 
-#[typetag::serde]
 impl WasiFile for LoggingPipe {
     fn last_accessed(&self) -> u64 {
         0

@@ -30,7 +30,7 @@ pub enum ClientOrTabIndex {
 
 /// Instructions related to PTYs (pseudoterminals).
 #[derive(Clone, Debug)]
-pub(crate) enum PtyInstruction {
+pub enum PtyInstruction {
     SpawnTerminal(
         Option<TerminalAction>,
         Option<bool>,

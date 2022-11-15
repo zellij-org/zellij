@@ -47,20 +47,27 @@ use zellij_utils::{
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
+#[macro_export]
 macro_rules! resize_pty {
-    ($pane:expr, $os_input:expr) => {
-        if let PaneId::Terminal(ref pid) = $pane.pid() {
-            // FIXME: This `set_terminal_size_using_terminal_id` call would be best in
-            // `TerminalPane::reflow_lines`
-            $os_input.set_terminal_size_using_terminal_id(
+    ($pane:expr, $os_input:expr, $senders:expr) => {{
+        match $pane.pid() {
+            PaneId::Terminal(ref pid) => $os_input.set_terminal_size_using_terminal_id(
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
-            )
-        } else {
-            Ok(())
+            ),
+            PaneId::Plugin(ref pid) => {
+                let err_context = || format!("failed to resize plugin {pid}");
+                $senders
+                    .send_to_plugin(PluginInstruction::Resize(
+                        *pid,
+                        $pane.get_content_columns(),
+                        $pane.get_content_rows(),
+                    ))
+                    .with_context(err_context)
+            },
         }
-    };
+    }};
 }
 
 type HoldForCommand = Option<RunCommand>;
@@ -130,7 +137,8 @@ pub trait Pane {
     fn reset_size_and_position_override(&mut self);
     fn set_geom(&mut self, position_and_size: PaneGeom);
     fn set_geom_override(&mut self, pane_geom: PaneGeom);
-    fn handle_pty_bytes(&mut self, bytes: VteBytes);
+    fn handle_pty_bytes(&mut self, _bytes: VteBytes) {}
+    fn handle_plugin_bytes(&mut self, _client_id: ClientId, _bytes: VteBytes) {}
     fn cursor_coordinates(&self) -> Option<(usize, usize)>;
     fn adjust_input_to_terminal(&mut self, _input_bytes: Vec<u8>) -> Option<AdjustedInput> {
         None
@@ -425,6 +433,7 @@ impl Tab {
             default_mode_info.clone(),
             style,
             os_api.clone(),
+            senders.clone(),
         );
         let floating_panes = FloatingPanes::new(
             display_area.clone(),
@@ -436,6 +445,7 @@ impl Tab {
             default_mode_info.clone(),
             style,
             os_api.clone(),
+            senders.clone(),
         );
 
         let clipboard_provider = match copy_options.command {
@@ -525,7 +535,11 @@ impl Tab {
                         let pane_title = run.location.to_string();
                         self.senders
                             .send_to_plugin(PluginInstruction::Load(
-                                pid_tx, run, tab_index, client_id,
+                                pid_tx,
+                                run,
+                                tab_index,
+                                client_id,
+                                position_and_size.into(),
                             ))
                             .with_context(err_context)?;
                         let pid = pid_rx.recv().with_context(err_context)?;
@@ -539,6 +553,12 @@ impl Tab {
                                 .clone(),
                             pane_title,
                             layout.name.clone().unwrap_or_default(),
+                            self.sixel_image_store.clone(),
+                            self.terminal_emulator_colors.clone(),
+                            self.terminal_emulator_color_codes.clone(),
+                            self.link_handler.clone(),
+                            self.character_cell_size.clone(),
+                            self.style,
                         );
                         new_plugin.set_borderless(layout.borderless);
                         self.tiled_panes
@@ -779,7 +799,8 @@ impl Tab {
                         embedded_pane_to_float.set_content_offset(Offset::default());
                     }
                     embedded_pane_to_float.set_geom(new_pane_geom);
-                    resize_pty!(embedded_pane_to_float, self.os_api).with_context(err_context)?;
+                    resize_pty!(embedded_pane_to_float, self.os_api, self.senders)
+                        .with_context(err_context)?;
                     embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes
                         .add_pane(focused_pane_id, embedded_pane_to_float);
@@ -860,7 +881,7 @@ impl Tab {
                         initial_pane_title,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                    resize_pty!(new_pane, self.os_api).with_context(err_context)?;
+                    resize_pty!(new_pane, self.os_api, self.senders).with_context(err_context)?;
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
                     self.floating_panes.focus_pane_for_all_clients(pid);
                 }
@@ -934,7 +955,7 @@ impl Tab {
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
                             .and_then(|current_active_pane| {
-                                resize_pty!(current_active_pane, self.os_api)
+                                resize_pty!(current_active_pane, self.os_api, self.senders)
                             })
                             .with_context(err_context)?;
                     },
@@ -1084,6 +1105,16 @@ impl Tab {
                 .values()
                 .any(|s_p| s_p.pid() == PaneId::Terminal(pid))
     }
+    pub fn has_plugin(&self, plugin_id: u32) -> bool {
+        self.tiled_panes.panes_contain(&PaneId::Plugin(plugin_id))
+            || self
+                .floating_panes
+                .panes_contain(&PaneId::Plugin(plugin_id))
+            || self
+                .suppressed_panes
+                .values()
+                .any(|s_p| s_p.pid() == PaneId::Plugin(plugin_id))
+    }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
         if let Some(terminal_output) = self
@@ -1112,6 +1143,26 @@ impl Tab {
         }
         self.process_pty_bytes(pid, bytes).with_context(err_context)
     }
+    pub fn handle_plugin_bytes(
+        &mut self,
+        pid: u32,
+        client_id: ClientId,
+        bytes: VteBytes,
+    ) -> Result<()> {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.handle_plugin_bytes(client_id, bytes);
+        }
+        Ok(())
+    }
     pub fn process_pending_vte_events(&mut self, pid: u32) -> Result<()> {
         if let Some(pending_vte_events) = self.pending_vte_events.get_mut(&pid) {
             let vte_events: Vec<VteBytes> = pending_vte_events.drain(..).collect();
@@ -1136,7 +1187,8 @@ impl Tab {
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
-                resize_pty!(terminal_output, self.os_api).with_context(err_context)?;
+                resize_pty!(terminal_output, self.os_api, self.senders)
+                    .with_context(err_context)?;
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -1833,7 +1885,7 @@ impl Tab {
                     // the pane there we replaced. Now, we need to update its pty about its new size.
                     // We couldn't do that before, and we can't use the original moved item now - so we
                     // need to refetch it
-                    resize_pty!(suppressed_pane, self.os_api).unwrap();
+                    resize_pty!(suppressed_pane, self.os_api, self.senders).unwrap();
                 }
                 replaced_pane
             })

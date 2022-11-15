@@ -19,7 +19,6 @@ macro_rules! asset_map {
 
 #[cfg(not(feature = "disable_automatic_asset_installation"))]
 pub(crate) fn populate_data_dir(data_dir: &Path) {
-    // First run installation of default plugins & layouts
     let mut assets = asset_map! {
         "assets/plugins/compact-bar.wasm" => "plugins/compact-bar.wasm",
         "assets/plugins/status-bar.wasm" => "plugins/status-bar.wasm",

@@ -218,6 +218,7 @@ impl Display for ContextType {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum ScreenContext {
     HandlePtyBytes,
+    PluginBytes,
     Render,
     NewPane,
     OpenInPlaceEditor,
@@ -336,6 +337,7 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    Resize,
     Exit,
     AddClient,
     RemoveClient,

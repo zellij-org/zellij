@@ -3,7 +3,7 @@ use zellij_utils::errors::{prelude::*, ContextType, PtyWriteContext};
 use crate::thread_bus::Bus;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum PtyWriteInstruction {
+pub enum PtyWriteInstruction {
     Write(Vec<u8>, u32),
     Exit,
 }
