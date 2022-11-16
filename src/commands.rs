@@ -1,32 +1,27 @@
-use crate::install::populate_data_dir;
-use crate::sessions::kill_session as kill_session_impl;
-use crate::sessions::{
-    assert_session, assert_session_ne, get_active_session, get_sessions,
-    get_sessions_sorted_by_mtime, match_session_name, print_sessions, print_sessions_with_index,
-    session_exists, ActiveSession, SessionNameMatch,
-};
 use dialoguer::Confirm;
 use miette::{Report, Result};
-use std::path::PathBuf;
-use std::process;
-use zellij_client::old_config_converter::{
-    config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
+use std::{fs::File, io::prelude::*, path::PathBuf, process};
+
+use crate::sessions::{
+    assert_session, assert_session_ne, get_active_session, get_sessions,
+    get_sessions_sorted_by_mtime, kill_session as kill_session_impl, match_session_name,
+    print_sessions, print_sessions_with_index, session_exists, ActiveSession, SessionNameMatch,
 };
-use zellij_client::start_client as start_client_impl;
-use zellij_client::{os_input_output::get_client_os_input, ClientInfo};
-use zellij_server::os_input_output::get_server_os_input;
-use zellij_server::start_server as start_server_impl;
-use zellij_utils::input::actions::Action;
-use zellij_utils::input::config::ConfigError;
-use zellij_utils::input::options::Options;
-use zellij_utils::nix;
+use zellij_client::{
+    old_config_converter::{
+        config_yaml_to_config_kdl, convert_old_yaml_files, layout_yaml_to_layout_kdl,
+    },
+    os_input_output::get_client_os_input,
+    start_client as start_client_impl, ClientInfo,
+};
+use zellij_server::{os_input_output::get_server_os_input, start_server as start_server_impl};
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
-    setup::{get_default_data_dir, Setup},
+    input::{actions::Action, config::ConfigError, options::Options},
+    nix,
+    setup::{get_default_data_dir, populate_data_dir, Setup},
 };
-
-use std::{fs::File, io::prelude::*};
 
 pub(crate) use crate::sessions::list_sessions;
 
@@ -99,7 +94,7 @@ fn create_new_client() -> ClientInfo {
 
 fn install_default_assets(opts: &CliArgs) {
     let data_dir = opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
-    populate_data_dir(&data_dir);
+    populate_data_dir(&data_dir, None);
 }
 
 fn find_indexed_session(
