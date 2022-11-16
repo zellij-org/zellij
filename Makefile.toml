@@ -194,7 +194,7 @@ args = [
 # Build e2e asset
 [tasks.build-e2e]
 workspace = false
-dependencies = ["build-plugins-release", "build-e2e-data-dir"]
+dependencies = ["wasm-opt-plugins", "build-e2e-data-dir"]
 command = "cargo"
 args = [
     "build",
