@@ -222,9 +222,16 @@ pub struct Setup {
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
 
-    /// Dump the builtin plugins to DIR
-    #[clap(long, value_name = "DIR", value_parser, exclusive = true)]
-    pub dump_plugins: Option<PathBuf>,
+    /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
+    #[clap(
+        long,
+        value_name = "DIR",
+        value_parser,
+        exclusive = true,
+        min_values = 0,
+        max_values = 1
+    )]
+    pub dump_plugins: Option<Option<PathBuf>>,
 
     /// Generates completion for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
@@ -322,24 +329,28 @@ impl Setup {
             std::process::exit(0);
         }
 
-        if let Some(path) = &self.dump_plugins {
-            dump_builtin_plugins(path)?;
-            std::process::exit(0);
-        }
-
         Ok(())
     }
 
     /// Checks the merged configuration
-    pub fn from_cli_with_options(
-        &self,
-        opts: &CliArgs,
-        config_options: &Options,
-    ) -> std::io::Result<()> {
+    pub fn from_cli_with_options(&self, opts: &CliArgs, config_options: &Options) -> Result<()> {
         if self.check {
             Setup::check_defaults_config(opts, config_options)?;
             std::process::exit(0);
         }
+
+        if let Some(maybe_path) = &self.dump_plugins {
+            let data_dir = &opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+            let dir = match maybe_path {
+                Some(path) => path,
+                None => data_dir,
+            };
+
+            println!("Dumping plugins to '{}'", dir.display());
+            dump_builtin_plugins(&dir)?;
+            std::process::exit(0);
+        }
+
         Ok(())
     }
 
