@@ -409,6 +409,11 @@ If you're a developer:
     Either make sure to include the plugins with the application (See feature
     'disable_automatic_asset_installation'), or make them available in the
     plugin directory.
+
+Possible fix for your problem:
+    Run `zellij setup --dump-plugins`, and optionally point it to your
+    'DATA DIR', visible in e.g. the output of `zellij setup --check`. Without
+    further arguments, it will use the default 'DATA DIR'.
 "
     )]
     BuiltinPluginMissing {
