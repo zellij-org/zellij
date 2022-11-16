@@ -397,11 +397,13 @@ pub(crate) fn wasm_thread_main(
     info!("wasm main thread exits");
 
     fs::remove_dir_all(&plugin_global_data_dir)
-        .or_else(|err| if err.kind() == std::io::ErrorKind::NotFound {
-            // I don't care...
-            Ok(())
-        } else {
-            Err(err)
+        .or_else(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                // I don't care...
+                Ok(())
+            } else {
+                Err(err)
+            }
         })
         .context("failed to cleanup plugin data directory")
 }

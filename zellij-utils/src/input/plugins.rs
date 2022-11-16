@@ -134,7 +134,11 @@ impl PluginConfig {
                     log::debug!("Loaded plugin '{}' from internal assets", path.display());
 
                     if plugin_dir.join(path).with_extension("wasm").exists() {
-                        log::info!("Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored", path.display(), plugin_dir.display());
+                        log::info!(
+                            "Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored",
+                            path.display(),
+                            plugin_dir.display()
+                        );
                     }
 
                     return Ok(bytes.to_vec());
