@@ -93,9 +93,16 @@ pub trait LoggableError<T>: Sized {
     ///     .print_error(|msg| println!("{msg}"))
     ///     .unwrap();
     /// ```
+    #[track_caller]
     fn print_error<F: Fn(&str)>(self, fun: F) -> Self;
 
     /// Convenienve function, calls `print_error` with the closure `|msg| log::error!("{}", msg)`.
+    // Dev note:
+    // Currently this hides the location of the caller, because it will show this very line as
+    // "source" of the logging call. This isn't correct, because it may have been called by other
+    // functions, too. To track this, we need to attach `#[track_caller]` to the closure below,
+    // which isn't stabilized yet: https://github.com/rust-lang/rust/issues/87417
+    #[track_caller]
     fn to_log(self) -> Self {
         self.print_error(|msg| log::error!("{}", msg))
     }
@@ -134,6 +141,7 @@ pub trait FatalError<T> {
     /// Discards the result type afterwards.
     ///
     /// [`to_log`]: LoggableError::to_log
+    #[track_caller]
     fn non_fatal(self);
 
     /// Mark results as being fatal.
