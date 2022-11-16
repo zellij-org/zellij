@@ -228,7 +228,10 @@ pub enum Action {
 }
 
 impl Action {
-    pub fn actions_from_cli(cli_action: CliAction, get_current_dir: Box<dyn Fn() -> PathBuf>) -> Result<Vec<Action>, String> {
+    pub fn actions_from_cli(
+        cli_action: CliAction,
+        get_current_dir: Box<dyn Fn() -> PathBuf>,
+    ) -> Result<Vec<Action>, String> {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
@@ -266,7 +269,9 @@ impl Action {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let current_dir = get_current_dir();
-                    let cwd = cwd.map(|cwd| current_dir.join(cwd)).or_else(|| Some(current_dir));
+                    let cwd = cwd
+                        .map(|cwd| current_dir.join(cwd))
+                        .or_else(|| Some(current_dir));
                     let hold_on_start = start_suspended;
                     let hold_on_close = !close_on_exit;
                     let run_command_action = RunCommandAction {
@@ -306,7 +311,9 @@ impl Action {
             } => {
                 let mut file = file;
                 let current_dir = get_current_dir();
-                let cwd = cwd.map(|cwd| current_dir.join(cwd)).or_else(|| Some(current_dir));
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
                 if file.is_relative() {
                     if let Some(cwd) = cwd {
                         file = cwd.join(file);
@@ -341,7 +348,9 @@ impl Action {
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
             CliAction::NewTab { name, layout, cwd } => {
                 let current_dir = get_current_dir();
-                let cwd = cwd.map(|cwd| current_dir.join(cwd)).or_else(|| Some(current_dir));
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
                     let (path_to_raw_layout, raw_layout) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), None)
