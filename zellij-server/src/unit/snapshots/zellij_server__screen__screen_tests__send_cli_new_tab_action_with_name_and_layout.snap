@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1989
+assertion_line: 2287
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
@@ -15,7 +15,11 @@ NewTab(
                     name: None,
                     children: [],
                     split_size: None,
-                    run: None,
+                    run: Some(
+                        Cwd(
+                            ".",
+                        ),
+                    ),
                     borderless: false,
                     focus: None,
                     external_children_index: None,
@@ -25,7 +29,11 @@ NewTab(
                     name: None,
                     children: [],
                     split_size: None,
-                    run: None,
+                    run: Some(
+                        Cwd(
+                            ".",
+                        ),
+                    ),
                     borderless: false,
                     focus: None,
                     external_children_index: None,
@@ -35,7 +43,11 @@ NewTab(
                     name: None,
                     children: [],
                     split_size: None,
-                    run: None,
+                    run: Some(
+                        Cwd(
+                            ".",
+                        ),
+                    ),
                     borderless: false,
                     focus: None,
                     external_children_index: None,
