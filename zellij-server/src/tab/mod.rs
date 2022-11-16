@@ -793,10 +793,9 @@ impl Tab {
                     return Ok(());
                 }
                 if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
-                    if self.draw_pane_frames && !embedded_pane_to_float.borderless() {
+                    if !embedded_pane_to_float.borderless() {
+                        // floating panes always have a frame unless they're explicitly borderless
                         embedded_pane_to_float.set_content_offset(Offset::frame(1));
-                    } else if !self.draw_pane_frames {
-                        embedded_pane_to_float.set_content_offset(Offset::default());
                     }
                     embedded_pane_to_float.set_geom(new_pane_geom);
                     resize_pty!(embedded_pane_to_float, self.os_api, self.senders)
