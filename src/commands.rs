@@ -238,7 +238,8 @@ pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
 
 fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
-    match Action::actions_from_cli(cli_action) {
+    let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    match Action::actions_from_cli(cli_action, Box::new(get_current_dir)) {
         Ok(actions) => {
             zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
             std::process::exit(0);
