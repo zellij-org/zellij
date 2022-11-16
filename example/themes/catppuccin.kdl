@@ -1,3 +1,6 @@
+// Catppuccin Theme:
+// https://github.com/catppuccin/catppuccin
+
 themes {
   catppuccin-latte {
     bg "#acb0be" // Surface2
