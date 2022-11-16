@@ -408,10 +408,6 @@ pub(crate) fn wasm_thread_main(
         .context("failed to cleanup plugin data directory")
 }
 
-thread_local!(
-    static PLUGIN_CACHE: HashMap<PluginConfig, Module> = HashMap::new();
-);
-
 #[allow(clippy::too_many_arguments)]
 fn start_plugin(
     plugin_id: u32,
