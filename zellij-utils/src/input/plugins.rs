@@ -115,9 +115,8 @@ impl PluginConfig {
             &plugin_dir.join(&self.path).with_extension("wasm"),
         ];
         // Throw out dupes, because it's confusing to read that zellij checked the same plugin
-        // location multiple times
+        // location multiple times. Do NOT sort the vector here, because it will break the lookup!
         let mut paths = paths_arr.to_vec();
-        paths.sort_unstable();
         paths.dedup();
 
         // This looks weird and usually we would handle errors like this differently, but in this
@@ -133,6 +132,11 @@ impl PluginConfig {
                 let asset_path = PathBuf::from("plugins").join(path);
                 if let Some(bytes) = ASSET_MAP.get(&asset_path) {
                     log::debug!("Loaded plugin '{}' from internal assets", path.display());
+
+                    if plugin_dir.join(path).with_extension("wasm").exists() {
+                        log::info!("Plugin '{}' exists in the 'PLUGIN DIR' at '{}' but is being ignored", path.display(), plugin_dir.display());
+                    }
+
                     return Ok(bytes.to_vec());
                 }
             }
