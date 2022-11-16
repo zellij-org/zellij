@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * docs(contributing): update log path (https://github.com/zellij-org/zellij/pull/1927)
 * fix: Fallback to `/bin/sh` if `SHELL` can't be read, panic if shell doesn't exist (https://github.com/zellij-org/zellij/pull/1769)
 * feat(themes): add catppuccin themes (https://github.com/zellij-org/zellij/pull/1937)
+* fix: treat relative paths properly in cli commands (https://github.com/zellij-org/zellij/pull/1947)
 
 ## [0.33.0] - 2022-11-10
 
