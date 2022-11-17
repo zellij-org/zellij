@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat(themes): add catppuccin themes (https://github.com/zellij-org/zellij/pull/1937)
 * fix: treat relative paths properly in cli commands (https://github.com/zellij-org/zellij/pull/1947)
 * fix: ensure ejected pane always has a frame (https://github.com/zellij-org/zellij/pull/1950)
+* fix(compact-bar): mouse-click in simplified-ui (https://github.com/zellij-org/zellij/pull/1917)
 
 ## [0.33.0] - 2022-11-10
 
