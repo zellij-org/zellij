@@ -13,13 +13,15 @@ use nix::{
 use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
-    channels,
-    async_std,
+    async_std, channels,
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,
-    ipc::{ClientToServerMsg, IpcReceiverWithContext, IpcSenderWithContext, ServerToClientMsg, ExitReason},
+    ipc::{
+        ClientToServerMsg, ExitReason, IpcReceiverWithContext, IpcSenderWithContext,
+        ServerToClientMsg,
+    },
     libc, nix,
     shared::default_palette,
     signal_hook,
@@ -347,16 +349,20 @@ impl ClientSender {
             for msg in client_buffer_receiver.iter() {
                 let _ = sender.send(msg).with_context(err_context);
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error("Buffer full".to_string())));
+            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(
+                "Buffer full".to_string(),
+            )));
         });
         ClientSender {
             client_id,
-            client_buffer_sender
+            client_buffer_sender,
         }
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
         let err_context = || format!("Client {} send buffer full", self.client_id);
-        self.client_buffer_sender.try_send(msg).with_context(err_context)
+        self.client_buffer_sender
+            .try_send(msg)
+            .with_context(err_context)
     }
 }
 
