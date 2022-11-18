@@ -2682,6 +2682,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "zellij-tile",
  "zellij-tile-utils",
