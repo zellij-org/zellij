@@ -6,7 +6,7 @@ use zellij_utils::data::Event;
 #[allow(unused_variables)]
 pub trait ZellijPlugin {
     fn load(&mut self) {}
-    fn update(&mut self, event: Event) {}
+    fn update(&mut self, event: Event) -> bool { false } // return true if it should render
     fn render(&mut self, rows: usize, cols: usize) {}
 }
 
@@ -41,15 +41,15 @@ macro_rules! register_plugin {
         }
 
         #[no_mangle]
-        pub fn update() {
+        pub fn update() -> bool {
             let object = $crate::shim::object_from_stdin()
                 .context($crate::PLUGIN_MISMATCH)
                 .to_stdout()
                 .unwrap();
 
             STATE.with(|state| {
-                state.borrow_mut().update(object);
-            });
+                state.borrow_mut().update(object)
+            })
         }
 
         #[no_mangle]

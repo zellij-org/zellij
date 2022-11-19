@@ -234,7 +234,7 @@ pub(crate) fn wasm_thread_main(
                             .get_function("update")
                             .with_context(err_context)?;
                         wasi_write_object(&plugin_env.wasi_env, &event);
-                        update.call(&[]).or_else::<anyError, _>(|e| {
+                        let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
                             match e.downcast::<serde_json::Error>() {
                                 Ok(_) => panic!(
                                     "{}",
@@ -247,8 +247,12 @@ pub(crate) fn wasm_thread_main(
                                 Err(e) => Err(e).with_context(err_context),
                             }
                         })?;
+                        let should_render = match update_return.get(0)  {
+                            Some(Value::I32(n)) => *n == 1,
+                            _ => false
+                        };
 
-                        if *rows > 0 && *columns > 0 {
+                        if *rows > 0 && *columns > 0 && should_render {
                             let render = instance
                                 .exports
                                 .get_function("render")
