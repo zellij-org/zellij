@@ -65,15 +65,17 @@ impl<'a> PaneContentsAndUi<'a> {
                 self.z_index,
             );
             if let Some(raw_vte_output) = raw_vte_output {
-                self.output.add_post_vte_instruction_to_multiple_clients(
-                    clients.iter().copied(),
-                    &format!(
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        self.pane.y() + 1,
-                        self.pane.x() + 1,
-                        raw_vte_output
-                    ),
-                );
+                if !raw_vte_output.is_empty() {
+                    self.output.add_post_vte_instruction_to_multiple_clients(
+                        clients.iter().copied(),
+                        &format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            self.pane.y() + 1,
+                            self.pane.x() + 1,
+                            raw_vte_output
+                        ),
+                    );
+                }
             }
         }
         Ok(())
@@ -140,11 +142,17 @@ impl<'a> PaneContentsAndUi<'a> {
         }
         Ok(())
     }
-    pub fn render_terminal_title_if_needed(&mut self, client_id: ClientId, client_mode: InputMode) {
+    pub fn render_terminal_title_if_needed(&mut self, client_id: ClientId, client_mode: InputMode, previous_title: &mut Option<String>) {
         if !self.focused_clients.contains(&client_id) {
             return;
         }
         let vte_output = self.pane.render_terminal_title(client_mode);
+        if let Some(previous_title) = previous_title {
+            if *previous_title == vte_output {
+                return;
+            }
+        }
+        *previous_title = Some(vte_output.clone());
         self.output
             .add_post_vte_instruction_to_client(client_id, &vte_output);
     }

@@ -396,6 +396,12 @@ impl Output {
         }
         Ok(serialized_render_instructions)
     }
+    pub fn is_dirty(&self) -> bool {
+        !self.pre_vte_instructions.is_empty()
+            || !self.post_vte_instructions.is_empty()
+            || self.client_character_chunks.values().any(|c| !c.is_empty())
+            || self.sixel_chunks.values().any(|c| !c.is_empty())
+    }
 }
 
 // this struct represents the geometry of a group of floating panes

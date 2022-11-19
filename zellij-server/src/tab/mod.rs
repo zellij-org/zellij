@@ -1427,7 +1427,6 @@ impl Tab {
             floating_panes_stack,
         );
 
-        self.hide_cursor_and_clear_display_as_needed(output);
         self.tiled_panes
             .render(output, self.floating_panes.panes_are_visible())
             .with_context(err_context)?;
@@ -1437,15 +1436,18 @@ impl Tab {
                 .with_context(err_context)?;
         }
 
-        // FIXME: Once clients can be distinguished
-        if let Some(overlay_vte) = &overlay {
-            output.add_post_vte_instruction_to_multiple_clients(
-                connected_clients.iter().copied(),
-                overlay_vte,
-            );
+        if output.is_dirty() {
+            self.hide_cursor_and_clear_display_as_needed(output);
+            self.render_cursor(output);
+            // FIXME: Once clients can be distinguished
+            if let Some(overlay_vte) = &overlay {
+                output.add_post_vte_instruction_to_multiple_clients(
+                    connected_clients.iter().copied(),
+                    overlay_vte,
+                );
+            }
         }
 
-        self.render_cursor(output);
         Ok(())
     }
 

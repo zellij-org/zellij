@@ -65,6 +65,7 @@ pub struct TiledPanes {
     fullscreen_is_active: bool,
     os_api: Box<dyn ServerOsApi>,
     senders: ThreadSenders,
+    window_title: Option<String>,
 }
 
 impl TiledPanes {
@@ -100,6 +101,7 @@ impl TiledPanes {
             fullscreen_is_active: false,
             os_api,
             senders,
+            window_title: None,
         }
     }
     pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
@@ -435,7 +437,7 @@ impl TiledPanes {
                             self.session_is_mirrored,
                         );
                     }
-                    pane_contents_and_ui.render_terminal_title_if_needed(*client_id, client_mode);
+                    pane_contents_and_ui.render_terminal_title_if_needed(*client_id, client_mode, &mut self.window_title);
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
                     pane_contents_and_ui
