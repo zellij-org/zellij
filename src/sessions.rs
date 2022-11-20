@@ -198,6 +198,11 @@ pub(crate) fn assert_session(name: &str) {
 }
 
 pub(crate) fn assert_session_ne(name: &str) {
+    if name.trim().is_empty() {
+        eprintln!("Session name cannot be empty. Please provide a specific session name.");
+        process::exit(1);
+    }
+
     match session_exists(name) {
         Ok(result) if !result => return,
         Ok(_) => println!("Session with name {:?} already exists. Use attach command to connect to it or specify a different name.", name),
