@@ -1,8 +1,10 @@
+#[cfg(not(target_family = "wasm"))]
+use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
     consts::{
-        ASSET_MAP, FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
+        FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_PROJ_DIR,
     },
     errors::prelude::*,
@@ -173,6 +175,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
     for (asset_path, bytes) in ASSET_MAP.iter() {
         let plugin_path = path.join(asset_path);
@@ -199,6 +202,11 @@ pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
             .with_context(|| format!("failed to dump builtin plugin '{}'", asset_path.display()))?;
     }
 
+    Ok(())
+}
+
+#[cfg(target_family = "wasm")]
+pub fn dump_builtin_plugins(_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
