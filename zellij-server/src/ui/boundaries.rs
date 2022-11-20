@@ -27,10 +27,10 @@ pub mod boundary_type {
     pub const CROSS: &str = "┼";
 }
 
-pub(crate) type BoundaryType = &'static str; // easy way to refer to boundary_type above
+pub type BoundaryType = &'static str; // easy way to refer to boundary_type above
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct BoundarySymbol {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BoundarySymbol {
     boundary_type: BoundaryType,
     invisible: bool,
     color: Option<PaletteColor>,
@@ -420,7 +420,7 @@ fn combine_symbols(
 }
 
 #[derive(PartialEq, Eq, Hash, Debug)]
-pub(crate) struct Coordinates {
+pub struct Coordinates {
     x: usize,
     y: usize,
 }
@@ -433,7 +433,7 @@ impl Coordinates {
 
 pub struct Boundaries {
     viewport: Viewport,
-    boundary_characters: HashMap<Coordinates, BoundarySymbol>,
+    pub boundary_characters: HashMap<Coordinates, BoundarySymbol>,
 }
 
 impl Boundaries {
@@ -540,9 +540,16 @@ impl Boundaries {
             }
         }
     }
-    pub fn render(&self) -> Result<Vec<CharacterChunk>> {
+    pub fn render(&self, existing_boundaries_on_screen: Option<&Boundaries>) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
+            let already_on_screen = existing_boundaries_on_screen
+                .and_then(|e| e.boundary_characters.get(coordinates))
+                .map(|e| e == boundary_character)
+                .unwrap_or(false);
+            if already_on_screen {
+                continue;
+            }
             character_chunks.push(CharacterChunk::new(
                 vec![boundary_character
                     .as_terminal_character()

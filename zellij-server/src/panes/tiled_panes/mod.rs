@@ -66,6 +66,7 @@ pub struct TiledPanes {
     os_api: Box<dyn ServerOsApi>,
     senders: ThreadSenders,
     window_title: Option<String>,
+    client_id_to_boundaries: HashMap<ClientId, Boundaries>,
 }
 
 impl TiledPanes {
@@ -102,6 +103,7 @@ impl TiledPanes {
             os_api,
             senders,
             window_title: None,
+            client_id_to_boundaries: HashMap::new(),
         }
     }
     pub fn add_pane_with_existing_geom(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
@@ -266,6 +268,7 @@ impl TiledPanes {
 
             resize_pty!(pane, self.os_api, self.senders).unwrap();
         }
+        self.reset_boundaries();
     }
     pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
@@ -340,9 +343,11 @@ impl TiledPanes {
                     .insert(client_id, pane_id, &mut self.panes);
             }
         }
+        self.reset_boundaries();
     }
     pub fn clear_active_panes(&mut self) {
         self.active_panes.clear(&mut self.panes);
+        self.reset_boundaries();
     }
     pub fn first_active_pane_id(&self) -> Option<PaneId> {
         self.connected_clients
@@ -375,6 +380,7 @@ impl TiledPanes {
             pane.set_should_render_boundaries(true);
             pane.render_full_viewport();
         }
+        self.reset_boundaries();
     }
     pub fn has_active_panes(&self) -> bool {
         !self.active_panes.is_empty()
@@ -452,12 +458,13 @@ impl TiledPanes {
             }
         }
         // render boundaries if needed
-        for (client_id, boundaries) in &mut client_id_to_boundaries {
-            // TODO: add some conditional rendering here so this isn't rendered for every character
+        for (client_id, boundaries) in client_id_to_boundaries {
+            let boundaries_to_render = boundaries.render(self.client_id_to_boundaries.get(&client_id)).with_context(err_context)?;
+            self.client_id_to_boundaries.insert(client_id, boundaries);
             output
                 .add_character_chunks_to_client(
-                    *client_id,
-                    boundaries.render().with_context(err_context)?,
+                    client_id,
+                    boundaries_to_render,
                     None,
                 )
                 .with_context(err_context)?;
@@ -519,6 +526,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn resize_active_pane_right(&mut self, client_id: ClientId) {
@@ -533,6 +541,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn resize_active_pane_up(&mut self, client_id: ClientId) {
@@ -547,6 +556,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn resize_active_pane_down(&mut self, client_id: ClientId) {
@@ -561,6 +571,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn resize_active_pane_increase(&mut self, client_id: ClientId) {
@@ -575,6 +586,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn resize_active_pane_decrease(&mut self, client_id: ClientId) {
@@ -589,6 +601,7 @@ impl TiledPanes {
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
+            self.reset_boundaries();
         }
     }
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
@@ -607,6 +620,7 @@ impl TiledPanes {
                 .insert(client_id, next_active_pane_id, &mut self.panes);
         }
         self.set_pane_active_at(next_active_pane_id);
+        self.reset_boundaries();
     }
     pub fn focus_previous_pane(&mut self, client_id: ClientId) {
         let connected_clients: Vec<ClientId> =
@@ -624,6 +638,7 @@ impl TiledPanes {
                 .insert(client_id, next_active_pane_id, &mut self.panes);
         }
         self.set_pane_active_at(next_active_pane_id);
+        self.reset_boundaries();
     }
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.get_pane_mut(pane_id) {
@@ -1001,6 +1016,7 @@ impl TiledPanes {
         }
     }
     pub fn extract_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+        self.reset_boundaries();
         self.panes.remove(&pane_id)
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
@@ -1175,6 +1191,9 @@ impl TiledPanes {
             self.active_panes
                 .insert(client_id, to_pane_id, &mut self.panes);
         }
+    }
+    fn reset_boundaries(&mut self) {
+        self.client_id_to_boundaries.clear();
     }
 }
 
