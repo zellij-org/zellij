@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 
 * (BREAKING CHANGE) performance: change plugin data flow to improve render speed (https://github.com/zellij-org/zellij/pull/1934)
+* (BREAKING CHANGE) performance: various render pipeline improvements (https://github.com/zellij-org/zellij/pull/1960)
 * feat: support text input from clipboard (https://github.com/zellij-org/zellij/pull/1926)
 * errors: Don't log errors from panes when quitting zellij (https://github.com/zellij-org/zellij/pull/1918)
 * docs(contributing): update log path (https://github.com/zellij-org/zellij/pull/1927)
