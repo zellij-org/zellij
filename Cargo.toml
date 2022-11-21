@@ -31,15 +31,15 @@ rand = "0.8.0"
 
 [workspace]
 members = [
+    "default-plugins/compact-bar",
+    "default-plugins/status-bar",
+    "default-plugins/strider",
+    "default-plugins/tab-bar",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
-    "default-plugins/compact-bar",
-    "default-plugins/status-bar",
-    "default-plugins/strider",
-    "default-plugins/tab-bar",
     ".",
 ]
 
