@@ -102,6 +102,9 @@ for plugin in ${plugins}
     echo ${plugin_in}
     plugin_out = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/${plugin_name}.wasm
     echo ${plugin_out}
+    exec ls ${CARGO_TARGET_DIR}
+    exec ls ${CARGO_TARGET_DIR}/wasm32-wasi
+    exec ls ${CARGO_TARGET_DIR}/wasm32-wasi/release
     exec wasm-opt -O ${plugin_in} -o ${plugin_out}
     cd ..
 end
