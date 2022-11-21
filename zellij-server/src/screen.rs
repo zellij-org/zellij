@@ -768,11 +768,15 @@ impl Screen {
         for tab_index in tabs_to_close {
             self.close_tab_at_index(tab_index).context(err_context)?;
         }
-        let serialized_output = output.serialize().context(err_context)?;
-        self.bus
-            .senders
-            .send_to_server(ServerInstruction::Render(Some(serialized_output)))
-            .context(err_context)
+        if output.is_dirty() {
+            let serialized_output = output.serialize().context(err_context)?;
+            self.bus
+                .senders
+                .send_to_server(ServerInstruction::Render(Some(serialized_output)))
+                .context(err_context)
+        } else {
+            Ok(())
+        }
     }
 
     /// Returns a mutable reference to this [`Screen`]'s tabs.

@@ -22,7 +22,7 @@ struct State {
     active_tab_idx: usize,
     mode_info: ModeInfo,
     mouse_click_pos: usize,
-    should_render: bool,
+    should_change_tab: bool,
 }
 
 static ARROW_SEPARATOR: &str = "";
@@ -39,13 +39,23 @@ impl ZellijPlugin for State {
         ]);
     }
 
-    fn update(&mut self, event: Event) {
+    fn update(&mut self, event: Event) -> bool {
+        let mut should_render = false;
         match event {
-            Event::ModeUpdate(mode_info) => self.mode_info = mode_info,
+            Event::ModeUpdate(mode_info) => {
+                if self.mode_info != mode_info {
+                    should_render = true;
+                }
+                self.mode_info = mode_info
+            },
             Event::TabUpdate(tabs) => {
                 if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
                     // tabs are indexed starting from 1 so we need to add 1
-                    self.active_tab_idx = active_tab_index + 1;
+                    let active_tab_idx = active_tab_index + 1;
+                    if self.active_tab_idx != active_tab_idx || self.tabs != tabs {
+                        should_render = true;
+                    }
+                    self.active_tab_idx = active_tab_idx;
                     self.tabs = tabs;
                 } else {
                     eprintln!("Could not find active tab.");
@@ -53,13 +63,18 @@ impl ZellijPlugin for State {
             },
             Event::Mouse(me) => match me {
                 Mouse::LeftClick(_, col) => {
+                    if self.mouse_click_pos != col {
+                        should_render = true;
+                        self.should_change_tab = true;
+                    }
                     self.mouse_click_pos = col;
-                    self.should_render = true;
                 },
                 Mouse::ScrollUp(_) => {
+                    should_render = true;
                     switch_tab_to(min(self.active_tab_idx + 1, self.tabs.len()) as u32);
                 },
                 Mouse::ScrollDown(_) => {
+                    should_render = true;
                     switch_tab_to(max(self.active_tab_idx.saturating_sub(1), 1) as u32);
                 },
                 _ => {},
@@ -67,7 +82,8 @@ impl ZellijPlugin for State {
             _ => {
                 eprintln!("Got unrecognized event: {:?}", event);
             },
-        }
+        };
+        should_render
     }
 
     fn render(&mut self, _rows: usize, cols: usize) {
@@ -111,7 +127,7 @@ impl ZellijPlugin for State {
         for bar_part in tab_line {
             s = format!("{}{}", s, &bar_part.part);
 
-            if self.should_render
+            if self.should_change_tab
                 && self.mouse_click_pos >= len_cnt
                 && self.mouse_click_pos < len_cnt + bar_part.len
                 && bar_part.tab_index.is_some()
@@ -134,6 +150,6 @@ impl ZellijPlugin for State {
                 print!("{}\u{1b}[48;5;{}m\u{1b}[0K", s, color);
             },
         }
-        self.should_render = false;
+        self.should_change_tab = false;
     }
 }

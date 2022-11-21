@@ -1081,11 +1081,14 @@ impl Grid {
     pub fn reset_viewport(&mut self) {
         let max_lines_to_scroll = *SCROLL_BUFFER_SIZE.get().unwrap() * 2; // while not very elegant, this can prevent minor bugs from becoming showstoppers by sticking the whole app display in an endless loop
         let mut lines_scrolled = 0;
+        let should_clear_output_buffer = self.is_scrolled;
         while self.is_scrolled && lines_scrolled < max_lines_to_scroll {
             self.scroll_down_one_line();
             lines_scrolled += 1;
         }
-        self.output_buffer.update_all_lines();
+        if should_clear_output_buffer {
+            self.output_buffer.update_all_lines();
+        }
     }
     pub fn rotate_scroll_region_up(&mut self, count: usize) {
         if let Some((scroll_region_top, scroll_region_bottom)) = self

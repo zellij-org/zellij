@@ -1,16 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 1737
-expression: "format!(\"{}\", snapshot)"
+assertion_line: 2133
+expression: "format!(\"{}\", snapshot_count)"
 ---
-00 (C): ┌ Pane #2 ─────────────────────────────┐┌ Pane #1 ─────────────────────────────┐
-01 (C): │                                      ││                                      │
-02 (C): │                                      ││                                      │
-03 (C): │                                      ││                                      │
-04 (C): │                                      ││                                      │
-05 (C): │                                      ││                                      │
-06 (C): │                                      ││                                      │
-07 (C): │                                      ││                                      │
-08 (C): │                                      ││                                      │
-09 (C): └──────────────────────────────────────┘└──────────────────────────────────────┘
-
+3

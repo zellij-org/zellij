@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 999
-expression: "format!(\"{:?}\", cursor_coordinates)"
+assertion_line: 1122
+expression: "format!(\"{}\", snapshot_count)"
 ---
-Some((41, 1))
+2

@@ -182,26 +182,50 @@ impl ZellijPlugin for State {
         ]);
     }
 
-    fn update(&mut self, event: Event) {
+    fn update(&mut self, event: Event) -> bool {
+        let mut should_render = false;
         match event {
             Event::ModeUpdate(mode_info) => {
+                if self.mode_info != mode_info {
+                    should_render = true;
+                }
                 self.mode_info = mode_info;
             },
             Event::TabUpdate(tabs) => {
+                if self.tabs != tabs {
+                    should_render = true;
+                }
                 self.tabs = tabs;
             },
             Event::CopyToClipboard(copy_destination) => {
+                match self.text_copy_destination {
+                    Some(text_copy_destination) => {
+                        if text_copy_destination != copy_destination {
+                            should_render = true;
+                        }
+                    },
+                    None => {
+                        should_render = true;
+                    },
+                }
                 self.text_copy_destination = Some(copy_destination);
             },
             Event::SystemClipboardFailure => {
+                should_render = true;
                 self.display_system_clipboard_failure = true;
             },
             Event::InputReceived => {
+                if self.text_copy_destination.is_some()
+                    || self.display_system_clipboard_failure == true
+                {
+                    should_render = true;
+                }
                 self.text_copy_destination = None;
                 self.display_system_clipboard_failure = false;
             },
             _ => {},
-        }
+        };
+        should_render
     }
 
     fn render(&mut self, rows: usize, cols: usize) {
