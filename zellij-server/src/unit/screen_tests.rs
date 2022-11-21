@@ -41,31 +41,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::vte;
 
-// TODO: deduplicate with identical function in tab_integration_tests
 fn take_snapshot_and_cursor_coordinates(
     ansi_instructions: &str,
-    rows: usize,
-    columns: usize,
-    palette: Palette,
+    grid: &mut Grid,
 ) -> (Option<(usize, usize)>, String) {
-    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
-    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
-    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
-        width: 8,
-        height: 21,
-    })));
-    let mut grid = Grid::new(
-        rows,
-        columns,
-        Rc::new(RefCell::new(palette)),
-        terminal_emulator_color_codes,
-        Rc::new(RefCell::new(LinkHandler::new())),
-        character_cell_size,
-        sixel_image_store,
-    );
     let mut vte_parser = vte::Parser::new();
     for &byte in ansi_instructions.as_bytes() {
-        vte_parser.advance(&mut grid, byte);
+        vte_parser.advance(grid, byte);
     }
     (grid.cursor_coordinates(), format!("{:?}", grid))
 }
@@ -74,6 +56,21 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
     all_events: impl Iterator<Item = &'a ServerInstruction>,
     screen_size: Size,
 ) -> Vec<(Option<(usize, usize)>, String)> {
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let character_cell_size = Rc::new(RefCell::new(Some(SizeInPixels {
+        width: 8,
+        height: 21,
+    })));
+    let mut grid = Grid::new(
+        screen_size.rows,
+        screen_size.cols,
+        Rc::new(RefCell::new(Palette::default())),
+        terminal_emulator_color_codes,
+        Rc::new(RefCell::new(LinkHandler::new())),
+        character_cell_size,
+        sixel_image_store,
+    );
     let snapshots: Vec<(Option<(usize, usize)>, String)> = all_events
         .filter_map(|server_instruction| {
             match server_instruction {
@@ -83,9 +80,7 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
                         let raw_snapshot = output.get(&1).unwrap();
                         let snapshot = take_snapshot_and_cursor_coordinates(
                             raw_snapshot,
-                            screen_size.rows,
-                            screen_size.cols,
-                            Palette::default(),
+                            &mut grid,
                         );
                         Some(snapshot)
                     } else {

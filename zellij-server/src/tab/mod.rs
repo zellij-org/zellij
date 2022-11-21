@@ -112,6 +112,9 @@ pub(crate) struct Tab {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
+    cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
+                                                                           // y_position,
+                                                                           // cursor_shape_csi)
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -485,6 +488,7 @@ impl Tab {
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             pids_waiting_resize: HashSet::new(),
+            cursor_positions_and_shape: HashMap::new(),
         }
     }
 
@@ -1436,9 +1440,9 @@ impl Tab {
                 .with_context(err_context)?;
         }
 
+        self.render_cursor(output);
         if output.is_dirty() {
             self.hide_cursor_and_clear_display_as_needed(output);
-            self.render_cursor(output);
             // FIXME: Once clients can be distinguished
             if let Some(overlay_vte) = &overlay {
                 output.add_post_vte_instruction_to_multiple_clients(
@@ -1468,25 +1472,32 @@ impl Tab {
             self.should_clear_display_before_rendering = false;
         }
     }
-    fn render_cursor(&self, output: &mut Output) {
+    fn render_cursor(&mut self, output: &mut Output) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         for client_id in connected_clients {
             match self.get_active_terminal_cursor_position(client_id) {
                 Some((cursor_position_x, cursor_position_y)) => {
-                    let show_cursor = "\u{1b}[?25h";
-                    let change_cursor_shape = self
+                    let desired_cursor_shape = self
                         .get_active_pane(client_id)
                         .map(|ap| ap.cursor_shape_csi())
                         .unwrap_or_default();
-                    let goto_cursor_position = &format!(
-                        "\u{1b}[{};{}H\u{1b}[m{}",
-                        cursor_position_y + 1,
-                        cursor_position_x + 1,
-                        change_cursor_shape
-                    ); // goto row/col
-                    output.add_post_vte_instruction_to_client(client_id, show_cursor);
-                    output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
+                    let cursor_changed_position_or_shape = self.cursor_positions_and_shape
+                        .get(&client_id)
+                        .map(|(previous_x, previous_y, previous_shape)| previous_x != &cursor_position_x || previous_y != &cursor_position_y || previous_shape != &desired_cursor_shape).unwrap_or(true);
+
+                    if output.is_dirty() || cursor_changed_position_or_shape {
+                        let show_cursor = "\u{1b}[?25h";
+                        let goto_cursor_position = &format!(
+                            "\u{1b}[{};{}H\u{1b}[m{}",
+                            cursor_position_y + 1,
+                            cursor_position_x + 1,
+                            desired_cursor_shape
+                        ); // goto row/col
+                        output.add_post_vte_instruction_to_client(client_id, show_cursor);
+                        output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
+                        self.cursor_positions_and_shape.insert(client_id, (cursor_position_x, cursor_position_y, desired_cursor_shape));
+                    }
                 },
                 None => {
                     let hide_cursor = "\u{1b}[?25l";
