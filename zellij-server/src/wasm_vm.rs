@@ -1,3 +1,4 @@
+use highway::{HighwayHash, PortableHash};
 use log::{debug, info, warn};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
@@ -440,18 +441,13 @@ fn start_plugin(
         },
         None => {
             // Populate plugin module cache for this plugin!
+            // Is it in the cache folder already?
             if plugin._allow_exec_host_cmd {
                 info!(
                     "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
                     plugin.path
                 );
             }
-
-            // The plugins blob as stored on the filesystem
-            let wasm_bytes = plugin
-                .resolve_wasm_bytes(plugin_dir)
-                .with_context(err_context)
-                .fatal();
 
             fs::create_dir_all(&plugin_own_data_dir)
                 .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
@@ -466,7 +462,45 @@ fn start_plugin(
                 .with_context(err_context)
                 .non_fatal();
 
-            Module::new(store, &wasm_bytes).with_context(err_context)?
+            // The plugins blob as stored on the filesystem
+            let wasm_bytes = plugin
+                .resolve_wasm_bytes(plugin_dir)
+                .with_context(err_context)
+                .fatal();
+
+            let hash: String = PortableHash::default()
+                .hash256(&wasm_bytes)
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
+
+            unsafe {
+                match Module::deserialize_from_file(store, &cached_path) {
+                    Ok(m) => {
+                        log::debug!(
+                            "Loaded plugin '{}' from cache folder at '{}'",
+                            plugin.path.display(),
+                            ZELLIJ_CACHE_DIR.display(),
+                        );
+                        m
+                    },
+                    Err(e) => {
+                        let inner_context = || format!("failed to recover from {e:?}");
+
+                        let m = Module::new(store, &wasm_bytes)
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        m.serialize_to_file(&cached_path)
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        m
+                    },
+                }
+            }
         },
     };
 
