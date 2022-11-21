@@ -80,7 +80,7 @@ impl ZellijPlugin for State {
                 },
                 Mouse::Release(line, _) => {
                     if line < 0 {
-                        return should_render; // TODO: no
+                        return should_render;
                     }
                     let mut should_select = true;
                     if let Some((Event::Mouse(Mouse::Release(prev_line, _)), t)) = prev_event {
