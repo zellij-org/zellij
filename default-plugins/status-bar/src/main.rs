@@ -206,7 +206,7 @@ impl ZellijPlugin for State {
                     },
                     None => {
                         should_render = true;
-                    }
+                    },
                 }
                 self.text_copy_destination = Some(copy_destination);
             },
@@ -215,7 +215,9 @@ impl ZellijPlugin for State {
                 self.display_system_clipboard_failure = true;
             },
             Event::InputReceived => {
-                if self.text_copy_destination.is_some() || self.display_system_clipboard_failure == true {
+                if self.text_copy_destination.is_some()
+                    || self.display_system_clipboard_failure == true
+                {
                     should_render = true;
                 }
                 self.text_copy_destination = None;

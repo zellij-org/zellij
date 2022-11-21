@@ -142,7 +142,12 @@ impl<'a> PaneContentsAndUi<'a> {
         }
         Ok(())
     }
-    pub fn render_terminal_title_if_needed(&mut self, client_id: ClientId, client_mode: InputMode, previous_title: &mut Option<String>) {
+    pub fn render_terminal_title_if_needed(
+        &mut self,
+        client_id: ClientId,
+        client_mode: InputMode,
+        previous_title: &mut Option<String>,
+    ) {
         if !self.focused_clients.contains(&client_id) {
             return;
         }

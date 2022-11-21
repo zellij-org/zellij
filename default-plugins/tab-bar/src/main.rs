@@ -47,7 +47,7 @@ impl ZellijPlugin for State {
                     should_render = true;
                 }
                 self.mode_info = mode_info;
-            }
+            },
             Event::TabUpdate(tabs) => {
                 if let Some(active_tab_index) = tabs.iter().position(|t| t.active) {
                     // tabs are indexed starting from 1 so we need to add 1

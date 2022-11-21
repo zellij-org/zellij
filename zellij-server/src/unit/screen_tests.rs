@@ -78,10 +78,8 @@ fn take_snapshots_and_cursor_coordinates_from_render_events<'a>(
                     if let Some(output) = output {
                         // note this only takes a snapshot of the first client!
                         let raw_snapshot = output.get(&1).unwrap();
-                        let snapshot = take_snapshot_and_cursor_coordinates(
-                            raw_snapshot,
-                            &mut grid,
-                        );
+                        let snapshot =
+                            take_snapshot_and_cursor_coordinates(raw_snapshot, &mut grid);
                         Some(snapshot)
                     } else {
                         None

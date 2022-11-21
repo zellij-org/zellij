@@ -113,8 +113,8 @@ pub(crate) struct Tab {
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
     cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
-                                                                           // y_position,
-                                                                           // cursor_shape_csi)
+                                       // y_position,
+                                       // cursor_shape_csi)
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -1482,9 +1482,15 @@ impl Tab {
                         .get_active_pane(client_id)
                         .map(|ap| ap.cursor_shape_csi())
                         .unwrap_or_default();
-                    let cursor_changed_position_or_shape = self.cursor_positions_and_shape
+                    let cursor_changed_position_or_shape = self
+                        .cursor_positions_and_shape
                         .get(&client_id)
-                        .map(|(previous_x, previous_y, previous_shape)| previous_x != &cursor_position_x || previous_y != &cursor_position_y || previous_shape != &desired_cursor_shape).unwrap_or(true);
+                        .map(|(previous_x, previous_y, previous_shape)| {
+                            previous_x != &cursor_position_x
+                                || previous_y != &cursor_position_y
+                                || previous_shape != &desired_cursor_shape
+                        })
+                        .unwrap_or(true);
 
                     if output.is_dirty() || cursor_changed_position_or_shape {
                         let show_cursor = "\u{1b}[?25h";
@@ -1496,7 +1502,10 @@ impl Tab {
                         ); // goto row/col
                         output.add_post_vte_instruction_to_client(client_id, show_cursor);
                         output.add_post_vte_instruction_to_client(client_id, goto_cursor_position);
-                        self.cursor_positions_and_shape.insert(client_id, (cursor_position_x, cursor_position_y, desired_cursor_shape));
+                        self.cursor_positions_and_shape.insert(
+                            client_id,
+                            (cursor_position_x, cursor_position_y, desired_cursor_shape),
+                        );
                     }
                 },
                 None => {

@@ -443,7 +443,11 @@ impl TiledPanes {
                             self.session_is_mirrored,
                         );
                     }
-                    pane_contents_and_ui.render_terminal_title_if_needed(*client_id, client_mode, &mut self.window_title);
+                    pane_contents_and_ui.render_terminal_title_if_needed(
+                        *client_id,
+                        client_mode,
+                        &mut self.window_title,
+                    );
                     // this is done for panes that don't have their own cursor (eg. panes of
                     // another user)
                     pane_contents_and_ui
@@ -459,14 +463,12 @@ impl TiledPanes {
         }
         // render boundaries if needed
         for (client_id, boundaries) in client_id_to_boundaries {
-            let boundaries_to_render = boundaries.render(self.client_id_to_boundaries.get(&client_id)).with_context(err_context)?;
+            let boundaries_to_render = boundaries
+                .render(self.client_id_to_boundaries.get(&client_id))
+                .with_context(err_context)?;
             self.client_id_to_boundaries.insert(client_id, boundaries);
             output
-                .add_character_chunks_to_client(
-                    client_id,
-                    boundaries_to_render,
-                    None,
-                )
+                .add_character_chunks_to_client(client_id, boundaries_to_render, None)
                 .with_context(err_context)?;
         }
         Ok(())

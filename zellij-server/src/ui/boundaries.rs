@@ -540,7 +540,10 @@ impl Boundaries {
             }
         }
     }
-    pub fn render(&self, existing_boundaries_on_screen: Option<&Boundaries>) -> Result<Vec<CharacterChunk>> {
+    pub fn render(
+        &self,
+        existing_boundaries_on_screen: Option<&Boundaries>,
+    ) -> Result<Vec<CharacterChunk>> {
         let mut character_chunks = vec![];
         for (coordinates, boundary_character) in &self.boundary_characters {
             let already_on_screen = existing_boundaries_on_screen
