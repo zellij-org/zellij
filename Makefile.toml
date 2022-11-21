@@ -196,7 +196,7 @@ args = [
 # Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
 [tasks.e2e-test]
 workspace = false
-dependencies = ["build-e2e"]
+dependencies = ["build-e2e", "plugins"]
 command = "cargo"
 args = [
     "test",
