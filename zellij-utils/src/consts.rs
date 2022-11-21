@@ -59,7 +59,7 @@ mod not_wasm {
                 #[cfg(not(debug_assertions))]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/release/",
+                    "/../assets/plugins/",
                     $plugin
                 ))
                 .to_vec(),
