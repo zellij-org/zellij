@@ -9,6 +9,7 @@ ZELLIJ_ASSETS_DIR = "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/zellij-utils/asse
 # Add clippy to the default flow
 [tasks.dev-test-flow]
 dependencies = [
+    "plugins",
     "format-flow",
     "format-toml-conditioned-flow",
     "pre-build",
@@ -25,37 +26,21 @@ args = ["test", "--target", "${CARGO_HOST_TRIPLE}", "--", "@@split(CARGO_MAKE_TA
 # Running Zellij using the development data directory
 [tasks.run]
 workspace = false
-dependencies = ["build-workspace", "build-dev-data-dir"]
+dependencies = ["build-workspace"]
 run_task = "launch"
 
 [tasks.build-workspace]
 run_task = { name = "build", fork = true }
 
 [tasks.build]
+env = { "CARGO_MAKE_WORKSPACE_SKIP_MEMBERS" = "default-plugins*" }
 args = ["build"]
 
 [tasks.build-release]
 args = ["build", "--release"]
 
-[tasks.build-dev-data-dir]
-dependencies = ["build-plugins"]
-script_runner = "@duckscript"
-script = '''
-target_dir = set ${CARGO_TARGET_DIR}
-data_dir = set ${target_dir}/dev-data
-rm -r ${data_dir}
-plugins = glob_array ${target_dir}/wasm32-wasi/debug/*.wasm
-mkdir ${data_dir}
-mkdir ${data_dir}/plugins
-for plugin in ${plugins}
-    plugin_name = basename ${plugin}
-    cp ${plugin} ${data_dir}/plugins/${plugin_name}
-end
-writefile ${data_dir}/VERSION ${CARGO_MAKE_CRATE_VERSION}
-'''
-
 [tasks.build-e2e-data-dir]
-dependencies = ["build-plugins-release"]
+dependencies = ["plugins-release"]
 script_runner = "@duckscript"
 script = '''
 target_dir = set ${CARGO_TARGET_DIR}
@@ -83,6 +68,7 @@ args = [
 
 # Simple clippy tweak
 [tasks.clippy]
+dependencies = ["plugins"]
 args = ["clippy", "--all-targets", "--all-features", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 # Release building and installing Zellij
@@ -98,23 +84,40 @@ else
 end
 '''
 
-[tasks.build-plugins-release]
-env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = [
-    "default-plugins/compact-bar",
-    "default-plugins/status-bar",
-    "default-plugins/strider",
-    "default-plugins/tab-bar",
-] }
-run_task = { name = "build-release", fork = true }
+[tasks.wasm-opt-plugins]
+alias = "plugins-release"
 
-[tasks.build-plugins]
-env = { "CARGO_MAKE_WORKSPACE_INCLUDE_MEMBERS" = [
-    "default-plugins/compact-bar",
-    "default-plugins/status-bar",
-    "default-plugins/strider",
-    "default-plugins/tab-bar",
-] }
-run_task = { name = "build", fork = true }
+[tasks.plugins-release]
+workspace = false
+script_runner = "@duckscript"
+script = '''
+plugins = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/default-plugins/*
+out_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/
+mkdir ${out_dir}
+
+for plugin in ${plugins}
+    cd ${plugin}
+    exec cargo build --release
+    plugin_name = basename ${plugin}
+    plugin_in = set ${CARGO_TARGET_DIR}/wasm32-wasi/release/${plugin_name}.wasm
+    plugin_out = set ${out_dir}/${plugin_name}.wasm
+    exec wasm-opt -O ${plugin_in} -o ${plugin_out}
+    cd ..
+end
+'''
+
+[tasks.plugins]
+workspace = false
+script_runner = "@duckscript"
+script = '''
+plugins = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/default-plugins/*
+
+for plugin in ${plugins}
+    cd ${plugin}
+    exec cargo build
+    cd ..
+end
+'''
 
 [tasks.get-host-triple]
 script_runner = "@duckscript"
@@ -132,20 +135,6 @@ end
 
 if not is_empty ${triple}
     set_env CARGO_HOST_TRIPLE "${triple}"
-end
-'''
-
-[tasks.wasm-opt-plugins]
-dependencies = ["build-plugins-release"]
-script_runner = "@duckscript"
-script = '''
-plugins = glob_array ${CARGO_TARGET_DIR}/wasm32-wasi/release/*.wasm
-
-for plugin in ${plugins}
-    mkdir ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/
-    plugin_name = basename ${plugin}
-    plugin_out = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/${plugin_name}
-    exec wasm-opt -O ${plugin} -o ${plugin_out}
 end
 '''
 
@@ -177,9 +166,8 @@ cp ${ZELLIJ_ASSETS_DIR}/config/default.kdl ${ZELLIJ_EXAMPLE_DIR}/default.kdl
 [tasks.ci-build-release]
 workspace = false
 dependencies = [
+    "plugins-release",
     "setup-cross-compilation",
-    "build-plugins-release",
-    "wasm-opt-plugins",
     "manpage",
 ]
 command = "cross"
@@ -194,7 +182,7 @@ args = [
 # Build e2e asset
 [tasks.build-e2e]
 workspace = false
-dependencies = ["build-plugins-release", "build-e2e-data-dir"]
+dependencies = ["wasm-opt-plugins", "build-e2e-data-dir"]
 command = "cargo"
 args = [
     "build",
@@ -207,7 +195,7 @@ args = [
 # Run e2e tests - we mark the e2e tests as "ignored" so they will not be run with the normal ones
 [tasks.e2e-test]
 workspace = false
-dependencies = ["build-e2e"]
+dependencies = ["build-e2e", "plugins"]
 command = "cargo"
 args = [
     "test",
@@ -228,9 +216,8 @@ args = ["install", "cross"]
 clear = true
 workspace = false
 dependencies = [
+    "plugins-release",
     "update-default-config",
-    "build-plugins-release",
-    "wasm-opt-plugins",
     "release-commit",
 ]
 run_task = "publish-zellij"

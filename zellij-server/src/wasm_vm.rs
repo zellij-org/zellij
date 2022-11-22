@@ -29,7 +29,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_PROJ_DIR, ZELLIJ_TMP_DIR},
+    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
@@ -51,26 +51,41 @@ pub struct VersionMismatchError {
     zellij_version: String,
     plugin_version: String,
     plugin_path: PathBuf,
+    // true for builtin plugins
+    builtin: bool,
 }
 
 impl std::error::Error for VersionMismatchError {}
 
 impl VersionMismatchError {
-    pub fn new(zellij_version: &str, plugin_version: &str, plugin_path: &PathBuf) -> Self {
+    pub fn new(
+        zellij_version: &str,
+        plugin_version: &str,
+        plugin_path: &PathBuf,
+        builtin: bool,
+    ) -> Self {
         VersionMismatchError {
             zellij_version: zellij_version.to_owned(),
             plugin_version: plugin_version.to_owned(),
             plugin_path: plugin_path.to_owned(),
+            builtin,
         }
     }
 }
 
 impl fmt::Display for VersionMismatchError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let first_line = if self.builtin {
+            "It seems your version of zellij was built with outdated core plugins."
+        } else {
+            "If you're seeing this error a plugin version doesn't match the current
+zellij version."
+        };
+
         write!(
             f,
-            "If you're seeing this error the plugin versions don't match the current
-zellij version. Detected versions:
+            "{}
+Detected versions:
 
 - Plugin version: {}
 - Zellij version: {}
@@ -81,15 +96,13 @@ If you're a user:
     to them.
 
 If you're a developer:
-    Please run zellij with the updated plugins. The easiest way to achieve this
+    Please run zellij with updated plugins. The easiest way to achieve this
     is to build zellij with `cargo make install`. Also refer to the docs:
     https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-
-A possible fix for this error is to remove all contents of the 'PLUGIN DIR'
-folder from the output of the `zellij setup --check` command.
 ",
-            self.plugin_version,
-            self.zellij_version,
+            first_line,
+            self.plugin_version.trim_end(),
+            self.zellij_version.trim_end(),
             self.plugin_path.display()
         )
     }
@@ -149,11 +162,10 @@ pub(crate) fn wasm_thread_main(
     let mut connected_clients: Vec<ClientId> = vec![];
     let plugin_dir = data_dir.join("plugins/");
     let plugin_global_data_dir = plugin_dir.join("data");
-
-    #[cfg(not(feature = "disable_automatic_asset_installation"))]
-    fs::create_dir_all(&plugin_global_data_dir)
-        .context("failed to create plugin asset directory")
-        .non_fatal();
+    // Caches the "wasm bytes" of all plugins that have been loaded since zellij was started.
+    // Greatly decreases loading times of all plugins and avoids accesses to the hard-drive during
+    // "regular" operation.
+    let mut plugin_cache: HashMap<PathBuf, Module> = HashMap::new();
 
     loop {
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
@@ -169,7 +181,14 @@ pub(crate) fn wasm_thread_main(
                     .fatal();
 
                 let (instance, plugin_env) = start_plugin(
-                    plugin_id, client_id, &plugin, tab_index, &bus, &store, &data_dir,
+                    plugin_id,
+                    client_id,
+                    &plugin,
+                    tab_index,
+                    &bus,
+                    &store,
+                    &plugin_dir,
+                    &mut plugin_cache,
                 )
                 .with_context(err_context)?;
 
@@ -243,7 +262,8 @@ pub(crate) fn wasm_thread_main(
                                     anyError::new(VersionMismatchError::new(
                                         VERSION,
                                         "Unavailable",
-                                        &plugin_env.plugin.path
+                                        &plugin_env.plugin.path,
+                                        plugin_env.plugin.is_builtin(),
                                     ))
                                 ),
                                 Err(e) => Err(e).with_context(err_context),
@@ -353,9 +373,17 @@ pub(crate) fn wasm_thread_main(
                 // load headless plugins
                 for plugin in plugins.iter() {
                     if let PluginType::Headless = plugin.run {
-                        let (instance, plugin_env) =
-                            start_plugin(plugin_id, client_id, plugin, 0, &bus, &store, &data_dir)
-                                .with_context(err_context)?;
+                        let (instance, plugin_env) = start_plugin(
+                            plugin_id,
+                            client_id,
+                            plugin,
+                            0,
+                            &bus,
+                            &store,
+                            &plugin_dir,
+                            &mut plugin_cache,
+                        )
+                        .with_context(err_context)?;
                         headless_plugins.insert(plugin_id, (instance, plugin_env));
                         plugin_id += 1;
                     }
@@ -368,9 +396,17 @@ pub(crate) fn wasm_thread_main(
         }
     }
     info!("wasm main thread exits");
+
     fs::remove_dir_all(&plugin_global_data_dir)
-        .context("failed to cleanup plugin data directory")?;
-    Ok(())
+        .or_else(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                // I don't care...
+                Ok(())
+            } else {
+                Err(err)
+            }
+        })
+        .context("failed to cleanup plugin data directory")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -381,88 +417,116 @@ fn start_plugin(
     tab_index: usize,
     bus: &Bus<PluginInstruction>,
     store: &Store,
-    data_dir: &Path,
+    plugin_dir: &Path,
+    plugin_cache: &mut HashMap<PathBuf, Module>,
 ) -> Result<(Instance, PluginEnv)> {
     let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
 
-    if plugin._allow_exec_host_cmd {
-        info!(
-            "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
-            plugin.path
-        );
-    }
-
-    // The plugins blob as stored on the filesystem
-    let wasm_bytes = plugin
-        .resolve_wasm_bytes(&data_dir.join("plugins/"))
-        .with_context(err_context)
-        .fatal();
-
-    let hash: String = PortableHash::default()
-        .hash256(&wasm_bytes)
-        .iter()
-        .map(ToString::to_string)
-        .collect();
-
-    let cached_path = ZELLIJ_PROJ_DIR.cache_dir().join(&hash);
-
-    let module = unsafe {
-        match Module::deserialize_from_file(store, &cached_path) {
-            Ok(m) => m,
-            Err(e) => {
-                let inner_context = || format!("failed to recover from {e:?}");
-
-                let m = Module::new(store, &wasm_bytes)
-                    .with_context(inner_context)
-                    .with_context(err_context)?;
-                fs::create_dir_all(ZELLIJ_PROJ_DIR.cache_dir())
-                    .with_context(inner_context)
-                    .with_context(err_context)?;
-                m.serialize_to_file(&cached_path)
-                    .with_context(inner_context)
-                    .with_context(err_context)?;
-                m
-            },
-        }
-    };
-
-    let output = Pipe::new();
-    let input = Pipe::new();
-    let stderr = LoggingPipe::new(&plugin.location.to_string(), plugin_id);
     let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-    fs::create_dir_all(&plugin_own_data_dir)
-        .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
-        .with_context(|| format!("while starting plugin {plugin:#?}"))
-        .non_fatal();
+    let cache_hit = plugin_cache.contains_key(&plugin.path);
 
-    // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
-    fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
-        .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
-        .with_context(|| format!("while starting plugin {plugin:#?}"))
-        .non_fatal();
+    // We remove the entry here and repopulate it at the very bottom, if everything went well.
+    // We must do that because a `get` will only give us a borrow of the Module. This suffices for
+    // the purpose of setting everything up, but we cannot return a &Module from the "None" match
+    // arm, because we create the Module from scratch there. Any reference passed outside would
+    // outlive the Module we create there. Hence, we remove the plugin here and reinsert it
+    // below...
+    let module = match plugin_cache.remove(&plugin.path) {
+        Some(module) => {
+            log::debug!(
+                "Loaded plugin '{}' from plugin cache",
+                plugin.path.display()
+            );
+            module
+        },
+        None => {
+            // Populate plugin module cache for this plugin!
+            // Is it in the cache folder already?
+            if plugin._allow_exec_host_cmd {
+                info!(
+                    "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
+                    plugin.path
+                );
+            }
+
+            // The plugins blob as stored on the filesystem
+            let wasm_bytes = plugin
+                .resolve_wasm_bytes(plugin_dir)
+                .with_context(err_context)
+                .fatal();
+
+            fs::create_dir_all(&plugin_own_data_dir)
+                .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
+                .with_context(err_context)
+                .non_fatal();
+
+            // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
+            fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
+                .with_context(|| {
+                    format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path())
+                })
+                .with_context(err_context)
+                .non_fatal();
+
+            let hash: String = PortableHash::default()
+                .hash256(&wasm_bytes)
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
+
+            unsafe {
+                match Module::deserialize_from_file(store, &cached_path) {
+                    Ok(m) => {
+                        log::debug!(
+                            "Loaded plugin '{}' from cache folder at '{}'",
+                            plugin.path.display(),
+                            ZELLIJ_CACHE_DIR.display(),
+                        );
+                        m
+                    },
+                    Err(e) => {
+                        let inner_context = || format!("failed to recover from {e:?}");
+
+                        let m = Module::new(store, &wasm_bytes)
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        m.serialize_to_file(&cached_path)
+                            .with_context(inner_context)
+                            .with_context(err_context)?;
+                        m
+                    },
+                }
+            }
+        },
+    };
 
     let mut wasi_env = WasiState::new("Zellij")
         .env("CLICOLOR_FORCE", "1")
         .map_dir("/host", ".")
-        .with_context(err_context)?
-        .map_dir("/data", &plugin_own_data_dir)
-        .with_context(err_context)?
-        .map_dir("/tmp", ZELLIJ_TMP_DIR.as_path())
-        .with_context(err_context)?
-        .stdin(Box::new(input))
-        .stdout(Box::new(output))
-        .stderr(Box::new(stderr))
-        .finalize()
+        .and_then(|wasi| wasi.map_dir("/data", &plugin_own_data_dir))
+        .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+        .and_then(|wasi| {
+            wasi.stdin(Box::new(Pipe::new()))
+                .stdout(Box::new(Pipe::new()))
+                .stderr(Box::new(LoggingPipe::new(
+                    &plugin.location.to_string(),
+                    plugin_id,
+                )))
+                .finalize()
+        })
         .with_context(err_context)?;
-
     let wasi = wasi_env.import_object(&module).with_context(err_context)?;
-    let mut plugin = plugin.clone();
-    plugin.set_tab_index(tab_index);
 
+    let mut mut_plugin = plugin.clone();
+    mut_plugin.set_tab_index(tab_index);
     let plugin_env = PluginEnv {
         plugin_id,
         client_id,
-        plugin,
+        plugin: mut_plugin,
         senders: bus.senders.clone(),
         wasi_env,
         subscriptions: Arc::new(Mutex::new(HashSet::new())),
@@ -473,17 +537,38 @@ fn start_plugin(
     let zellij = zellij_exports(store, &plugin_env);
     let instance = Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
 
-    // Check plugin version
+    if !cache_hit {
+        // Check plugin version
+        assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+    }
+
+    // Only do an insert when everything went well!
+    let cloned_plugin = plugin.clone();
+    plugin_cache.insert(cloned_plugin.path, module);
+
+    Ok((instance, plugin_env))
+}
+
+// Returns `Ok` if the plugin version matches the zellij version.
+// Returns an `Err` otherwise.
+fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<()> {
+    let err_context = || {
+        format!(
+            "failed to determine plugin version for plugin {}",
+            plugin_env.plugin.path.display()
+        )
+    };
+
     let plugin_version_func = match instance.exports.get_function("plugin_version") {
         Ok(val) => val,
-        Err(_) => panic!(
-            "{}",
-            anyError::new(VersionMismatchError::new(
+        Err(_) => {
+            return Err(anyError::new(VersionMismatchError::new(
                 VERSION,
                 "Unavailable",
-                &plugin_env.plugin.path
-            ))
-        ),
+                &plugin_env.plugin.path,
+                plugin_env.plugin.is_builtin(),
+            )))
+        },
     };
     plugin_version_func.call(&[]).with_context(err_context)?;
     let plugin_version_str = wasi_read_string(&plugin_env.wasi_env);
@@ -494,17 +579,15 @@ fn start_plugin(
         .context("failed to parse zellij version")
         .with_context(err_context)?;
     if plugin_version != zellij_version {
-        panic!(
-            "{}",
-            anyError::new(VersionMismatchError::new(
-                VERSION,
-                &plugin_version_str,
-                &plugin_env.plugin.path
-            ))
-        );
+        return Err(anyError::new(VersionMismatchError::new(
+            VERSION,
+            &plugin_version_str,
+            &plugin_env.plugin.path,
+            plugin_env.plugin.is_builtin(),
+        )));
     }
 
-    Ok((instance, plugin_env))
+    Ok(())
 }
 
 fn load_plugin(instance: &mut Instance) -> Result<()> {

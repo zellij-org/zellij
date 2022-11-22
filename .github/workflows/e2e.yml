@@ -43,6 +43,8 @@ jobs:
       run: rustup target add x86_64-unknown-linux-musl
     - name: Install cargo-make
       run: nix profile install nixpkgs#cargo-make
+    - name: Install wasm-opt
+      run: sudo apt-get install -y --no-install-recommends binaryen
       #run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo make build-e2e

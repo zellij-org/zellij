@@ -31,15 +31,15 @@ rand = "0.8.0"
 
 [workspace]
 members = [
+    "default-plugins/compact-bar",
+    "default-plugins/status-bar",
+    "default-plugins/strider",
+    "default-plugins/tab-bar",
     "zellij-client",
     "zellij-server",
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
-    "default-plugins/compact-bar",
-    "default-plugins/status-bar",
-    "default-plugins/strider",
-    "default-plugins/tab-bar",
     ".",
 ]
 
@@ -68,5 +68,6 @@ bin-dir = "{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
 
 [features]
+# See remarks in zellij_utils/Cargo.toml
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]

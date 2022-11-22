@@ -1,3 +1,5 @@
+#[cfg(not(target_family = "wasm"))]
+use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
@@ -5,6 +7,7 @@ use crate::{
         FEATURES, SYSTEM_DEFAULT_CONFIG_DIR, SYSTEM_DEFAULT_DATA_DIR_PREFIX, VERSION,
         ZELLIJ_PROJ_DIR,
     },
+    errors::prelude::*,
     input::{
         config::{Config, ConfigError},
         layout::Layout,
@@ -172,6 +175,41 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
+    for (asset_path, bytes) in ASSET_MAP.iter() {
+        let plugin_path = path.join(asset_path);
+        plugin_path
+            .parent()
+            .with_context(|| {
+                format!(
+                    "failed to acquire parent path of '{}'",
+                    plugin_path.display()
+                )
+            })
+            .and_then(|parent_path| {
+                std::fs::create_dir_all(parent_path).context("failed to create parent path")
+            })
+            .with_context(|| {
+                format!(
+                    "failed to create folder '{}' to dump plugin '{}' to",
+                    path.display(),
+                    plugin_path.display()
+                )
+            })?;
+
+        std::fs::write(plugin_path, bytes)
+            .with_context(|| format!("failed to dump builtin plugin '{}'", asset_path.display()))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(target_family = "wasm")]
+pub fn dump_builtin_plugins(_path: &PathBuf) -> Result<()> {
+    Ok(())
+}
+
 #[derive(Debug, Default, Clone, Args, Serialize, Deserialize)]
 pub struct Setup {
     /// Dump the default configuration file to stdout
@@ -191,6 +229,17 @@ pub struct Setup {
     /// Dump the specified layout file to stdout
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
+
+    /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
+    #[clap(
+        long,
+        value_name = "DIR",
+        value_parser,
+        exclusive = true,
+        min_values = 0,
+        max_values = 1
+    )]
+    pub dump_plugins: Option<Option<PathBuf>>,
 
     /// Generates completion for the specified shell
     #[clap(long, value_name = "SHELL", value_parser)]
@@ -263,7 +312,7 @@ impl Setup {
     }
 
     /// General setup helpers
-    pub fn from_cli(&self) -> std::io::Result<()> {
+    pub fn from_cli(&self) -> Result<()> {
         if self.clean {
             return Ok(());
         }
@@ -292,15 +341,24 @@ impl Setup {
     }
 
     /// Checks the merged configuration
-    pub fn from_cli_with_options(
-        &self,
-        opts: &CliArgs,
-        config_options: &Options,
-    ) -> std::io::Result<()> {
+    pub fn from_cli_with_options(&self, opts: &CliArgs, config_options: &Options) -> Result<()> {
         if self.check {
             Setup::check_defaults_config(opts, config_options)?;
             std::process::exit(0);
         }
+
+        if let Some(maybe_path) = &self.dump_plugins {
+            let data_dir = &opts.data_dir.clone().unwrap_or_else(get_default_data_dir);
+            let dir = match maybe_path {
+                Some(path) => path,
+                None => data_dir,
+            };
+
+            println!("Dumping plugins to '{}'", dir.display());
+            dump_builtin_plugins(&dir)?;
+            std::process::exit(0);
+        }
+
         Ok(())
     }
 
@@ -361,6 +419,18 @@ impl Setup {
         }
         writeln!(&mut message, "[DATA DIR]: {:?}", data_dir).unwrap();
         message.push_str(&format!("[PLUGIN DIR]: {:?}\n", plugin_dir));
+        if !cfg!(feature = "disable_automatic_asset_installation") {
+            writeln!(
+                &mut message,
+                " Builtin, default plugins will not be loaded from disk."
+            )
+            .unwrap();
+            writeln!(
+                &mut message,
+                " Create a custom layout if you require this behavior."
+            )
+            .unwrap();
+        }
         if let Some(layout_dir) = layout_dir {
             writeln!(&mut message, "[LAYOUT DIR]: {:?}", layout_dir).unwrap();
         } else {

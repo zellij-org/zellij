@@ -50,5 +50,9 @@ insta = { version = "1.6.0", features = ["backtrace"] }
 
 
 [features]
+# If this feature is NOT set (default):
+#   - builtin plugins (status-bar, tab-bar, ...) are loaded directly from the application binary
+# If this feature is set:
+#   - builtin plugins MUST be available from whatever is configured as `PLUGIN_DIR`
 disable_automatic_asset_installation = []
 unstable = []

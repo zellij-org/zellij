@@ -35,6 +35,51 @@ pub const FEATURES: &[&str] = &[
     "disable_automatic_asset_installation",
 ];
 
+#[cfg(not(target_family = "wasm"))]
+pub use not_wasm::*;
+
+#[cfg(not(target_family = "wasm"))]
+mod not_wasm {
+    use lazy_static::lazy_static;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    // Convenience macro to add plugins to the asset map (see `ASSET_MAP`)
+    macro_rules! add_plugin {
+        ($assets:expr, $plugin:literal) => {
+            $assets.insert(
+                PathBuf::from("plugins").join($plugin),
+                #[cfg(debug_assertions)]
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../target/wasm32-wasi/debug/",
+                    $plugin
+                ))
+                .to_vec(),
+                #[cfg(not(debug_assertions))]
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../assets/plugins/",
+                    $plugin
+                ))
+                .to_vec(),
+            );
+        };
+    }
+
+    lazy_static! {
+        // Zellij asset map
+        pub static ref ASSET_MAP: HashMap<PathBuf, Vec<u8>> = {
+            let mut assets = std::collections::HashMap::new();
+            add_plugin!(assets, "compact-bar.wasm");
+            add_plugin!(assets, "status-bar.wasm");
+            add_plugin!(assets, "tab-bar.wasm");
+            add_plugin!(assets, "strider.wasm");
+            assets
+        };
+    }
+}
+
 #[cfg(unix)]
 pub use unix_only::*;
 

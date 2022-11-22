@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(themes): black and white inverted (https://github.com/zellij-org/zellij/pull/1953)
 * fix(stability): gracefully handle SSH timeouts and other client buffer overflow issues (https://github.com/zellij-org/zellij/pull/1955)
 * fix: empty session name (https://github.com/zellij-org/zellij/pull/1959)
+* plugins: Cache plugins, don't load builtin plugins from disk (https://github.com/zellij-org/zellij/pull/1924)
 
 ## [0.33.0] - 2022-11-10
 
