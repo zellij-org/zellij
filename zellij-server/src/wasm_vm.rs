@@ -449,6 +449,12 @@ fn start_plugin(
                 );
             }
 
+            // The plugins blob as stored on the filesystem
+            let wasm_bytes = plugin
+                .resolve_wasm_bytes(plugin_dir)
+                .with_context(err_context)
+                .fatal();
+
             fs::create_dir_all(&plugin_own_data_dir)
                 .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
                 .with_context(err_context)
@@ -461,12 +467,6 @@ fn start_plugin(
                 })
                 .with_context(err_context)
                 .non_fatal();
-
-            // The plugins blob as stored on the filesystem
-            let wasm_bytes = plugin
-                .resolve_wasm_bytes(plugin_dir)
-                .with_context(err_context)
-                .fatal();
 
             let hash: String = PortableHash::default()
                 .hash256(&wasm_bytes)
