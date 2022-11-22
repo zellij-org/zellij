@@ -166,9 +166,8 @@ cp ${ZELLIJ_ASSETS_DIR}/config/default.kdl ${ZELLIJ_EXAMPLE_DIR}/default.kdl
 [tasks.ci-build-release]
 workspace = false
 dependencies = [
-    "setup-cross-compilation",
     "plugins-release",
-    "wasm-opt-plugins",
+    "setup-cross-compilation",
     "manpage",
 ]
 command = "cross"
@@ -217,9 +216,8 @@ args = ["install", "cross"]
 clear = true
 workspace = false
 dependencies = [
-    "update-default-config",
     "plugins-release",
-    "wasm-opt-plugins",
+    "update-default-config",
     "release-commit",
 ]
 run_task = "publish-zellij"
