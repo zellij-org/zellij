@@ -795,15 +795,16 @@ pub(crate) fn route_thread_main(
                 }
             },
             None => {
+                log::error!("Received empty message from client, logging client out.");
                 let _ = os_input.send_to_client(
                     client_id,
                     ServerToClientMsg::Exit(ExitReason::Error(
                         "Received empty message".to_string(),
                     )),
                 );
-
-                return Err(anyhow!("received empty message from client"))
-                    .with_context(err_context);
+                let _ = to_server
+                    .send(ServerInstruction::RemoveClient(client_id));
+                break 'route_loop;
             },
         }
     }
