@@ -707,7 +707,8 @@ impl Tab {
                     format!("failed to acquire id of focused pane while adding client {client_id}",)
                 })?)
             };
-            self.tiled_panes.focus_pane_if_client_not_focused(focus_pane_id, client_id);
+            self.tiled_panes
+                .focus_pane_if_client_not_focused(focus_pane_id, client_id);
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
                 client_id,

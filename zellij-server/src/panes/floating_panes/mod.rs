@@ -817,7 +817,9 @@ impl FloatingPanes {
         next_active_pane_candidates.sort_by(|(_pane_id_a, pane_a), (_pane_id_b, pane_b)| {
             pane_a.active_at().cmp(&pane_b.active_at())
         });
-        let next_active_pane_id = next_active_pane_candidates.last().map(|(pane_id, _pane)| **pane_id);
+        let next_active_pane_id = next_active_pane_candidates
+            .last()
+            .map(|(pane_id, _pane)| **pane_id);
 
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
