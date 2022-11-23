@@ -681,11 +681,11 @@ impl Tab {
                 self.floating_panes.first_active_floating_pane_id()
             {
                 self.floating_panes
-                    .focus_pane(first_active_floating_pane_id, client_id);
+                    .focus_pane_if_client_not_focused(first_active_floating_pane_id, client_id);
             }
             if let Some(first_active_tiled_pane_id) = self.tiled_panes.first_active_pane_id() {
                 self.tiled_panes
-                    .focus_pane(first_active_tiled_pane_id, client_id);
+                    .focus_pane_if_client_not_focused(first_active_tiled_pane_id, client_id);
             }
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
@@ -707,7 +707,7 @@ impl Tab {
                     format!("failed to acquire id of focused pane while adding client {client_id}",)
                 })?)
             };
-            self.tiled_panes.focus_pane(focus_pane_id, client_id);
+            self.tiled_panes.focus_pane_if_client_not_focused(focus_pane_id, client_id);
             self.connected_clients.borrow_mut().insert(client_id);
             self.mode_info.borrow_mut().insert(
                 client_id,

@@ -345,6 +345,13 @@ impl TiledPanes {
         }
         self.reset_boundaries();
     }
+    pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
+        log::info!("inside focus_pane_if_client_not_focused");
+        if self.active_panes.get(&client_id).is_none() {
+            log::info!("is none");
+            self.focus_pane(pane_id, client_id)
+        }
+    }
     pub fn clear_active_panes(&mut self) {
         self.active_panes.clear(&mut self.panes);
         self.reset_boundaries();
@@ -999,12 +1006,18 @@ impl TiledPanes {
             .iter()
             .map(|(cid, pid)| (*cid, *pid))
             .collect();
-        let next_active_pane_id = self
+
+        // find the most recently active pane
+        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
             .panes
             .iter()
-            .filter(|(p_id, _)| !self.panes_to_hide.contains(p_id))
-            .find(|(p_id, p)| **p_id != pane_id && p.selectable())
-            .map(|(p_id, _p)| *p_id);
+            .filter(|(p_id, p)| !self.panes_to_hide.contains(p_id) && p.selectable())
+            .collect();
+        next_active_pane_candidates.sort_by(|(_pane_id_a, pane_a), (_pane_id_b, pane_b)| {
+            pane_a.active_at().cmp(&pane_b.active_at())
+        });
+        let next_active_pane_id = next_active_pane_candidates.last().map(|(pane_id, _pane)| **pane_id);
+
         match next_active_pane_id {
             Some(next_active_pane) => {
                 for (client_id, active_pane_id) in active_panes {
