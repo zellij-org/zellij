@@ -802,8 +802,7 @@ pub(crate) fn route_thread_main(
                         "Received empty message".to_string(),
                     )),
                 );
-                let _ = to_server
-                    .send(ServerInstruction::RemoveClient(client_id));
+                let _ = to_server.send(ServerInstruction::RemoveClient(client_id));
                 break 'route_loop;
             },
         }
