@@ -807,14 +807,27 @@ impl FloatingPanes {
             .iter()
             .map(|(cid, pid)| (*cid, *pid))
             .collect();
-        let next_active_pane = self.panes.keys().next().copied();
+
+        // find the most recently active pane
+        let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
+            .panes
+            .iter()
+            .filter(|(_p_id, p)| p.selectable())
+            .collect();
+        next_active_pane_candidates.sort_by(|(_pane_id_a, pane_a), (_pane_id_b, pane_b)| {
+            pane_a.active_at().cmp(&pane_b.active_at())
+        });
+        let next_active_pane_id = next_active_pane_candidates
+            .last()
+            .map(|(pane_id, _pane)| **pane_id);
+
         for (client_id, active_pane_id) in active_panes {
             if active_pane_id == pane_id {
-                match next_active_pane {
-                    Some(next_active_pane) => {
+                match next_active_pane_id {
+                    Some(next_active_pane_id) => {
                         self.active_panes
-                            .insert(client_id, next_active_pane, &mut self.panes);
-                        self.focus_pane(next_active_pane, client_id);
+                            .insert(client_id, next_active_pane_id, &mut self.panes);
+                        self.focus_pane(next_active_pane_id, client_id);
                     },
                     None => {
                         self.defocus_pane(pane_id, client_id);
@@ -839,6 +852,11 @@ impl FloatingPanes {
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
         self.focus_pane_for_all_clients(pane_id);
+    }
+    pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if self.active_panes.get(&client_id).is_none() {
+            self.focus_pane(pane_id, client_id)
+        }
     }
     pub fn defocus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.z_indices.retain(|p_id| *p_id != pane_id);

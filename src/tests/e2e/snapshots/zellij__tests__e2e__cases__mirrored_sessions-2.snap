@@ -1,11 +1,11 @@
 ---
 source: src/tests/e2e/cases.rs
-assertion_line: 1308
+assertion_line: 1312
 expression: second_runner_snapshot
 ---
  Zellij (mirrored_sessions)  Tab #1  Tab #2                                                                         
 ┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────────────────────┐
-│$ █                                                       ││$                                                         │
+│$                                                         ││$ █                                                       │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 │                                                          ││                                                          │
