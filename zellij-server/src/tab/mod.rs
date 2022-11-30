@@ -7,7 +7,9 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
+use zellij_utils::data::Direction;
 use zellij_utils::errors::prelude::*;
+use zellij_utils::input::actions::ResizeDirection;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
@@ -1586,9 +1588,11 @@ impl Tab {
     }
     pub fn resize_left(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_left(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Left,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1598,9 +1602,11 @@ impl Tab {
     }
     pub fn resize_right(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_right(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Right,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1610,9 +1616,11 @@ impl Tab {
     }
     pub fn resize_down(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_down(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Down,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1622,9 +1630,11 @@ impl Tab {
     }
     pub fn resize_up(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_up(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Up,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1634,9 +1644,11 @@ impl Tab {
     }
     pub fn resize_increase(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_increase(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Increase,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1646,9 +1658,11 @@ impl Tab {
     }
     pub fn resize_decrease(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_decrease(client_id, &mut self.os_api);
+            let successfully_resized = self.floating_panes.resize_active_pane(
+                client_id,
+                &mut self.os_api,
+                &ResizeDirection::Decrease,
+            );
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1686,9 +1700,10 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_left(
+            self.floating_panes.move_focus(
                 client_id,
                 &self.connected_clients.borrow().iter().copied().collect(),
+                &Direction::Left,
             )
         } else {
             if !self.has_selectable_panes() {
@@ -1703,9 +1718,10 @@ impl Tab {
     }
     pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_down(
+            self.floating_panes.move_focus(
                 client_id,
                 &self.connected_clients.borrow().iter().copied().collect(),
+                &Direction::Down,
             )
         } else {
             if !self.has_selectable_panes() {
@@ -1719,9 +1735,10 @@ impl Tab {
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_up(
+            self.floating_panes.move_focus(
                 client_id,
                 &self.connected_clients.borrow().iter().copied().collect(),
+                &Direction::Up,
             )
         } else {
             if !self.has_selectable_panes() {
@@ -1736,9 +1753,10 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_right(
+            self.floating_panes.move_focus(
                 client_id,
                 &self.connected_clients.borrow().iter().copied().collect(),
+                &Direction::Right,
             )
         } else {
             if !self.has_selectable_panes() {
