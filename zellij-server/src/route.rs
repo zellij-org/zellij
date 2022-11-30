@@ -9,10 +9,10 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::Event,
+    data::{Direction, Event, ResizeStrategy},
     errors::prelude::*,
     input::{
-        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
+        actions::{Action, ResizeDirection, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },

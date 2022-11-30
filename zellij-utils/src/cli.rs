@@ -1,4 +1,4 @@
-use crate::data::InputMode;
+use crate::data::{InputMode, Direction, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},

@@ -2,7 +2,7 @@ use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
 use crate::{action_key, action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{
-    actions::{Action, Direction, ResizeDirection},
+    actions::{Action, ResizeDirection},
     *,
 };
 

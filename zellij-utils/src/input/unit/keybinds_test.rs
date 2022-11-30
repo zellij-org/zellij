@@ -1,6 +1,6 @@
 use super::super::actions::*;
 use super::super::keybinds::*;
-use crate::data::{self, CharOrArrow, Key};
+use crate::data::{self, CharOrArrow, Key, Direction};
 use crate::input::config::Config;
 use insta::assert_snapshot;
 use strum::IntoEnumIterator;

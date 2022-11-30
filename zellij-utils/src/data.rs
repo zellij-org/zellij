@@ -214,6 +214,159 @@ impl fmt::Display for Direction {
     }
 }
 
+impl FromStr for Direction {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Left" | "left" => Ok(Direction::Left),
+            "Right" | "right" => Ok(Direction::Right),
+            "Up" | "up" => Ok(Direction::Up),
+            "Down" | "down" => Ok(Direction::Down),
+            _ => Err(format!(
+                "Failed to parse Direction. Unknown Direction: {}",
+                s
+            )),
+        }
+    }
+}
+
+/// Resize operation to perform.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub enum Resize {
+    Increase,
+    Decrease,
+}
+
+impl fmt::Display for Resize {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Resize::Increase => write!(f, "+"),
+            Resize::Decrease => write!(f, "-"),
+        }
+    }
+}
+
+impl FromStr for Resize {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Increase" | "increase" | "+" => Ok(Resize::Increase),
+            "Decrease" | "decrease" | "-" => Ok(Resize::Decrease),
+            _ => Err(format!(
+                "failed to parse resize type. Unknown specifier '{}'",
+                s
+            )),
+        }
+    }
+}
+
+/// Container type that fully describes resize operations.
+///
+/// This is best thought of as follows:
+///
+/// - `resize` commands how the total *area* of the pane will change as part of this resize
+///   operation.
+/// - `direction` has two meanings:
+///     - `None` means to resize all borders equally
+///     - Anything else means to move the named border to achieve the change in area
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub struct ResizeStrategy {
+    pub resize: Resize,
+    pub direction: Option<Direction>,
+}
+
+impl From<Direction> for ResizeStrategy {
+    fn from(direction: Direction) -> Self {
+        ResizeStrategy::new(Resize::Increase, Some(direction))
+    }
+}
+
+impl From<Resize> for ResizeStrategy {
+    fn from(resize: Resize) -> Self {
+        ResizeStrategy::new(resize, None)
+    }
+}
+
+impl ResizeStrategy {
+    pub fn new(resize: Resize, direction: Option<Direction>) -> Self {
+        ResizeStrategy { resize, direction }
+    }
+
+    pub fn resize_type(&self) -> Resize {
+        self.resize
+    }
+
+    pub fn direction(&self) -> Option<Direction> {
+        self.direction
+    }
+
+    pub fn resize_increase(&self) -> bool {
+        self.resize == Resize::Increase
+    }
+
+    pub fn resize_decrease(&self) -> bool {
+        self.resize == Resize::Decrease
+    }
+
+    pub fn move_left_border_left(&self) -> bool {
+        (self.resize == Resize::Increase) && (self.direction == Some(Direction::Left))
+    }
+
+    pub fn move_left_border_right(&self) -> bool {
+        (self.resize == Resize::Decrease) && (self.direction == Some(Direction::Left))
+    }
+
+    pub fn move_lower_border_down(&self) -> bool {
+        (self.resize == Resize::Increase) && (self.direction == Some(Direction::Down))
+    }
+
+    pub fn move_lower_border_up(&self) -> bool {
+        (self.resize == Resize::Decrease) && (self.direction == Some(Direction::Down))
+    }
+
+    pub fn move_upper_border_up(&self) -> bool {
+        (self.resize == Resize::Increase) && (self.direction == Some(Direction::Up))
+    }
+
+    pub fn move_upper_border_down(&self) -> bool {
+        (self.resize == Resize::Decrease) && (self.direction == Some(Direction::Up))
+    }
+
+    pub fn move_right_border_right(&self) -> bool {
+        (self.resize == Resize::Increase) && (self.direction == Some(Direction::Right))
+    }
+
+    pub fn move_right_border_left(&self) -> bool {
+        (self.resize == Resize::Decrease) && (self.direction == Some(Direction::Right))
+    }
+
+    pub fn move_all_borders_out(&self) -> bool {
+        (self.resize == Resize::Increase) && (self.direction == None)
+    }
+
+    pub fn move_all_borders_in(&self) -> bool {
+        (self.resize == Resize::Decrease) && (self.direction == None)
+    }
+}
+
+impl fmt::Display for ResizeStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let resize = match self.resize {
+            Resize::Increase => "increase",
+            Resize::Decrease => "decrease",
+        };
+        let border = match self.direction {
+            Some(Direction::Left) => "left",
+            Some(Direction::Down) => "bottom",
+            Some(Direction::Up) => "top",
+            Some(Direction::Right) => "right",
+            None => "every",
+        };
+
+        write!(f, "{} size on {} border", resize, border)
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 // FIXME: This should be extended to handle different button clicks (not just
 // left click) and the `ScrollUp` and `ScrollDown` events could probably be

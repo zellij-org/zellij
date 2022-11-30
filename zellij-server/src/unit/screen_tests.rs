@@ -11,7 +11,7 @@ use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::actions::{Action, Direction, ResizeDirection};
+use zellij_utils::input::actions::{Action, ResizeDirection};
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
@@ -28,7 +28,7 @@ use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{InputMode, ModeInfo, Palette, PluginCapabilities},
+    data::{InputMode, ModeInfo, Palette, PluginCapabilities, Direction},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
