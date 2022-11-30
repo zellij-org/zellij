@@ -326,8 +326,10 @@ fn utf8_mouse_coordinates(column: usize, line: isize) -> Vec<u8> {
 #[derive(Clone)]
 pub struct Grid {
     pub(crate) lines_above: VecDeque<Row>,
+    pub(crate) lines_above_str: VecDeque<String>,
     pub(crate) viewport: Vec<Row>,
     pub(crate) lines_below: Vec<Row>,
+    pub(crate) lines_below_str: Vec<String>,
     horizontal_tabstops: BTreeSet<usize>,
     alternate_screen_state: Option<AlternateScreenState>,
     cursor: Cursor,
@@ -465,8 +467,12 @@ impl Grid {
                 // unit tests from panicking where SCROLL_BUFFER_SIZE is uninitialized.
                 *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE),
             ),
+            lines_above_str: VecDeque::with_capacity(
+                *SCROLL_BUFFER_SIZE.get_or_init(|| DEFAULT_SCROLL_BUFFER_SIZE),
+            ),
             viewport: vec![Row::new(columns).canonical()],
             lines_below: vec![],
+            lines_below_str: vec![],
             horizontal_tabstops: create_horizontal_tabstops(columns),
             cursor: Cursor::new(0, 0),
             cursor_is_hidden: false,
@@ -646,6 +652,13 @@ impl Grid {
         if !self.lines_above.is_empty() && self.viewport.len() == self.height {
             self.is_scrolled = true;
             let line_to_push_down = self.viewport.pop().unwrap();
+            self.lines_below_str.push(
+                line_to_push_down
+                    .columns
+                    .iter()
+                    .map(|r| r.character.to_string())
+                    .collect(),
+            );
             self.lines_below.insert(0, line_to_push_down);
 
             let transferred_rows_height = transfer_rows_from_lines_above_to_viewport(
@@ -672,6 +685,13 @@ impl Grid {
         let mut found_something = false;
         if !self.lines_below.is_empty() && self.viewport.len() == self.height {
             let mut line_to_push_up = self.viewport.remove(0);
+            self.lines_above_str.push_back(
+                line_to_push_up
+                    .columns
+                    .iter()
+                    .map(|r| r.character.to_string())
+                    .collect(),
+            );
 
             self.scrollback_buffer_lines +=
                 calculate_row_display_height(line_to_push_up.width(), self.width);
@@ -1362,6 +1382,7 @@ impl Grid {
     }
     fn clear_lines_above(&mut self) {
         self.lines_above.clear();
+        self.lines_above_str.clear();
         self.scrollback_buffer_lines = self.recalculate_scrollback_buffer_count();
     }
 
@@ -1585,7 +1606,9 @@ impl Grid {
     }
     pub fn reset_terminal_state(&mut self) {
         self.lines_above = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
+        self.lines_above_str = VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
         self.lines_below = vec![];
+        self.lines_below_str = vec![];
         self.viewport = vec![Row::new(self.width).canonical()];
         self.alternate_screen_state = None;
         self.cursor_key_mode = false;
@@ -2031,8 +2054,10 @@ impl Grid {
     }
     pub fn delete_viewport_and_scroll(&mut self) {
         self.lines_above.clear();
+        self.lines_above_str.clear();
         self.viewport.clear();
         self.lines_below.clear();
+        self.lines_below_str.clear();
     }
     pub fn reset_cursor_position(&mut self) {
         self.cursor = Cursor::new(0, 0);
@@ -2498,6 +2523,8 @@ impl Perform for Grid {
                                 &mut self.lines_above,
                                 VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap()),
                             );
+                            self.lines_above_str =
+                                VecDeque::with_capacity(*SCROLL_BUFFER_SIZE.get().unwrap());
                             let current_viewport = std::mem::replace(
                                 &mut self.viewport,
                                 vec![Row::new(self.width).canonical()],
