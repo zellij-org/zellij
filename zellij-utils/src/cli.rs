@@ -2,7 +2,7 @@ use crate::data::{InputMode, Direction, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
-    input::actions::{Direction, ResizeDirection},
+    input::actions::ResizeDirection,
     input::options::CliOptions,
 };
 use clap::{Parser, Subcommand};
@@ -186,6 +186,8 @@ pub enum CliAction {
     WriteChars { chars: String },
     /// Resize the focused pane in the specified direction. [right|left|up|down|+|-]
     Resize { resize_direction: ResizeDirection },
+    /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
+    ResizeNew { resize: Resize, direction: Option<Direction> },
     /// Change focus to the next pane
     FocusNextPane,
     /// Change focus to the previous pane

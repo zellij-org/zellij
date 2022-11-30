@@ -1,5 +1,9 @@
 mod floating_pane_grid;
-use zellij_utils::{data::Direction, input::actions::ResizeDirection, position::Position};
+use zellij_utils::{
+    data::{Direction, ResizeStrategy},
+    input::actions::ResizeDirection,
+    position::Position,
+};
 
 use crate::resize_pty;
 use crate::tab::Pane;
@@ -114,12 +118,7 @@ impl FloatingPanes {
         pane_id: PaneId,
         mut with_pane: Box<dyn Pane>,
     ) -> Result<Box<dyn Pane>> {
-        let err_context = || {
-            format!(
-                "failed to replace pane {pane_id:?} with pane {:?}",
-                with_pane.pid()
-            )
-        };
+        let err_context = || format!("failed to replace pane {pane_id:?} with pane");
 
         let with_pane_id = with_pane.pid();
         with_pane.set_content_offset(Offset::frame(1));
@@ -341,12 +340,11 @@ impl FloatingPanes {
         &mut self,
         client_id: ClientId,
         os_api: &mut Box<dyn ServerOsApi>,
-        direction: &ResizeDirection,
+        strategy: &ResizeStrategy,
     ) -> Result<bool> {
         // true => successfully resized
-        let err_context = || {
-            format!("failed to resize {direction:?} active floating pane for client {client_id}")
-        };
+        let err_context =
+            || format!("failed to {strategy} for active floating pane for client {client_id}");
 
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
@@ -357,26 +355,10 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            match direction {
-                ResizeDirection::Left => {
-                    floating_pane_grid.resize_pane_left(active_floating_pane_id);
-                },
-                ResizeDirection::Down => {
-                    floating_pane_grid.resize_pane_down(active_floating_pane_id);
-                },
-                ResizeDirection::Up => {
-                    floating_pane_grid.resize_pane_up(active_floating_pane_id);
-                },
-                ResizeDirection::Right => {
-                    floating_pane_grid.resize_pane_right(active_floating_pane_id);
-                },
-                ResizeDirection::Increase => {
-                    floating_pane_grid.resize_increase(active_floating_pane_id);
-                },
-                ResizeDirection::Decrease => {
-                    floating_pane_grid.resize_decrease(active_floating_pane_id);
-                },
-            }
+            floating_pane_grid
+                .change_pane_size(active_floating_pane_id, strategy, (5, 2))
+                .with_context(err_context)?;
+
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, os_api, self.senders).with_context(err_context)?;
             }
@@ -611,7 +593,7 @@ impl FloatingPanes {
         let err_context = || format!("failed to determine floating pane at point {point:?}");
 
         // TODO: better - loop through z-indices and check each one if it contains the point
-        let panes: Vec<_> = if search_selectable {
+        let mut panes: Vec<_> = if search_selectable {
             self.panes.iter().filter(|(_, p)| p.selectable()).collect()
         } else {
             self.panes.iter().collect()
@@ -620,7 +602,7 @@ impl FloatingPanes {
             // TODO: continue
             Ord::cmp(
                 &self.z_indices.iter().position(|id| id == *b_id).unwrap(),
-                &self.z_indices.iter().position(|id| id == *a_id).unwrap()
+                &self.z_indices.iter().position(|id| id == *a_id).unwrap(),
             )
         });
         Ok(panes
@@ -634,6 +616,7 @@ impl FloatingPanes {
         search_selectable: bool,
     ) -> Option<&mut Box<dyn Pane>> {
         self.get_pane_id_at(position, search_selectable)
+            .unwrap()
             .and_then(|pane_id| self.panes.get_mut(&pane_id))
     }
     pub fn set_pane_being_moved_with_mouse(&mut self, pane_id: PaneId, position: Position) {

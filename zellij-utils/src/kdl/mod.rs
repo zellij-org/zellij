@@ -1,5 +1,5 @@
 mod kdl_layout_parser;
-use crate::data::{InputMode, Key, Palette, PaletteColor};
+use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize, ResizeStrategy};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
@@ -21,7 +21,7 @@ use kdl::{KdlDocument, KdlEntry, KdlNode};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::input::actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption};
+use crate::input::actions::{Action, ResizeDirection, SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
 
 #[macro_export]
@@ -393,6 +393,28 @@ impl Action {
                     ))
                 },
             },
+            "ResizeNew" => {
+                let mut resize: Option<Resize> = None;
+                let mut direction: Option<Direction> = None;
+                for word in string.to_ascii_lowercase().split_whitespace() {
+                    match Resize::from_str(word) {
+                        Ok(value) => resize = Some(value),
+                        Err(_) => match Direction::from_str(word) {
+                            Ok(value) => direction = Some(value),
+                            Err(_) => return Err(ConfigError::new_kdl_error(
+                                format!(
+                                    "failed to read either of resize type or direction from '{}'",
+                                    word
+                                ),
+                                action_node.span().offset(),
+                                action_node.span().len(),
+                            )),
+                        },
+                    }
+                }
+                let resize = resize.unwrap_or(Resize::Increase);
+                Ok(Action::ResizeNew(resize, direction))
+            },
             "Resize" => {
                 let direction = ResizeDirection::from_str(string.as_str()).map_err(|_| {
                     ConfigError::new_kdl_error(
@@ -687,6 +709,11 @@ impl TryFrom<&KdlNode> for Action {
                 kdl_action
             ),
             "Resize" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "ResizeNew" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

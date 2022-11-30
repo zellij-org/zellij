@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::str;
 
+use zellij_utils::data::{ResizeStrategy, Direction, Resize};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -137,6 +138,7 @@ pub enum ScreenInstruction {
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
+    Resize(ClientId, ResizeStrategy),
     ResizeLeft(ClientId),
     ResizeRight(ClientId),
     ResizeDown(ClientId),
@@ -245,6 +247,22 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
+            ScreenInstruction::Resize(.., strategy) => match strategy {
+                ResizeStrategy { resize: Resize::Increase, direction } => match direction {
+                    Some(Direction::Left) => ScreenContext::ResizeIncreaseLeft,
+                    Some(Direction::Down) => ScreenContext::ResizeIncreaseDown,
+                    Some(Direction::Up) => ScreenContext::ResizeIncreaseUp,
+                    Some(Direction::Right) => ScreenContext::ResizeIncreaseRight,
+                    None => ScreenContext::ResizeIncreaseAll,
+                },
+                ResizeStrategy { resize: Resize::Decrease, direction } => match direction {
+                    Some(Direction::Left) => ScreenContext::ResizeDecreaseLeft,
+                    Some(Direction::Down) => ScreenContext::ResizeDecreaseDown,
+                    Some(Direction::Up) => ScreenContext::ResizeDecreaseUp,
+                    Some(Direction::Right) => ScreenContext::ResizeDecreaseRight,
+                    None => ScreenContext::ResizeDecreaseAll,
+                },
+            },
             ScreenInstruction::ResizeLeft(..) => ScreenContext::ResizeLeft,
             ScreenInstruction::ResizeRight(..) => ScreenContext::ResizeRight,
             ScreenInstruction::ResizeDown(..) => ScreenContext::ResizeDown,
@@ -1491,6 +1509,16 @@ pub(crate) fn screen_thread_main(
                     screen.update_tabs()?;
                 }
             },
+            ScreenInstruction::Resize(client_id, strategy) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
+                    ?
+                );
+                screen.unblock_input()?;
+                screen.render()?;
+            }
             ScreenInstruction::ResizeLeft(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,

@@ -2,6 +2,7 @@ use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use zellij_utils::data::{Direction, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::pane_size::{Dimension, PaneGeom, Size, Viewport};
 
@@ -474,498 +475,99 @@ impl<'a> FloatingPaneGrid<'a> {
             .with_context(err_context)
     }
 
-    pub fn resize_pane_left(&'a mut self, pane_id: &PaneId) -> Result<()> {
-        let err_context = || format!("failed to resize pane {pane_id:?} left");
-
-        let res = || -> Result<()> {
-            if let Some(increase_by) =
-                self.can_increase_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH)?
-            {
-                self.increase_pane_size_left(pane_id, increase_by)
-            } else if let Some(decrease_by) =
-                self.can_decrease_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH)?
-            {
-                self.decrease_pane_size_left(pane_id, decrease_by)
-            } else {
-                Ok(())
-            }
-        };
-        res().with_context(err_context)
-    }
-
-    pub fn resize_pane_right(&mut self, pane_id: &PaneId) -> Result<()> {
-        let err_context = || format!("failed to resize pane {pane_id:?} left");
-        
-        let res = || -> Result<()> {
-            if let Some(increase_by) =
-                self.can_increase_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH)?
-            {
-                self.increase_pane_size_right(pane_id, increase_by)
-            } else if let Some(decrease_by) =
-                self.can_decrease_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH)?
-            {
-                self.decrease_pane_size_right(pane_id, decrease_by)
-            } else {
-                Ok(())
-            }
-        };
-        res().with_context(err_context)
-    }
-
-    pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) =
-            self.can_increase_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
-            self.increase_pane_size_down(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
-            self.decrease_pane_size_down(pane_id, decrease_by);
-        }
-    }
-    pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) = self.can_increase_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
-            self.increase_pane_size_up(pane_id, increase_by);
-        } else if let Some(decrease_by) =
-            self.can_decrease_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT)
-        {
-            self.decrease_pane_size_up(pane_id, decrease_by);
-        }
-    }
-    pub fn resize_increase(&mut self, pane_id: &PaneId) {
-        if let Some(increase_by) =
-            self.can_increase_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
-            self.increase_pane_size_left(pane_id, increase_by);
-        }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
-            self.increase_pane_size_right(pane_id, increase_by);
-        }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
-            self.increase_pane_size_down(pane_id, increase_by);
-        }
-        if let Some(increase_by) =
-            self.can_increase_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
-            self.increase_pane_size_up(pane_id, increase_by);
-        }
-    }
-    pub fn resize_decrease(&mut self, pane_id: &PaneId) {
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_left(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
-            self.decrease_pane_size_left(pane_id, decrease_by);
-        }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_right(pane_id, RESIZE_INCREMENT_WIDTH / 2)
-        {
-            self.decrease_pane_size_right(pane_id, decrease_by);
-        }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_down(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
-            self.decrease_pane_size_down(pane_id, decrease_by);
-        }
-        if let Some(decrease_by) =
-            self.can_decrease_pane_size_up(pane_id, RESIZE_INCREMENT_HEIGHT / 2)
-        {
-            self.decrease_pane_size_up(pane_id, decrease_by);
-        }
-    }
-
-    fn can_increase_pane_size_left(
-        &self,
+    pub fn change_pane_size(
+        &mut self,
         pane_id: &PaneId,
-        max_increase_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized left by +{max_increase_by} columns")
-        };
+        strategy: &ResizeStrategy,
+        change_by: (usize, usize), // (x, y)
+    ) -> Result<()> {
+        let err_context = || format!("failed to {strategy} for pane {pane_id:?}");
 
-        let panes = self.panes.borrow();
-        let pane = panes
+        let mut geometry = self
+            .panes
+            .borrow()
             .get(pane_id)
             .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let distance_to_left_edge = pane.x().saturating_sub(self.viewport.x);
+            .with_context(err_context)?
+            .position_and_size();
 
-        Ok(
-            if distance_to_left_edge.saturating_sub(max_increase_by) > 0 {
-                Some(max_increase_by)
-            } else if distance_to_left_edge > 0 {
-                Some(distance_to_left_edge)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_decrease_pane_size_left(
-        &self,
-        pane_id: &PaneId,
-        max_decrease_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized left by -{max_decrease_by} columns")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let space_left_to_decrease = pane.cols().saturating_sub(MIN_TERMINAL_WIDTH);
-
-        Ok(
-            if space_left_to_decrease.saturating_sub(max_decrease_by) > 0 {
-                Some(max_decrease_by)
-            } else if space_left_to_decrease > 0 {
-                Some(space_left_to_decrease)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_increase_pane_size_right(
-        &self,
-        pane_id: &PaneId,
-        max_increase_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized right by +{max_increase_by} columns")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let distance_to_right_edge =
-            (self.viewport.x + self.viewport.cols).saturating_sub(pane.x() + pane.cols());
-
-        Ok(
-            if pane.x() + pane.cols() + max_increase_by < self.viewport.cols {
-                Some(max_increase_by)
-            } else if distance_to_right_edge > 0 {
-                Some(distance_to_right_edge)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_decrease_pane_size_right(
-        &self,
-        pane_id: &PaneId,
-        max_decrease_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized right by -{max_decrease_by} columns")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let space_left_to_decrease = pane.cols().saturating_sub(MIN_TERMINAL_WIDTH);
-        let pane_right_edge = pane.x() + pane.cols();
-
-        Ok(
-            if space_left_to_decrease.saturating_sub(max_decrease_by) > 0
-                && pane.x() + max_decrease_by <= pane_right_edge + MIN_TERMINAL_WIDTH
-            {
-                Some(max_decrease_by)
-            } else if space_left_to_decrease > 0
-                && pane.x() + max_decrease_by <= pane_right_edge + MIN_TERMINAL_WIDTH
-            {
-                Some(space_left_to_decrease)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_increase_pane_size_down(
-        &self,
-        pane_id: &PaneId,
-        max_increase_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized down by +{max_increase_by} rows")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let distance_to_bottom_edge =
-            (self.viewport.y + self.viewport.rows).saturating_sub(pane.y() + pane.rows());
-
-        Ok(
-            if pane.y() + pane.rows() + max_increase_by < self.viewport.rows {
-                Some(max_increase_by)
-            } else if distance_to_bottom_edge > 0 {
-                Some(distance_to_bottom_edge)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_decrease_pane_size_down(
-        &self,
-        pane_id: &PaneId,
-        max_decrease_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized down by -{max_decrease_by} rows")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let space_left_to_decrease = pane.rows().saturating_sub(MIN_TERMINAL_HEIGHT);
-        let pane_bottom_edge = pane.y() + pane.rows();
-
-        Ok(
-            if space_left_to_decrease.saturating_sub(max_decrease_by) > 0
-                && pane.y() + max_decrease_by <= pane_bottom_edge + MIN_TERMINAL_HEIGHT
-            {
-                Some(max_decrease_by)
-            } else if space_left_to_decrease > 0
-                && pane.y() + max_decrease_by <= pane_bottom_edge + MIN_TERMINAL_HEIGHT
-            {
-                Some(space_left_to_decrease)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_increase_pane_size_up(
-        &self,
-        pane_id: &PaneId,
-        max_increase_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized up by +{max_increase_by} rows")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let distance_to_top_edge = pane.y().saturating_sub(self.viewport.y);
-
-        Ok(
-            if distance_to_top_edge.saturating_sub(max_increase_by) > 0 {
-                Some(max_increase_by)
-            } else if distance_to_top_edge > 0 {
-                Some(distance_to_top_edge)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn can_decrease_pane_size_up(
-        &self,
-        pane_id: &PaneId,
-        max_decrease_by: usize,
-    ) -> Result<Option<usize>> {
-        let err_context = || {
-            format!("failed to determine if pane {pane_id:?} can be resized up by -{max_increase_by} rows")
-        };
-
-        let panes = self.panes.borrow();
-        let pane = panes
-            .get(pane_id)
-            .with_context(|| no_pane_id(&pane_id))
-            .with_context(err_context)?;
-        let space_left_to_decrease = pane.rows().saturating_sub(MIN_TERMINAL_HEIGHT);
-
-        Ok(
-            if space_left_to_decrease.saturating_sub(max_decrease_by) > 0 {
-                Some(max_decrease_by)
-            } else if space_left_to_decrease > 0 {
-                Some(space_left_to_decrease)
-            } else {
-                None
-            },
-        )
-    }
-
-    fn increase_pane_size_left(&mut self, pane_id: &PaneId, increase_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} left by +{increase_by} columns");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom.x -= increase_by;
-            current_geom
+        // Move left border
+        if strategy.move_left_border_left() || strategy.move_all_borders_out() {
+            let increment = std::cmp::min(geometry.x.saturating_sub(self.viewport.x), change_by.0);
+            geometry.x -= increment;
+            geometry
                 .cols
-                .set_inner(current_geom.cols.as_usize() + increase_by);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
-
-    fn decrease_pane_size_left(&mut self, pane_id: &PaneId, decrease_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} left by -{decrease_by} columns");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom
+                .set_inner(geometry.cols.as_usize() + increment);
+        } else if strategy.move_left_border_right() || strategy.move_all_borders_in() {
+            let increment = std::cmp::min(
+                geometry.cols.as_usize().saturating_sub(MIN_TERMINAL_WIDTH),
+                change_by.0,
+            );
+            geometry.x += increment;
+            geometry
                 .cols
-                .set_inner(current_geom.cols.as_usize() - decrease_by);
-            current_geom
+                .set_inner(geometry.cols.as_usize() - increment);
         };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
 
-    fn increase_pane_size_right(&mut self, pane_id: &PaneId, increase_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} right by +{increase_by} columns");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom
+        // Move right border
+        if strategy.move_right_border_right() || strategy.move_all_borders_out() {
+            let increment = std::cmp::min(
+                (self.viewport.x + self.viewport.cols)
+                    .saturating_sub(geometry.x + geometry.cols.as_usize()),
+                change_by.0,
+            );
+            geometry
                 .cols
-                .set_inner(current_geom.cols.as_usize() + increase_by);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
-
-    fn decrease_pane_size_right(&mut self, pane_id: &PaneId, decrease_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} right by -{decrease_by} columns");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom.x += decrease_by;
-            current_geom
+                .set_inner(geometry.cols.as_usize() + increment);
+        } else if strategy.move_right_border_left() || strategy.move_all_borders_in() {
+            let increment = std::cmp::min(
+                geometry.cols.as_usize().saturating_sub(MIN_TERMINAL_WIDTH),
+                change_by.0,
+            );
+            geometry
                 .cols
-                .set_inner(current_geom.cols.as_usize() - decrease_by);
-            current_geom
+                .set_inner(geometry.cols.as_usize() - increment);
         };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
 
-    fn increase_pane_size_down(&mut self, pane_id: &PaneId, increase_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} down by +{increase_by} rows");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom
+        // Move upper border
+        if strategy.move_upper_border_up() || strategy.move_all_borders_out() {
+            let increment = std::cmp::min(geometry.y.saturating_sub(self.viewport.y), change_by.1);
+            geometry.y -= increment;
+            geometry
                 .rows
-                .set_inner(current_geom.rows.as_usize() + increase_by);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
-
-    fn decrease_pane_size_down(&mut self, pane_id: &PaneId, decrease_by: usize) -> Result<()> {
-        let err_context =
-            || format!("failed to resize pane {pane_id:?} down by -{decrease_by} rows");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom.y += decrease_by;
-            current_geom
+                .set_inner(geometry.rows.as_usize() + increment);
+        } else if strategy.move_upper_border_down() || strategy.move_all_borders_in() {
+            let increment = std::cmp::min(
+                geometry.rows.as_usize().saturating_sub(MIN_TERMINAL_HEIGHT),
+                change_by.1,
+            );
+            geometry.y += increment;
+            geometry
                 .rows
-                .set_inner(current_geom.rows.as_usize() - decrease_by);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
+                .set_inner(geometry.rows.as_usize() - increment);
+        }
 
-    fn increase_pane_size_up(&mut self, pane_id: &PaneId, increase_by: usize) -> Result<()> {
-        let err_context = || format!("failed to resize pane {pane_id:?} up by +{increase_by} rows");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom.y -= increase_by;
-            current_geom
+        // Move lower border
+        if strategy.move_lower_border_down() || strategy.move_all_borders_out() {
+            let increment = std::cmp::min(
+                (self.viewport.y + self.viewport.rows)
+                    .saturating_sub(geometry.y + geometry.rows.as_usize()),
+                change_by.1,
+            );
+            geometry
                 .rows
-                .set_inner(current_geom.rows.as_usize() + increase_by);
-            pane.set_geom(current_geom);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
-            .with_context(err_context)
-    }
-
-    fn decrease_pane_size_up(&mut self, pane_id: &PaneId, decrease_by: usize) -> Result<()> {
-        let err_context = || format!("failed to resize pane {pane_id:?} up by -{decrease_by} rows");
-
-        let new_pane_geom = {
-            let mut panes = self.panes.borrow_mut();
-            let pane = panes
-                .get_mut(pane_id)
-                .with_context(|| no_pane_id(&pane_id))
-                .with_context(err_context)?;
-            let mut current_geom = pane.position_and_size();
-            current_geom
+                .set_inner(geometry.rows.as_usize() + increment);
+        } else if strategy.move_lower_border_up() || strategy.move_all_borders_in() {
+            let increment = std::cmp::min(
+                geometry.rows.as_usize().saturating_sub(MIN_TERMINAL_HEIGHT),
+                change_by.1,
+            );
+            geometry
                 .rows
-                .set_inner(current_geom.rows.as_usize() - decrease_by);
-            current_geom
-        };
-        self.set_pane_geom(*pane_id, new_pane_geom)
+                .set_inner(geometry.rows.as_usize() - increment);
+        }
+
+        self.set_pane_geom(*pane_id, geometry)
             .with_context(err_context)
     }
 

@@ -102,6 +102,14 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
+        Action::ResizeNew(resize, direction) => {
+            let screen_instr =
+                ScreenInstruction::Resize(client_id, ResizeStrategy::new(resize, direction));
+            session
+                .senders
+                .send_to_screen(screen_instr)
+                .with_context(err_context)?;
+        },
         Action::Resize(direction) => {
             let screen_instr = match direction {
                 ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
