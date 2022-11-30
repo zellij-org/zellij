@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * plugins: Cache plugins, don't load builtin plugins from disk (https://github.com/zellij-org/zellij/pull/1924)
 * fix: server on longer crashes on client crash (https://github.com/zellij-org/zellij/pull/1965)
 * fix: preserve pane focus properly when closing panes and switching tabs (https://github.com/zellij-org/zellij/pull/1966)
+* fix(themes): missing tokyo-night-dark theme (https://github.com/zellij-org/zellij/pull/1972)
 
 ## [0.33.0] - 2022-11-10
 
