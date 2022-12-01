@@ -539,7 +539,7 @@ impl TiledPanes {
             );
 
             pane_grid
-                .change_pane_size(&active_pane_id, strategy, (4, 4))
+                .change_pane_size(&active_pane_id, strategy, (4.0, 4.0))
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {
@@ -551,96 +551,6 @@ impl TiledPanes {
         Ok(())
     }
 
-    pub fn resize_active_pane_left(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_left(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_right(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_right(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_up(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_up(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_down(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_down(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_increase(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_increase(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_decrease(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_decrease(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
