@@ -203,6 +203,25 @@ pub enum Direction {
     Down,
 }
 
+impl Direction {
+    pub fn invert(&self) -> Direction {
+        match *self {
+            Direction::Left => Direction::Right,
+            Direction::Down => Direction::Up,
+            Direction::Up => Direction::Down,
+            Direction::Right => Direction::Left,
+        }
+    }
+
+    pub fn is_horizontal(&self) -> bool {
+        matches!(self, Direction::Left | Direction::Right)
+    }
+
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, Direction::Down | Direction::Up)
+    }
+}
+
 impl fmt::Display for Direction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -292,12 +311,33 @@ impl ResizeStrategy {
         ResizeStrategy { resize, direction }
     }
 
+    pub fn invert(&self) -> ResizeStrategy {
+        let resize = match self.resize {
+            Resize::Increase => Resize::Decrease,
+            Resize::Decrease => Resize::Increase,
+        };
+        let direction = match self.direction {
+            Some(direction) => Some(direction.invert()),
+            None => None,
+        };
+
+        ResizeStrategy::new(resize, direction)
+    }
+
     pub fn resize_type(&self) -> Resize {
         self.resize
     }
 
     pub fn direction(&self) -> Option<Direction> {
         self.direction
+    }
+
+    pub fn direction_horizontal(&self) -> bool {
+        matches!(self.direction, Some(Direction::Left) | Some(Direction::Right))
+    }
+
+    pub fn direction_vertical(&self) -> bool {
+        matches!(self.direction, Some(Direction::Up) | Some(Direction::Down))
     }
 
     pub fn resize_increase(&self) -> bool {
