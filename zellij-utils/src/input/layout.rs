@@ -9,6 +9,7 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
+    data::Direction,
     input::{
         command::RunCommand,
         config::{Config, ConfigError},
@@ -44,6 +45,15 @@ impl Not for SplitDirection {
         match self {
             SplitDirection::Horizontal => SplitDirection::Vertical,
             SplitDirection::Vertical => SplitDirection::Horizontal,
+        }
+    }
+}
+
+impl From<Direction> for SplitDirection {
+    fn from(direction: Direction) -> Self {
+        match direction {
+            Direction::Left | Direction::Right => SplitDirection::Horizontal,
+            Direction::Down | Direction::Up => SplitDirection::Vertical,
         }
     }
 }
