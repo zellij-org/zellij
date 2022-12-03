@@ -49,6 +49,27 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
 
+    /// Calculates an area for each pane and sums them all.
+    ///
+    /// Returns the product of "rows * columns", summed across all panes.
+    fn total_panes_area(&self) -> f64 {
+        let mut summed_area: f64 = 0.0;
+
+        for pane in self.panes.clone().borrow().values() {
+            if let PaneId::Terminal(_id) = pane.pid() {
+                let geom = pane.current_geom();
+                summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
+                    (Some(rows), Some(cols)) => rows * cols,
+                    _ => continue,
+                };
+            } else {
+                continue;
+            }
+        }
+
+        summed_area / (100.0 * 100.0)
+    }
+
     pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<(), String> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
@@ -345,31 +366,14 @@ impl<'a> TiledPaneGrid<'a> {
             let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
         }
 
-        log::warn!("New pane dimensions:");
-        for pane in self.panes.clone().borrow().values() {
-            let geom = pane.current_geom();
-            let pid = pane.pid();
-            if let PaneId::Plugin(_) = pid {
-                continue;
-            }
-            log::warn!(
-                "Pane {pid:?}: X {}, {}, {}%  - Y {}, {}, {}%",
-                geom.x,
-                geom.cols.as_usize(),
-                geom.cols.as_percent().unwrap(),
-                geom.y,
-                geom.rows.as_usize(),
-                geom.rows.as_percent().unwrap(),
+        #[cfg(debug_assertions)]
+        {
+            let area = self.total_panes_area() * 100.0;
+            debug_assert!(
+                f64::abs(area - 100.0) < 1.0, // Tolerate a little rounding error
+                "area consumed by panes doesn't fill the viewport! Total area is {area} %",
             );
-            //log::warn!(
-            //    "Pane {pid:?}: ({}, {}), ({:?}, {:?})",
-            //    geom.x,
-            //    geom.y,
-            //    geom.rows,
-            //    geom.cols
-            //);
         }
-        log::warn!("\n\n");
 
         Ok(())
     }
