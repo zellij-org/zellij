@@ -171,8 +171,11 @@ impl<'a> TiledPaneGrid<'a> {
             *strategy
         };
 
-        if !self.can_change_pane_size(pane_id, &strategy, change_by).unwrap() {
-            return Ok(())
+        if !self
+            .can_change_pane_size(pane_id, &strategy, change_by)
+            .unwrap()
+        {
+            return Ok(());
         }
 
         // Move left border
@@ -560,14 +563,12 @@ impl<'a> TiledPaneGrid<'a> {
             .with_context(|| no_pane_id(id))
             .with_context(err_context)?;
 
-        // Short circuits
-        //if (*direction == Direction::Left) && terminal_to_check.x() == 0 {
-        //    return Ok(vec![]);
-        //} else if (*direction == Direction::Up) && terminal_to_check.y() == 0 {
-        //    return Ok(vec![]);
-        //}
-
         for (&pid, terminal) in panes.iter() {
+            // We cannot resize plugin panes, so we do not even bother trying.
+            if let PaneId::Plugin(_) = pid {
+                continue;
+            }
+
             if match direction {
                 Direction::Left => (terminal.x() + terminal.cols()) == terminal_to_check.x(),
                 Direction::Down => {
@@ -583,8 +584,6 @@ impl<'a> TiledPaneGrid<'a> {
         }
         Ok(ids)
     }
-
-    //fn pane_ids_aligned_at(&self, id: &PaneId, direction: &Direction) ->
 
     fn pane_ids_top_aligned_with_pane_id(&self, pane_id: &PaneId) -> Vec<PaneId> {
         let panes = self.panes.borrow();
