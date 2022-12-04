@@ -15,6 +15,7 @@ use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
     data::Palette,
+    envs::EnvironmentVariables,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,
@@ -38,6 +39,8 @@ use std::{
     process::{Child, Command},
     sync::{Arc, Mutex},
 };
+
+use shellexpand::env_with_context_no_errors;
 
 pub use async_trait::async_trait;
 pub use nix::unistd::Pid;
@@ -142,7 +145,7 @@ fn command_exists(cmd: &RunCommand) -> bool {
 
 fn handle_openpty(
     open_pty_res: OpenptyResult,
-    cmd: RunCommand,
+    mut cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
 ) -> Result<(RawFd, RawFd)> {
@@ -156,6 +159,19 @@ fn handle_openpty(
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
     let pid_secondary = open_pty_res.slave;
+
+    // let mut cmd = cmd.clone();
+    cmd.command = PathBuf::from(
+        env_with_context_no_errors(&cmd.command.to_string_lossy().to_string(), |x| {
+            cmd.env.env.get(x)
+        })
+        .to_string(),
+    );
+    cmd.args = cmd
+        .args
+        .iter()
+        .map(|arg| env_with_context_no_errors(&arg, |x| cmd.env.env.get(x)).to_string())
+        .collect();
 
     if command_exists(&cmd) {
         let mut child = unsafe {
@@ -174,6 +190,7 @@ fn handle_openpty(
                 }
             }
             command
+                .envs(&cmd.env.env)
                 .args(&cmd.args)
                 .pre_exec(move || -> std::io::Result<()> {
                     if libc::login_tty(pid_secondary) != 0 {
@@ -311,6 +328,7 @@ fn spawn_terminal(
                 cwd: None,
                 hold_on_close: false,
                 hold_on_start: false,
+                env: EnvironmentVariables::new(),
             }
         },
         TerminalAction::RunCommand(command) => command,

@@ -4,11 +4,13 @@ use super::command::RunCommandAction;
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
+use crate::envs::EnvironmentVariables;
 use crate::input::config::{ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -264,6 +266,7 @@ impl Action {
                 name,
                 close_on_exit,
                 start_suspended,
+                env,
             } => {
                 if !command.is_empty() {
                     let mut command = command.clone();
@@ -274,6 +277,9 @@ impl Action {
                         .or_else(|| Some(current_dir));
                     let hold_on_start = start_suspended;
                     let hold_on_close = !close_on_exit;
+                    let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
+                        EnvironmentVariables::from_data(HashMap::from_iter(e))
+                    });
                     let run_command_action = RunCommandAction {
                         command,
                         args,
@@ -281,6 +287,7 @@ impl Action {
                         direction,
                         hold_on_close,
                         hold_on_start,
+                        env: env_vars,
                     };
                     if floating {
                         Ok(vec![Action::NewFloatingPane(

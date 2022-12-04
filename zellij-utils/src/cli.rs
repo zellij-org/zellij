@@ -7,6 +7,7 @@ use crate::{
 };
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::path::PathBuf;
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +146,14 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
+
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -270,6 +279,15 @@ pub enum CliAction {
             requires("command")
         )]
         start_suspended: bool,
+
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true),
+            requires("command")
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -329,4 +347,18 @@ pub enum CliAction {
         #[clap(short, long, value_parser, requires("layout"))]
         cwd: Option<PathBuf>,
     },
+}
+
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }

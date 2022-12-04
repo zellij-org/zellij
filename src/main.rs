@@ -26,6 +26,7 @@ fn main() {
             name,
             close_on_exit,
             start_suspended,
+            env,
         })) = opts.command
         {
             let command_cli_action = CliAction::NewPane {
@@ -36,6 +37,7 @@ fn main() {
                 name,
                 close_on_exit,
                 start_suspended,
+                env,
             };
             commands::send_action_to_session(command_cli_action, opts.session);
             std::process::exit(0);

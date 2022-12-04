@@ -1,4 +1,6 @@
 //! Trigger a command
+use crate::envs::EnvironmentVariables;
+
 use super::actions::Direction;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -21,6 +23,8 @@ pub struct RunCommand {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub env: EnvironmentVariables,
 }
 
 impl std::fmt::Display for RunCommand {
@@ -54,6 +58,8 @@ pub struct RunCommandAction {
     pub hold_on_close: bool,
     #[serde(default)]
     pub hold_on_start: bool,
+    #[serde(default)]
+    pub env: EnvironmentVariables,
 }
 
 impl From<RunCommandAction> for RunCommand {
@@ -64,6 +70,7 @@ impl From<RunCommandAction> for RunCommand {
             cwd: action.cwd,
             hold_on_close: action.hold_on_close,
             hold_on_start: action.hold_on_start,
+            env: action.env,
         }
     }
 }

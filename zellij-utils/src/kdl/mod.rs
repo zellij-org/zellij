@@ -757,6 +757,12 @@ impl TryFrom<&KdlNode> for Action {
                 let hold_on_start = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "start_suspended"))
                     .unwrap_or(false);
+                let env = if let Some(env_node) = command_metadata.and_then(|c_m| c_m.get("env")) {
+                    EnvironmentVariables::from_kdl(env_node)?
+                } else {
+                    EnvironmentVariables::from_data(HashMap::new())
+                };
+
                 let run_command_action = RunCommandAction {
                     command: PathBuf::from(command),
                     args,
@@ -764,6 +770,7 @@ impl TryFrom<&KdlNode> for Action {
                     direction,
                     hold_on_close,
                     hold_on_start,
+                    env,
                 };
                 Ok(Action::Run(run_command_action))
             },

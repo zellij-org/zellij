@@ -1,7 +1,12 @@
-use crate::input::{
-    command::RunCommand,
-    config::ConfigError,
-    layout::{Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize},
+use crate::{
+    envs::EnvironmentVariables,
+    input::{
+        command::RunCommand,
+        config::ConfigError,
+        layout::{
+            Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize,
+        },
+    },
 };
 
 use kdl::*;
@@ -61,6 +66,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "size"
             || word == "cwd"
             || word == "split_direction"
+            || word == "env"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -77,6 +83,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "split_direction"
             || property_name == "pane"
             || property_name == "children"
+            || property_name == "env"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus"
@@ -256,6 +263,11 @@ impl<'a> KdlLayoutParser<'a> {
         }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
         let hold_on_start = start_suspended.map(|c| c).unwrap_or(false);
+        let env = if let Some(env_node) = kdl_get_child!(pane_node, "env") {
+            EnvironmentVariables::from_kdl(env_node)?
+        } else {
+            EnvironmentVariables::new()
+        };
         match (command, edit, cwd) {
             (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
             (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
@@ -264,6 +276,7 @@ impl<'a> KdlLayoutParser<'a> {
                 cwd,
                 hold_on_close,
                 hold_on_start,
+                env,
             }))),
             (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
             (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),

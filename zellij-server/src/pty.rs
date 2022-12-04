@@ -8,6 +8,7 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::envs::EnvironmentVariables;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -446,6 +447,7 @@ impl Pty {
             cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
             hold_on_close: false,
             hold_on_start: false,
+            env: EnvironmentVariables::from_data(HashMap::new()),
         })
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
