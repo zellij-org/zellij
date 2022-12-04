@@ -299,8 +299,27 @@ impl FromStr for Resize {
 ///     - Anything else means to move the named border to achieve the change in area
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct ResizeStrategy {
+    /// Whether to increase or resize total area
     pub resize: Resize,
+    /// With which border, if any, to change area
     pub direction: Option<Direction>,
+    /// If set to true (default), increasing resizes towards a viewport border will be inverted.
+    /// I.e. a scenario like this ("increase right"):
+    ///
+    /// ```
+    /// +---+---+
+    /// |   | X |->
+    /// +---+---+
+    /// ```
+    ///
+    /// turns into this ("decrease left"):
+    ///
+    /// ```
+    /// +---+---+
+    /// |   |-> |
+    /// +---+---+
+    /// ```
+    pub invert_on_boundaries: bool,
 }
 
 impl From<Direction> for ResizeStrategy {
@@ -317,7 +336,7 @@ impl From<Resize> for ResizeStrategy {
 
 impl ResizeStrategy {
     pub fn new(resize: Resize, direction: Option<Direction>) -> Self {
-        ResizeStrategy { resize, direction }
+        ResizeStrategy { resize, direction, invert_on_boundaries: true}
     }
 
     pub fn invert(&self) -> ResizeStrategy {
