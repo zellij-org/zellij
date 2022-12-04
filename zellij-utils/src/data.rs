@@ -256,6 +256,15 @@ pub enum Resize {
     Decrease,
 }
 
+impl Resize {
+    pub fn invert(&self) -> Self {
+        match self {
+            Resize::Increase => Resize::Decrease,
+            Resize::Decrease => Resize::Increase,
+        }
+    }
+}
+
 impl fmt::Display for Resize {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
