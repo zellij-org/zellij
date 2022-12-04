@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::str;
 
-use zellij_utils::data::{ResizeStrategy, Direction, Resize};
+use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
@@ -248,14 +248,22 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy) => match strategy {
-                ResizeStrategy { resize: Resize::Increase, direction } => match direction {
+                ResizeStrategy {
+                    resize: Resize::Increase,
+                    direction,
+                    ..
+                } => match direction {
                     Some(Direction::Left) => ScreenContext::ResizeIncreaseLeft,
                     Some(Direction::Down) => ScreenContext::ResizeIncreaseDown,
                     Some(Direction::Up) => ScreenContext::ResizeIncreaseUp,
                     Some(Direction::Right) => ScreenContext::ResizeIncreaseRight,
                     None => ScreenContext::ResizeIncreaseAll,
                 },
-                ResizeStrategy { resize: Resize::Decrease, direction } => match direction {
+                ResizeStrategy {
+                    resize: Resize::Decrease,
+                    direction,
+                    ..
+                } => match direction {
                     Some(Direction::Left) => ScreenContext::ResizeDecreaseLeft,
                     Some(Direction::Down) => ScreenContext::ResizeDecreaseDown,
                     Some(Direction::Up) => ScreenContext::ResizeDecreaseUp,
@@ -1518,7 +1526,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render()?;
-            }
+            },
             ScreenInstruction::ResizeLeft(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
