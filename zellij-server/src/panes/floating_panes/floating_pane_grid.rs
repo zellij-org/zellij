@@ -494,6 +494,11 @@ impl<'a> FloatingPaneGrid<'a> {
         // Move left border
         if strategy.move_left_border_left() || strategy.move_all_borders_out() {
             let increment = std::cmp::min(geometry.x.saturating_sub(self.viewport.x), change_by.0);
+            // Invert if on boundary already
+            if increment == 0 {
+                return self.change_pane_size(pane_id, &strategy.invert(), change_by);
+            }
+
             geometry.x -= increment;
             geometry
                 .cols
@@ -516,6 +521,11 @@ impl<'a> FloatingPaneGrid<'a> {
                     .saturating_sub(geometry.x + geometry.cols.as_usize()),
                 change_by.0,
             );
+            // Invert if on boundary already
+            if increment == 0 {
+                return self.change_pane_size(pane_id, &strategy.invert(), change_by);
+            }
+
             geometry
                 .cols
                 .set_inner(geometry.cols.as_usize() + increment);
@@ -532,6 +542,11 @@ impl<'a> FloatingPaneGrid<'a> {
         // Move upper border
         if strategy.move_upper_border_up() || strategy.move_all_borders_out() {
             let increment = std::cmp::min(geometry.y.saturating_sub(self.viewport.y), change_by.1);
+            // Invert if on boundary already
+            if increment == 0 {
+                return self.change_pane_size(pane_id, &strategy.invert(), change_by);
+            }
+
             geometry.y -= increment;
             geometry
                 .rows
@@ -554,6 +569,11 @@ impl<'a> FloatingPaneGrid<'a> {
                     .saturating_sub(geometry.y + geometry.rows.as_usize()),
                 change_by.1,
             );
+            // Invert if on boundary already
+            if increment == 0 {
+                return self.change_pane_size(pane_id, &strategy.invert(), change_by);
+            }
+
             geometry
                 .rows
                 .set_inner(geometry.rows.as_usize() + increment);
