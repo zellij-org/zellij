@@ -1,7 +1,7 @@
 use crate::{
     envs::EnvironmentVariables,
     input::{
-        command::RunCommand,
+        command::{OpenFile, RunCommand},
         config::ConfigError,
         layout::{
             Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize,
@@ -278,8 +278,12 @@ impl<'a> KdlLayoutParser<'a> {
                 hold_on_start,
                 env,
             }))),
-            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
+            (None, Some(edit), cwd) => Ok(Some(Run::EditFile(OpenFile {
+                file_name: edit,
+                line_number: None,
+                cwd,
+                env,
+            }))),
             (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),

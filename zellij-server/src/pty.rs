@@ -9,6 +9,7 @@ use crate::{
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::envs::EnvironmentVariables;
+use zellij_utils::input::command::OpenFile;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -39,7 +40,7 @@ pub enum PtyInstruction {
         ClientOrTabIndex,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
-    OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
+    OpenInPlaceEditor(OpenFile, ClientId), // Option<usize> is the optional line number
     SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
     // optional pane
     // name
@@ -158,12 +159,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::OpenInPlaceEditor(temp_file, line_number, client_id) => {
+            PtyInstruction::OpenInPlaceEditor(open_file, client_id) => {
                 let err_context =
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(temp_file, line_number)),
+                    Some(TerminalAction::OpenFile(open_file)),
                     ClientOrTabIndex::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
@@ -678,7 +679,7 @@ impl Pty {
                         },
                     }
                 },
-                Some(Run::EditFile(path_to_file, line_number)) => {
+                Some(Run::EditFile(open_file)) => {
                     let starts_held = false; // we do not hold edit panes (for now?)
                     match self
                         .bus
@@ -687,7 +688,7 @@ impl Pty {
                         .context("no OS I/O interface found")
                         .with_context(err_context)?
                         .spawn_terminal(
-                            TerminalAction::OpenFile(path_to_file, line_number),
+                            TerminalAction::OpenFile(open_file),
                             quit_cb,
                             self.default_editor.clone(),
                         )

@@ -31,9 +31,10 @@ use crate::{
 use zellij_utils::{
     consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
+    envs::EnvironmentVariables,
     errors::{prelude::*, ContextType, PluginContext},
     input::{
-        command::TerminalAction,
+        command::{OpenFile, TerminalAction},
         layout::RunPlugin,
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
@@ -681,7 +682,12 @@ fn host_open_file(plugin_env: &PluginEnv) {
     plugin_env
         .senders
         .send_to_pty(PtyInstruction::SpawnTerminal(
-            Some(TerminalAction::OpenFile(path, None)),
+            Some(TerminalAction::OpenFile(OpenFile {
+                file_name: path,
+                line_number: None,
+                cwd: None,
+                env: EnvironmentVariables::new(),
+            })),
             None,
             None,
             ClientOrTabIndex::TabIndex(plugin_env.tab_index),

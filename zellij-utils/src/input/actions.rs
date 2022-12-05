@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::RunCommandAction;
+use super::command::{OpenFileAction, RunCommandAction};
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -171,7 +171,7 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
-    EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
+    EditFile(OpenFileAction), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
@@ -315,23 +315,23 @@ impl Action {
                 line_number,
                 floating,
                 cwd,
+                env,
             } => {
-                let mut file = file;
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
-                if file.is_relative() {
-                    if let Some(cwd) = cwd {
-                        file = cwd.join(file);
-                    }
-                }
-                Ok(vec![Action::EditFile(
-                    file,
+                let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
+                    EnvironmentVariables::from_data(HashMap::from_iter(e))
+                });
+                Ok(vec![Action::EditFile(OpenFileAction {
+                    file_name: file,
                     line_number,
+                    cwd,
+                    env: env_vars,
                     direction,
                     floating,
-                )])
+                })])
             },
             CliAction::SwitchMode { input_mode } => {
                 Ok(vec![Action::SwitchModeForAllClients(input_mode)])

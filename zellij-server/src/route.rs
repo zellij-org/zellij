@@ -277,10 +277,10 @@ pub(crate) fn route_action(
                 .send_to_pty(pty_instr)
                 .with_context(err_context)?;
         },
-        Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
-            let title = format!("Editing: {}", path_to_file.display());
-            let open_file = TerminalAction::OpenFile(path_to_file, line_number);
-            let pty_instr = match (split_direction, should_float) {
+        Action::EditFile(open_file_action) => {
+            let title = format!("Editing: {}", open_file_action.file_name.display());
+            let open_file = TerminalAction::OpenFile(open_file_action.clone().into());
+            let pty_instr = match (open_file_action.direction, open_file_action.floating) {
                 (Some(Direction::Left), false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
                 },
@@ -300,7 +300,7 @@ pub(crate) fn route_action(
                 // No direction specified or should float - defer placement to screen
                 (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
                     Some(open_file),
-                    Some(should_float),
+                    Some(open_file_action.floating),
                     Some(title),
                     ClientOrTabIndex::ClientId(client_id),
                 ),

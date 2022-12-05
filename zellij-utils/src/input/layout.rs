@@ -9,8 +9,9 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
+    envs::EnvironmentVariables,
     input::{
-        command::RunCommand,
+        command::{OpenFile, RunCommand},
         config::{Config, ConfigError},
     },
     pane_size::{Dimension, PaneGeom},
@@ -62,7 +63,7 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(OpenFile), // TODO: merge this with TerminalAction::OpenFile
     Cwd(PathBuf),
 }
 
@@ -95,15 +96,21 @@ impl Run {
                 }
                 Some(Run::Command(merged))
             },
-            (
-                Some(Run::Command(base_run_command)),
-                Some(Run::EditFile(file_to_edit, line_number)),
-            ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+            (Some(Run::Command(base_run_command)), Some(Run::EditFile(open_file))) => {
+                Some(Run::EditFile(OpenFile {
+                    file_name: open_file.file_name.clone(),
+                    line_number: open_file.line_number,
+                    cwd: base_run_command.cwd.clone(),
+                    env: EnvironmentVariables::new(),
+                }))
             },
-            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(open_file))) => {
+                Some(Run::EditFile(OpenFile {
+                    file_name: open_file.file_name.clone(),
+                    line_number: open_file.line_number,
+                    cwd: Some(cwd.to_path_buf()),
+                    env: EnvironmentVariables::new(),
+                }))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -121,8 +128,13 @@ impl Run {
                     run_command.cwd = Some(cwd.clone());
                 },
             },
-            Run::EditFile(path_to_file, _line_number) => {
-                *path_to_file = cwd.join(&path_to_file);
+            Run::EditFile(open_file) => match open_file.cwd.as_mut() {
+                Some(run_cwd) => {
+                    *run_cwd = cwd.join(&run_cwd);
+                },
+                None => {
+                    open_file.cwd = Some(cwd.clone());
+                },
             },
             Run::Cwd(path) => {
                 *path = cwd.join(&path);

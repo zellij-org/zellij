@@ -15,7 +15,6 @@ use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
     data::Palette,
-    envs::EnvironmentVariables,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
     interprocess,
@@ -252,24 +251,6 @@ fn handle_terminal(
     }
 }
 
-// this is a utility method to separate the arguments from a pathbuf before we turn it into a
-// Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
-fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
-    if let Some(file_name) = command
-        .file_name()
-        .and_then(|f_n| f_n.to_str())
-        .map(|f_n| f_n.to_string())
-    {
-        let mut file_name_parts = file_name.split_ascii_whitespace();
-        if let Some(first_part) = file_name_parts.next() {
-            command.set_file_name(first_part);
-            for part in file_name_parts {
-                args.push(String::from(part));
-            }
-        }
-    }
-}
-
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
 /// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
 /// file open.
@@ -291,54 +272,9 @@ fn spawn_terminal(
 ) -> Result<(RawFd, RawFd)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
-    let mut failover_cmd_args = None;
-    let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open, line_number) => {
-            let mut command = default_editor.unwrap_or_else(|| {
-                PathBuf::from(
-                    env::var("EDITOR")
-                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
-                )
-            });
-
-            let mut args = vec![];
-
-            if !command.is_dir() {
-                separate_command_arguments(&mut command, &mut args);
-            }
-            let file_to_open = file_to_open
-                .into_os_string()
-                .into_string()
-                .expect("Not valid Utf8 Encoding");
-            if let Some(line_number) = line_number {
-                if command.ends_with("vim")
-                    || command.ends_with("nvim")
-                    || command.ends_with("emacs")
-                    || command.ends_with("nano")
-                    || command.ends_with("kak")
-                {
-                    failover_cmd_args = Some(vec![file_to_open.clone()]);
-                    args.push(format!("+{}", line_number));
-                }
-            }
-            args.push(file_to_open);
-            RunCommand {
-                command,
-                args,
-                cwd: None,
-                hold_on_close: false,
-                hold_on_start: false,
-                env: EnvironmentVariables::new(),
-            }
-        },
-        TerminalAction::RunCommand(command) => command,
-    };
-    let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
-        let mut cmd = cmd.clone();
-        cmd.args = failover_cmd_args;
-        Some(cmd)
-    } else {
-        None
+    let (cmd, failover_cmd) = match terminal_action {
+        TerminalAction::OpenFile(openfile) => openfile.to_run_action(default_editor),
+        TerminalAction::RunCommand(command) => (command, None),
     };
 
     handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)

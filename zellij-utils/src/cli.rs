@@ -175,6 +175,14 @@ pub enum Sessions {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -308,6 +316,14 @@ pub enum CliAction {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode { input_mode: InputMode },
