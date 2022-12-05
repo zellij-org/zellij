@@ -1,5 +1,5 @@
 mod kdl_layout_parser;
-use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize, ResizeStrategy};
+use crate::data::{Direction, InputMode, Key, Palette, PaletteColor, Resize};
 use crate::envs::EnvironmentVariables;
 use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::keybinds::Keybinds;
@@ -21,7 +21,7 @@ use kdl::{KdlDocument, KdlEntry, KdlNode};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use crate::input::actions::{Action, ResizeDirection, SearchDirection, SearchOption};
+use crate::input::actions::{Action, SearchDirection, SearchOption};
 use crate::input::command::RunCommandAction;
 
 #[macro_export]
@@ -393,7 +393,7 @@ impl Action {
                     ))
                 },
             },
-            "ResizeNew" => {
+            "Resize" => {
                 let mut resize: Option<Resize> = None;
                 let mut direction: Option<Direction> = None;
                 for word in string.to_ascii_lowercase().split_whitespace() {
@@ -413,17 +413,7 @@ impl Action {
                     }
                 }
                 let resize = resize.unwrap_or(Resize::Increase);
-                Ok(Action::ResizeNew(resize, direction))
-            },
-            "Resize" => {
-                let direction = ResizeDirection::from_str(string.as_str()).map_err(|_| {
-                    ConfigError::new_kdl_error(
-                        format!("Invalid direction: '{}'", string),
-                        action_node.span().offset(),
-                        action_node.span().len(),
-                    )
-                })?;
-                Ok(Action::Resize(direction))
+                Ok(Action::Resize(resize, direction))
             },
             "MoveFocus" => {
                 let direction = Direction::from_str(string.as_str()).map_err(|_| {

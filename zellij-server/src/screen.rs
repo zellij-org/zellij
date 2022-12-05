@@ -139,12 +139,6 @@ pub enum ScreenInstruction {
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
-    ResizeLeft(ClientId),
-    ResizeRight(ClientId),
-    ResizeDown(ClientId),
-    ResizeUp(ClientId),
-    ResizeIncrease(ClientId),
-    ResizeDecrease(ClientId),
     SwitchFocus(ClientId),
     FocusNextPane(ClientId),
     FocusPreviousPane(ClientId),
@@ -271,12 +265,6 @@ impl From<&ScreenInstruction> for ScreenContext {
                     None => ScreenContext::ResizeDecreaseAll,
                 },
             },
-            ScreenInstruction::ResizeLeft(..) => ScreenContext::ResizeLeft,
-            ScreenInstruction::ResizeRight(..) => ScreenContext::ResizeRight,
-            ScreenInstruction::ResizeDown(..) => ScreenContext::ResizeDown,
-            ScreenInstruction::ResizeUp(..) => ScreenContext::ResizeUp,
-            ScreenInstruction::ResizeIncrease(..) => ScreenContext::ResizeIncrease,
-            ScreenInstruction::ResizeDecrease(..) => ScreenContext::ResizeDecrease,
             ScreenInstruction::SwitchFocus(..) => ScreenContext::SwitchFocus,
             ScreenInstruction::FocusNextPane(..) => ScreenContext::FocusNextPane,
             ScreenInstruction::FocusPreviousPane(..) => ScreenContext::FocusPreviousPane,
@@ -1523,60 +1511,6 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.resize(client_id, strategy),
                     ?
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeLeft(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_left(client_id)
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeRight(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_right(client_id)
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeDown(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_down(client_id)
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeUp(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_up(client_id)
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeIncrease(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_increase(client_id)
-                );
-                screen.unblock_input()?;
-                screen.render()?;
-            },
-            ScreenInstruction::ResizeDecrease(client_id) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.resize_decrease(client_id)
                 );
                 screen.unblock_input()?;
                 screen.render()?;

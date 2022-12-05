@@ -1,7 +1,6 @@
 mod floating_pane_grid;
 use zellij_utils::{
     data::{Direction, ResizeStrategy},
-    input::actions::ResizeDirection,
     position::Position,
 };
 
@@ -28,6 +27,9 @@ use zellij_utils::{
     input::command::RunCommand,
     pane_size::{Offset, PaneGeom, Size, Viewport},
 };
+
+const RESIZE_INCREMENT_WIDTH: usize = 5;
+const RESIZE_INCREMENT_HEIGHT: usize = 2;
 
 pub struct FloatingPanes {
     panes: BTreeMap<PaneId, Box<dyn Pane>>,
@@ -356,7 +358,11 @@ impl FloatingPanes {
                 viewport,
             );
             floating_pane_grid
-                .change_pane_size(active_floating_pane_id, strategy, (5, 2))
+                .change_pane_size(
+                    active_floating_pane_id,
+                    strategy,
+                    (RESIZE_INCREMENT_WIDTH, RESIZE_INCREMENT_HEIGHT),
+                )
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {

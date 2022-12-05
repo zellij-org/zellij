@@ -52,6 +52,7 @@ impl<'a> TiledPaneGrid<'a> {
     /// Calculates an area for each pane and sums them all.
     ///
     /// Returns the product of "rows * columns", summed across all panes.
+    #[cfg(debug_assertions)]
     fn total_panes_area(&self) -> f64 {
         let mut summed_area: f64 = 0.0;
 

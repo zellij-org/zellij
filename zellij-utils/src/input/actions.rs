@@ -103,10 +103,8 @@ pub enum Action {
     SwitchToMode(InputMode),
     /// Switch all connected clients to the specified input mode.
     SwitchModeForAllClients(InputMode),
-    /// Resize focus pane in specified direction.
-    Resize(ResizeDirection),
-    /// Shrink/enlarge focused pane at border in specified direction
-    ResizeNew(Resize, Option<Direction>),
+    /// Shrink/enlarge focused pane at specified border
+    Resize(Resize, Option<Direction>),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
@@ -214,9 +212,8 @@ impl Action {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
-            CliAction::Resize { resize_direction } => Ok(vec![Action::Resize(resize_direction)]),
-            CliAction::ResizeNew { resize, direction } => {
-                Ok(vec![Action::ResizeNew(resize, direction)])
+            CliAction::Resize { resize, direction } => {
+                Ok(vec![Action::Resize(resize, direction)])
             },
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
