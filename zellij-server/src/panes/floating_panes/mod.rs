@@ -326,7 +326,7 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        floating_pane_grid.resize(new_screen_size);
+        floating_pane_grid.resize(new_screen_size).unwrap();
         self.set_force_render();
     }
 
@@ -387,7 +387,7 @@ impl FloatingPanes {
         direction: &Direction,
     ) -> Result<bool> {
         // true => successfully moved
-        let err_context = || {
+        let _err_context = || {
             format!("failed to move focus of floating pane {direction:?} for client {client_id}")
         };
 
@@ -477,7 +477,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_down(active_pane_id);
+            floating_pane_grid.move_pane_down(active_pane_id).unwrap();
             self.set_force_render();
         }
     }
@@ -491,7 +491,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_up(active_pane_id);
+            floating_pane_grid.move_pane_up(active_pane_id).unwrap();
             self.set_force_render();
         }
     }
@@ -505,7 +505,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_left(active_pane_id);
+            floating_pane_grid.move_pane_left(active_pane_id).unwrap();
             self.set_force_render();
         }
     }
@@ -519,7 +519,7 @@ impl FloatingPanes {
                 display_area,
                 viewport,
             );
-            floating_pane_grid.move_pane_right(active_pane_id);
+            floating_pane_grid.move_pane_right(active_pane_id).unwrap();
             self.set_force_render();
         }
     }
@@ -596,7 +596,7 @@ impl FloatingPanes {
         point: &Position,
         search_selectable: bool,
     ) -> Result<Option<PaneId>> {
-        let err_context = || format!("failed to determine floating pane at point {point:?}");
+        let _err_context = || format!("failed to determine floating pane at point {point:?}");
 
         // TODO: better - loop through z-indices and check each one if it contains the point
         let mut panes: Vec<_> = if search_selectable {
@@ -647,7 +647,9 @@ impl FloatingPanes {
             display_area,
             viewport,
         );
-        floating_pane_grid.move_pane_by(pane_id, move_x_by, move_y_by);
+        floating_pane_grid
+            .move_pane_by(pane_id, move_x_by, move_y_by)
+            .unwrap();
         self.set_pane_being_moved_with_mouse(pane_id, *click_position);
         self.set_force_render();
         true

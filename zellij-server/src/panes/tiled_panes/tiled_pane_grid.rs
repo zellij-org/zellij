@@ -276,7 +276,8 @@ impl<'a> TiledPaneGrid<'a> {
             } else {
                 return Err(anyhow!(
                     "Don't know how to perform resize operation: '{strategy}'"
-                )).with_context(err_context);
+                ))
+                .with_context(err_context);
             }
 
             // Update grid

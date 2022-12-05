@@ -275,7 +275,8 @@ impl<'a> FloatingPaneGrid<'a> {
             .can_move_pane_left(pane_id, MOVE_INCREMENT_HORIZONTAL)
             .with_context(err_context)?
         {
-            self.move_pane_position_left(pane_id, move_by);
+            self.move_pane_position_left(pane_id, move_by)
+                .with_context(err_context)?;
         }
         Ok(())
     }
@@ -287,7 +288,8 @@ impl<'a> FloatingPaneGrid<'a> {
             .can_move_pane_right(pane_id, MOVE_INCREMENT_HORIZONTAL)
             .with_context(err_context)?
         {
-            self.move_pane_position_right(pane_id, move_by);
+            self.move_pane_position_right(pane_id, move_by)
+                .with_context(err_context)?;
         }
         Ok(())
     }
@@ -299,7 +301,8 @@ impl<'a> FloatingPaneGrid<'a> {
             .can_move_pane_down(pane_id, MOVE_INCREMENT_VERTICAL)
             .with_context(err_context)?
         {
-            self.move_pane_position_down(pane_id, move_by);
+            self.move_pane_position_down(pane_id, move_by)
+                .with_context(err_context)?;
         }
         Ok(())
     }
@@ -311,7 +314,8 @@ impl<'a> FloatingPaneGrid<'a> {
             .can_move_pane_up(pane_id, MOVE_INCREMENT_VERTICAL)
             .with_context(err_context)?
         {
-            self.move_pane_position_up(pane_id, move_by);
+            self.move_pane_position_up(pane_id, move_by)
+                .with_context(err_context)?;
         }
         Ok(())
     }
