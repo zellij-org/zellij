@@ -289,7 +289,7 @@ impl InputHandler {
             },
             Action::CloseFocus
             | Action::NewPane(..)
-            | Action::Run(_)
+            | Action::Run(..)
             | Action::ToggleFloatingPanes
             | Action::TogglePaneEmbedOrFloating
             | Action::NewTab(..)

@@ -3,6 +3,7 @@ use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 use crate::{action_key, action_key_group, style_key_with_modifier, LinePart};
 use zellij_tile::prelude::{
     actions::{Action, Direction, ResizeDirection},
+    command::{PaneOptions, RunCommand},
     *,
 };
 
@@ -65,7 +66,10 @@ struct Keygroups<'a> {
 
 fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let normal_keymap = help.get_mode_keybinds();
-    let new_pane_keys = action_key(&normal_keymap, &[Action::NewPane(None, None)]);
+    let new_pane_keys = action_key(
+        &normal_keymap,
+        &[Action::NewPane(RunCommand::new(), PaneOptions::new())],
+    );
     let new_pane = if new_pane_keys.is_empty() {
         vec![Style::new().bold().paint("UNBOUND")]
     } else {

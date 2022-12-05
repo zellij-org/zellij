@@ -320,7 +320,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
-                        command: shell,
+                        command: Some(shell),
                         ..Default::default()
                     })
                 });
@@ -647,7 +647,7 @@ fn init_session(
 
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
-            command,
+            command: Some(command),
             ..Default::default()
         })
     });

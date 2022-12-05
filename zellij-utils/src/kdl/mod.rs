@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::input::actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption};
-use crate::input::command::RunCommandAction;
+use crate::input::command::{PaneOptions, RunCommand, TiledPaneOptions};
 
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
@@ -440,7 +440,14 @@ impl Action {
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane(None, None));
+                    return Ok(Action::NewPane(
+                        RunCommand::new(),
+                        PaneOptions {
+                            title: None,
+                            floating: false,
+                            direction: None,
+                        },
+                    ));
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -449,7 +456,14 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane(Some(direction), None))
+                    Ok(Action::NewPane(
+                        RunCommand::new(),
+                        PaneOptions {
+                            title: None,
+                            floating: false,
+                            direction: Some(direction),
+                        },
+                    ))
                 }
             },
             "SearchToggleOption" => {
@@ -763,16 +777,21 @@ impl TryFrom<&KdlNode> for Action {
                     EnvironmentVariables::from_data(HashMap::new())
                 };
 
-                let run_command_action = RunCommandAction {
-                    command: PathBuf::from(command),
+                let run_command_action = RunCommand {
+                    command: Some(PathBuf::from(command)),
                     args,
                     cwd,
-                    direction,
                     hold_on_close,
                     hold_on_start,
                     env,
                 };
-                Ok(Action::Run(run_command_action))
+                Ok(Action::Run(
+                    run_command_action,
+                    TiledPaneOptions {
+                        direction,
+                        title: None,
+                    },
+                ))
             },
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),

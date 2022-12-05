@@ -116,7 +116,11 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
 }
 
 fn command_exists(cmd: &RunCommand) -> bool {
-    let command = &cmd.command;
+    let command = if let Some(s) = cmd.command.as_ref() {
+        s
+    } else {
+        return false;
+    };
     match cmd.cwd.as_ref() {
         Some(cwd) => {
             let full_command = cwd.join(&command);
@@ -149,10 +153,14 @@ fn handle_openpty(
     terminal_id: u32,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = |cmd: &RunCommand| {
-        format!(
-            "failed to open PTY for command '{}'",
-            cmd.command.to_string_lossy().to_string()
-        )
+        if let Some(command) = &cmd.command {
+            format!(
+                "failed to open PTY for command '{}'",
+                command.to_string_lossy().to_string()
+            )
+        } else {
+            String::from("failed to open PTY for None command")
+        }
     };
 
     // primary side of pty and child fd
@@ -160,12 +168,15 @@ fn handle_openpty(
     let pid_secondary = open_pty_res.slave;
 
     // let mut cmd = cmd.clone();
-    cmd.command = PathBuf::from(
-        env_with_context_no_errors(&cmd.command.to_string_lossy().to_string(), |x| {
-            cmd.env.env.get(x)
-        })
-        .to_string(),
-    );
+    //
+    cmd.command = if let Some(s) = cmd.command.as_ref() {
+        Some(PathBuf::from(
+            env_with_context_no_errors(&s.to_string_lossy().to_string(), |x| cmd.env.env.get(x))
+                .to_string(),
+        ))
+    } else {
+        None
+    };
     cmd.args = cmd
         .args
         .iter()
@@ -175,7 +186,7 @@ fn handle_openpty(
     if command_exists(&cmd) {
         let mut child = unsafe {
             let cmd = cmd.clone();
-            let command = &mut Command::new(cmd.command);
+            let command = &mut Command::new(cmd.command.unwrap_unchecked());
             if let Some(current_dir) = cmd.cwd {
                 if current_dir.exists() && current_dir.is_dir() {
                     command.current_dir(current_dir);
@@ -216,7 +227,12 @@ fn handle_openpty(
     } else {
         Err(ZellijError::CommandNotFound {
             terminal_id,
-            command: cmd.command.to_string_lossy().to_string(),
+            command: cmd
+                .command
+                .clone()
+                .unwrap_or(PathBuf::new())
+                .to_string_lossy()
+                .to_string(),
         })
         .with_context(|| err_context(&cmd))
     }

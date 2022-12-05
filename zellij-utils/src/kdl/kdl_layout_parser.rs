@@ -271,7 +271,7 @@ impl<'a> KdlLayoutParser<'a> {
         match (command, edit, cwd) {
             (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
             (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
-                command,
+                command: Some(command),
                 args: args.unwrap_or_else(|| vec![]),
                 cwd,
                 hold_on_close,

@@ -8,7 +8,6 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
-use zellij_utils::envs::EnvironmentVariables;
 use zellij_utils::input::command::OpenFile;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
@@ -229,7 +228,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             *terminal_id,
                                             format!(
                                                 "Command not found: {}",
-                                                run_command.command.display()
+                                                run_command
+                                                    .command
+                                                    .clone()
+                                                    .unwrap_or(PathBuf::new())
+                                                    .display()
                                             )
                                             .as_bytes()
                                             .to_vec(),
@@ -299,7 +302,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                             *terminal_id,
                                             format!(
                                                 "Command not found: {}",
-                                                run_command.command.display()
+                                                run_command
+                                                    .command
+                                                    .clone()
+                                                    .unwrap_or(PathBuf::new())
+                                                    .display()
                                             )
                                             .as_bytes()
                                             .to_vec(),
@@ -392,7 +399,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         *terminal_id,
                                         format!(
                                             "Command not found: {}",
-                                            run_command.command.display()
+                                            run_command
+                                                .command
+                                                .clone()
+                                                .unwrap_or(PathBuf::new())
+                                                .display()
                                         )
                                         .as_bytes()
                                         .to_vec(),
@@ -443,12 +454,10 @@ impl Pty {
             panic!("Cannot find shell {}", shell.display());
         }
         TerminalAction::RunCommand(RunCommand {
+            command: Some(shell),
             args: vec![],
-            command: shell,
             cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
-            hold_on_close: false,
-            hold_on_start: false,
-            env: EnvironmentVariables::from_data(HashMap::new()),
+            ..Default::default()
         })
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
@@ -483,6 +492,13 @@ impl Pty {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =
                     terminal_action.unwrap_or_else(|| self.get_default_terminal(None));
+
+                if let TerminalAction::RunCommand(s) = terminal_action.clone() {
+                    if s.command.is_none() {
+                        terminal_action =
+                            terminal_action.merge(Some(self.get_default_terminal(None)))
+                    }
+                };
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
@@ -563,6 +579,12 @@ impl Pty {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
         let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
+        if let TerminalAction::RunCommand(s) = default_shell.clone() {
+            if s.command.is_none() {
+                default_shell = default_shell.merge(Some(self.get_default_terminal(None)))
+            }
+        };
+
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
@@ -944,7 +966,12 @@ fn send_command_not_found_to_screen(
     senders
         .send_to_screen(ScreenInstruction::PtyBytes(
             terminal_id,
-            format!("Command not found: {}\n\rIf you were including arguments as part of the command, try including them as 'args' instead.", run_command.command.display())
+            format!("Command not found: {}\n\rIf you were including arguments as part of the command, try including them as 'args' instead.", 
+                run_command
+                .command
+                .clone()
+                .unwrap_or(PathBuf::new())
+                .display())
                 .as_bytes()
                 .to_vec(),
         ))
@@ -953,7 +980,7 @@ fn send_command_not_found_to_screen(
         .send_to_screen(ScreenInstruction::HoldPane(
             PaneId::Terminal(terminal_id),
             Some(2),
-            run_command.clone(),
+            run_command,
             None,
         ))
         .with_context(err_context)?;

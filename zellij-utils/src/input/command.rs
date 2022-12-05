@@ -11,10 +11,37 @@ pub enum TerminalAction {
     RunCommand(RunCommand),
 }
 
+impl From<RunCommand> for TerminalAction {
+    fn from(command: RunCommand) -> Self {
+        TerminalAction::RunCommand(command)
+    }
+}
+
+impl From<OpenFile> for TerminalAction {
+    fn from(command: OpenFile) -> Self {
+        TerminalAction::OpenFile(command)
+    }
+}
+
+impl TerminalAction {
+    pub fn merge(self, other: Option<Self>) -> Self {
+        if let Some(other) = other {
+            match (self, other) {
+                (TerminalAction::RunCommand(s), TerminalAction::RunCommand(o)) => {
+                    TerminalAction::RunCommand(s.merge(Some(o)))
+                },
+                (s, _) => s,
+            }
+        } else {
+            self
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
 pub struct RunCommand {
     #[serde(alias = "cmd")]
-    pub command: PathBuf,
+    pub command: Option<PathBuf>,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
@@ -27,10 +54,43 @@ pub struct RunCommand {
     pub hold_on_start: bool,
 }
 
+impl RunCommand {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn merge(self, other: Option<Self>) -> Self {
+        if let Some(other) = other {
+            RunCommand {
+                command: match (self.command.clone(), other.command.clone()) {
+                    (Some(s), _) => Some(s),
+                    (None, s) => s,
+                },
+                args: match (self.command, other.command) {
+                    (Some(_), _) => self.args,
+                    (None, Some(_)) => other.args,
+                    (None, None) => Vec::new(),
+                },
+                cwd: match (self.cwd, other.cwd) {
+                    (Some(s), _) => Some(s),
+                    (None, s) => s,
+                },
+                env: self.env.merge(other.env),
+                hold_on_close: self.hold_on_close || other.hold_on_close,
+                hold_on_start: self.hold_on_start || other.hold_on_start,
+            }
+        } else {
+            self
+        }
+    }
+}
+
 impl std::fmt::Display for RunCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut command: String = self
             .command
+            .clone()
+            .unwrap_or(PathBuf::new())
             .as_path()
             .as_os_str()
             .to_string_lossy()
@@ -40,40 +100,6 @@ impl std::fmt::Display for RunCommand {
             command.push_str(arg);
         }
         write!(f, "{}", command)
-    }
-}
-
-/// Intermediate representation
-#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
-pub struct RunCommandAction {
-    #[serde(rename = "cmd")]
-    pub command: PathBuf,
-    #[serde(default)]
-    pub args: Vec<String>,
-    #[serde(default)]
-    pub cwd: Option<PathBuf>,
-    #[serde(default)]
-    pub env: EnvironmentVariables,
-
-    #[serde(default)]
-    pub hold_on_close: bool,
-    #[serde(default)]
-    pub hold_on_start: bool,
-
-    #[serde(default)]
-    pub direction: Option<Direction>,
-}
-
-impl From<RunCommandAction> for RunCommand {
-    fn from(action: RunCommandAction) -> Self {
-        RunCommand {
-            command: action.command,
-            args: action.args,
-            cwd: action.cwd,
-            env: action.env,
-            hold_on_close: action.hold_on_close,
-            hold_on_start: action.hold_on_start,
-        }
     }
 }
 
@@ -89,36 +115,11 @@ pub struct OpenFile {
     pub env: EnvironmentVariables,
 }
 
-/// Intermediate representation
-#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
-pub struct OpenFileAction {
-    #[serde(rename = "file")]
-    pub file_name: PathBuf,
-    #[serde(default)]
-    pub line_number: Option<usize>,
-    #[serde(default)]
-    pub cwd: Option<PathBuf>,
-    #[serde(default)]
-    pub env: EnvironmentVariables,
-
-    #[serde(default)]
-    pub direction: Option<Direction>,
-    #[serde(default)]
-    pub floating: bool,
-}
-
-impl From<OpenFileAction> for OpenFile {
-    fn from(action: OpenFileAction) -> Self {
-        OpenFile {
-            file_name: action.file_name,
-            line_number: action.line_number,
-            cwd: action.cwd,
-            env: action.env,
-        }
-    }
-}
-
 impl OpenFile {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     pub fn to_run_action(
         self,
         default_editor: Option<PathBuf>,
@@ -152,7 +153,7 @@ impl OpenFile {
         }
         args.push(file_to_open);
         let cmd = RunCommand {
-            command,
+            command: Some(command),
             args,
             cwd: self.cwd,
             hold_on_close: false,
@@ -185,5 +186,62 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
                 args.push(String::from(part));
             }
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+pub struct PaneOptions {
+    #[serde(default)]
+    pub direction: Option<Direction>,
+    #[serde(default)]
+    pub floating: bool,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+pub struct FloatingPaneOptions {
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+pub struct TiledPaneOptions {
+    #[serde(default)]
+    pub direction: Option<Direction>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+impl From<PaneOptions> for FloatingPaneOptions {
+    fn from(opt: PaneOptions) -> Self {
+        FloatingPaneOptions { title: opt.title }
+    }
+}
+
+impl From<PaneOptions> for TiledPaneOptions {
+    fn from(opt: PaneOptions) -> Self {
+        TiledPaneOptions {
+            title: opt.title,
+            direction: opt.direction,
+        }
+    }
+}
+
+impl PaneOptions {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl FloatingPaneOptions {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl TiledPaneOptions {
+    pub fn new() -> Self {
+        Default::default()
     }
 }

@@ -1,6 +1,6 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{OpenFileAction, RunCommandAction};
+use super::command::{FloatingPaneOptions, OpenFile, PaneOptions, RunCommand, TiledPaneOptions};
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -169,13 +169,13 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(Option<Direction>, Option<String>), // String is an optional pane name
+    NewPane(RunCommand, PaneOptions), // String is an optional pane name
     /// Open the file in a new pane using the default editor
-    EditFile(OpenFileAction), // usize is an optional line number, bool is floating true/false
+    EditFile(OpenFile, PaneOptions), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
-    NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
+    NewFloatingPane(RunCommand, FloatingPaneOptions), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(Option<Direction>, Option<RunCommandAction>, Option<String>), // String is an
+    NewTiledPane(RunCommand, TiledPaneOptions), // String is an
     // optional pane
     // name
     /// Embed focused pane in tab if floating or float focused pane if embedded
@@ -201,7 +201,7 @@ pub enum Action {
     TabNameInput(Vec<u8>),
     UndoRenameTab,
     /// Run specified command in new pane.
-    Run(RunCommandAction),
+    Run(RunCommand, TiledPaneOptions),
     /// Detach session and exit
     Detach,
     LeftClick(Position),
@@ -268,45 +268,43 @@ impl Action {
                 start_suspended,
                 env,
             } => {
-                if !command.is_empty() {
-                    let mut command = command.clone();
+                let current_dir = get_current_dir();
+                let cwd = cwd
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
+                let hold_on_start = start_suspended;
+                let hold_on_close = !close_on_exit;
+                let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
+                    EnvironmentVariables::from_data(HashMap::from_iter(e))
+                });
+                let mut command = command.clone();
+                let (command, args) = if !command.is_empty() {
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
-                    let current_dir = get_current_dir();
-                    let cwd = cwd
-                        .map(|cwd| current_dir.join(cwd))
-                        .or_else(|| Some(current_dir));
-                    let hold_on_start = start_suspended;
-                    let hold_on_close = !close_on_exit;
-                    let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
-                        EnvironmentVariables::from_data(HashMap::from_iter(e))
-                    });
-                    let run_command_action = RunCommandAction {
-                        command,
-                        args,
-                        cwd,
-                        direction,
-                        hold_on_close,
-                        hold_on_start,
-                        env: env_vars,
-                    };
-                    if floating {
-                        Ok(vec![Action::NewFloatingPane(
-                            Some(run_command_action),
-                            name,
-                        )])
-                    } else {
-                        Ok(vec![Action::NewTiledPane(
-                            direction,
-                            Some(run_command_action),
-                            name,
-                        )])
-                    }
+                    (Some(command), args)
                 } else {
-                    if floating {
-                        Ok(vec![Action::NewFloatingPane(None, name)])
-                    } else {
-                        Ok(vec![Action::NewTiledPane(direction, None, name)])
-                    }
+                    (None, Vec::new())
+                };
+                let run_command_action = RunCommand {
+                    command,
+                    args,
+                    cwd,
+                    hold_on_close,
+                    hold_on_start,
+                    env: env_vars,
+                };
+                if floating {
+                    Ok(vec![Action::NewFloatingPane(
+                        run_command_action,
+                        FloatingPaneOptions { title: name },
+                    )])
+                } else {
+                    Ok(vec![Action::NewTiledPane(
+                        run_command_action,
+                        TiledPaneOptions {
+                            title: name,
+                            direction,
+                        },
+                    )])
                 }
             },
             CliAction::Edit {
@@ -324,14 +322,19 @@ impl Action {
                 let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
                     EnvironmentVariables::from_data(HashMap::from_iter(e))
                 });
-                Ok(vec![Action::EditFile(OpenFileAction {
-                    file_name: file,
-                    line_number,
-                    cwd,
-                    env: env_vars,
-                    direction,
-                    floating,
-                })])
+                Ok(vec![Action::EditFile(
+                    OpenFile {
+                        file_name: file.clone(),
+                        line_number,
+                        cwd,
+                        env: env_vars,
+                    },
+                    PaneOptions {
+                        title: Some(format!("Editing: {}", file.display())),
+                        direction,
+                        floating,
+                    },
+                )])
             },
             CliAction::SwitchMode { input_mode } => {
                 Ok(vec![Action::SwitchModeForAllClients(input_mode)])
