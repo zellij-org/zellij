@@ -201,8 +201,6 @@ impl<'a> TiledPaneGrid<'a> {
                     .collect()
             };
 
-            log::info!("neighbor terminals before: {neighbor_terminals:?}");
-
             // Only resize those neighbors that are aligned and between pane borders
             let (some_direction, other_direction) = match direction {
                 Direction::Left | Direction::Right => (Direction::Up, Direction::Down),
@@ -231,9 +229,6 @@ impl<'a> TiledPaneGrid<'a> {
                     self.pane_is_between_vertical_borders(t, some_borders, other_borders)
                 }
             });
-
-            log::info!("neighbor terminals after: {neighbor_terminals:?}");
-            log::info!("terminal borders: '{some_borders:?}', '{other_borders:?}'");
 
             // Perform the resize
             let change_by = match direction {
@@ -280,7 +275,7 @@ impl<'a> TiledPaneGrid<'a> {
             } else {
                 return Err(anyhow!(
                     "Don't know how to perform resize operation: '{strategy}'"
-                ));
+                )).with_context(err_context);
             }
 
             // Update grid
@@ -583,8 +578,6 @@ impl<'a> TiledPaneGrid<'a> {
             })
             .with_context(err_context)?;
 
-        log::info!("Panes aligned with {id:?}: {:?}", aligned_panes.iter().map(|p| p.pid()).collect::<Vec<_>>());
-
         use Direction::Down as D;
         use Direction::Left as L;
         use Direction::Right as R;
@@ -610,8 +603,6 @@ impl<'a> TiledPaneGrid<'a> {
                 result.push(pane);
             }
         }
-
-        log::info!("Candidate panes: {:?}", result.iter().map(|p| p.pid()).collect::<Vec<_>>());
 
         let mut resize_border = match direction {
             &L => 0,
@@ -649,8 +640,6 @@ impl<'a> TiledPaneGrid<'a> {
             &R => (pane.x() + pane.cols()) <= resize_border,
         });
 
-        log::info!("aligned panes: {:?}", result.iter().map(|p| p.pid()).collect::<Vec<_>>());
-
         let resize_border = if result.is_empty() {
             match direction {
                 &L => pane_to_check.x(),
@@ -664,29 +653,6 @@ impl<'a> TiledPaneGrid<'a> {
         let pane_ids: Vec<PaneId> = result.iter().map(|t| t.pid()).collect();
 
         Ok((resize_border, pane_ids))
-    }
-
-    // Returns true if none of the `pane_ids` has a `Fixed` dimension
-    fn ids_are_flexible(&self, direction: SplitDirection, pane_ids: Vec<PaneId>) -> Result<bool> {
-        let err_context =
-            || format!("failed to determine if panes {pane_ids:?} are flexible in {direction:?}");
-
-        let panes = self.panes.borrow();
-        for id in pane_ids.iter() {
-            let pane_to_check = panes
-                .get(&id)
-                .with_context(|| no_pane_id(&id))
-                .with_context(err_context)?;
-            let geom = pane_to_check.current_geom();
-            let dimension = match direction {
-                SplitDirection::Vertical => geom.rows,
-                SplitDirection::Horizontal => geom.cols,
-            };
-            if dimension.is_fixed() {
-                return Ok(false);
-            }
-        }
-        Ok(true)
     }
 
     fn pane_is_between_vertical_borders(
