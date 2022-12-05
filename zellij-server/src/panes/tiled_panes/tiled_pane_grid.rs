@@ -284,12 +284,10 @@ impl<'a> TiledPaneGrid<'a> {
                 pane_resizer
                     .layout(SplitDirection::Horizontal, self.display_area.cols)
                     .with_context(err_context)?;
-                return Ok(true);
             } else {
                 pane_resizer
                     .layout(SplitDirection::Vertical, self.display_area.rows)
                     .with_context(err_context)?;
-                return Ok(true);
             }
         } else {
             // Get panes aligned at corners, so we can change their sizes manually afterwards
@@ -405,7 +403,8 @@ impl<'a> TiledPaneGrid<'a> {
             let area = self.total_panes_area() * 100.0;
             debug_assert!(
                 f64::abs(area - 100.0) < 1.0, // Tolerate a little rounding error
-                "area consumed by panes doesn't fill the viewport! Total area is {area} %",
+                "area consumed by panes doesn't fill the viewport! Total area is {area} %
+                During operation: '{strategy}', on pane {pane_id:?}",
             );
         }
 
