@@ -336,7 +336,11 @@ impl From<Resize> for ResizeStrategy {
 
 impl ResizeStrategy {
     pub fn new(resize: Resize, direction: Option<Direction>) -> Self {
-        ResizeStrategy { resize, direction, invert_on_boundaries: true}
+        ResizeStrategy {
+            resize,
+            direction,
+            invert_on_boundaries: true,
+        }
     }
 
     pub fn invert(&self) -> ResizeStrategy {
@@ -361,7 +365,10 @@ impl ResizeStrategy {
     }
 
     pub fn direction_horizontal(&self) -> bool {
-        matches!(self.direction, Some(Direction::Left) | Some(Direction::Right))
+        matches!(
+            self.direction,
+            Some(Direction::Left) | Some(Direction::Right)
+        )
     }
 
     pub fn direction_vertical(&self) -> bool {

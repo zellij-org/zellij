@@ -401,14 +401,16 @@ impl Action {
                         Ok(value) => resize = Some(value),
                         Err(_) => match Direction::from_str(word) {
                             Ok(value) => direction = Some(value),
-                            Err(_) => return Err(ConfigError::new_kdl_error(
-                                format!(
+                            Err(_) => {
+                                return Err(ConfigError::new_kdl_error(
+                                    format!(
                                     "failed to read either of resize type or direction from '{}'",
                                     word
                                 ),
-                                action_node.span().offset(),
-                                action_node.span().len(),
-                            )),
+                                    action_node.span().offset(),
+                                    action_node.span().len(),
+                                ))
+                            },
                         },
                     }
                 }

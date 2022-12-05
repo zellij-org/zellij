@@ -1,4 +1,4 @@
-use crate::data::{InputMode, Direction, Resize};
+use crate::data::{Direction, InputMode, Resize};
 use crate::setup::Setup;
 use crate::{
     consts::{ZELLIJ_CONFIG_DIR_ENV, ZELLIJ_CONFIG_FILE_ENV},
@@ -184,7 +184,10 @@ pub enum CliAction {
     /// Write characters to the terminal.
     WriteChars { chars: String },
     /// [increase|decrease] the focused panes area at the [left|down|up|right] border.
-    Resize { resize: Resize, direction: Option<Direction> },
+    Resize {
+        resize: Resize,
+        direction: Option<Direction>,
+    },
     /// Change focus to the next pane
     FocusNextPane,
     /// Change focus to the previous pane

@@ -212,9 +212,7 @@ impl Action {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
-            CliAction::Resize { resize, direction } => {
-                Ok(vec![Action::Resize(resize, direction)])
-            },
+            CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
