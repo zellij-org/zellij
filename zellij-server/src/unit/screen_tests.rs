@@ -10,8 +10,9 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
+use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::actions::{Action, ResizeDirection};
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
@@ -28,7 +29,7 @@ use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{InputMode, ModeInfo, Palette, PluginCapabilities, Direction},
+    data::{Direction, InputMode, ModeInfo, Palette, PluginCapabilities},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
@@ -997,7 +998,8 @@ pub fn send_cli_resize_action_to_screen() {
         server_receiver
     );
     let resize_cli_action = CliAction::Resize {
-        resize_direction: ResizeDirection::Left,
+        resize: Resize::Increase,
+        direction: Some(Direction::Left),
     };
     send_cli_action_to_server(
         &session_metadata,
