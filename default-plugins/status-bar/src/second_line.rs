@@ -110,7 +110,6 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     use Action as A;
     use InputMode as IM;
     use Direction as Dir;
-    use actions::ResizeDirection as RDir;
     use actions::SearchDirection as SDir;
     use actions::SearchOption as SOpt;
 
@@ -188,11 +187,23 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
-        (s("Resize"), s("Resize"), action_key_group(&km, &[
-            &[A::Resize(RDir::Left)], &[A::Resize(RDir::Down)],
-            &[A::Resize(RDir::Up)], &[A::Resize(RDir::Right)]])),
+        (s("Increase to"), s("Increase"), action_key_group(&km, &[
+            &[A::Resize(Resize::Increase, Some(Dir::Left))],
+            &[A::Resize(Resize::Increase, Some(Dir::Down))],
+            &[A::Resize(Resize::Increase, Some(Dir::Up))],
+            &[A::Resize(Resize::Increase, Some(Dir::Right))]
+            ])),
+        (s("Decrease from"), s("Decrease"), action_key_group(&km, &[
+            &[A::Resize(Resize::Decrease, Some(Dir::Left))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Down))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Up))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Right))]
+            ])),
         (s("Increase/Decrease size"), s("Increase/Decrease"),
-            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])),
+            action_key_group(&km, &[
+                &[A::Resize(Resize::Increase, None)],
+                &[A::Resize(Resize::Decrease, None)]
+            ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Move"), s("Move"), action_key_group(&km, &[
