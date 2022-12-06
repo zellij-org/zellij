@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: preserve pane focus properly when closing panes and switching tabs (https://github.com/zellij-org/zellij/pull/1966)
 * fix(themes): missing tokyo-night-dark theme (https://github.com/zellij-org/zellij/pull/1972)
 * refactor(plugins): fix plugin loading data flow (https://github.com/zellij-org/zellij/pull/1995)
+* refactor(messaging): reduce extraneous cross-thread messaging (https://github.com/zellij-org/zellij/pull/1996)
 
 ## [0.33.0] - 2022-11-10
 

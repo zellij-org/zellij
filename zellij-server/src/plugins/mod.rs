@@ -21,9 +21,9 @@ use zellij_utils::{
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(RunPlugin, usize, ClientId, Size), // plugin metadata, tab_index, client_ids
-    Update(Option<u32>, Option<ClientId>, Event), // Focused plugin / broadcast, client_id, event data
-    Unload(u32),                                  // plugin_id
-    Resize(u32, usize, usize),                    // plugin_id, columns, rows
+    Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
+    Unload(u32),                                         // plugin_id
+    Resize(u32, usize, usize),                           // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
@@ -73,8 +73,8 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Load(run, tab_index, client_id, size) => {
                 wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
             },
-            PluginInstruction::Update(pid, cid, event) => {
-                wasm_bridge.update_plugins(pid, cid, event)?;
+            PluginInstruction::Update(updates) => {
+                wasm_bridge.update_plugins(updates)?;
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;

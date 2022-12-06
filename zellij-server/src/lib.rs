@@ -407,11 +407,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap();
                 session_data
                     .senders
-                    .send_to_plugin(PluginInstruction::Update(
+                    .send_to_plugin(PluginInstruction::Update(vec![(
                         None,
                         Some(client_id),
                         Event::ModeUpdate(mode_info),
-                    ))
+                    )]))
                     .unwrap();
                 send_to_client!(
                     client_id,

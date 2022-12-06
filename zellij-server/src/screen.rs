@@ -122,7 +122,7 @@ type HoldForCommand = Option<RunCommand>;
 #[derive(Debug, Clone)]
 pub enum ScreenInstruction {
     PtyBytes(u32, VteBytes),
-    PluginBytes(u32, ClientId, VteBytes), // u32 is plugin_id
+    PluginBytes(Vec<(u32, ClientId, VteBytes)>), // u32 is plugin_id
     Render,
     NewPane(
         PaneId,
@@ -1014,6 +1014,7 @@ impl Screen {
     }
 
     pub fn update_tabs(&self) -> Result<()> {
+        let mut plugin_updates = vec![];
         for (client_id, active_tab_index) in self.active_tab_indices.iter() {
             let mut tab_data = vec![];
             for tab in self.tabs.values() {
@@ -1040,15 +1041,12 @@ impl Screen {
                     other_focused_clients,
                 });
             }
-            self.bus
-                .senders
-                .send_to_plugin(PluginInstruction::Update(
-                    None,
-                    Some(*client_id),
-                    Event::TabUpdate(tab_data),
-                ))
-                .context("failed to update tabs")?;
+            plugin_updates.push((None, Some(*client_id), Event::TabUpdate(tab_data)));
         }
+        self.bus
+            .senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .context("failed to update tabs")?;
         Ok(())
     }
 
@@ -1323,13 +1321,15 @@ pub(crate) fn screen_thread_main(
                     }
                 }
             },
-            ScreenInstruction::PluginBytes(pid, client_id, vte_bytes) => {
-                let all_tabs = screen.get_tabs_mut();
-                for tab in all_tabs.values_mut() {
-                    if tab.has_plugin(pid) {
-                        tab.handle_plugin_bytes(pid, client_id, vte_bytes)
-                            .context("failed to process plugin bytes")?;
-                        break;
+            ScreenInstruction::PluginBytes(mut plugin_bytes) => {
+                for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
+                    let all_tabs = screen.get_tabs_mut();
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_plugin(pid) {
+                            tab.handle_plugin_bytes(pid, client_id, vte_bytes)
+                                .context("failed to process plugin bytes")?;
+                            break;
+                        }
                     }
                 }
                 screen.render()?;
