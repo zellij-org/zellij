@@ -125,6 +125,28 @@ impl<T> LoggableError<T> for anyhow::Result<T> {
         }
         self
     }
+
+    /// Add local override to support caller tracking, maintaining error locations in log output.
+    fn to_log(self) -> Self {
+        if let Err(ref err) = self {
+            // This is the location `to_log` was called from
+            let caller = std::panic::Location::caller();
+            // Build the log entry manually
+            // NOTE: The log entry has no module path associated with it. This is because `log`
+            // gets the module path from the `std::module_path!()` macro, which is replaced at
+            // compile time in the location it is written!
+            log::logger().log(
+                &log::Record::builder()
+                    .level(log::Level::Error)
+                    .args(format_args!("{:?}", err))
+                    .file(Some(caller.file()))
+                    .line(Some(caller.line()))
+                    .module_path(None)
+                    .build(),
+            );
+        }
+        self
+    }
 }
 
 /// Special trait to mark fatal/non-fatal errors.
