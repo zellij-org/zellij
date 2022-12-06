@@ -33,8 +33,10 @@ impl TerminalAction {
         }
     }
 
-    pub fn or_default_shell(self, cwd: Option<PathBuf>) -> Self {
-        self.or(TerminalAction::RunCommand(RunCommand::default_shell(cwd)))
+    pub fn or_default_shell(self, cwd: Option<PathBuf>, env: EnvironmentVariables) -> Self {
+        self.or(TerminalAction::RunCommand(RunCommand::default_shell(
+            cwd, env,
+        )))
     }
 
     pub fn to_run_action(
@@ -92,7 +94,7 @@ impl RunCommand {
         }
     }
 
-    pub fn default_shell(cwd: Option<PathBuf>) -> RunCommand {
+    pub fn default_shell(cwd: Option<PathBuf>, env: EnvironmentVariables) -> RunCommand {
         let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
             log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
             "/bin/sh".to_string()
@@ -102,8 +104,8 @@ impl RunCommand {
         }
         RunCommand {
             command: Some(shell),
-            args: vec![],
             cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
+            env,
             ..Default::default()
         }
     }
@@ -233,6 +235,12 @@ pub struct FloatingPaneOptions {
 pub struct TiledPaneOptions {
     #[serde(default)]
     pub direction: Option<Direction>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Default, Serialize, PartialEq, Eq)]
+pub struct TabOptions {
     #[serde(default)]
     pub title: Option<String>,
 }

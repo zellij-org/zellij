@@ -351,6 +351,9 @@ pub enum CliAction {
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
     NewTab {
+        #[clap(last(true))]
+        command: Vec<String>,
+
         /// Layout to use for the new tab
         #[clap(short, long, value_parser)]
         layout: Option<PathBuf>,
@@ -360,8 +363,16 @@ pub enum CliAction {
         name: Option<String>,
 
         /// Change the working directory of the new tab
-        #[clap(short, long, value_parser, requires("layout"))]
+        #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
 }
 

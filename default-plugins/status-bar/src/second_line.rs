@@ -3,8 +3,7 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-use zellij_tile::prelude::{actions::Action, command::PaneOptions};
-use zellij_tile::prelude::{command::RunCommand, *};
+use zellij_tile::prelude::{actions::*, command::*, *};
 use zellij_tile_utils::palette_match;
 
 use crate::{
@@ -180,7 +179,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
         vec![
         (s("Move focus"), s("Move"), focus_keys),
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, RunCommand::new(), TabOptions{title:None}), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
@@ -242,7 +241,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Down), ..Default::default()}), TO_NORMAL])),
         (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Right), ..Default::default()}), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, RunCommand::new(), TabOptions{title:None}), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),

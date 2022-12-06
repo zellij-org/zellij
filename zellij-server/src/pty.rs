@@ -8,6 +8,7 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::envs::EnvironmentVariables;
 use zellij_utils::input::command::OpenFile;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
@@ -470,12 +471,15 @@ impl Pty {
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
-                let mut terminal_action = terminal_action.or_default_shell(None);
+                let mut terminal_action =
+                    terminal_action.or_default_shell(None, EnvironmentVariables::new());
 
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
-            ClientOrTabIndex::TabIndex(_) => terminal_action.or_default_shell(None),
+            ClientOrTabIndex::TabIndex(_) => {
+                terminal_action.or_default_shell(None, EnvironmentVariables::new())
+            },
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
             TerminalAction::RunCommand(run_command) => {
@@ -549,7 +553,7 @@ impl Pty {
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
-        let mut default_shell = default_shell.or_default_shell(None);
+        let mut default_shell = default_shell.or_default_shell(None, EnvironmentVariables::new());
 
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
@@ -641,9 +645,9 @@ impl Pty {
                         }
                     }
                 },
-                Some(Run::Cwd(cwd)) => {
+                Some(Run::EnvVars(cwd, env)) => {
                     let starts_held = false; // we do not hold Cwd panes
-                    let shell = TerminalAction::RunCommand(RunCommand::default_shell(Some(cwd)));
+                    let shell = TerminalAction::RunCommand(RunCommand::default_shell(cwd, env));
                     match self
                         .bus
                         .os_input

@@ -1,6 +1,8 @@
 //! Definition of the actions that can be bound to keys.
 
-use super::command::{FloatingPaneOptions, OpenFile, PaneOptions, RunCommand, TiledPaneOptions};
+use super::command::{
+    FloatingPaneOptions, OpenFile, PaneOptions, RunCommand, TabOptions, TiledPaneOptions,
+};
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -187,7 +189,7 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, Option<String>), // the String is the tab name
+    NewTab(Option<PaneLayout>, RunCommand, TabOptions), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -356,16 +358,40 @@ impl Action {
                 Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::NewTab { name, layout, cwd } => {
+            CliAction::NewTab {
+                name,
+                command,
+                layout,
+                cwd,
+                env,
+            } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
+                let env_vars = env.map_or(EnvironmentVariables::new(), |e| {
+                    EnvironmentVariables::from_data(HashMap::from_iter(e))
+                });
+                let mut command = command.clone();
+                let (command, args) = if !command.is_empty() {
+                    let (command, args) = (PathBuf::from(command.remove(0)), command);
+                    (Some(command), args)
+                } else {
+                    (None, Vec::new())
+                };
+                let run_command_action = RunCommand {
+                    command,
+                    args,
+                    cwd: cwd.clone(),
+                    env: env_vars.clone(),
+                    ..Default::default()
+                };
+
                 if let Some(layout_path) = layout {
                     let (path_to_raw_layout, raw_layout) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), None)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd, env_vars).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -403,13 +429,25 @@ impl Action {
                     } else if !tabs.is_empty() {
                         let (tab_name, layout) = tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
-                        Ok(vec![Action::NewTab(Some(layout), name)])
+                        Ok(vec![Action::NewTab(
+                            Some(layout),
+                            run_command_action,
+                            TabOptions { title: name },
+                        )])
                     } else {
                         let layout = layout.new_tab();
-                        Ok(vec![Action::NewTab(Some(layout), name)])
+                        Ok(vec![Action::NewTab(
+                            Some(layout),
+                            run_command_action,
+                            TabOptions { title: name },
+                        )])
                     }
                 } else {
-                    Ok(vec![Action::NewTab(None, name)])
+                    Ok(vec![Action::NewTab(
+                        None,
+                        run_command_action,
+                        TabOptions { title: name },
+                    )])
                 }
             },
         }

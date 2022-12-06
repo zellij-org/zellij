@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::input::actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption};
-use crate::input::command::{PaneOptions, RunCommand, TiledPaneOptions};
+use crate::input::command::{PaneOptions, RunCommand, TabOptions, TiledPaneOptions};
 
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
@@ -733,7 +733,11 @@ impl TryFrom<&KdlNode> for Action {
             "PaneNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
-            "NewTab" => Ok(Action::NewTab(None, None)),
+            "NewTab" => Ok(Action::NewTab(
+                None,
+                RunCommand::new(),
+                TabOptions { title: None },
+            )),
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
@@ -1317,8 +1321,9 @@ impl Layout {
         raw_layout: &str,
         file_name: String,
         cwd: Option<PathBuf>,
+        env: EnvironmentVariables,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
+        KdlLayoutParser::new(raw_layout, cwd, env).parse().map_err(|e|{
             match e {
                 ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
                 ConfigError::KdlDeserializationError(kdl_error) => {
