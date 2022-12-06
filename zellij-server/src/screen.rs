@@ -129,7 +129,7 @@ pub enum ScreenInstruction {
     ),
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
-    ToggleFloatingPanes(ClientId, Option<TerminalAction>),
+    ToggleFloatingPanes(ClientId, TerminalAction),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),

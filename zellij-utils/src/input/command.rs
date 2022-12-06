@@ -24,16 +24,26 @@ impl From<OpenFile> for TerminalAction {
 }
 
 impl TerminalAction {
-    pub fn merge(self, other: Option<Self>) -> Self {
-        if let Some(other) = other {
-            match (self, other) {
-                (TerminalAction::RunCommand(s), TerminalAction::RunCommand(o)) => {
-                    TerminalAction::RunCommand(s.merge(Some(o)))
-                },
-                (s, _) => s,
-            }
-        } else {
-            self
+    pub fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (TerminalAction::RunCommand(s), TerminalAction::RunCommand(o)) => {
+                TerminalAction::RunCommand(s.or(o))
+            },
+            (s, _) => s,
+        }
+    }
+
+    pub fn or_default_shell(self, cwd: Option<PathBuf>) -> Self {
+        self.or(TerminalAction::RunCommand(RunCommand::default_shell(cwd)))
+    }
+
+    pub fn to_run_action(
+        self,
+        default_editor: Option<PathBuf>,
+    ) -> (RunCommand, Option<RunCommand>) {
+        match self {
+            TerminalAction::OpenFile(s) => s.to_run_action(default_editor),
+            TerminalAction::RunCommand(s) => (s, None),
         }
     }
 }
@@ -59,28 +69,42 @@ impl RunCommand {
         Default::default()
     }
 
-    pub fn merge(self, other: Option<Self>) -> Self {
-        if let Some(other) = other {
+    pub fn is_some(&self) -> bool {
+        self.command.is_some()
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.command.is_none()
+    }
+
+    pub fn or(self, other: Self) -> Self {
+        if self.is_none() && other.is_some() {
             RunCommand {
-                command: match (self.command.clone(), other.command.clone()) {
-                    (Some(s), _) => Some(s),
-                    (None, s) => s,
-                },
-                args: match (self.command, other.command) {
-                    (Some(_), _) => self.args,
-                    (None, Some(_)) => other.args,
-                    (None, None) => Vec::new(),
-                },
-                cwd: match (self.cwd, other.cwd) {
-                    (Some(s), _) => Some(s),
-                    (None, s) => s,
-                },
-                env: self.env.merge(other.env),
+                command: other.command,
+                args: other.args,
+                cwd: self.cwd.or(other.cwd),
+                env: other.env.merge(self.env),
                 hold_on_close: self.hold_on_close || other.hold_on_close,
                 hold_on_start: self.hold_on_start || other.hold_on_start,
             }
         } else {
             self
+        }
+    }
+
+    pub fn default_shell(cwd: Option<PathBuf>) -> RunCommand {
+        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
+            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+            "/bin/sh".to_string()
+        }));
+        if !shell.exists() {
+            panic!("Cannot find shell {}", shell.display());
+        }
+        RunCommand {
+            command: Some(shell),
+            args: vec![],
+            cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
+            ..Default::default()
         }
     }
 }

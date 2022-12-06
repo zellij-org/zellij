@@ -251,7 +251,7 @@ pub(crate) fn route_action(
         },
         Action::NewPane(command, options) => {
             let shell = session.default_shell.clone();
-            let action = Some(TerminalAction::RunCommand(command).merge(shell));
+            let action = TerminalAction::RunCommand(command).or(shell);
             let pty_instr = match options.direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(action, options.title, client_id)
@@ -279,7 +279,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::EditFile(command, options) => {
-            let action = Some(TerminalAction::OpenFile(command.clone()));
+            let action = TerminalAction::OpenFile(command.clone());
             let pty_instr = match (options.direction, options.floating) {
                 (Some(Direction::Left), false) => {
                     PtyInstruction::SpawnTerminalVertically(action, options.title, client_id)
@@ -328,7 +328,7 @@ pub(crate) fn route_action(
         Action::NewFloatingPane(command, options) => {
             let should_float = true;
             let shell = session.default_shell.clone();
-            let action = Some(TerminalAction::RunCommand(command).merge(shell));
+            let action = TerminalAction::RunCommand(command).or(shell);
             session
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
@@ -342,7 +342,7 @@ pub(crate) fn route_action(
         Action::NewTiledPane(command, options) => {
             let should_float = false;
             let shell = session.default_shell.clone();
-            let action = Some(TerminalAction::RunCommand(command).merge(shell));
+            let action = TerminalAction::RunCommand(command).or(shell);
             let pty_instr = match options.direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(action, options.title, client_id)
@@ -397,7 +397,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::Run(command, options) => {
-            let action = Some(command.into());
+            let action = TerminalAction::RunCommand(command);
             let pty_instr = match options.direction {
                 Some(Direction::Left) => {
                     PtyInstruction::SpawnTerminalVertically(action, None, client_id)

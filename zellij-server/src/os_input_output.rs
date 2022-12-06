@@ -288,10 +288,7 @@ fn spawn_terminal(
 ) -> Result<(RawFd, RawFd)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
-    let (cmd, failover_cmd) = match terminal_action {
-        TerminalAction::OpenFile(openfile) => openfile.to_run_action(default_editor),
-        TerminalAction::RunCommand(command) => (command, None),
-    };
+    let (cmd, failover_cmd) = terminal_action.to_run_action(default_editor);
 
     handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
 }

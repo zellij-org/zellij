@@ -7,7 +7,7 @@ use crate::{
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
-use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use std::{collections::HashMap, os::unix::io::RawFd, path::PathBuf};
 use zellij_utils::input::command::OpenFile;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
@@ -33,27 +33,22 @@ pub enum ClientOrTabIndex {
 #[derive(Clone, Debug)]
 pub enum PtyInstruction {
     SpawnTerminal(
-        Option<TerminalAction>,
+        TerminalAction,
         Option<bool>,
         Option<String>,
         ClientOrTabIndex,
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(OpenFile, ClientId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    SpawnTerminalVertically(TerminalAction, Option<String>, ClientId), // String is an
     // optional pane
     // name
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
+    SpawnTerminalHorizontally(TerminalAction, Option<String>, ClientId), // String is an
     // optional pane
     // name
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
-    NewTab(
-        Option<TerminalAction>,
-        Option<PaneLayout>,
-        Option<String>,
-        ClientId,
-    ), // the String is the tab name
+    NewTab(TerminalAction, Option<PaneLayout>, Option<String>, ClientId), // the String is the tab name
     ClosePane(PaneId),
     CloseTab(Vec<PaneId>),
     ReRunCommandInPane(PaneId, RunCommand),
@@ -102,7 +97,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to spawn terminal for {:?}", client_or_tab_index);
 
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
+                    TerminalAction::RunCommand(run_command) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
                         Some(name.unwrap_or_else(|| run_command.to_string())),
@@ -163,7 +158,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(open_file)),
+                    TerminalAction::OpenFile(open_file),
                     ClientOrTabIndex::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
@@ -185,7 +180,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to spawn terminal vertically for client {client_id}");
 
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
+                    TerminalAction::RunCommand(run_command) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
                         Some(name.unwrap_or_else(|| run_command.to_string())),
@@ -259,7 +254,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to spawn terminal horizontally for client {client_id}");
 
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
+                    TerminalAction::RunCommand(run_command) => (
                         run_command.hold_on_close,
                         Some(run_command.clone()),
                         Some(name.unwrap_or_else(|| run_command.to_string())),
@@ -445,21 +440,6 @@ impl Pty {
             default_editor,
         }
     }
-    pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
-        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
-            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-            "/bin/sh".to_string()
-        }));
-        if !shell.exists() {
-            panic!("Cannot find shell {}", shell.display());
-        }
-        TerminalAction::RunCommand(RunCommand {
-            command: Some(shell),
-            args: vec![],
-            cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
-            ..Default::default()
-        })
-    }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
             if run_command.cwd.is_none() {
@@ -481,7 +461,7 @@ impl Pty {
     }
     pub fn spawn_terminal(
         &mut self,
-        terminal_action: Option<TerminalAction>,
+        terminal_action: TerminalAction,
         client_or_tab_index: ClientOrTabIndex,
     ) -> Result<(u32, bool)> {
         // bool is starts_held
@@ -490,21 +470,12 @@ impl Pty {
         // returns the terminal id
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
-                let mut terminal_action =
-                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None));
+                let mut terminal_action = terminal_action.or_default_shell(None);
 
-                if let TerminalAction::RunCommand(s) = terminal_action.clone() {
-                    if s.command.is_none() {
-                        terminal_action =
-                            terminal_action.merge(Some(self.get_default_terminal(None)))
-                    }
-                };
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
-            ClientOrTabIndex::TabIndex(_) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
-            },
+            ClientOrTabIndex::TabIndex(_) => terminal_action.or_default_shell(None),
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
             TerminalAction::RunCommand(run_command) => {
@@ -573,17 +544,12 @@ impl Pty {
     pub fn spawn_terminals_for_layout(
         &mut self,
         layout: PaneLayout,
-        default_shell: Option<TerminalAction>,
+        default_shell: TerminalAction,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
-        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
-        if let TerminalAction::RunCommand(s) = default_shell.clone() {
-            if s.command.is_none() {
-                default_shell = default_shell.merge(Some(self.get_default_terminal(None)))
-            }
-        };
+        let mut default_shell = default_shell.or_default_shell(None);
 
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
@@ -677,7 +643,7 @@ impl Pty {
                 },
                 Some(Run::Cwd(cwd)) => {
                     let starts_held = false; // we do not hold Cwd panes
-                    let shell = self.get_default_terminal(Some(cwd));
+                    let shell = TerminalAction::RunCommand(RunCommand::default_shell(Some(cwd)));
                     match self
                         .bus
                         .os_input

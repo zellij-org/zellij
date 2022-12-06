@@ -682,12 +682,12 @@ fn host_open_file(plugin_env: &PluginEnv) {
     plugin_env
         .senders
         .send_to_pty(PtyInstruction::SpawnTerminal(
-            Some(TerminalAction::OpenFile(OpenFile {
+            TerminalAction::OpenFile(OpenFile {
                 file_name: path,
                 line_number: None,
                 cwd: None,
                 env: EnvironmentVariables::new(),
-            })),
+            }),
             None,
             None,
             ClientOrTabIndex::TabIndex(plugin_env.tab_index),

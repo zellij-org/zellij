@@ -820,7 +820,7 @@ impl Tab {
     pub fn toggle_floating_panes(
         &mut self,
         client_id: ClientId,
-        default_shell: Option<TerminalAction>,
+        default_shell: TerminalAction,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             self.hide_floating_panes();
