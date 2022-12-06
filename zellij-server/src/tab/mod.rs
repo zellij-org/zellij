@@ -686,11 +686,7 @@ impl Tab {
         let mut plugin_updates = vec![];
         for client_id in self.connected_clients.borrow().iter() {
             let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
-            plugin_updates.push((
-                None,
-                Some(*client_id),
-                Event::ModeUpdate(mode_info.clone())
-            ));
+            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info.clone())));
         }
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
@@ -2675,7 +2671,11 @@ impl Tab {
                 },
             };
         self.senders
-            .send_to_plugin(PluginInstruction::Update(vec![(None, None, clipboard_event)]))
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                clipboard_event,
+            )]))
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
@@ -2712,11 +2712,7 @@ impl Tab {
         });
         let mut plugin_updates = vec![];
         for pid in pids_in_this_tab {
-            plugin_updates.push((
-                Some(*pid),
-                None,
-                Event::Visible(visible),
-            ));
+            plugin_updates.push((Some(*pid), None, Event::Visible(visible)));
         }
         self.senders
             .send_to_plugin(PluginInstruction::Update(plugin_updates))

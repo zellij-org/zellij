@@ -419,17 +419,18 @@ impl WasmBridge {
                     ])
                     .with_context(err_context)?;
                 let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
-                plugin_bytes.push((
-                    *plugin_id,
-                    *client_id,
-                    rendered_bytes.as_bytes().to_vec(),
-                ));
+                plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
-        let _ = self.senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
-    pub fn update_plugins(&mut self, mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>) -> Result<()> {
+    pub fn update_plugins(
+        &mut self,
+        mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>,
+    ) -> Result<()> {
         let err_context = || {
             if *DEBUG_MODE.get().unwrap_or(&true) {
                 format!("failed to update plugin state")
@@ -440,14 +441,17 @@ impl WasmBridge {
 
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &self.plugin_map {
+            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in
+                &self.plugin_map
+            {
                 let subs = plugin_env
                     .subscriptions
                     .lock()
                     .to_anyhow()
                     .with_context(err_context)?;
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-                let event_type = EventType::from_str(&event.to_string()).with_context(err_context)?;
+                let event_type =
+                    EventType::from_str(&event.to_string()).with_context(err_context)?;
                 if subs.contains(&event_type)
                     && ((pid.is_none() && cid.is_none())
                         || (pid.is_none() && cid == Some(client_id))
@@ -496,7 +500,9 @@ impl WasmBridge {
                 }
             }
         }
-        let _ = self.senders.send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {

@@ -1046,11 +1046,7 @@ impl Screen {
                     other_focused_clients,
                 });
             }
-            plugin_updates.push((
-                None,
-                Some(*client_id),
-                Event::TabUpdate(tab_data),
-            ));
+            plugin_updates.push((None, Some(*client_id), Event::TabUpdate(tab_data)));
         }
         self.bus
             .senders

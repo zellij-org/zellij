@@ -22,8 +22,8 @@ use zellij_utils::{
 pub enum PluginInstruction {
     Load(RunPlugin, usize, ClientId, Size), // plugin metadata, tab_index, client_ids
     Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
-    Unload(u32),                                  // plugin_id
-    Resize(u32, usize, usize),                    // plugin_id, columns, rows
+    Unload(u32),                                         // plugin_id
+    Resize(u32, usize, usize),                           // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
