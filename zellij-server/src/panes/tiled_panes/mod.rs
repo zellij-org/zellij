@@ -8,11 +8,11 @@ use crate::{
     os_input_output::ServerOsApi,
     output::Output,
     panes::{ActivePanes, PaneId},
+    plugins::PluginInstruction,
     tab::{Pane, MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH},
     thread_bus::ThreadSenders,
     ui::boundaries::Boundaries,
     ui::pane_contents_and_ui::PaneContentsAndUi,
-    wasm_vm::PluginInstruction,
     ClientId,
 };
 use zellij_utils::{
@@ -346,9 +346,7 @@ impl TiledPanes {
         self.reset_boundaries();
     }
     pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
-        log::info!("inside focus_pane_if_client_not_focused");
         if self.active_panes.get(&client_id).is_none() {
-            log::info!("is none");
             self.focus_pane(pane_id, client_id)
         }
     }

@@ -1,9 +1,9 @@
 use crate::terminal_bytes::TerminalBytes;
 use crate::{
     panes::PaneId,
+    plugins::PluginInstruction,
     screen::ScreenInstruction,
     thread_bus::{Bus, ThreadSenders},
-    wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
 use async_std::task::{self, JoinHandle};
@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Layout, PaneLayout, Run},
+        layout::{Layout, PaneLayout, Run, RunPluginLocation},
     },
 };
 
@@ -51,6 +51,8 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<PaneLayout>,
         Option<String>,
+        usize,                                // tab_index
+        HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
         ClientId,
     ), // the String is the tab name
     ClosePane(PaneId),
@@ -330,12 +332,21 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         format!("failed to move client {} to tab {}", client_id, tab_index)
                     })?;
             },
-            PtyInstruction::NewTab(terminal_action, tab_layout, tab_name, client_id) => {
+            PtyInstruction::NewTab(
+                terminal_action,
+                tab_layout,
+                tab_name,
+                tab_index,
+                plugin_ids,
+                client_id,
+            ) => {
                 let err_context = || format!("failed to open new tab for client {}", client_id);
 
                 pty.spawn_terminals_for_layout(
                     tab_layout.unwrap_or_else(|| layout.new_tab()),
                     terminal_action.clone(),
+                    plugin_ids,
+                    tab_index,
                     client_id,
                 )
                 .with_context(err_context)?;
@@ -555,6 +566,8 @@ impl Pty {
         &mut self,
         layout: PaneLayout,
         default_shell: Option<TerminalAction>,
+        plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
@@ -747,9 +760,11 @@ impl Pty {
             .collect();
         self.bus
             .senders
-            .send_to_screen(ScreenInstruction::NewTab(
+            .send_to_screen(ScreenInstruction::ApplyLayout(
                 layout,
                 new_tab_pane_ids,
+                plugin_ids,
+                tab_index,
                 client_id,
             ))
             .with_context(err_context)?;

@@ -9,9 +9,9 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{FloatingPanesStack, Output},
     panes::{ActivePanes, PaneId},
+    plugins::PluginInstruction,
     thread_bus::ThreadSenders,
     ui::pane_contents_and_ui::PaneContentsAndUi,
-    wasm_vm::PluginInstruction,
     ClientId,
 };
 use std::cell::RefCell;

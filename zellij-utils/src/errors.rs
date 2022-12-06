@@ -285,6 +285,7 @@ pub enum ScreenContext {
     UpdatePaneName,
     UndoRenamePane,
     NewTab,
+    ApplyLayout,
     SwitchTabNext,
     SwitchTabPrev,
     CloseTab,
@@ -350,6 +351,7 @@ pub enum PluginContext {
     Exit,
     AddClient,
     RemoveClient,
+    NewTab,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

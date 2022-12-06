@@ -9,7 +9,11 @@ use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
-use zellij_utils::{input::command::TerminalAction, input::layout::PaneLayout, position::Position};
+use zellij_utils::{
+    input::command::TerminalAction,
+    input::layout::{PaneLayout, RunPluginLocation},
+    position::Position,
+};
 
 use crate::panes::alacritty_functions::xparse_color;
 use crate::panes::terminal_character::AnsiCode;
@@ -18,11 +22,11 @@ use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
     panes::PaneId,
+    plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
     ui::overlay::{Overlay, OverlayWindow, Overlayable},
-    wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
@@ -174,7 +178,19 @@ pub enum ScreenInstruction {
     HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(PaneLayout, Vec<(u32, HoldForCommand)>, ClientId),
+    NewTab(
+        Option<TerminalAction>,
+        Option<PaneLayout>,
+        Option<String>,
+        ClientId,
+    ),
+    ApplyLayout(
+        PaneLayout,
+        Vec<(u32, HoldForCommand)>,
+        HashMap<RunPluginLocation, Vec<u32>>,
+        usize, // tab_index
+        ClientId,
+    ),
     SwitchTabNext(ClientId),
     SwitchTabPrev(ClientId),
     ToggleActiveSyncTab(ClientId),
@@ -275,6 +291,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::UpdatePaneName(..) => ScreenContext::UpdatePaneName,
             ScreenInstruction::UndoRenamePane(..) => ScreenContext::UndoRenamePane,
             ScreenInstruction::NewTab(..) => ScreenContext::NewTab,
+            ScreenInstruction::ApplyLayout(..) => ScreenContext::ApplyLayout,
             ScreenInstruction::SwitchTabNext(..) => ScreenContext::SwitchTabNext,
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
@@ -761,7 +778,7 @@ impl Screen {
                 let vte_overlay = overlay.generate_overlay(size).context(err_context)?;
                 tab.render(&mut output, Some(vte_overlay))
                     .context(err_context)?;
-            } else {
+            } else if !tab.is_pending() {
                 tabs_to_close.push(*tab_index);
             }
         }
@@ -838,14 +855,8 @@ impl Screen {
         self.get_tabs_mut().get_mut(&tab_index)
     }
 
-    /// Creates a new [`Tab`] in this [`Screen`], applying the specified [`Layout`]
-    /// and switching to it.
-    pub fn new_tab(
-        &mut self,
-        layout: PaneLayout,
-        new_ids: Vec<(u32, HoldForCommand)>,
-        client_id: ClientId,
-    ) -> Result<()> {
+    /// Creates a new [`Tab`] in this [`Screen`]
+    pub fn new_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -856,9 +867,8 @@ impl Screen {
             client_id
         };
 
-        let tab_index = self.get_new_tab_index();
         let position = self.tabs.len();
-        let mut tab = Tab::new(
+        let tab = Tab::new(
             tab_index,
             position,
             String::new(),
@@ -882,35 +892,72 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
-        tab.apply_layout(layout, new_ids, tab_index, client_id)
-            .with_context(err_context)?;
-        if self.session_is_mirrored {
-            if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
-                let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
-                tab.add_multiple_clients(client_mode_infos_in_source_tab)
-                    .with_context(err_context)?;
-                if active_tab.has_no_connected_clients() {
-                    active_tab.visible(false).with_context(err_context)?;
-                }
-            }
+        self.tabs.insert(tab_index, tab);
+        Ok(())
+    }
+    pub fn apply_layout(
+        &mut self,
+        layout: PaneLayout,
+        new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
+        tab_index: usize,
+        client_id: ClientId,
+    ) -> Result<()> {
+        let client_id = if self.get_active_tab(client_id).is_ok() {
+            client_id
+        } else if let Some(first_client_id) = self.get_first_client_id() {
+            first_client_id
+        } else {
+            client_id
+        };
+        let err_context = || format!("failed to apply layout for tab {tab_index:?}",);
+
+        // move the relevant clients out of the current tab and place them in the new one
+        let drained_clients = if self.session_is_mirrored {
+            let client_mode_infos_in_source_tab =
+                if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
+                    let client_mode_infos_in_source_tab = active_tab.drain_connected_clients(None);
+                    if active_tab.has_no_connected_clients() {
+                        active_tab.visible(false).with_context(err_context)?;
+                    }
+                    Some(client_mode_infos_in_source_tab)
+                } else {
+                    None
+                };
             let all_connected_clients: Vec<ClientId> =
                 self.connected_clients.borrow().iter().copied().collect();
             for client_id in all_connected_clients {
                 self.update_client_tab_focus(client_id, tab_index);
             }
+            client_mode_infos_in_source_tab
         } else if let Ok(active_tab) = self.get_active_tab_mut(client_id) {
             let client_mode_info_in_source_tab =
                 active_tab.drain_connected_clients(Some(vec![client_id]));
-            tab.add_multiple_clients(client_mode_info_in_source_tab)
-                .with_context(err_context)?;
             if active_tab.has_no_connected_clients() {
                 active_tab.visible(false).with_context(err_context)?;
             }
             self.update_client_tab_focus(client_id, tab_index);
-        }
+            Some(client_mode_info_in_source_tab)
+        } else {
+            None
+        };
+
+        // apply the layout to the new tab
+        let tab = self.tabs.get_mut(&tab_index).unwrap(); // TODO: no unwrap
+        tab.apply_layout(
+            layout,
+            new_terminal_ids,
+            new_plugin_ids,
+            tab_index,
+            client_id,
+        )
+        .with_context(err_context)?;
         tab.update_input_modes().with_context(err_context)?;
         tab.visible(true).with_context(err_context)?;
-        self.tabs.insert(tab_index, tab);
+        if let Some(drained_clients) = drained_clients {
+            tab.add_multiple_clients(drained_clients)
+                .with_context(err_context)?;
+        }
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id).with_context(err_context)?;
@@ -1853,8 +1900,28 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render()?;
             },
-            ScreenInstruction::NewTab(layout, new_pane_pids, client_id) => {
-                screen.new_tab(layout, new_pane_pids, client_id)?;
+            ScreenInstruction::NewTab(default_shell, layout, tab_name, client_id) => {
+                let tab_index = screen.get_new_tab_index();
+                screen.new_tab(tab_index, client_id)?;
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::NewTab(
+                        default_shell,
+                        layout,
+                        tab_name,
+                        tab_index,
+                        client_id,
+                    ))?;
+            },
+            ScreenInstruction::ApplyLayout(
+                layout,
+                new_pane_pids,
+                new_plugin_ids,
+                tab_index,
+                client_id,
+            ) => {
+                screen.apply_layout(layout, new_pane_pids, new_plugin_ids, tab_index, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
