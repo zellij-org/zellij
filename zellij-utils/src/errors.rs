@@ -96,15 +96,33 @@ pub trait LoggableError<T>: Sized {
     #[track_caller]
     fn print_error<F: Fn(&str)>(self, fun: F) -> Self;
 
-    /// Convenienve function, calls `print_error` with the closure `|msg| log::error!("{}", msg)`.
-    // Dev note:
-    // Currently this hides the location of the caller, because it will show this very line as
-    // "source" of the logging call. This isn't correct, because it may have been called by other
-    // functions, too. To track this, we need to attach `#[track_caller]` to the closure below,
-    // which isn't stabilized yet: https://github.com/rust-lang/rust/issues/87417
+    /// Convenienve function, calls `print_error` and logs the result as error.
+    ///
+    /// This is not a wrapper around `log::error!`, because the `log` crate uses a lot of compile
+    /// time macros from `std` to determine caller locations/module names etc. Since these are
+    /// resolved at compile time in the location they are written, they would always resolve to the
+    /// location in this function where `log::error!` is called, masking the real caller location.
+    /// Hence, we build the log message ourselves. This means that we lose the information about
+    /// the calling module (Because it can only be resolved at compile time), however the callers
+    /// file and line number are preserved.
     #[track_caller]
     fn to_log(self) -> Self {
-        self.print_error(|msg| log::error!("{}", msg))
+        let caller = std::panic::Location::caller();
+        self.print_error(|msg| {
+            // Build the log entry manually
+            // NOTE: The log entry has no module path associated with it. This is because `log`
+            // gets the module path from the `std::module_path!()` macro, which is replaced at
+            // compile time in the location it is written!
+            log::logger().log(
+                &log::Record::builder()
+                    .level(log::Level::Error)
+                    .args(format_args!("{}", msg))
+                    .file(Some(caller.file()))
+                    .line(Some(caller.line()))
+                    .module_path(None)
+                    .build(),
+            );
+        })
     }
 
     /// Convenienve function, calls `print_error` with the closure `|msg| eprintln!("{}", msg)`.
@@ -122,28 +140,6 @@ impl<T> LoggableError<T> for anyhow::Result<T> {
     fn print_error<F: Fn(&str)>(self, fun: F) -> Self {
         if let Err(ref err) = self {
             fun(&format!("{:?}", err));
-        }
-        self
-    }
-
-    /// Add local override to support caller tracking, maintaining error locations in log output.
-    fn to_log(self) -> Self {
-        if let Err(ref err) = self {
-            // This is the location `to_log` was called from
-            let caller = std::panic::Location::caller();
-            // Build the log entry manually
-            // NOTE: The log entry has no module path associated with it. This is because `log`
-            // gets the module path from the `std::module_path!()` macro, which is replaced at
-            // compile time in the location it is written!
-            log::logger().log(
-                &log::Record::builder()
-                    .level(log::Level::Error)
-                    .args(format_args!("{:?}", err))
-                    .file(Some(caller.file()))
-                    .line(Some(caller.line()))
-                    .module_path(None)
-                    .build(),
-            );
         }
         self
     }
