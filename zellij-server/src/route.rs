@@ -39,11 +39,11 @@ pub(crate) fn route_action(
         _ => {
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
                     Event::InputReceived,
-                ))
+                )]))
                 .with_context(err_context)?;
         },
     }
@@ -84,11 +84,11 @@ pub(crate) fn route_action(
             // TODO: Need access to `ClientAttributes` here
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
                     Event::ModeUpdate(get_mode_info(mode, attrs, session.capabilities)),
-                ))
+                )]))
                 .with_context(err_context)?;
             session
                 .senders
@@ -314,11 +314,11 @@ pub(crate) fn route_action(
             let attrs = &session.client_attributes;
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
                     Event::ModeUpdate(get_mode_info(input_mode, attrs, session.capabilities)),
-                ))
+                )]))
                 .with_context(err_context)?;
             session
                 .senders
