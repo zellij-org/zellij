@@ -588,7 +588,8 @@ impl Pty {
                             }
                         }
                     });
-                    let cmd = TerminalAction::RunCommand(command.clone());
+                    let cmd = TerminalAction::RunCommand(command.clone())
+                        .or_default_shell(command.clone().cwd, command.clone().env);
                     if starts_held {
                         // we don't actually open a terminal in this case, just wait for the user to run it
                         match self
@@ -643,32 +644,6 @@ impl Pty {
                                 },
                             },
                         }
-                    }
-                },
-                Some(Run::EnvVars(cwd, env)) => {
-                    let starts_held = false; // we do not hold Cwd panes
-                    let shell = TerminalAction::RunCommand(RunCommand::default_shell(cwd, env));
-                    match self
-                        .bus
-                        .os_input
-                        .as_mut()
-                        .context("no OS I/O interface found")
-                        .with_context(err_context)?
-                        .spawn_terminal(shell, quit_cb, self.default_editor.clone())
-                        .with_context(err_context)
-                    {
-                        Ok((terminal_id, pid_primary, child_fd)) => {
-                            self.id_to_child_pid.insert(terminal_id, child_fd);
-                            new_pane_pids.push((terminal_id, starts_held, None, Ok(pid_primary)));
-                        },
-                        Err(err) => match err.downcast_ref::<ZellijError>() {
-                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                                new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
-                            },
-                            _ => {
-                                Err::<(), _>(err).non_fatal();
-                            },
-                        },
                     }
                 },
                 Some(Run::EditFile(open_file)) => {

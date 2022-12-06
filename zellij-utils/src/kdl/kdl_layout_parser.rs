@@ -275,21 +275,20 @@ impl<'a> KdlLayoutParser<'a> {
             EnvironmentVariables::new()
         };
         match (command, edit, cwd, env) {
-            (None, None, cwd, env) => {
-                if cwd.is_none() && env.env.is_empty() {
+            (command, None, cwd, env) => {
+                if command.is_none() && cwd.is_none() && env.env.is_empty() {
                     Ok(None)
                 } else {
-                    Ok(Some(Run::EnvVars(cwd, env)))
+                    Ok(Some(Run::Command(RunCommand {
+                        command,
+                        args: args.unwrap_or_else(|| vec![]),
+                        cwd,
+                        hold_on_close,
+                        hold_on_start,
+                        env,
+                    })))
                 }
             },
-            (Some(command), None, cwd, env) => Ok(Some(Run::Command(RunCommand {
-                command: Some(command),
-                args: args.unwrap_or_else(|| vec![]),
-                cwd,
-                hold_on_close,
-                hold_on_start,
-                env,
-            }))),
             (None, Some(edit), cwd, env) => Ok(Some(Run::EditFile(OpenFile {
                 file_name: edit,
                 line_number: None,
@@ -311,7 +310,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             let has_non_cwd_run_prop = run
                 .map(|r| match r {
-                    Run::EnvVars(_, _) => false,
+                    Run::Command(c) => c.is_some(),
                     _ => true,
                 })
                 .unwrap_or(false);
@@ -334,7 +333,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             let has_non_cwd_run_prop = run
                 .map(|r| match r {
-                    Run::EnvVars(_, _) => false,
+                    Run::Command(c) => c.is_some(),
                     _ => true,
                 })
                 .unwrap_or(false);
@@ -759,7 +758,7 @@ impl<'a> KdlLayoutParser<'a> {
         let has_non_cwd_run_prop = self
             .parse_command_plugin_or_edit_block(kdl_node)?
             .map(|r| match r {
-                Run::EnvVars(_, _) => false,
+                Run::Command(c) => c.is_some(),
                 _ => true,
             })
             .unwrap_or(false);

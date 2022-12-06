@@ -64,7 +64,6 @@ pub enum Run {
     #[serde(rename = "command")]
     Command(RunCommand),
     EditFile(OpenFile), // TODO: merge this with TerminalAction::OpenFile
-    EnvVars(Option<PathBuf>, EnvironmentVariables),
 }
 
 impl Run {
@@ -85,34 +84,12 @@ impl Run {
                 merged.env = other_run_command.env.merge(base_run_command.env.clone());
                 Some(Run::Command(merged))
             },
-            (Some(Run::Command(base_run_command)), Some(Run::EnvVars(other_cwd, other_env))) => {
-                let mut merged = base_run_command.clone();
-                merged.cwd = other_cwd.clone();
-                merged.env = other_env.merge(base_run_command.env.clone());
-                Some(Run::Command(merged))
-            },
-            (Some(Run::EnvVars(base_cwd, base_env)), Some(Run::Command(other_command))) => {
-                let mut merged = other_command.clone();
-                if merged.cwd.is_none() {
-                    merged.cwd = base_cwd.clone();
-                }
-                merged.env = other_command.env.merge(base_env.clone());
-                Some(Run::Command(merged))
-            },
             (Some(Run::Command(base_run_command)), Some(Run::EditFile(open_file))) => {
                 Some(Run::EditFile(OpenFile {
                     file_name: open_file.file_name.clone(),
                     line_number: open_file.line_number,
                     cwd: base_run_command.cwd.clone(),
                     env: open_file.env.merge(base_run_command.env.clone()),
-                }))
-            },
-            (Some(Run::EnvVars(cwd, env)), Some(Run::EditFile(open_file))) => {
-                Some(Run::EditFile(OpenFile {
-                    file_name: open_file.file_name.clone(),
-                    line_number: open_file.line_number,
-                    cwd: cwd.clone(),
-                    env: open_file.env.merge(env.clone()),
                 }))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
@@ -139,14 +116,6 @@ impl Run {
                     open_file.cwd = Some(cwd.clone());
                 },
             },
-            Run::EnvVars(path, _) => match path.as_mut() {
-                Some(run_cwd) => {
-                    *run_cwd = cwd.join(&run_cwd);
-                },
-                None => {
-                    *path = Some(cwd.clone());
-                },
-            },
             _ => {}, // plugins aren't yet supported
         }
     }
@@ -158,9 +127,6 @@ impl Run {
 
             Run::EditFile(open_file) => {
                 (*open_file).env = (*open_file).env.merge(env.to_owned());
-            },
-            Run::EnvVars(_, envs) => {
-                *envs = (*envs).merge(env.to_owned());
             },
             _ => {}, // plugins aren't yet supported
         }
@@ -320,7 +286,10 @@ impl PaneLayout {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),
             None => {
-                self.run = Some(Run::EnvVars(Some(cwd.clone()), EnvironmentVariables::new()));
+                self.run = Some(Run::Command(RunCommand {
+                    cwd: Some(cwd.clone()),
+                    ..Default::default()
+                }));
             },
         }
         for child in self.children.iter_mut() {
@@ -331,7 +300,10 @@ impl PaneLayout {
         match self.run.as_mut() {
             Some(run) => run.add_env(env),
             None => {
-                self.run = Some(Run::EnvVars(None, env.clone()));
+                self.run = Some(Run::Command(RunCommand {
+                    env: env.clone(),
+                    ..Default::default()
+                }));
             },
         }
         for child in self.children.iter_mut() {
