@@ -2,9 +2,9 @@ use std::sync::{Arc, RwLock};
 
 use crate::{
     os_input_output::ServerOsApi,
+    plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
-    wasm_vm::PluginInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
@@ -440,7 +440,7 @@ pub(crate) fn route_action(
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(
+                .send_to_screen(ScreenInstruction::NewTab(
                     shell, tab_layout, tab_name, client_id,
                 ))
                 .with_context(err_context)?;

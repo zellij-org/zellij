@@ -1,8 +1,8 @@
 //! Definitions and helpers for sending and receiving messages between threads.
 
 use crate::{
-    os_input_output::ServerOsApi, pty::PtyInstruction, pty_writer::PtyWriteInstruction,
-    screen::ScreenInstruction, wasm_vm::PluginInstruction, ServerInstruction,
+    os_input_output::ServerOsApi, plugins::PluginInstruction, pty::PtyInstruction,
+    pty_writer::PtyWriteInstruction, screen::ScreenInstruction, ServerInstruction,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};

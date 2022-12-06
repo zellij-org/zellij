@@ -138,8 +138,14 @@ fn create_new_tab(size: Size) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -185,8 +191,14 @@ fn create_new_tab_with_cell_size(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 

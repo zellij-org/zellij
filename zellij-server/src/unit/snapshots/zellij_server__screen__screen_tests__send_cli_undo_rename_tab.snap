@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2571
+assertion_line: 2549
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -17,6 +17,45 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
             10,
         ),
         InputReceived,
+    ),
+    NewTab(
+        None,
+        Some(
+            PaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+        None,
+        0,
+        1,
     ),
     Update(
         None,
@@ -189,6 +228,45 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                 },
             ],
         ),
+    ),
+    NewTab(
+        None,
+        Some(
+            PaneLayout {
+                children_split_direction: Vertical,
+                name: None,
+                children: [
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    PaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+        ),
+        None,
+        1,
+        1,
     ),
     Update(
         None,
