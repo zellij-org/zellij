@@ -224,8 +224,14 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -274,8 +280,14 @@ fn create_new_tab_with_os_api(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -328,7 +340,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| (i as u32, None))
         .collect();
-    tab.apply_layout(tab_layout, pane_ids, index, client_id)
+    tab.apply_layout(tab_layout, pane_ids, HashMap::new(), index, client_id)
         .unwrap();
     tab
 }
@@ -379,8 +391,14 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -432,8 +450,14 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 

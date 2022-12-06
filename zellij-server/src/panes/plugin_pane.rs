@@ -3,10 +3,10 @@ use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
+use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
-use crate::wasm_vm::PluginInstruction;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;

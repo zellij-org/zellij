@@ -4,6 +4,7 @@ pub mod panes;
 pub mod tab;
 
 mod logging_pipe;
+mod plugins;
 mod pty;
 mod pty_writer;
 mod route;
@@ -11,7 +12,6 @@ mod screen;
 mod terminal_bytes;
 mod thread_bus;
 mod ui;
-mod wasm_vm;
 
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
@@ -29,10 +29,10 @@ use wasmer::Store;
 
 use crate::{
     os_input_output::ServerOsApi,
+    plugins::{plugin_thread_main, PluginInstruction},
     pty::{pty_thread_main, Pty, PtyInstruction},
     screen::{screen_thread_main, ScreenInstruction},
     thread_bus::{Bus, ThreadSenders},
-    wasm_vm::{wasm_thread_main, PluginInstruction},
 };
 use route::route_thread_main;
 use zellij_utils::{
@@ -108,7 +108,7 @@ pub(crate) struct SessionMetaData {
     pub default_shell: TerminalAction,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
-    wasm_thread: Option<thread::JoinHandle<()>>,
+    plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -124,8 +124,8 @@ impl Drop for SessionMetaData {
         if let Some(pty_thread) = self.pty_thread.take() {
             let _ = pty_thread.join();
         }
-        if let Some(wasm_thread) = self.wasm_thread.take() {
-            let _ = wasm_thread.join();
+        if let Some(plugin_thread) = self.plugin_thread.take() {
+            let _ = plugin_thread.join();
         }
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
@@ -335,7 +335,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .as_ref()
                         .unwrap()
                         .senders
-                        .send_to_pty(PtyInstruction::NewTab(
+                        .send_to_screen(ScreenInstruction::NewTab(
                             default_shell.clone(),
                             tab_layout,
                             tab_name,
@@ -661,6 +661,7 @@ fn init_session(
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())
         .spawn({
+            let layout = layout.clone();
             let pty = Pty::new(
                 Bus::new(
                     vec![pty_receiver],
@@ -706,7 +707,7 @@ fn init_session(
         })
         .unwrap();
 
-    let wasm_thread = thread::Builder::new()
+    let plugin_thread = thread::Builder::new()
         .name("wasm".to_string())
         .spawn({
             let plugin_bus = Bus::new(
@@ -721,7 +722,14 @@ fn init_session(
             let store = Store::default();
 
             move || {
-                wasm_thread_main(plugin_bus, store, data_dir, plugins.unwrap_or_default()).fatal()
+                plugin_thread_main(
+                    plugin_bus,
+                    store,
+                    data_dir,
+                    plugins.unwrap_or_default(),
+                    layout,
+                )
+                .fatal()
             }
         })
         .unwrap();
@@ -756,7 +764,7 @@ fn init_session(
         client_attributes,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
-        wasm_thread: Some(wasm_thread),
+        plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
     }
 }
