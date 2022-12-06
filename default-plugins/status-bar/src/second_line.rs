@@ -672,7 +672,18 @@ mod tests {
                         Key::Right,
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Char('n'),
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
                         Key::Char('f'),
@@ -707,7 +718,18 @@ mod tests {
                         Key::Right,
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Char('n'),
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
                         Key::Char('f'),
@@ -747,7 +769,18 @@ mod tests {
                         Key::Ctrl(' '),
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Backspace, vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Backspace,
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
                     (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
                 ],

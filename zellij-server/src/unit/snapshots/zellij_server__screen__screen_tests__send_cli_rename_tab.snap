@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2506
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -19,7 +18,16 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
         InputReceived,
     ),
     NewTab(
-        None,
+        RunCommand(
+            RunCommand {
+                command: None,
+                args: [],
+                cwd: None,
+                env: {},
+                hold_on_close: false,
+                hold_on_start: false,
+            },
+        ),
         Some(
             PaneLayout {
                 children_split_direction: Horizontal,
@@ -230,7 +238,16 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
         ),
     ),
     NewTab(
-        None,
+        RunCommand(
+            RunCommand {
+                command: None,
+                args: [],
+                cwd: None,
+                env: {},
+                hold_on_close: false,
+                hold_on_start: false,
+            },
+        ),
         Some(
             PaneLayout {
                 children_split_direction: Vertical,

@@ -1,11 +1,19 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2272
 expression: "format!(\"{:#?}\", new_tab_action)"
 ---
 Some(
     NewTab(
-        None,
+        RunCommand(
+            RunCommand {
+                command: None,
+                args: [],
+                cwd: None,
+                env: {},
+                hold_on_close: false,
+                hold_on_start: false,
+            },
+        ),
         Some(
             PaneLayout {
                 children_split_direction: Vertical,
