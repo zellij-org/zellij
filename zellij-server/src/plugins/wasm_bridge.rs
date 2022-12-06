@@ -398,6 +398,7 @@ impl WasmBridge {
     }
     pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = || format!("failed to resize plugin {pid}");
+        let mut plugin_bytes = vec![];
         for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
             self.plugin_map.iter_mut()
         {
@@ -418,84 +419,90 @@ impl WasmBridge {
                     ])
                     .with_context(err_context)?;
                 let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
-                drop(self.senders.send_to_screen(ScreenInstruction::PluginBytes(
-                    *plugin_id,
-                    *client_id,
-                    rendered_bytes.as_bytes().to_vec(),
-                )));
+                plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
     pub fn update_plugins(
         &mut self,
-        pid: Option<u32>,
-        cid: Option<ClientId>,
-        event: Event,
+        mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>,
     ) -> Result<()> {
         let err_context = || {
             if *DEBUG_MODE.get().unwrap_or(&true) {
-                format!("failed to update plugin state with event: {event:#?}")
+                format!("failed to update plugin state")
             } else {
                 "failed to update plugin state".to_string()
             }
         };
 
-        for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &self.plugin_map {
-            let subs = plugin_env
-                .subscriptions
-                .lock()
-                .to_anyhow()
-                .with_context(err_context)?;
-            // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
-            let event_type = EventType::from_str(&event.to_string()).with_context(err_context)?;
-            if subs.contains(&event_type)
-                && ((pid.is_none() && cid.is_none())
-                    || (pid.is_none() && cid == Some(client_id))
-                    || (cid.is_none() && pid == Some(plugin_id))
-                    || (cid == Some(client_id) && pid == Some(plugin_id)))
+        let mut plugin_bytes = vec![];
+        for (pid, cid, event) in updates.drain(..) {
+            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in
+                &self.plugin_map
             {
-                let update = instance
-                    .exports
-                    .get_function("update")
+                let subs = plugin_env
+                    .subscriptions
+                    .lock()
+                    .to_anyhow()
                     .with_context(err_context)?;
-                wasi_write_object(&plugin_env.wasi_env, &event);
-                let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
-                    match e.downcast::<serde_json::Error>() {
-                        Ok(_) => panic!(
-                            "{}",
-                            anyError::new(VersionMismatchError::new(
-                                VERSION,
-                                "Unavailable",
-                                &plugin_env.plugin.path,
-                                plugin_env.plugin.is_builtin(),
-                            ))
-                        ),
-                        Err(e) => Err(e).with_context(err_context),
-                    }
-                })?;
-                let should_render = match update_return.get(0) {
-                    Some(Value::I32(n)) => *n == 1,
-                    _ => false,
-                };
-
-                if *rows > 0 && *columns > 0 && should_render {
-                    let render = instance
+                // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
+                let event_type =
+                    EventType::from_str(&event.to_string()).with_context(err_context)?;
+                if subs.contains(&event_type)
+                    && ((pid.is_none() && cid.is_none())
+                        || (pid.is_none() && cid == Some(client_id))
+                        || (cid.is_none() && pid == Some(plugin_id))
+                        || (cid == Some(client_id) && pid == Some(plugin_id)))
+                {
+                    let update = instance
                         .exports
-                        .get_function("render")
+                        .get_function("update")
                         .with_context(err_context)?;
-                    render
-                        .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
-                        .with_context(err_context)?;
-                    let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
-                    drop(self.senders.send_to_screen(ScreenInstruction::PluginBytes(
-                        plugin_id,
-                        client_id,
-                        rendered_bytes.as_bytes().to_vec(),
-                    )));
+                    wasi_write_object(&plugin_env.wasi_env, &event);
+                    let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
+                        match e.downcast::<serde_json::Error>() {
+                            Ok(_) => panic!(
+                                "{}",
+                                anyError::new(VersionMismatchError::new(
+                                    VERSION,
+                                    "Unavailable",
+                                    &plugin_env.plugin.path,
+                                    plugin_env.plugin.is_builtin(),
+                                ))
+                            ),
+                            Err(e) => Err(e).with_context(err_context),
+                        }
+                    })?;
+                    let should_render = match update_return.get(0) {
+                        Some(Value::I32(n)) => *n == 1,
+                        _ => false,
+                    };
+
+                    if *rows > 0 && *columns > 0 && should_render {
+                        let render = instance
+                            .exports
+                            .get_function("render")
+                            .with_context(err_context)?;
+                        render
+                            .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
+                            .with_context(err_context)?;
+                        let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
+                        plugin_bytes.push((
+                            plugin_id,
+                            client_id,
+                            rendered_bytes.as_bytes().to_vec(),
+                        ));
+                    }
                 }
             }
         }
+        let _ = self
+            .senders
+            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
@@ -673,11 +680,11 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
 
         send_plugin_instructions
             .unwrap()
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 update_target,
                 Some(client_id),
                 Event::Timer(elapsed_time),
-            ))
+            )]))
             .unwrap();
     });
 }

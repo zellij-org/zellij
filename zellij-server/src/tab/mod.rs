@@ -683,21 +683,14 @@ impl Tab {
     pub fn update_input_modes(&mut self) -> Result<()> {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
+        let mut plugin_updates = vec![];
         for client_id in self.connected_clients.borrow().iter() {
             let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
-                    None,
-                    Some(*client_id),
-                    Event::ModeUpdate(mode_info.clone()),
-                ))
-                .with_context(|| {
-                    format!(
-                        "failed to update plugins with mode info {:?}",
-                        mode_info.mode
-                    )
-                })?;
+            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info.clone())));
         }
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
@@ -742,8 +735,7 @@ impl Tab {
             );
         }
         self.set_force_render();
-        self.update_input_modes()
-            .with_context(|| format!("failed to add client {client_id} to tab"))
+        Ok(())
     }
 
     pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
@@ -1357,11 +1349,13 @@ impl Tab {
                 }
             },
             PaneId::Plugin(pid) => {
+                let mut plugin_updates = vec![];
                 for key in parse_keys(&input_bytes) {
-                    self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
-                        .with_context(err_context)?;
+                    plugin_updates.push((Some(pid), None, Event::Key(key)));
                 }
+                self.senders
+                    .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                    .with_context(err_context)?;
             },
         }
         Ok(should_update_ui)
@@ -2633,11 +2627,11 @@ impl Tab {
                     format!("failed to write selection to clipboard for client {client_id}")
                 })?;
             self.senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
-                ))
+                )]))
                 .with_context(|| {
                     format!("failed to inform plugins about copy selection for client {client_id}")
                 })
@@ -2677,7 +2671,11 @@ impl Tab {
                 },
             };
         self.senders
-            .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                clipboard_event,
+            )]))
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
@@ -2712,15 +2710,13 @@ impl Tab {
             PaneId::Plugin(pid) => Some(pid),
             _ => None,
         });
+        let mut plugin_updates = vec![];
         for pid in pids_in_this_tab {
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
-                    Some(*pid),
-                    None,
-                    Event::Visible(visible),
-                ))
-                .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
+            plugin_updates.push((Some(*pid), None, Event::Visible(visible)));
         }
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         Ok(())
     }
 
