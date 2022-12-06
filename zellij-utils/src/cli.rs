@@ -355,7 +355,7 @@ pub enum CliAction {
         command: Vec<String>,
 
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser)]
+        #[clap(short, long, value_parser, conflicts_with("command"))]
         layout: Option<PathBuf>,
 
         /// Name of the new tab

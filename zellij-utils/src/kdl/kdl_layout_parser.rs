@@ -96,6 +96,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "name"
             || property_name == "split_direction"
             || property_name == "cwd"
+            || property_name == "env"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
