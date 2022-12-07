@@ -493,6 +493,12 @@ impl<'a> FloatingPaneGrid<'a> {
             .with_context(err_context)?
             .position_and_size();
 
+        let change_by = if strategy.direction.is_none() {
+            (change_by.0 / 2, change_by.1 / 2)
+        } else {
+            change_by
+        };
+
         // Move left border
         if strategy.move_left_border_left() || strategy.move_all_borders_out() {
             let increment = std::cmp::min(geometry.x.saturating_sub(self.viewport.x), change_by.0);
