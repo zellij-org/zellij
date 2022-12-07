@@ -497,7 +497,7 @@ impl<'a> FloatingPaneGrid<'a> {
         if strategy.move_left_border_left() || strategy.move_all_borders_out() {
             let increment = std::cmp::min(geometry.x.saturating_sub(self.viewport.x), change_by.0);
             // Invert if on boundary already
-            if increment == 0 {
+            if increment == 0 && strategy.direction.is_some() {
                 return self.change_pane_size(pane_id, &strategy.invert(), change_by);
             }
 
@@ -524,7 +524,7 @@ impl<'a> FloatingPaneGrid<'a> {
                 change_by.0,
             );
             // Invert if on boundary already
-            if increment == 0 {
+            if increment == 0 && strategy.direction.is_some() {
                 return self.change_pane_size(pane_id, &strategy.invert(), change_by);
             }
 
@@ -545,7 +545,7 @@ impl<'a> FloatingPaneGrid<'a> {
         if strategy.move_upper_border_up() || strategy.move_all_borders_out() {
             let increment = std::cmp::min(geometry.y.saturating_sub(self.viewport.y), change_by.1);
             // Invert if on boundary already
-            if increment == 0 {
+            if increment == 0 && strategy.direction.is_some() {
                 return self.change_pane_size(pane_id, &strategy.invert(), change_by);
             }
 
@@ -572,7 +572,7 @@ impl<'a> FloatingPaneGrid<'a> {
                 change_by.1,
             );
             // Invert if on boundary already
-            if increment == 0 {
+            if increment == 0 && strategy.direction.is_some() {
                 return self.change_pane_size(pane_id, &strategy.invert(), change_by);
             }
 
