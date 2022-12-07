@@ -73,7 +73,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
-            ClientInstruction::DoneParsingStdinQuery=> ClientContext::DoneParsingStdinQuery,
+            ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
         }
     }
 }
@@ -371,7 +371,7 @@ pub fn start_client(
                         .write_all("\n\rQuerying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
                         .expect("cannot write to stdout");
                     stdout.flush().expect("could not flush");
-                }
+                },
                 ClientInstruction::DoneParsingStdinQuery => {
                     stdout
                         .write_all("done".as_bytes())
@@ -381,7 +381,7 @@ pub fn start_client(
                 },
                 instruction => {
                     pending_instructions.push((instruction, err_ctx));
-                }
+                },
             }
             continue;
         }

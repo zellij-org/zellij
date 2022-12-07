@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 
-fn send_done_parsing_after_query_timeout(send_input_instructions: SenderWithContext<InputInstruction>, query_duration: u64) {
+fn send_done_parsing_after_query_timeout(
+    send_input_instructions: SenderWithContext<InputInstruction>,
+    query_duration: u64,
+) {
     std::thread::spawn({
         move || {
             std::thread::sleep(std::time::Duration::from_millis(query_duration));
