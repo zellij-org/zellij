@@ -384,6 +384,8 @@ pub enum ClientContext {
     Connected,
     ActiveClients,
     OwnClientId,
+    StartedParsingStdinQuery,
+    DoneParsingStdinQuery,
 }
 
 /// Stack call representations corresponding to the different types of [`ServerInstruction`]s.
