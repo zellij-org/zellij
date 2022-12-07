@@ -147,6 +147,20 @@ impl InputHandler {
                         self.handle_stdin_ansi_instruction(ansi_instruction);
                     }
                 },
+                Ok((InputInstruction::StartedParsing, _error_context)) => {
+                    log::info!("sending done loading");
+                    self.send_client_instructions
+                        .send(ClientInstruction::StartedParsingStdinQuery)
+                        .unwrap();
+                    log::info!("done sent done loading");
+                }
+                Ok((InputInstruction::DoneParsing, _error_context)) => {
+                    log::info!("sending done loading");
+                    self.send_client_instructions
+                        .send(ClientInstruction::DoneParsingStdinQuery)
+                        .unwrap();
+                    log::info!("done sent done loading");
+                }
                 Err(err) => panic!("Encountered read error: {:?}", err),
             }
         }

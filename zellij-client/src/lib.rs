@@ -43,6 +43,8 @@ pub(crate) enum ClientInstruction {
     SwitchToMode(InputMode),
     Connected,
     ActiveClients(Vec<ClientId>),
+    StartedParsingStdinQuery,
+    DoneParsingStdinQuery,
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -70,6 +72,8 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
+            ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
+            ClientInstruction::DoneParsingStdinQuery=> ClientContext::DoneParsingStdinQuery,
         }
     }
 }
@@ -121,6 +125,8 @@ pub(crate) enum InputInstruction {
     KeyEvent(InputEvent, Vec<u8>),
     SwitchToMode(InputMode),
     AnsiStdinInstructions(Vec<AnsiStdinInstruction>),
+    StartedParsing,
+    DoneParsing,
 }
 
 pub fn start_client(
@@ -337,13 +343,51 @@ pub fn start_client(
     };
 
     let exit_msg: String;
+    let mut loading = true;
+    let mut pending_instructions = vec![];
+
+    let mut stdout = os_input.get_stdout_writer();
+    stdout
+        .write_all("\u{1b}[1mLoading Zellij\u{1b}[m".as_bytes())
+        .expect("cannot write to stdout");
+    stdout.flush().expect("could not flush");
 
     loop {
-        let (client_instruction, mut err_ctx) = receive_client_instructions
-            .recv()
-            .expect("failed to receive app instruction on channel");
+        let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
+            // there are buffered instructions, we need to go through them before processing the
+            // new ones
+            pending_instructions.remove(0)
+        } else {
+            receive_client_instructions
+                .recv()
+                .expect("failed to receive app instruction on channel")
+        };
+
+        if loading {
+            // when the app is still loading, we buffer instructions and show a loading screen
+            match client_instruction {
+                ClientInstruction::StartedParsingStdinQuery => {
+                    stdout
+                        .write_all("\n\rQuerying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                }
+                ClientInstruction::DoneParsingStdinQuery => {
+                    stdout
+                        .write_all("done".as_bytes())
+                        .expect("cannot write to stdout");
+                    stdout.flush().expect("could not flush");
+                    loading = false;
+                },
+                instruction => {
+                    pending_instructions.push((instruction, err_ctx));
+                }
+            }
+            continue;
+        }
 
         err_ctx.add_call(ContextType::Client((&client_instruction).into()));
+
         match client_instruction {
             ClientInstruction::Exit(reason) => {
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
