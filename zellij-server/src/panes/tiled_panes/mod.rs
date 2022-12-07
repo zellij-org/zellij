@@ -2,7 +2,7 @@ mod pane_resizer;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use tiled_pane_grid::{split, TiledPaneGrid};
+use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -539,7 +539,7 @@ impl TiledPanes {
             );
 
             pane_grid
-                .change_pane_size(&active_pane_id, strategy, (4.0, 4.0))
+                .change_pane_size(&active_pane_id, strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {

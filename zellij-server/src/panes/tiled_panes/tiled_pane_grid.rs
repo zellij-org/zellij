@@ -14,7 +14,7 @@ use zellij_utils::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const RESIZE_PERCENT: f64 = 5.0;
+pub const RESIZE_PERCENT: f64 = 5.0;
 const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
