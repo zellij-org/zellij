@@ -2792,7 +2792,8 @@ fn toggle_floating_panes_on_sends_tty_csi_event() {
     let new_pane_id_2 = PaneId::Terminal(3);
 
     let default_shell = TerminalAction::RunCommand(RunCommand::new());
-    tab.toggle_floating_panes(client_id, default_shell.clone()).unwrap();
+    tab.toggle_floating_panes(client_id, default_shell.clone())
+        .unwrap();
     tab.new_pane(new_pane_id_1, None, None, Some(client_id))
         .unwrap();
     tab.new_pane(new_pane_id_2, None, None, Some(client_id))

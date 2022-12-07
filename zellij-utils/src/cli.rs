@@ -147,6 +147,7 @@ pub enum Sessions {
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
 
+        /// Set the environment variables of the new pane
         #[clap(
             short,
             long,
@@ -176,6 +177,7 @@ pub enum Sessions {
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
 
+        /// Set the environment variables of the editor
         #[clap(
             short,
             long,
@@ -277,6 +279,7 @@ pub enum CliAction {
             requires("command")
         )]
         close_on_exit: bool,
+
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(
             short,
@@ -288,6 +291,7 @@ pub enum CliAction {
         )]
         start_suspended: bool,
 
+        /// Set the environment variables of the new pane
         #[clap(
             short,
             long,
@@ -317,6 +321,7 @@ pub enum CliAction {
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
 
+        /// Set the environment variables of the new editor
         #[clap(
             short,
             long,
@@ -366,6 +371,7 @@ pub enum CliAction {
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
 
+        /// Set the environment variables of the new tab
         #[clap(
             short,
             long,

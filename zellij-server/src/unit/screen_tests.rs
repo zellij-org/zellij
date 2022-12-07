@@ -2523,10 +2523,9 @@ pub fn send_cli_rename_tab() {
     send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
-    ))
+
+    let test = received_plugin_instructions.lock().unwrap();
+    assert_snapshot!(format!("{:#?}", *test))
 }
 
 #[test]
@@ -2566,8 +2565,7 @@ pub fn send_cli_undo_rename_tab() {
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
-    ))
+
+    let test = received_plugin_instructions.lock().unwrap();
+    assert_snapshot!(format!("{:#?}", *test))
 }

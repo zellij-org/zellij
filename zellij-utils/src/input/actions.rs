@@ -171,15 +171,13 @@ pub enum Action {
     ToggleActiveSyncTab,
     /// Open a new pane in the specified direction (relative to focus).
     /// If no direction is specified, will try to use the biggest available space.
-    NewPane(RunCommand, PaneOptions), // String is an optional pane name
+    NewPane(RunCommand, PaneOptions), 
     /// Open the file in a new pane using the default editor
     EditFile(OpenFile, PaneOptions), // usize is an optional line number, bool is floating true/false
     /// Open a new floating pane
-    NewFloatingPane(RunCommand, FloatingPaneOptions), // String is an optional pane name
+    NewFloatingPane(RunCommand, FloatingPaneOptions), 
     /// Open a new tiled (embedded, non-floating) pane
-    NewTiledPane(RunCommand, TiledPaneOptions), // String is an
-    // optional pane
-    // name
+    NewTiledPane(RunCommand, TiledPaneOptions), 
     /// Embed focused pane in tab if floating or float focused pane if embedded
     TogglePaneEmbedOrFloating,
     /// Toggle the visibility of all floating panes (if any) in the current Tab
@@ -189,7 +187,7 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, RunCommand, TabOptions), // the String is the tab name
+    NewTab(Option<PaneLayout>, RunCommand, TabOptions), 
     /// Do nothing.
     NoOp,
     /// Go to the next tab.

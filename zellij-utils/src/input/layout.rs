@@ -59,11 +59,12 @@ pub enum SplitSize {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
+    // TODO: merge this with TerminalAction::OpenFile
     #[serde(rename = "plugin")]
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(OpenFile), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(OpenFile), 
 }
 
 impl Run {

@@ -1,10 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-<<<<<<< HEAD
-=======
-assertion_line: 2511
->>>>>>> zellij/main
-expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
+expression: "format!(\"{:#?}\", * test)"
 ---
 [
     Update(
