@@ -170,6 +170,8 @@ impl<'a> TiledPaneGrid<'a> {
     ) -> Result<bool> {
         let err_context = || format!("failed to {strategy} by {change_by:?} for pane {pane_id:?}");
 
+        // Shorthand
+        use Direction as Dir;
         // Default behavior is to only increase pane size, unless the direction being resized to is
         // a boundary. In this case, decrease size from the other side (invert strategy)!
         let strategy = if strategy.resize_increase()  // Only invert when increasing
@@ -222,8 +224,8 @@ impl<'a> TiledPaneGrid<'a> {
 
             // Only resize those neighbors that are aligned and between pane borders
             let (some_direction, other_direction) = match direction {
-                Direction::Left | Direction::Right => (Direction::Up, Direction::Down),
-                Direction::Down | Direction::Up => (Direction::Left, Direction::Right),
+                Dir::Left | Dir::Right => (Dir::Up, Dir::Down),
+                Dir::Down | Dir::Up => (Dir::Left, Dir::Right),
             };
             let (some_borders, some_terminals) = self
                 .contiguous_panes_with_alignment(
@@ -251,8 +253,8 @@ impl<'a> TiledPaneGrid<'a> {
 
             // Perform the resize
             let change_by = match direction {
-                Direction::Left | Direction::Right => change_by.0,
-                Direction::Down | Direction::Up => change_by.1,
+                Dir::Left | Dir::Right => change_by.0,
+                Dir::Down | Dir::Up => change_by.1,
             };
 
             if strategy.resize_increase() && direction.is_horizontal() {
