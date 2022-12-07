@@ -356,68 +356,73 @@ impl<'a> TiledPaneGrid<'a> {
             }
 
             // Resize pane in every direction that fits
-            let mut result_map = vec![];
-            for dir in [
-                Direction::Left,
-                Direction::Down,
-                Direction::Up,
-                Direction::Right,
-            ] {
-                let result = self.change_pane_size(
-                    pane_id,
-                    &ResizeStrategy {
-                        direction: Some(dir),
+            let options = [
+                (Dir::Right, Some(Dir::Down), Some(Dir::Left), 0),
+                (Dir::Left, Some(Dir::Down), Some(Dir::Right), 1),
+                (Dir::Right, Some(Dir::Up), Some(Dir::Left), 2),
+                (Dir::Left, Some(Dir::Up), Some(Dir::Right), 3),
+                (Dir::Right, None, None, 0),
+                (Dir::Down, None, None, 0),
+                (Dir::Left, None, None, 0),
+                (Dir::Up, None, None, 0),
+            ];
+
+            for (main_dir, sub_dir, adjust_dir, adjust_pane) in options {
+                if let Some(sub_dir) = sub_dir {
+                    let main_strategy = ResizeStrategy {
+                        direction: Some(main_dir),
                         invert_on_boundaries: false,
                         ..strategy
-                    },
-                    change_by,
-                )?;
-                result_map.push(result);
-            }
+                    };
+                    let sub_strategy = ResizeStrategy {
+                        direction: Some(sub_dir),
+                        invert_on_boundaries: false,
+                        ..strategy
+                    };
 
-            let resize = strategy.resize.invert();
-            // left and down
-            if result_map[0] && result_map[1] {
-                if let Some(pane) = aligned_panes[1] {
-                    self.change_pane_size(
-                        &pane,
-                        &ResizeStrategy::new(resize, Some(Direction::Right)),
-                        change_by,
-                    )?;
+                    if self.can_change_pane_size(pane_id, &main_strategy, change_by)?
+                        && self.can_change_pane_size(pane_id, &sub_strategy, change_by)?
+                    {
+                        let result = self
+                            .change_pane_size(pane_id, &main_strategy, change_by)
+                            .and_then(|ret| {
+                                Ok(ret
+                                    && self.change_pane_size(pane_id, &sub_strategy, change_by)?)
+                            })
+                            .and_then(|ret| {
+                                if let Some(aligned_pane) = aligned_panes[adjust_pane] {
+                                    Ok(ret
+                                        && self.change_pane_size(
+                                            &aligned_pane,
+                                            &ResizeStrategy {
+                                                direction: adjust_dir,
+                                                invert_on_boundaries: false,
+                                                resize: strategy.resize.invert(),
+                                            },
+                                            change_by,
+                                        )?)
+                                } else {
+                                    Ok(ret)
+                                }
+                            })
+                            .with_context(err_context)?;
+                        return Ok(result);
+                    }
+                } else {
+                    let new_strategy = ResizeStrategy {
+                        direction: Some(main_dir),
+                        invert_on_boundaries: false,
+                        ..strategy
+                    };
+                    if self
+                        .change_pane_size(pane_id, &new_strategy, change_by)
+                        .with_context(err_context)?
+                    {
+                        return Ok(true);
+                    }
                 }
             }
-            // left and up
-            if result_map[0] && result_map[2] {
-                if let Some(pane) = aligned_panes[3] {
-                    self.change_pane_size(
-                        &pane,
-                        &ResizeStrategy::new(resize, Some(Direction::Right)),
-                        change_by,
-                    )?;
-                }
-            }
-
-            // right and down
-            if result_map[3] && result_map[1] {
-                if let Some(pane) = aligned_panes[0] {
-                    self.change_pane_size(
-                        &pane,
-                        &ResizeStrategy::new(resize, Some(Direction::Up)),
-                        change_by,
-                    )?;
-                }
-            }
-
-            // right and up
-            if result_map[3] && result_map[2] {
-                if let Some(pane) = aligned_panes[2] {
-                    self.change_pane_size(
-                        &pane,
-                        &ResizeStrategy::new(resize, Some(Direction::Down)),
-                        change_by,
-                    )?;
-                }
-            }
+            return Ok(false);
         }
 
         #[cfg(debug_assertions)]
