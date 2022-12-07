@@ -306,7 +306,7 @@ pub struct ResizeStrategy {
     /// If set to true (default), increasing resizes towards a viewport border will be inverted.
     /// I.e. a scenario like this ("increase right"):
     ///
-    /// ```
+    /// ```text
     /// +---+---+
     /// |   | X |->
     /// +---+---+
@@ -314,7 +314,7 @@ pub struct ResizeStrategy {
     ///
     /// turns into this ("decrease left"):
     ///
-    /// ```
+    /// ```text
     /// +---+---+
     /// |   |-> |
     /// +---+---+
