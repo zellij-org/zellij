@@ -76,6 +76,23 @@ impl<'a> TiledPaneGrid<'a> {
         pane_resizer.layout(direction, space)
     }
 
+    fn pane_is_flexible(&self, direction: SplitDirection, pane_id: &PaneId) -> Result<bool> {
+        let err_context =
+            || format!("failed to determine if pane {pane_id:?} is flexible in {direction:?}");
+
+        let panes = self.panes.borrow();
+        let pane_to_check = panes
+            .get(pane_id)
+            .with_context(|| no_pane_id(pane_id))
+            .with_context(err_context)?;
+        let geom = pane_to_check.current_geom();
+        Ok(!match direction {
+            SplitDirection::Vertical => geom.rows,
+            SplitDirection::Horizontal => geom.cols,
+        }
+        .is_fixed())
+    }
+
     // Check if panes in the desired direction can be resized. Returns the maximum resize that's
     // possible (at most `change_by`).
     pub fn can_change_pane_size(
@@ -87,8 +104,11 @@ impl<'a> TiledPaneGrid<'a> {
         let err_context = || format!("failed to determine if pane {pane_id:?} can {strategy}");
 
         let pane_ids = if let Some(direction) = strategy.direction {
-            self.pane_ids_directly_next_to(pane_id, &direction)
-                .with_context(err_context)?
+            let mut vec = self
+                .pane_ids_directly_next_to(pane_id, &direction)
+                .with_context(err_context)?;
+            vec.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
+            vec
         } else {
             vec![]
         };
