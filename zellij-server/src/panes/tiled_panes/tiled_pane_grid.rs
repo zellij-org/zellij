@@ -110,7 +110,7 @@ impl<'a> TiledPaneGrid<'a> {
             vec.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
             vec
         } else {
-            vec![]
+            return Ok(true);
         };
 
         use zellij_utils::data::Resize::Decrease as Dec;
@@ -155,9 +155,7 @@ impl<'a> TiledPaneGrid<'a> {
                 unimplemented!();
             }
         } else {
-            // This is handled in `change_pane_size`, which will perform a check before a resize in
-            // any single direction.
-            Ok(true)
+            Ok(false)
         }
     }
 
