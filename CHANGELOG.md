@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * refactor(messaging): reduce extraneous cross-thread messaging (https://github.com/zellij-org/zellij/pull/1996)
 * errors: preserve caller location in `to_log` (https://github.com/zellij-org/zellij/pull/1994)
 * feat: show loading screen on startup (https://github.com/zellij-org/zellij/pull/1997)
+* feat: Allow "reducing" resizes, refactor resizing code (https://github.com/zellij-org/zellij/pull/1990)
 
 ## [0.33.0] - 2022-11-10
 

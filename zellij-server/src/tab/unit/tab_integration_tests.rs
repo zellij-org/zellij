@@ -11,6 +11,9 @@ use crate::{
 };
 use std::path::PathBuf;
 use zellij_utils::channels::Receiver;
+use zellij_utils::data::Direction;
+use zellij_utils::data::Resize;
+use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{Layout, PaneLayout};
@@ -765,7 +768,8 @@ fn increase_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_increase(client_id);
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -794,7 +798,8 @@ fn decrease_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_decrease(client_id);
+    tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+        .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -823,7 +828,11 @@ fn resize_floating_pane_left() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_left(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -852,7 +861,11 @@ fn resize_floating_pane_right() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_right(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -881,7 +894,11 @@ fn resize_floating_pane_up() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_up(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -910,7 +927,11 @@ fn resize_floating_pane_down() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_down(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),

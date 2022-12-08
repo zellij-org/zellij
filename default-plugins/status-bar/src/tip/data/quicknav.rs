@@ -1,10 +1,7 @@
 use ansi_term::{unstyled_len, ANSIString, ANSIStrings, Style};
 
 use crate::{action_key, action_key_group, style_key_with_modifier, LinePart};
-use zellij_tile::prelude::{
-    actions::{Action, Direction, ResizeDirection},
-    *,
-};
+use zellij_tile::prelude::{actions::Action, *};
 
 macro_rules! strings {
     ($ANSIStrings:expr) => {{
@@ -75,8 +72,8 @@ fn add_keybinds(help: &ModeInfo) -> Keygroups {
     let mut resize_keys = action_key_group(
         &normal_keymap,
         &[
-            &[Action::Resize(ResizeDirection::Increase)],
-            &[Action::Resize(ResizeDirection::Decrease)],
+            &[Action::Resize(Resize::Increase, None)],
+            &[Action::Resize(Resize::Decrease, None)],
         ],
     );
     if resize_keys.contains(&Key::Alt(CharOrArrow::Char('=')))

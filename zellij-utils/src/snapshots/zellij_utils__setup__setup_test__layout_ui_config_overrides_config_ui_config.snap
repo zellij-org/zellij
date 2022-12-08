@@ -12,6 +12,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -21,6 +22,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -30,6 +32,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -188,22 +191,34 @@ Config {
         Resize: {
             Left: [
                 Resize(
-                    Left,
+                    Increase,
+                    Some(
+                        Left,
+                    ),
                 ),
             ],
             Down: [
                 Resize(
-                    Down,
+                    Increase,
+                    Some(
+                        Down,
+                    ),
                 ),
             ],
             Up: [
                 Resize(
-                    Up,
+                    Increase,
+                    Some(
+                        Up,
+                    ),
                 ),
             ],
             Right: [
                 Resize(
-                    Right,
+                    Increase,
+                    Some(
+                        Right,
+                    ),
                 ),
             ],
             Char(
@@ -218,6 +233,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Char(
@@ -225,6 +241,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Char(
@@ -232,34 +249,87 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
+                ),
+            ],
+            Char(
+                'H',
+            ): [
+                Resize(
+                    Decrease,
+                    Some(
+                        Left,
+                    ),
+                ),
+            ],
+            Char(
+                'J',
+            ): [
+                Resize(
+                    Decrease,
+                    Some(
+                        Down,
+                    ),
+                ),
+            ],
+            Char(
+                'K',
+            ): [
+                Resize(
+                    Decrease,
+                    Some(
+                        Up,
+                    ),
+                ),
+            ],
+            Char(
+                'L',
+            ): [
+                Resize(
+                    Decrease,
+                    Some(
+                        Right,
+                    ),
                 ),
             ],
             Char(
                 'h',
             ): [
                 Resize(
-                    Left,
+                    Increase,
+                    Some(
+                        Left,
+                    ),
                 ),
             ],
             Char(
                 'j',
             ): [
                 Resize(
-                    Down,
+                    Increase,
+                    Some(
+                        Down,
+                    ),
                 ),
             ],
             Char(
                 'k',
             ): [
                 Resize(
-                    Up,
+                    Increase,
+                    Some(
+                        Up,
+                    ),
                 ),
             ],
             Char(
                 'l',
             ): [
                 Resize(
-                    Right,
+                    Increase,
+                    Some(
+                        Right,
+                    ),
                 ),
             ],
             Alt(
@@ -269,6 +339,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -278,6 +349,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -287,6 +359,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -595,6 +668,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -604,6 +678,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -613,6 +688,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -940,6 +1016,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -949,6 +1026,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -958,6 +1036,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1195,6 +1274,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1204,6 +1284,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -1213,6 +1294,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1390,6 +1472,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1399,6 +1482,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -1408,6 +1492,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1664,6 +1749,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1673,6 +1759,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -1682,6 +1769,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1859,6 +1947,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -1868,6 +1957,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -1877,6 +1967,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2051,6 +2142,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2060,6 +2152,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -2069,6 +2162,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2248,6 +2342,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2257,6 +2352,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -2266,6 +2362,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2503,6 +2600,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2512,6 +2610,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -2521,6 +2620,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2692,6 +2792,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -2701,6 +2802,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -2710,6 +2812,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -3033,6 +3136,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(
@@ -3042,6 +3146,7 @@ Config {
             ): [
                 Resize(
                     Decrease,
+                    None,
                 ),
             ],
             Alt(
@@ -3051,6 +3156,7 @@ Config {
             ): [
                 Resize(
                     Increase,
+                    None,
                 ),
             ],
             Alt(

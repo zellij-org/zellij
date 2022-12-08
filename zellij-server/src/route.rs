@@ -9,10 +9,10 @@ use crate::{
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::Event,
+    data::{Direction, Event, ResizeStrategy},
     errors::prelude::*,
     input::{
-        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
+        actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },
@@ -102,15 +102,9 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
-        Action::Resize(direction) => {
-            let screen_instr = match direction {
-                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
-                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id),
-                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id),
-                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id),
-                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
-                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
-            };
+        Action::Resize(resize, direction) => {
+            let screen_instr =
+                ScreenInstruction::Resize(client_id, ResizeStrategy::new(resize, direction));
             session
                 .senders
                 .send_to_screen(screen_instr)

@@ -367,6 +367,7 @@ pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) ->
 /// separator between them:
 ///
 /// - "hjkl"
+/// - "HJKL"
 /// - "←↓↑→"
 /// - "←→"
 /// - "↓↑"
@@ -423,6 +424,7 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
     // Special handling of some pre-defined keygroups
     let key_string = key.join("");
     let key_separator = match &key_string[..] {
+        "HJKL" => "",
         "hjkl" => "",
         "←↓↑→" => "",
         "←→" => "",

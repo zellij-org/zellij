@@ -2,7 +2,7 @@ mod pane_resizer;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use tiled_pane_grid::{split, TiledPaneGrid};
+use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -16,7 +16,7 @@ use crate::{
     ClientId,
 };
 use zellij_utils::{
-    data::{ModeInfo, Style},
+    data::{ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{command::RunCommand, layout::SplitDirection},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -521,7 +521,15 @@ impl TiledPanes {
         }
         self.set_pane_frames(self.draw_pane_frames);
     }
-    pub fn resize_active_pane_left(&mut self, client_id: ClientId) {
+
+    pub fn resize_active_pane(
+        &mut self,
+        client_id: ClientId,
+        strategy: &ResizeStrategy,
+    ) -> Result<()> {
+        let err_context =
+            || format!("failed to {strategy} for active tiled pane for client {client_id}");
+
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
             let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
@@ -529,88 +537,20 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.resize_pane_left(&active_pane_id);
+
+            pane_grid
+                .change_pane_size(&active_pane_id, strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
+                .with_context(err_context)?;
+
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
             }
             self.reset_boundaries();
         }
+
+        Ok(())
     }
-    pub fn resize_active_pane_right(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_right(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_up(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_up(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_down(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_pane_down(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_increase(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_increase(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
-    pub fn resize_active_pane_decrease(&mut self, client_id: ClientId) {
-        if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let mut pane_grid = TiledPaneGrid::new(
-                &mut self.panes,
-                &self.panes_to_hide,
-                *self.display_area.borrow(),
-                *self.viewport.borrow(),
-            );
-            pane_grid.resize_decrease(&active_pane_id);
-            for pane in self.panes.values_mut() {
-                resize_pty!(pane, self.os_api, self.senders).unwrap();
-            }
-            self.reset_boundaries();
-        }
-    }
+
     pub fn focus_next_pane(&mut self, client_id: ClientId) {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
