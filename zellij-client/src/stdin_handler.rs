@@ -5,6 +5,20 @@ use std::sync::{Arc, Mutex};
 use zellij_utils::channels::SenderWithContext;
 use zellij_utils::termwiz::input::{InputEvent, InputParser, MouseButtons};
 
+fn send_done_parsing_after_query_timeout(
+    send_input_instructions: SenderWithContext<InputInstruction>,
+    query_duration: u64,
+) {
+    std::thread::spawn({
+        move || {
+            std::thread::sleep(std::time::Duration::from_millis(query_duration));
+            send_input_instructions
+                .send(InputInstruction::DoneParsing)
+                .unwrap();
+        }
+    });
+}
+
 pub(crate) fn stdin_loop(
     mut os_input: Box<dyn ClientOsApi>,
     send_input_instructions: SenderWithContext<InputInstruction>,
@@ -15,6 +29,9 @@ pub(crate) fn stdin_loop(
     let mut current_buffer = vec![];
     // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
     // we get a response through STDIN, so it makes sense to do this here
+    send_input_instructions
+        .send(InputInstruction::StartedParsing)
+        .unwrap();
     let terminal_emulator_query_string = stdin_ansi_parser
         .lock()
         .unwrap()
@@ -23,6 +40,8 @@ pub(crate) fn stdin_loop(
         .get_stdout_writer()
         .write(terminal_emulator_query_string.as_bytes())
         .unwrap();
+    let query_duration = stdin_ansi_parser.lock().unwrap().startup_query_duration();
+    send_done_parsing_after_query_timeout(send_input_instructions.clone(), query_duration);
     loop {
         let buf = os_input.read_from_stdin();
         {

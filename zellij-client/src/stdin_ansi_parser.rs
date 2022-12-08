@@ -73,6 +73,9 @@ impl StdinAnsiParser {
         }
         false
     }
+    pub fn startup_query_duration(&self) -> u64 {
+        STARTUP_PARSE_DEADLINE_MS
+    }
     pub fn parse(&mut self, mut raw_bytes: Vec<u8>) -> Vec<AnsiStdinInstruction> {
         for byte in raw_bytes.drain(..) {
             self.parse_byte(byte);
