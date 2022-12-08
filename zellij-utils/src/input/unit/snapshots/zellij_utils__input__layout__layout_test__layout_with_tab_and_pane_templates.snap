@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 583
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -37,9 +36,12 @@ Layout {
                                         run: Some(
                                             Command(
                                                 RunCommand {
-                                                    command: "htop",
+                                                    command: Some(
+                                                        "htop",
+                                                    ),
                                                     args: [],
                                                     cwd: None,
+                                                    env: {},
                                                     hold_on_close: true,
                                                     hold_on_start: false,
                                                 },

@@ -286,7 +286,7 @@ impl MockScreen {
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
-        let default_shell = None;
+        let default_shell = TerminalAction::RunCommand(RunCommand::new());
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
@@ -309,7 +309,7 @@ impl MockScreen {
         let pane_count = tab_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         let plugin_ids = HashMap::new();
-        let default_shell = None;
+        let default_shell = TerminalAction::RunCommand(RunCommand::new());
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         for i in 0..pane_count {
@@ -382,6 +382,7 @@ impl MockScreen {
         let capabilities = PluginCapabilities {
             arrow_fonts: Default::default(),
         };
+        let default_shell = TerminalAction::RunCommand(RunCommand::new());
 
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
@@ -393,7 +394,7 @@ impl MockScreen {
                 should_silently_fail: true,
             },
             capabilities,
-            default_shell: None,
+            default_shell,
             client_attributes: client_attributes.clone(),
             screen_thread: None,
             pty_thread: None,
@@ -1277,10 +1278,14 @@ pub fn send_cli_edit_scrollback_action() {
         .clone();
     let mut found_instruction = false;
     for instruction in received_pty_instructions.lock().unwrap().iter() {
-        if let PtyInstruction::OpenInPlaceEditor(scrollback_contents_file, terminal_id, client_id) =
-            instruction
-        {
-            assert_eq!(scrollback_contents_file, &PathBuf::from(&dumped_file_name));
+        if let PtyInstruction::OpenInPlaceEditor(open_file, client_id) = instruction {
+            let scrollback_contents_file = &open_file.file_name;
+            let terminal_id = &open_file.line_number;
+            let cwd = open_file.cwd.clone();
+            assert_eq!(
+                cwd.unwrap_or(PathBuf::new()).join(scrollback_contents_file),
+                PathBuf::from(&dumped_file_name)
+            );
             assert_eq!(terminal_id, &Some(1));
             assert_eq!(client_id, &1);
             found_instruction = true;
@@ -1854,6 +1859,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
         direction: None,
         command: vec![],
         cwd: None,
+        env: Some(vec![]),
         floating: false,
         name: None,
         close_on_exit: false,
@@ -1894,6 +1900,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
         direction: Some(Direction::Right),
         command: vec![],
         cwd: None,
+        env: Some(vec![]),
         floating: false,
         name: None,
         close_on_exit: false,
@@ -1934,6 +1941,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
         direction: Some(Direction::Right),
         command: vec!["htop".into()],
         cwd: Some("/some/folder".into()),
+        env: Some(vec![]),
         floating: false,
         name: None,
         close_on_exit: false,
@@ -1976,6 +1984,7 @@ pub fn send_cli_edit_action_with_default_parameters() {
         line_number: None,
         floating: false,
         cwd: None,
+        env: Some(vec![]),
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2014,6 +2023,7 @@ pub fn send_cli_edit_action_with_line_number() {
         line_number: Some(100),
         floating: false,
         cwd: None,
+        env: Some(vec![]),
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2052,6 +2062,7 @@ pub fn send_cli_edit_action_with_split_direction() {
         line_number: None,
         floating: false,
         cwd: None,
+        env: Some(vec![]),
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2257,6 +2268,8 @@ pub fn send_cli_new_tab_action_default_params() {
         name: None,
         layout: None,
         cwd: None,
+        env: Some(vec![]),
+        command: vec![],
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2301,6 +2314,8 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
             env!("CARGO_MANIFEST_DIR")
         ))),
         cwd: None,
+        env: Some(vec![]),
+        command: vec![],
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2508,10 +2523,9 @@ pub fn send_cli_rename_tab() {
     send_cli_action_to_server(&session_metadata, rename_tab, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
-    ))
+
+    let test = received_plugin_instructions.lock().unwrap();
+    assert_snapshot!(format!("{:#?}", *test))
 }
 
 #[test]
@@ -2551,8 +2565,7 @@ pub fn send_cli_undo_rename_tab() {
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![plugin_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:#?}",
-        *received_plugin_instructions.lock().unwrap()
-    ))
+
+    let test = received_plugin_instructions.lock().unwrap();
+    assert_snapshot!(format!("{:#?}", *test))
 }

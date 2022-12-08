@@ -27,7 +27,7 @@ pub enum PluginInstruction {
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
-        Option<TerminalAction>,
+        TerminalAction,
         Option<PaneLayout>,
         Option<String>, // tab name
         usize,          // tab_index

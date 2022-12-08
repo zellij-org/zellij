@@ -7,6 +7,7 @@ use crate::{
 };
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use std::path::PathBuf;
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
@@ -145,6 +146,15 @@ pub enum Sessions {
         /// Start the command suspended, only running after you first presses ENTER
         #[clap(short, long, value_parser, default_value("false"), takes_value(false))]
         start_suspended: bool,
+
+        /// Set the environment variables of the new pane
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Edit file with default $EDITOR / $VISUAL
     #[clap(visible_alias = "e")]
@@ -166,6 +176,15 @@ pub enum Sessions {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Set the environment variables of the editor
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     ConvertConfig {
         old_config_file: PathBuf,
@@ -260,6 +279,7 @@ pub enum CliAction {
             requires("command")
         )]
         close_on_exit: bool,
+
         /// Start the command suspended, only running it after the you first press ENTER
         #[clap(
             short,
@@ -270,6 +290,16 @@ pub enum CliAction {
             requires("command")
         )]
         start_suspended: bool,
+
+        /// Set the environment variables of the new pane
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true),
+            requires("command")
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Open the specified file in a new zellij pane with your default EDITOR
     Edit {
@@ -290,6 +320,15 @@ pub enum CliAction {
         /// Change the working directory of the editor
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Set the environment variables of the new editor
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
     /// Switch input mode of all connected clients [locked|pane|tab|resize|move|search|session]
     SwitchMode { input_mode: InputMode },
@@ -317,8 +356,11 @@ pub enum CliAction {
     UndoRenameTab,
     /// Create a new tab, optionally with a specified tab layout and name
     NewTab {
+        #[clap(last(true))]
+        command: Vec<String>,
+
         /// Layout to use for the new tab
-        #[clap(short, long, value_parser)]
+        #[clap(short, long, value_parser, conflicts_with("command"))]
         layout: Option<PathBuf>,
 
         /// Name of the new tab
@@ -326,7 +368,30 @@ pub enum CliAction {
         name: Option<String>,
 
         /// Change the working directory of the new tab
-        #[clap(short, long, value_parser, requires("layout"))]
+        #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
+
+        /// Set the environment variables of the new tab
+        #[clap(
+            short,
+            long,
+            value_parser = parse_key_val::<String, String>,
+            takes_value(true)
+        )]
+        env: Option<Vec<(String, String)>>,
     },
+}
+
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }

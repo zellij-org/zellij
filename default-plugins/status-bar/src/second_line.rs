@@ -3,8 +3,7 @@ use ansi_term::{
     Color::{Fixed, RGB},
     Style,
 };
-use zellij_tile::prelude::actions::Action;
-use zellij_tile::prelude::*;
+use zellij_tile::prelude::{actions::*, command::*, *};
 use zellij_tile_utils::palette_match;
 
 use crate::{
@@ -148,12 +147,12 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Move focus"), s("Move"),
             action_key_group(&km, &[&[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
                 &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("New"), s("New"), action_key(&km, &[A::NewPane(None, None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions::new()), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseFocus, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenamePane), A::PaneNameInput(vec![0])])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None), TO_NORMAL])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Down), ..Default::default()}), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Right), ..Default::default()}), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
         (s("Frames"), s("Frames"), action_key(&km, &[A::TogglePaneFrames, TO_NORMAL])),
         (s("Floating toggle"), s("Floating"),
@@ -180,7 +179,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
         vec![
         (s("Move focus"), s("Move"), focus_keys),
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, RunCommand::new(), TabOptions{title:None}), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
@@ -239,10 +238,10 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Move focus"), s("Move"), action_key_group(&km, &[
             &[A::MoveFocus(Dir::Left)], &[A::MoveFocus(Dir::Down)],
             &[A::MoveFocus(Dir::Up)], &[A::MoveFocus(Dir::Right)]])),
-        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None), TO_NORMAL])),
-        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None), TO_NORMAL])),
+        (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Down), ..Default::default()}), TO_NORMAL])),
+        (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(RunCommand::new(), PaneOptions{ direction: Some(Dir::Right), ..Default::default()}), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, RunCommand::new(), TabOptions{title:None}), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),
@@ -673,7 +672,18 @@ mod tests {
                         Key::Right,
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Char('n'),
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
                         Key::Char('f'),
@@ -708,7 +718,18 @@ mod tests {
                         Key::Right,
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Char('n'),
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
                         Key::Char('f'),
@@ -748,7 +769,18 @@ mod tests {
                         Key::Ctrl(' '),
                         vec![Action::MoveFocus(actions::Direction::Right)],
                     ),
-                    (Key::Backspace, vec![Action::NewPane(None, None), TO_NORMAL]),
+                    (
+                        Key::Backspace,
+                        vec![
+                            Action::NewPane(
+                                RunCommand::new(),
+                                PaneOptions {
+                                    ..Default::default()
+                                },
+                            ),
+                            TO_NORMAL,
+                        ],
+                    ),
                     (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
                     (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),
                 ],

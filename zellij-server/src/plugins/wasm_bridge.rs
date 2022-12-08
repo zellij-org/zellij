@@ -34,7 +34,7 @@ use zellij_utils::{
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
     input::{
-        command::TerminalAction,
+        command::{OpenFile, TerminalAction},
         layout::RunPlugin,
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
@@ -640,7 +640,10 @@ fn host_open_file(plugin_env: &PluginEnv) {
     plugin_env
         .senders
         .send_to_pty(PtyInstruction::SpawnTerminal(
-            Some(TerminalAction::OpenFile(path, None)),
+            TerminalAction::OpenFile(OpenFile {
+                file_name: path,
+                ..Default::default()
+            }),
             None,
             None,
             ClientOrTabIndex::TabIndex(plugin_env.tab_index),

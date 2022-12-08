@@ -105,7 +105,7 @@ pub(crate) struct SessionMetaData {
     pub senders: ThreadSenders,
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
-    pub default_shell: Option<TerminalAction>,
+    pub default_shell: TerminalAction,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -318,12 +318,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     .unwrap()
                     .set_client_size(client_id, client_attributes.size);
 
-                let default_shell = config_options.default_shell.map(|shell| {
-                    TerminalAction::RunCommand(RunCommand {
-                        command: shell,
-                        ..Default::default()
-                    })
-                });
+                let default_shell = config_options.default_shell.map_or(
+                    TerminalAction::RunCommand(RunCommand::new()),
+                    |shell| {
+                        TerminalAction::RunCommand(RunCommand {
+                            command: Some(shell),
+                            ..Default::default()
+                        })
+                    },
+                );
 
                 let spawn_tabs = |tab_layout, tab_name| {
                     session_data
@@ -645,12 +648,15 @@ fn init_session(
         arrow_fonts: config_options.simplified_ui.unwrap_or_default(),
     };
 
-    let default_shell = config_options.default_shell.clone().map(|command| {
-        TerminalAction::RunCommand(RunCommand {
-            command,
-            ..Default::default()
-        })
-    });
+    let default_shell = config_options.default_shell.clone().map_or(
+        TerminalAction::RunCommand(RunCommand::new()),
+        |command| {
+            TerminalAction::RunCommand(RunCommand {
+                command: Some(command),
+                ..Default::default()
+            })
+        },
+    );
 
     let pty_thread = thread::Builder::new()
         .name("pty".to_string())

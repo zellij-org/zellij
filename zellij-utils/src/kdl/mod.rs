@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::input::actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption};
-use crate::input::command::RunCommandAction;
+use crate::input::command::{PaneOptions, RunCommand, TabOptions, TiledPaneOptions};
 
 #[macro_export]
 macro_rules! parse_kdl_action_arguments {
@@ -440,7 +440,14 @@ impl Action {
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
-                    return Ok(Action::NewPane(None, None));
+                    return Ok(Action::NewPane(
+                        RunCommand::new(),
+                        PaneOptions {
+                            title: None,
+                            floating: false,
+                            direction: None,
+                        },
+                    ));
                 } else {
                     let direction = Direction::from_str(string.as_str()).map_err(|_| {
                         ConfigError::new_kdl_error(
@@ -449,7 +456,14 @@ impl Action {
                             action_node.span().len(),
                         )
                     })?;
-                    Ok(Action::NewPane(Some(direction), None))
+                    Ok(Action::NewPane(
+                        RunCommand::new(),
+                        PaneOptions {
+                            title: None,
+                            floating: false,
+                            direction: Some(direction),
+                        },
+                    ))
                 }
             },
             "SearchToggleOption" => {
@@ -719,7 +733,11 @@ impl TryFrom<&KdlNode> for Action {
             "PaneNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
-            "NewTab" => Ok(Action::NewTab(None, None)),
+            "NewTab" => Ok(Action::NewTab(
+                None,
+                RunCommand::new(),
+                TabOptions { title: None },
+            )),
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
@@ -757,15 +775,27 @@ impl TryFrom<&KdlNode> for Action {
                 let hold_on_start = command_metadata
                     .and_then(|c_m| kdl_child_bool_value_for_entry(c_m, "start_suspended"))
                     .unwrap_or(false);
-                let run_command_action = RunCommandAction {
-                    command: PathBuf::from(command),
+                let env = if let Some(env_node) = command_metadata.and_then(|c_m| c_m.get("env")) {
+                    EnvironmentVariables::from_kdl(env_node)?
+                } else {
+                    EnvironmentVariables::from_data(HashMap::new())
+                };
+
+                let run_command_action = RunCommand {
+                    command: Some(PathBuf::from(command)),
                     args,
                     cwd,
-                    direction,
                     hold_on_close,
                     hold_on_start,
+                    env,
                 };
-                Ok(Action::Run(run_command_action))
+                Ok(Action::Run(
+                    run_command_action,
+                    TiledPaneOptions {
+                        direction,
+                        title: None,
+                    },
+                ))
             },
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
@@ -1291,8 +1321,9 @@ impl Layout {
         raw_layout: &str,
         file_name: String,
         cwd: Option<PathBuf>,
+        env: EnvironmentVariables,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
+        KdlLayoutParser::new(raw_layout, cwd, env).parse().map_err(|e|{
             match e {
                 ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
                 ConfigError::KdlDeserializationError(kdl_error) => {

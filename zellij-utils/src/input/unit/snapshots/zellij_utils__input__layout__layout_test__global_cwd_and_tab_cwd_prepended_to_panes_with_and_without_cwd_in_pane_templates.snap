@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1537
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -21,8 +20,17 @@ Layout {
                                 children: [],
                                 split_size: None,
                                 run: Some(
-                                    Cwd(
-                                        "/tmp/./foo",
+                                    Command(
+                                        RunCommand {
+                                            command: None,
+                                            args: [],
+                                            cwd: Some(
+                                                "/tmp/./foo",
+                                            ),
+                                            env: {},
+                                            hold_on_close: false,
+                                            hold_on_start: false,
+                                        },
                                     ),
                                 ),
                                 borderless: false,
@@ -37,11 +45,14 @@ Layout {
                                 run: Some(
                                     Command(
                                         RunCommand {
-                                            command: "tail",
+                                            command: Some(
+                                                "tail",
+                                            ),
                                             args: [],
                                             cwd: Some(
                                                 "/tmp/./foo/./bar",
                                             ),
+                                            env: {},
                                             hold_on_close: true,
                                             hold_on_start: false,
                                         },
@@ -61,8 +72,17 @@ Layout {
                                         children: [],
                                         split_size: None,
                                         run: Some(
-                                            Cwd(
-                                                "/tmp/./foo",
+                                            Command(
+                                                RunCommand {
+                                                    command: None,
+                                                    args: [],
+                                                    cwd: Some(
+                                                        "/tmp/./foo",
+                                                    ),
+                                                    env: {},
+                                                    hold_on_close: false,
+                                                    hold_on_start: false,
+                                                },
                                             ),
                                         ),
                                         borderless: false,
@@ -72,8 +92,17 @@ Layout {
                                 ],
                                 split_size: None,
                                 run: Some(
-                                    Cwd(
-                                        "/tmp/./foo",
+                                    Command(
+                                        RunCommand {
+                                            command: None,
+                                            args: [],
+                                            cwd: Some(
+                                                "/tmp/./foo",
+                                            ),
+                                            env: {},
+                                            hold_on_close: false,
+                                            hold_on_start: false,
+                                        },
                                     ),
                                 ),
                                 borderless: false,
@@ -83,8 +112,17 @@ Layout {
                         ],
                         split_size: None,
                         run: Some(
-                            Cwd(
-                                "/tmp/./foo",
+                            Command(
+                                RunCommand {
+                                    command: None,
+                                    args: [],
+                                    cwd: Some(
+                                        "/tmp/./foo",
+                                    ),
+                                    env: {},
+                                    hold_on_close: false,
+                                    hold_on_start: false,
+                                },
                             ),
                         ),
                         borderless: false,
@@ -94,8 +132,17 @@ Layout {
                 ],
                 split_size: None,
                 run: Some(
-                    Cwd(
-                        "/tmp/./foo",
+                    Command(
+                        RunCommand {
+                            command: None,
+                            args: [],
+                            cwd: Some(
+                                "/tmp/./foo",
+                            ),
+                            env: {},
+                            hold_on_close: false,
+                            hold_on_start: false,
+                        },
                     ),
                 ),
                 borderless: false,

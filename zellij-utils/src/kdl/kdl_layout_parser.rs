@@ -1,7 +1,12 @@
-use crate::input::{
-    command::RunCommand,
-    config::ConfigError,
-    layout::{Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize},
+use crate::{
+    envs::EnvironmentVariables,
+    input::{
+        command::{OpenFile, RunCommand},
+        config::ConfigError,
+        layout::{
+            Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize,
+        },
+    },
 };
 
 use kdl::*;
@@ -25,6 +30,7 @@ use url::Url;
 
 pub struct KdlLayoutParser<'a> {
     global_cwd: Option<PathBuf>,
+    global_env: EnvironmentVariables,
     raw_layout: &'a str,
     tab_templates: HashMap<String, (PaneLayout, KdlNode)>,
     pane_templates: HashMap<String, (PaneLayout, KdlNode)>,
@@ -32,13 +38,18 @@ pub struct KdlLayoutParser<'a> {
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
+    pub fn new(
+        raw_layout: &'a str,
+        global_cwd: Option<PathBuf>,
+        global_env: EnvironmentVariables,
+    ) -> Self {
         KdlLayoutParser {
             raw_layout,
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,
             global_cwd,
+            global_env,
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
@@ -61,6 +72,7 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "size"
             || word == "cwd"
             || word == "split_direction"
+            || word == "env"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -77,12 +89,14 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "split_direction"
             || property_name == "pane"
             || property_name == "children"
+            || property_name == "env"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus"
             || property_name == "name"
             || property_name == "split_direction"
             || property_name == "cwd"
+            || property_name == "env"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -256,23 +270,37 @@ impl<'a> KdlLayoutParser<'a> {
         }
         let hold_on_close = close_on_exit.map(|c| !c).unwrap_or(true);
         let hold_on_start = start_suspended.map(|c| c).unwrap_or(false);
-        match (command, edit, cwd) {
-            (None, None, Some(cwd)) => Ok(Some(Run::Cwd(cwd))),
-            (Some(command), None, cwd) => Ok(Some(Run::Command(RunCommand {
-                command,
-                args: args.unwrap_or_else(|| vec![]),
+        let env = if let Some(env_node) = kdl_get_child!(pane_node, "env") {
+            EnvironmentVariables::from_kdl(env_node)?
+        } else {
+            EnvironmentVariables::new()
+        };
+        match (command, edit, cwd, env) {
+            (command, None, cwd, env) => {
+                if command.is_none() && cwd.is_none() && env.env.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(Run::Command(RunCommand {
+                        command,
+                        args: args.unwrap_or_else(|| vec![]),
+                        cwd,
+                        hold_on_close,
+                        hold_on_start,
+                        env,
+                    })))
+                }
+            },
+            (None, Some(edit), cwd, env) => Ok(Some(Run::EditFile(OpenFile {
+                file_name: edit,
+                line_number: None,
                 cwd,
-                hold_on_close,
-                hold_on_start,
+                env,
             }))),
-            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
-            (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
+            (Some(_command), Some(_edit), _, _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),
                 pane_node.span().len(),
             )),
-            _ => Ok(None),
         }
     }
     fn parse_command_plugin_or_edit_block(
@@ -283,7 +311,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             let has_non_cwd_run_prop = run
                 .map(|r| match r {
-                    Run::Cwd(_) => false,
+                    Run::Command(c) => c.is_some(),
                     _ => true,
                 })
                 .unwrap_or(false);
@@ -306,7 +334,7 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(plugin_block) = kdl_get_child!(kdl_node, "plugin") {
             let has_non_cwd_run_prop = run
                 .map(|r| match r {
-                    Run::Cwd(_) => false,
+                    Run::Command(c) => c.is_some(),
                     _ => true,
                 })
                 .unwrap_or(false);
@@ -731,7 +759,7 @@ impl<'a> KdlLayoutParser<'a> {
         let has_non_cwd_run_prop = self
             .parse_command_plugin_or_edit_block(kdl_node)?
             .map(|r| match r {
-                Run::Cwd(_) => false,
+                Run::Command(c) => c.is_some(),
                 _ => true,
             })
             .unwrap_or(false);
@@ -1007,6 +1035,18 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(())
     }
+    fn populate_global_env(&mut self, layout_node: &KdlNode) -> Result<(), ConfigError> {
+        // we only populate global env from the layout file if another wasn't explicitly passed to us
+
+        let env = if let Some(env_node) = kdl_get_child!(layout_node, "env") {
+            EnvironmentVariables::from_kdl(env_node)?
+        } else {
+            EnvironmentVariables::new()
+        };
+        self.global_env.merge(env);
+
+        Ok(())
+    }
     fn populate_pane_templates(
         &mut self,
         layout_children: &[KdlNode],
@@ -1211,6 +1251,7 @@ impl<'a> KdlLayoutParser<'a> {
         let mut child_panes = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {
             self.populate_global_cwd(layout_node)?;
+            self.populate_global_env(layout_node)?;
             self.populate_pane_templates(children, &kdl_layout)?;
             self.populate_tab_templates(children)?;
             for child in children {

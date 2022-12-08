@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1298
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -18,8 +17,14 @@ Layout {
                     split_size: None,
                     run: Some(
                         EditFile(
-                            "/tmp/foo/bar",
-                            None,
+                            OpenFile {
+                                file_name: "bar",
+                                line_number: None,
+                                cwd: Some(
+                                    "/tmp/foo",
+                                ),
+                                env: {},
+                            },
                         ),
                     ),
                     borderless: false,

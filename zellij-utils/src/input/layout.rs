@@ -9,8 +9,9 @@
 //  If plugins should be able to depend on the layout system
 //  then [`zellij-utils`] could be a proper place.
 use crate::{
+    envs::EnvironmentVariables,
     input::{
-        command::RunCommand,
+        command::{OpenFile, RunCommand},
         config::{Config, ConfigError},
     },
     pane_size::{Dimension, PaneGeom},
@@ -58,12 +59,12 @@ pub enum SplitSize {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Run {
+    // TODO: merge this with TerminalAction::OpenFile
     #[serde(rename = "plugin")]
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
-    Cwd(PathBuf),
+    EditFile(OpenFile), 
 }
 
 impl Run {
@@ -81,29 +82,16 @@ impl Run {
                 if merged.args.is_empty() && !base_run_command.args.is_empty() {
                     merged.args = base_run_command.args.clone();
                 }
+                merged.env = other_run_command.env.merge(base_run_command.env.clone());
                 Some(Run::Command(merged))
             },
-            (Some(Run::Command(base_run_command)), Some(Run::Cwd(other_cwd))) => {
-                let mut merged = base_run_command.clone();
-                merged.cwd = Some(other_cwd.clone());
-                Some(Run::Command(merged))
-            },
-            (Some(Run::Cwd(base_cwd)), Some(Run::Command(other_command))) => {
-                let mut merged = other_command.clone();
-                if merged.cwd.is_none() {
-                    merged.cwd = Some(base_cwd.clone());
-                }
-                Some(Run::Command(merged))
-            },
-            (
-                Some(Run::Command(base_run_command)),
-                Some(Run::EditFile(file_to_edit, line_number)),
-            ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
-            },
-            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            (Some(Run::Command(base_run_command)), Some(Run::EditFile(open_file))) => {
+                Some(Run::EditFile(OpenFile {
+                    file_name: open_file.file_name.clone(),
+                    line_number: open_file.line_number,
+                    cwd: base_run_command.cwd.clone(),
+                    env: open_file.env.merge(base_run_command.env.clone()),
+                }))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -121,11 +109,25 @@ impl Run {
                     run_command.cwd = Some(cwd.clone());
                 },
             },
-            Run::EditFile(path_to_file, _line_number) => {
-                *path_to_file = cwd.join(&path_to_file);
+            Run::EditFile(open_file) => match open_file.cwd.as_mut() {
+                Some(run_cwd) => {
+                    *run_cwd = cwd.join(&run_cwd);
+                },
+                None => {
+                    open_file.cwd = Some(cwd.clone());
+                },
             },
-            Run::Cwd(path) => {
-                *path = cwd.join(&path);
+            _ => {}, // plugins aren't yet supported
+        }
+    }
+    pub fn add_env(&mut self, env: &EnvironmentVariables) {
+        match self {
+            Run::Command(run_command) => {
+                (*run_command).env = (*run_command).env.merge(env.to_owned());
+            },
+
+            Run::EditFile(open_file) => {
+                (*open_file).env = (*open_file).env.merge(env.to_owned());
             },
             _ => {}, // plugins aren't yet supported
         }
@@ -285,11 +287,28 @@ impl PaneLayout {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),
             None => {
-                self.run = Some(Run::Cwd(cwd.clone()));
+                self.run = Some(Run::Command(RunCommand {
+                    cwd: Some(cwd.clone()),
+                    ..Default::default()
+                }));
             },
         }
         for child in self.children.iter_mut() {
             child.add_cwd_to_layout(cwd);
+        }
+    }
+    pub fn add_env_to_layout(&mut self, env: &EnvironmentVariables) {
+        match self.run.as_mut() {
+            Some(run) => run.add_env(env),
+            None => {
+                self.run = Some(Run::Command(RunCommand {
+                    env: env.clone(),
+                    ..Default::default()
+                }));
+            },
+        }
+        for child in self.children.iter_mut() {
+            child.add_env_to_layout(env);
         }
     }
 }
@@ -360,7 +379,12 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, None)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            None,
+            EnvironmentVariables::new(),
+        )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
@@ -368,8 +392,9 @@ impl Layout {
         raw: &str,
         path_to_raw_layout: String,
         cwd: Option<PathBuf>,
+        env: EnvironmentVariables,
     ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout, cwd)
+        Layout::from_kdl(raw, path_to_raw_layout, cwd, env)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,

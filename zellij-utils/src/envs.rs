@@ -32,9 +32,9 @@ pub fn get_socket_dir() -> Result<String> {
 }
 
 /// Manage ENVIRONMENT VARIABLES from the configuration and the layout files
-#[derive(Default, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Clone, PartialEq, Serialize, Deserialize, Eq)]
 pub struct EnvironmentVariables {
-    env: HashMap<String, String>,
+    pub env: HashMap<String, String>,
 }
 
 impl fmt::Debug for EnvironmentVariables {
@@ -48,6 +48,11 @@ impl fmt::Debug for EnvironmentVariables {
 }
 
 impl EnvironmentVariables {
+    pub fn new() -> Self {
+        EnvironmentVariables {
+            env: HashMap::new(),
+        }
+    }
     /// Merges two structs, keys from `other` supersede keys from `self`
     pub fn merge(&self, other: Self) -> Self {
         let mut env = self.clone();

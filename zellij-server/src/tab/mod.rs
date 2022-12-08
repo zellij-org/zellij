@@ -6,9 +6,11 @@ mod copy_command;
 
 use copy_command::CopyCommand;
 use std::env::temp_dir;
+use std::path::PathBuf;
 use uuid::Uuid;
+use zellij_utils::envs::EnvironmentVariables;
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::command::RunCommand;
+use zellij_utils::input::command::{OpenFile, RunCommand};
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
@@ -836,7 +838,7 @@ impl Tab {
     pub fn toggle_floating_panes(
         &mut self,
         client_id: ClientId,
-        default_shell: Option<TerminalAction>,
+        default_shell: TerminalAction,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             self.hide_floating_panes();
@@ -1984,10 +1986,10 @@ impl Tab {
     pub fn edit_scrollback(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to edit scrollback for client {client_id}");
 
-        let mut file = temp_dir();
-        file.push(format!("{}.dump", Uuid::new_v4()));
+        let cwd = temp_dir();
+        let file_name = PathBuf::from(format!("{}.dump", Uuid::new_v4()));
         self.dump_active_terminal_screen(
-            Some(String::from(file.to_string_lossy())),
+            Some(String::from(cwd.join(file_name.clone()).to_string_lossy())),
             client_id,
             true,
         )
@@ -1997,8 +1999,12 @@ impl Tab {
             .and_then(|a_t| a_t.get_line_number());
         self.senders
             .send_to_pty(PtyInstruction::OpenInPlaceEditor(
-                file,
-                line_number,
+                OpenFile {
+                    file_name,
+                    line_number,
+                    cwd: Some(cwd),
+                    env: EnvironmentVariables::new(),
+                },
                 client_id,
             ))
             .with_context(err_context)

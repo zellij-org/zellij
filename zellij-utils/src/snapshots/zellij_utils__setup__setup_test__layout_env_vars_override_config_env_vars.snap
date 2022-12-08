@@ -74,8 +74,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -331,8 +342,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -482,10 +504,21 @@ Config {
                 'd',
             ): [
                 NewPane(
-                    Some(
-                        Down,
-                    ),
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: Some(
+                            Down,
+                        ),
+                        floating: false,
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -539,8 +572,19 @@ Config {
                 'n',
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -555,10 +599,21 @@ Config {
                 'r',
             ): [
                 NewPane(
-                    Some(
-                        Right,
-                    ),
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: Some(
+                            Right,
+                        ),
+                        floating: false,
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -657,8 +712,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -899,7 +965,17 @@ Config {
             ): [
                 NewTab(
                     None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    TabOptions {
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -1002,8 +1078,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -1257,8 +1344,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -1452,8 +1550,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -1726,8 +1835,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -1921,8 +2041,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -2113,8 +2244,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -2310,8 +2452,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -2565,8 +2718,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -2754,8 +2918,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(
@@ -2905,10 +3080,21 @@ Config {
                 '"',
             ): [
                 NewPane(
-                    Some(
-                        Down,
-                    ),
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: Some(
+                            Down,
+                        ),
+                        floating: false,
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -2918,10 +3104,21 @@ Config {
                 '%',
             ): [
                 NewPane(
-                    Some(
-                        Right,
-                    ),
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: Some(
+                            Right,
+                        ),
+                        floating: false,
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -2946,7 +3143,17 @@ Config {
             ): [
                 NewTab(
                     None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    TabOptions {
+                        title: None,
+                    },
                 ),
                 SwitchToMode(
                     Normal,
@@ -3095,8 +3302,19 @@ Config {
                 ),
             ): [
                 NewPane(
-                    None,
-                    None,
+                    RunCommand {
+                        command: None,
+                        args: [],
+                        cwd: None,
+                        env: {},
+                        hold_on_close: false,
+                        hold_on_start: false,
+                    },
+                    PaneOptions {
+                        direction: None,
+                        floating: false,
+                        title: None,
+                    },
                 ),
             ],
             Alt(

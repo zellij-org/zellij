@@ -133,7 +133,7 @@ pub enum ScreenInstruction {
     ),
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
-    ToggleFloatingPanes(ClientId, Option<TerminalAction>),
+    ToggleFloatingPanes(ClientId, TerminalAction),
     HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
     WriteCharacter(Vec<u8>, ClientId),
@@ -178,12 +178,7 @@ pub enum ScreenInstruction {
     HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
-    NewTab(
-        Option<TerminalAction>,
-        Option<PaneLayout>,
-        Option<String>,
-        ClientId,
-    ),
+    NewTab(TerminalAction, Option<PaneLayout>, Option<String>, ClientId),
     ApplyLayout(
         PaneLayout,
         Vec<(u32, HoldForCommand)>,

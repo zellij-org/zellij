@@ -1,10 +1,20 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2322
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
-    None,
+    RunCommand(
+        RunCommand {
+            command: None,
+            args: [],
+            cwd: Some(
+                ".",
+            ),
+            env: {},
+            hold_on_close: false,
+            hold_on_start: false,
+        },
+    ),
     Some(
         PaneLayout {
             children_split_direction: Horizontal,
@@ -16,8 +26,17 @@ NewTab(
                     children: [],
                     split_size: None,
                     run: Some(
-                        Cwd(
-                            ".",
+                        Command(
+                            RunCommand {
+                                command: None,
+                                args: [],
+                                cwd: Some(
+                                    ".",
+                                ),
+                                env: {},
+                                hold_on_close: false,
+                                hold_on_start: false,
+                            },
                         ),
                     ),
                     borderless: false,
@@ -30,8 +49,17 @@ NewTab(
                     children: [],
                     split_size: None,
                     run: Some(
-                        Cwd(
-                            ".",
+                        Command(
+                            RunCommand {
+                                command: None,
+                                args: [],
+                                cwd: Some(
+                                    ".",
+                                ),
+                                env: {},
+                                hold_on_close: false,
+                                hold_on_start: false,
+                            },
                         ),
                     ),
                     borderless: false,
@@ -44,8 +72,17 @@ NewTab(
                     children: [],
                     split_size: None,
                     run: Some(
-                        Cwd(
-                            ".",
+                        Command(
+                            RunCommand {
+                                command: None,
+                                args: [],
+                                cwd: Some(
+                                    ".",
+                                ),
+                                env: {},
+                                hold_on_close: false,
+                                hold_on_start: false,
+                            },
                         ),
                     ),
                     borderless: false,

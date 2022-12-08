@@ -39,6 +39,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use shellexpand::env_with_context_no_errors;
+
 pub use async_trait::async_trait;
 pub use nix::unistd::Pid;
 
@@ -114,7 +116,11 @@ fn handle_command_exit(mut child: Child) -> Result<Option<i32>> {
 }
 
 fn command_exists(cmd: &RunCommand) -> bool {
-    let command = &cmd.command;
+    let command = if let Some(s) = cmd.command.as_ref() {
+        s
+    } else {
+        return false;
+    };
     match cmd.cwd.as_ref() {
         Some(cwd) => {
             let full_command = cwd.join(&command);
@@ -142,25 +148,45 @@ fn command_exists(cmd: &RunCommand) -> bool {
 
 fn handle_openpty(
     open_pty_res: OpenptyResult,
-    cmd: RunCommand,
+    mut cmd: RunCommand,
     quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     terminal_id: u32,
 ) -> Result<(RawFd, RawFd)> {
     let err_context = |cmd: &RunCommand| {
-        format!(
-            "failed to open PTY for command '{}'",
-            cmd.command.to_string_lossy().to_string()
-        )
+        if let Some(command) = &cmd.command {
+            format!(
+                "failed to open PTY for command '{}'",
+                command.to_string_lossy().to_string()
+            )
+        } else {
+            String::from("failed to open PTY for None command")
+        }
     };
 
     // primary side of pty and child fd
     let pid_primary = open_pty_res.master;
     let pid_secondary = open_pty_res.slave;
 
+    // let mut cmd = cmd.clone();
+    //
+    cmd.command = if let Some(s) = cmd.command.as_ref() {
+        Some(PathBuf::from(
+            env_with_context_no_errors(&s.to_string_lossy().to_string(), |x| cmd.env.env.get(x))
+                .to_string(),
+        ))
+    } else {
+        None
+    };
+    cmd.args = cmd
+        .args
+        .iter()
+        .map(|arg| env_with_context_no_errors(&arg, |x| cmd.env.env.get(x)).to_string())
+        .collect();
+
     if command_exists(&cmd) {
         let mut child = unsafe {
             let cmd = cmd.clone();
-            let command = &mut Command::new(cmd.command);
+            let command = &mut Command::new(cmd.command.unwrap_unchecked());
             if let Some(current_dir) = cmd.cwd {
                 if current_dir.exists() && current_dir.is_dir() {
                     command.current_dir(current_dir);
@@ -174,6 +200,7 @@ fn handle_openpty(
                 }
             }
             command
+                .envs(&cmd.env.env)
                 .args(&cmd.args)
                 .pre_exec(move || -> std::io::Result<()> {
                     if libc::login_tty(pid_secondary) != 0 {
@@ -200,7 +227,12 @@ fn handle_openpty(
     } else {
         Err(ZellijError::CommandNotFound {
             terminal_id,
-            command: cmd.command.to_string_lossy().to_string(),
+            command: cmd
+                .command
+                .clone()
+                .unwrap_or(PathBuf::new())
+                .to_string_lossy()
+                .to_string(),
         })
         .with_context(|| err_context(&cmd))
     }
@@ -235,24 +267,6 @@ fn handle_terminal(
     }
 }
 
-// this is a utility method to separate the arguments from a pathbuf before we turn it into a
-// Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
-fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
-    if let Some(file_name) = command
-        .file_name()
-        .and_then(|f_n| f_n.to_str())
-        .map(|f_n| f_n.to_string())
-    {
-        let mut file_name_parts = file_name.split_ascii_whitespace();
-        if let Some(first_part) = file_name_parts.next() {
-            command.set_file_name(first_part);
-            for part in file_name_parts {
-                args.push(String::from(part));
-            }
-        }
-    }
-}
-
 /// If a [`TerminalAction::OpenFile(file)`] is given, the text editor specified by environment variable `EDITOR`
 /// (or `VISUAL`, if `EDITOR` is not set) will be started in the new terminal, with the given
 /// file open.
@@ -274,54 +288,7 @@ fn spawn_terminal(
 ) -> Result<(RawFd, RawFd)> {
     // returns the terminal_id, the primary fd and the
     // secondary fd
-    let mut failover_cmd_args = None;
-    let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open, line_number) => {
-            let mut command = default_editor.unwrap_or_else(|| {
-                PathBuf::from(
-                    env::var("EDITOR")
-                        .unwrap_or_else(|_| env::var("VISUAL").unwrap_or_else(|_| "vi".into())),
-                )
-            });
-
-            let mut args = vec![];
-
-            if !command.is_dir() {
-                separate_command_arguments(&mut command, &mut args);
-            }
-            let file_to_open = file_to_open
-                .into_os_string()
-                .into_string()
-                .expect("Not valid Utf8 Encoding");
-            if let Some(line_number) = line_number {
-                if command.ends_with("vim")
-                    || command.ends_with("nvim")
-                    || command.ends_with("emacs")
-                    || command.ends_with("nano")
-                    || command.ends_with("kak")
-                {
-                    failover_cmd_args = Some(vec![file_to_open.clone()]);
-                    args.push(format!("+{}", line_number));
-                }
-            }
-            args.push(file_to_open);
-            RunCommand {
-                command,
-                args,
-                cwd: None,
-                hold_on_close: false,
-                hold_on_start: false,
-            }
-        },
-        TerminalAction::RunCommand(command) => command,
-    };
-    let failover_cmd = if let Some(failover_cmd_args) = failover_cmd_args {
-        let mut cmd = cmd.clone();
-        cmd.args = failover_cmd_args;
-        Some(cmd)
-    } else {
-        None
-    };
+    let (cmd, failover_cmd) = terminal_action.to_run_action(default_editor);
 
     handle_terminal(cmd, failover_cmd, orig_termios, quit_cb, terminal_id)
 }
