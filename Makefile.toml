@@ -92,7 +92,7 @@ workspace = false
 script_runner = "@duckscript"
 script = '''
 plugins = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/default-plugins/*
-out_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/assets/plugins/
+out_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/zellij-utils/assets/plugins/
 mkdir ${out_dir}
 
 for plugin in ${plugins}
@@ -111,10 +111,16 @@ workspace = false
 script_runner = "@duckscript"
 script = '''
 plugins = glob_array ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/default-plugins/*
+out_dir = set ${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/zellij-utils/assets/plugins/
+mkdir ${out_dir}
 
 for plugin in ${plugins}
     cd ${plugin}
     exec cargo build
+    plugin_name = basename ${plugin}
+    plugin_in = set ${CARGO_TARGET_DIR}/wasm32-wasi/debug/${plugin_name}.wasm
+    plugin_out = set ${out_dir}/${plugin_name}.wasm
+    cp ${plugin_in} ${plugin_out}
     cd ..
 end
 '''

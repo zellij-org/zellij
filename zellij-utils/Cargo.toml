@@ -5,6 +5,7 @@ authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
 license = "MIT"
+include = ["src/**/*", "assets/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

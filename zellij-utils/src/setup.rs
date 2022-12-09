@@ -1,4 +1,4 @@
-#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+#[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 use crate::input::theme::Themes;
 use crate::{
@@ -175,7 +175,7 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
     }
 }
 
-#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+#[cfg(not(target_family = "wasm"))]
 pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
     for (asset_path, bytes) in ASSET_MAP.iter() {
         let plugin_path = path.join(asset_path);
@@ -205,7 +205,7 @@ pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[cfg(any(target_family = "wasm", not(feature = "asset_map")))]
+#[cfg(target_family = "wasm")]
 pub fn dump_builtin_plugins(_path: &PathBuf) -> Result<()> {
     Ok(())
 }

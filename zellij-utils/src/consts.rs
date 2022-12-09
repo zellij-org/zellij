@@ -35,10 +35,10 @@ pub const FEATURES: &[&str] = &[
     "disable_automatic_asset_installation",
 ];
 
-#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+#[cfg(not(target_family = "wasm"))]
 pub use not_wasm::*;
 
-#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+#[cfg(not(target_family = "wasm"))]
 mod not_wasm {
     use lazy_static::lazy_static;
     use std::collections::HashMap;
@@ -49,17 +49,9 @@ mod not_wasm {
         ($assets:expr, $plugin:literal) => {
             $assets.insert(
                 PathBuf::from("plugins").join($plugin),
-                #[cfg(debug_assertions)]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/debug/",
-                    $plugin
-                ))
-                .to_vec(),
-                #[cfg(not(debug_assertions))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/plugins/",
+                    "/assets/plugins/",
                     $plugin
                 ))
                 .to_vec(),

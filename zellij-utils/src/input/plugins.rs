@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::layout::{RunPlugin, RunPluginLocation};
-#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+#[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
 pub use crate::data::PluginTag;
 use crate::errors::prelude::*;
@@ -129,7 +129,7 @@ impl PluginConfig {
         for path in paths {
             // Check if the plugin path matches an entry in the asset map. If so, load it directly
             // from memory, don't bother with the disk.
-            #[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+            #[cfg(not(target_family = "wasm"))]
             if !cfg!(feature = "disable_automatic_asset_installation") && self.is_builtin() {
                 let asset_path = PathBuf::from("plugins").join(path);
                 if let Some(bytes) = ASSET_MAP.get(&asset_path) {
@@ -160,7 +160,7 @@ impl PluginConfig {
         }
 
         // Not reached if a plugin is found!
-        #[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
+        #[cfg(not(target_family = "wasm"))]
         if self.is_builtin() {
             // Layout requested a builtin plugin that wasn't found
             let plugin_path = self.path.with_extension("wasm");
