@@ -35,10 +35,10 @@ pub const FEATURES: &[&str] = &[
     "disable_automatic_asset_installation",
 ];
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
 pub use not_wasm::*;
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(all(not(target_family = "wasm"), feature = "asset_map"))]
 mod not_wasm {
     use lazy_static::lazy_static;
     use std::collections::HashMap;
