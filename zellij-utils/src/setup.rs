@@ -205,7 +205,7 @@ pub fn dump_builtin_plugins(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(any(target_family = "wasm", not(feature = "asset_map")))]
 pub fn dump_builtin_plugins(_path: &PathBuf) -> Result<()> {
     Ok(())
 }
