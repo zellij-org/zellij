@@ -56,3 +56,4 @@ insta = { version = "1.6.0", features = ["backtrace"] }
 #   - builtin plugins MUST be available from whatever is configured as `PLUGIN_DIR`
 disable_automatic_asset_installation = []
 unstable = []
+asset_map = []

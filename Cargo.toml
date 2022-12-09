@@ -69,5 +69,6 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
+default = [ "zellij-utils/asset_map" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
