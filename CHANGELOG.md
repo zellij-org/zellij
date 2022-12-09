@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
-## [0.34.1] - 2022-12-09
+## [0.34.2] - 2022-12-09
 
 * (BREAKING CHANGE) performance: change plugin data flow to improve render speed (https://github.com/zellij-org/zellij/pull/1934)
 * (BREAKING CHANGE) performance: various render pipeline improvements (https://github.com/zellij-org/zellij/pull/1960)
