@@ -235,6 +235,7 @@ args = ["push", "--atomic", "origin", "main", "v${CARGO_MAKE_CRATE_VERSION}"]
 
 [tasks.commit-all]
 ignore_errors = true
+dependencies = ["plugins-release"]
 command = "git"
 args = ["commit", "-aem", "chore(release): v${CARGO_MAKE_CRATE_VERSION}"]
 
@@ -244,6 +245,7 @@ args = ["tag", "--annotate", "--message", "Version ${CARGO_MAKE_CRATE_VERSION}",
 
 [tasks.publish-zellij-tile]
 ignore_errors = true
+dependencies = ["publish-zellij-utils"]
 cwd = "zellij-tile"
 script = "cargo publish && sleep 15"
 
@@ -261,7 +263,7 @@ script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij-utils]
 ignore_errors = true
-dependencies = ["publish-zellij-tile"]
+dependencies = ["publish-zellij-utils"]
 cwd = "zellij-utils"
 script = "cargo publish && sleep 15"
 
@@ -272,9 +274,11 @@ script = "cargo publish && sleep 15"
 
 [tasks.publish-zellij]
 dependencies = [
+    "publish-zellij-utils",
+    "publish-zellij-tile-utils",
+    "publish-zellij-tile",
     "publish-zellij-client",
     "publish-zellij-server",
-    "publish-zellij-utils",
 ]
 command = "cargo"
 args = ["publish"]
