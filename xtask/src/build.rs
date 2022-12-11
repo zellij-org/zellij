@@ -22,6 +22,8 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
     }
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
+        let err_context = || format!("failed to build '{subcrate}'");
+
         if subcrate.contains("plugins") {
             if flags.no_plugins {
                 continue;
@@ -35,7 +37,9 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         let _pd = sh.push_dir(Path::new(subcrate));
         // Tell the user where we are now
         println!();
-        println!(">> Building '{subcrate}'");
+        let msg = format!(">> Building '{subcrate}'");
+        println!("{}", msg);
+        crate::status(&msg);
 
         let mut base_cmd = cmd!(sh, "{cargo} build");
         if flags.release {
@@ -43,7 +47,20 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         }
         base_cmd
             .run()
-            .with_context(|| format!("Failed to build '{subcrate}'"))?;
+            .with_context(err_context)?;
+
+        if subcrate.contains("plugins") {
+            if flags.release {
+                // Perform wasm-opt on plugin
+                subcrate.rsplit_once('/')
+                    .context("Cannot determine plugin name from '{subcrate}'")
+                    .and_then(|(_pre, name)| wasm_opt_plugins(sh, name))
+                    .with_context(err_context)?;
+            } else {
+                // Must copy plugins to zellij-utils, too!
+                // TODO
+            }
+        }
     }
     Ok(())
 }
@@ -54,46 +71,56 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
 /// for filenames ending with `.wasm`. For this to work the plugins must be built beforehand.
 // TODO: Should this panic if there is no plugin found? What should we do when only some plugins
 // have been built before?
-pub fn wasm_opt_plugins(sh: &Shell) -> anyhow::Result<()> {
-    let wasm_opt = wasm_opt(sh)?;
+pub fn wasm_opt_plugins(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
+    let err_context = || format!("failed to run 'wasm-opt' on plugin '{plugin_name}'");
 
-    let asset_dir = crate::project_root().join("assets").join("plugins");
-    sh.create_dir(&asset_dir)
-        .context("Couldn't create asset dir for plugins")?;
+    let wasm_opt = wasm_opt(sh).with_context(err_context)?;
+
+    let asset_dir = crate::project_root()
+        .join("zellij-utils")
+        .join("assets")
+        .join("plugins");
+    sh.create_dir(&asset_dir).with_context(err_context)?;
     let _pd = sh.push_dir(asset_dir);
 
-    let mut target_dir = PathBuf::from(
+    let plugin = PathBuf::from(
         std::env::var_os("CARGO_TARGET_DIR")
             .unwrap_or(crate::project_root().join("target").into_os_string()),
-    );
-    target_dir.push("wasm32-wasi");
-    target_dir.push("release");
-
-    for entry in std::fs::read_dir(&target_dir)? {
-        let entry = entry
-            .with_context(|| format!("Failed to read contents of '{}'", target_dir.display()))?;
-        if !entry.file_type()?.is_file() {
-            continue;
-        }
-        let name = match entry.file_name().into_string() {
-            Ok(name) => name,
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Couldn't read filename '{e:?}' containing invalid unicode"
-                ))
-            },
-        };
-        if name.ends_with(".wasm") {
-            // This is a plugin we want to optimize
-            println!();
-            println!(">> Optimizing plugin {name}");
-
-            let input = entry.path();
-            cmd!(sh, "{wasm_opt} -O {input} -o {name}")
-                .run()
-                .with_context(|| format!("Error while optimizing WASM for plugin '{name}'"))?;
-        }
+    )
+    .join("wasm32-wasi")
+    .join("release")
+    .join(plugin_name)
+    .with_extension("wasm");
+    //target_dir.push("wasm32-wasi");
+    //target_dir.push("release");
+    //plugin_name
+    //target_dir.push(plugin);
+    //
+    if !plugin.is_file() {
+        return Err(anyhow::anyhow!("No plugin found at '{}'", plugin.display()))
+            .with_context(err_context);
     }
+    let name = match plugin.file_name().with_context(err_context)?.to_str() {
+        Some(name) => name,
+        None => {
+            return Err(anyhow::anyhow!(
+                "Couldn't read filename containing invalid unicode"
+            ))
+            .with_context(err_context)
+        },
+    };
+
+    // This is a plugin we want to optimize
+    println!();
+    let msg = format!(">> Optimizing plugin '{name}'");
+    println!("{}", msg);
+    crate::status(&msg);
+
+    let input = plugin.as_path();
+    cmd!(sh, "{wasm_opt} -O {input} -o {name}")
+        .run()
+        .with_context(err_context)?;
+
     Ok(())
 }
 
@@ -127,7 +154,8 @@ pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
     let text = cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
         .read()
         .context("Generating man pages failed")?;
-    sh.write_file("zellij.1", text).context("Writing man pages failed")?;
+    sh.write_file("zellij.1", text)
+        .context("Writing man pages failed")?;
 
     Ok(())
 }

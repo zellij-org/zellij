@@ -48,7 +48,6 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
             plugins_only: true,
         },
     )?;
-    build::wasm_opt_plugins(sh)?;
 
     // Build the main executable
     build::build(
