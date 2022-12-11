@@ -48,18 +48,19 @@ use anyhow::Context;
 use std::{
     env,
     path::{Path, PathBuf},
+    time::Instant,
 };
 use xshell::Shell;
 
 lazy_static::lazy_static! {
     pub static ref WORKSPACE_MEMBERS: Vec<&'static str> = vec![
-        "zellij-tile",
-        "zellij-tile-utils",
         "default-plugins/compact-bar",
         "default-plugins/status-bar",
         "default-plugins/strider",
         "default-plugins/tab-bar",
         "zellij-utils",
+        "zellij-tile-utils",
+        "zellij-tile",
         "zellij-client",
         "zellij-server",
         ".",
@@ -71,11 +72,9 @@ fn main() -> anyhow::Result<()> {
     shell.change_dir(project_root());
 
     let flags = flags::Xtask::from_env()?;
+    let now = Instant::now();
+
     match flags.subcommand {
-        flags::XtaskCmd::Help(_) => {
-            println!("{}", flags::Xtask::HELP);
-            Ok(())
-        },
         flags::XtaskCmd::Dist(flags) => pipelines::dist(shell, flags),
         flags::XtaskCmd::Build(flags) => build::build(shell, flags),
         flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
@@ -85,8 +84,12 @@ fn main() -> anyhow::Result<()> {
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
         flags::XtaskCmd::Install(flags) => pipelines::install(shell, flags),
-        _ => unimplemented!(),
-    }
+    }?;
+
+    let elapsed = now.elapsed().as_secs();
+    println!("\n\n>> Command took {} s", elapsed);
+    status(&format!("xtask (done after {} s)", elapsed));
+    Ok(())
 }
 
 fn project_root() -> PathBuf {
@@ -103,4 +106,9 @@ pub fn cargo() -> anyhow::Result<PathBuf> {
     std::env::var_os("CARGO")
         .map_or_else(|| which::which("cargo"), |exe| Ok(PathBuf::from(exe)))
         .context("Couldn't find 'cargo' executable")
+}
+
+// Set terminal title to 'msg'
+pub fn status(msg: &str) {
+    println!("\u{1b}]0;{}\u{07}", msg);
 }
