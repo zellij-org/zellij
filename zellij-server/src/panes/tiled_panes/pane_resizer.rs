@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
+    errors::prelude::*,
     input::layout::SplitDirection,
     pane_size::{Constraint, Dimension, PaneGeom},
 };
@@ -44,10 +45,14 @@ impl<'a> PaneResizer<'a> {
         }
     }
 
-    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<(), String> {
+    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<()> {
         self.solver.reset();
-        let grid = self.solve(direction, space)?;
-        let spans = self.discretize_spans(grid, space)?;
+        let grid = self
+            .solve(direction, space)
+            .map_err(|err| anyhow!("{}", err))?;
+        let spans = self
+            .discretize_spans(grid, space)
+            .map_err(|err| anyhow!("{}", err))?;
         self.apply_spans(spans);
         Ok(())
     }

@@ -2,17 +2,17 @@ use std::sync::{Arc, RwLock};
 
 use crate::{
     os_input_output::ServerOsApi,
+    plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
-    wasm_vm::PluginInstruction,
     ServerInstruction, SessionMetaData, SessionState,
 };
 use zellij_utils::{
     channels::SenderWithContext,
-    data::Event,
+    data::{Direction, Event, ResizeStrategy},
     errors::prelude::*,
     input::{
-        actions::{Action, Direction, ResizeDirection, SearchDirection, SearchOption},
+        actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
     },
@@ -39,11 +39,11 @@ pub(crate) fn route_action(
         _ => {
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
                     Event::InputReceived,
-                ))
+                )]))
                 .with_context(err_context)?;
         },
     }
@@ -84,11 +84,11 @@ pub(crate) fn route_action(
             // TODO: Need access to `ClientAttributes` here
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     Some(client_id),
                     Event::ModeUpdate(get_mode_info(mode, attrs, session.capabilities)),
-                ))
+                )]))
                 .with_context(err_context)?;
             session
                 .senders
@@ -102,15 +102,9 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::Render)
                 .with_context(err_context)?;
         },
-        Action::Resize(direction) => {
-            let screen_instr = match direction {
-                ResizeDirection::Left => ScreenInstruction::ResizeLeft(client_id),
-                ResizeDirection::Right => ScreenInstruction::ResizeRight(client_id),
-                ResizeDirection::Up => ScreenInstruction::ResizeUp(client_id),
-                ResizeDirection::Down => ScreenInstruction::ResizeDown(client_id),
-                ResizeDirection::Increase => ScreenInstruction::ResizeIncrease(client_id),
-                ResizeDirection::Decrease => ScreenInstruction::ResizeDecrease(client_id),
-            };
+        Action::Resize(resize, direction) => {
+            let screen_instr =
+                ScreenInstruction::Resize(client_id, ResizeStrategy::new(resize, direction));
             session
                 .senders
                 .send_to_screen(screen_instr)
@@ -314,11 +308,11 @@ pub(crate) fn route_action(
             let attrs = &session.client_attributes;
             session
                 .senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
                     Event::ModeUpdate(get_mode_info(input_mode, attrs, session.capabilities)),
-                ))
+                )]))
                 .with_context(err_context)?;
             session
                 .senders
@@ -440,7 +434,7 @@ pub(crate) fn route_action(
             let shell = session.default_shell.clone();
             session
                 .senders
-                .send_to_pty(PtyInstruction::NewTab(
+                .send_to_screen(ScreenInstruction::NewTab(
                     shell, tab_layout, tab_name, client_id,
                 ))
                 .with_context(err_context)?;

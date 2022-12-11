@@ -1,10 +1,11 @@
 [package]
 name = "zellij-utils"
-version = "0.34.0"
+version = "0.34.3"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
 license = "MIT"
+include = ["src/**/*", "assets/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -56,3 +57,4 @@ insta = { version = "1.6.0", features = ["backtrace"] }
 #   - builtin plugins MUST be available from whatever is configured as `PLUGIN_DIR`
 disable_automatic_asset_installation = []
 unstable = []
+asset_map = []

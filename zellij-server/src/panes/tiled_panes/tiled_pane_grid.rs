@@ -4,7 +4,9 @@ use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
+use zellij_utils::data::{Direction, ResizeStrategy};
 use zellij_utils::{
+    errors::prelude::*,
     input::layout::SplitDirection,
     pane_size::{Dimension, PaneGeom, Size, Viewport},
 };
@@ -12,10 +14,15 @@ use zellij_utils::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-const RESIZE_PERCENT: f64 = 5.0;
+pub const RESIZE_PERCENT: f64 = 5.0;
 const DEFAULT_CURSOR_HEIGHT_WIDTH_RATIO: usize = 4;
 
 type BorderAndPaneIds = (usize, Vec<PaneId>);
+
+// For error reporting
+fn no_pane_id(pane_id: &PaneId) -> String {
+    format!("no floating pane with ID {:?} found", pane_id)
+}
 
 pub struct TiledPaneGrid<'a> {
     panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>,
@@ -42,189 +49,441 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
 
-    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<(), String> {
+    /// Calculates an area for each pane and sums them all.
+    ///
+    /// Returns the product of "rows * columns", summed across all panes.
+    #[cfg(debug_assertions)]
+    fn total_panes_area(&self) -> f64 {
+        let mut summed_area: f64 = 0.0;
+
+        for pane in self.panes.clone().borrow().values() {
+            if let PaneId::Terminal(_id) = pane.pid() {
+                let geom = pane.current_geom();
+                summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
+                    (Some(rows), Some(cols)) => rows * cols,
+                    _ => continue,
+                };
+            } else {
+                continue;
+            }
+        }
+
+        summed_area / (100.0 * 100.0)
+    }
+
+    pub fn layout(&mut self, direction: SplitDirection, space: usize) -> Result<()> {
         let mut pane_resizer = PaneResizer::new(self.panes.clone());
         pane_resizer.layout(direction, space)
     }
-    pub fn resize_pane_left(&mut self, pane_id: &PaneId) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            return;
+
+    fn pane_is_flexible(&self, direction: SplitDirection, pane_id: &PaneId) -> Result<bool> {
+        let err_context =
+            || format!("failed to determine if pane {pane_id:?} is flexible in {direction:?}");
+
+        let panes = self.panes.borrow();
+        let pane_to_check = panes
+            .get(pane_id)
+            .with_context(|| no_pane_id(pane_id))
+            .with_context(err_context)?;
+        let geom = pane_to_check.current_geom();
+        Ok(!match direction {
+            SplitDirection::Vertical => geom.rows,
+            SplitDirection::Horizontal => geom.cols,
         }
-        self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
+        .is_fixed())
     }
-    pub fn resize_pane_right(&mut self, pane_id: &PaneId) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            return;
+
+    // Check if panes in the desired direction can be resized. Returns the maximum resize that's
+    // possible (at most `change_by`).
+    pub fn can_change_pane_size(
+        &self,
+        pane_id: &PaneId,
+        strategy: &ResizeStrategy,
+        change_by: (f64, f64),
+    ) -> Result<bool> {
+        let err_context = || format!("failed to determine if pane {pane_id:?} can {strategy}");
+
+        let pane_ids = if let Some(direction) = strategy.direction {
+            let mut vec = self
+                .pane_ids_directly_next_to(pane_id, &direction)
+                .with_context(err_context)?;
+            vec.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
+            vec
+        } else {
+            return Ok(true);
+        };
+
+        use zellij_utils::data::Resize::Decrease as Dec;
+        use zellij_utils::data::Resize::Increase as Inc;
+
+        if !pane_ids.is_empty() {
+            if strategy.direction_horizontal() {
+                match strategy.resize {
+                    Inc => {
+                        for id in pane_ids {
+                            if !self
+                                .can_reduce_pane_width(&id, change_by.0 as f64)
+                                .with_context(err_context)?
+                            {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    },
+                    Dec => self
+                        .can_reduce_pane_width(pane_id, change_by.0 as f64)
+                        .with_context(err_context),
+                }
+            } else if strategy.direction_vertical() {
+                match strategy.resize {
+                    Inc => {
+                        for id in pane_ids {
+                            if !self
+                                .can_reduce_pane_height(&id, change_by.1 as f64)
+                                .with_context(err_context)?
+                            {
+                                return Ok(false);
+                            }
+                        }
+                        Ok(true)
+                    },
+                    Dec => self
+                        .can_reduce_pane_height(pane_id, change_by.1 as f64)
+                        .with_context(err_context),
+                }
+            } else {
+                unimplemented!();
+            }
+        } else {
+            Ok(false)
         }
-        self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
     }
-    pub fn resize_pane_down(&mut self, pane_id: &PaneId) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-    }
-    pub fn resize_pane_up(&mut self, pane_id: &PaneId) {
-        // TODO: find out by how much we actually reduced and only reduce by that much
-        if self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-    }
-    pub fn resize_increase(&mut self, pane_id: &PaneId) {
-        if self.try_increase_pane_and_surroundings_right_and_down(pane_id) {
-            return;
-        }
-        if self.try_increase_pane_and_surroundings_left_and_down(pane_id) {
-            return;
-        }
-        if self.try_increase_pane_and_surroundings_right_and_up(pane_id) {
-            return;
-        }
-        if self.try_increase_pane_and_surroundings_left_and_up(pane_id) {
-            return;
+
+    /// Change a tiled panes size based on the given strategy.
+    ///
+    /// Returns true upon successful resize, false otherwise.
+    pub fn change_pane_size(
+        &mut self,
+        pane_id: &PaneId,
+        strategy: &ResizeStrategy,
+        change_by: (f64, f64),
+    ) -> Result<bool> {
+        let err_context = || format!("failed to {strategy} by {change_by:?} for pane {pane_id:?}");
+
+        // Shorthand
+        use Direction as Dir;
+        // Default behavior is to only increase pane size, unless the direction being resized to is
+        // a boundary. In this case, decrease size from the other side (invert strategy)!
+        let strategy = if strategy.resize_increase()  // Only invert when increasing
+            && strategy.invert_on_boundaries          // Only invert if configured to do so
+            && strategy.direction.is_some()           // Only invert if there's a direction
+            && strategy
+                .direction
+                .and_then(|direction| {
+                    // Only invert if there are no neighbor IDs in the given direction
+                    self.pane_ids_directly_next_to(pane_id, &direction)
+                        .unwrap_or_default()
+                        .is_empty()
+                        .then_some(true)
+                })
+                .unwrap_or(false)
+        {
+            strategy.invert()
+        } else {
+            *strategy
+        };
+
+        if !self
+            .can_change_pane_size(pane_id, &strategy, change_by)
+            .with_context(err_context)?
+        {
+            // Resize not possible, quit
+            return Ok(false);
         }
 
-        if self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        if self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        if self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-    }
-    pub fn resize_decrease(&mut self, pane_id: &PaneId) {
-        if self.try_reduce_pane_and_surroundings_left_and_up(pane_id) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_right_and_up(pane_id) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_right_and_down(pane_id) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_left_and_down(pane_id) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        if self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT) {
-            return;
-        }
-        self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-    }
-    fn can_increase_pane_and_surroundings_right(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(pane_id) {
-            panes_to_the_right
-                .iter()
-                .all(|id| self.can_reduce_pane_width(id, increase_by))
+        if let Some(direction) = strategy.direction {
+            let mut neighbor_terminals = self
+                .pane_ids_directly_next_to(pane_id, &direction)
+                .with_context(err_context)?;
+            if neighbor_terminals.is_empty() {
+                // Nothing to do.
+                return Ok(false);
+            }
+
+            let neighbor_terminal_borders: HashSet<_> = if direction.is_horizontal() {
+                neighbor_terminals
+                    .iter()
+                    .map(|t| self.panes.borrow().get(t).unwrap().y())
+                    .collect()
+            } else {
+                neighbor_terminals
+                    .iter()
+                    .map(|t| self.panes.borrow().get(t).unwrap().x())
+                    .collect()
+            };
+
+            // Only resize those neighbors that are aligned and between pane borders
+            let (some_direction, other_direction) = match direction {
+                Dir::Left | Dir::Right => (Dir::Up, Dir::Down),
+                Dir::Down | Dir::Up => (Dir::Left, Dir::Right),
+            };
+            let (some_borders, some_terminals) = self
+                .contiguous_panes_with_alignment(
+                    pane_id,
+                    &neighbor_terminal_borders,
+                    &direction,
+                    &some_direction,
+                )
+                .with_context(err_context)?;
+            let (other_borders, other_terminals) = self
+                .contiguous_panes_with_alignment(
+                    pane_id,
+                    &neighbor_terminal_borders,
+                    &direction,
+                    &other_direction,
+                )
+                .with_context(err_context)?;
+            neighbor_terminals.retain(|t| {
+                if direction.is_horizontal() {
+                    self.pane_is_between_horizontal_borders(t, some_borders, other_borders)
+                } else {
+                    self.pane_is_between_vertical_borders(t, some_borders, other_borders)
+                }
+            });
+
+            // Perform the resize
+            let change_by = match direction {
+                Dir::Left | Dir::Right => change_by.0,
+                Dir::Down | Dir::Up => change_by.1,
+            };
+
+            if strategy.resize_increase() && direction.is_horizontal() {
+                [*pane_id]
+                    .iter()
+                    .chain(&some_terminals)
+                    .chain(&other_terminals)
+                    .for_each(|pane| self.increase_pane_width(pane, change_by));
+                neighbor_terminals
+                    .iter()
+                    .for_each(|pane| self.reduce_pane_width(pane, change_by));
+            } else if strategy.resize_increase() && direction.is_vertical() {
+                [*pane_id]
+                    .iter()
+                    .chain(&some_terminals)
+                    .chain(&other_terminals)
+                    .for_each(|pane| self.increase_pane_height(pane, change_by));
+                neighbor_terminals
+                    .iter()
+                    .for_each(|pane| self.reduce_pane_height(pane, change_by));
+            } else if strategy.resize_decrease() && direction.is_horizontal() {
+                [*pane_id]
+                    .iter()
+                    .chain(&some_terminals)
+                    .chain(&other_terminals)
+                    .for_each(|pane| self.reduce_pane_width(pane, change_by));
+                neighbor_terminals
+                    .iter()
+                    .for_each(|pane| self.increase_pane_width(pane, change_by));
+            } else if strategy.resize_decrease() && direction.is_vertical() {
+                [*pane_id]
+                    .iter()
+                    .chain(&some_terminals)
+                    .chain(&other_terminals)
+                    .for_each(|pane| self.reduce_pane_height(pane, change_by));
+                neighbor_terminals
+                    .iter()
+                    .for_each(|pane| self.increase_pane_height(pane, change_by));
+            } else {
+                return Err(anyhow!(
+                    "Don't know how to perform resize operation: '{strategy}'"
+                ))
+                .with_context(err_context);
+            }
+
+            // Update grid
+            let mut pane_resizer = PaneResizer::new(self.panes.clone());
+            if direction.is_horizontal() {
+                pane_resizer
+                    .layout(SplitDirection::Horizontal, self.display_area.cols)
+                    .with_context(err_context)?;
+            } else {
+                pane_resizer
+                    .layout(SplitDirection::Vertical, self.display_area.rows)
+                    .with_context(err_context)?;
+            }
         } else {
-            false
+            // Get panes aligned at corners, so we can change their sizes manually afterwards
+            let mut aligned_panes = [
+                None, // right, below
+                None, // left, below
+                None, // right, above
+                None, // left, above
+            ];
+            // For the borrow checker
+            {
+                let panes = self.panes.borrow();
+                let active_pane = panes
+                    .get(pane_id)
+                    .with_context(|| no_pane_id(pane_id))
+                    .with_context(err_context)?;
+
+                for p_id in self.viewport_pane_ids_directly_below(pane_id) {
+                    let pane = panes
+                        .get(&p_id)
+                        .with_context(|| no_pane_id(&p_id))
+                        .with_context(err_context)?;
+                    if active_pane.x() + active_pane.cols() == pane.x() {
+                        // right aligned
+                        aligned_panes[0] = Some(p_id);
+                    } else if active_pane.x() == pane.x() + pane.cols() {
+                        // left aligned
+                        aligned_panes[1] = Some(p_id);
+                    }
+                }
+                for p_id in self.viewport_pane_ids_directly_above(pane_id) {
+                    let pane = panes
+                        .get(&p_id)
+                        .with_context(|| no_pane_id(&p_id))
+                        .with_context(err_context)?;
+                    if active_pane.x() + active_pane.cols() == pane.x() {
+                        // right aligned
+                        aligned_panes[2] = Some(p_id);
+                    } else if active_pane.x() == pane.x() + pane.cols() {
+                        // left aligned
+                        aligned_panes[3] = Some(p_id);
+                    }
+                }
+            }
+
+            // Resize pane in every direction that fits
+            let options = [
+                (Dir::Right, Some(Dir::Down), Some(Dir::Left), 0),
+                (Dir::Left, Some(Dir::Down), Some(Dir::Right), 1),
+                (Dir::Right, Some(Dir::Up), Some(Dir::Left), 2),
+                (Dir::Left, Some(Dir::Up), Some(Dir::Right), 3),
+                (Dir::Right, None, None, 0),
+                (Dir::Down, None, None, 0),
+                (Dir::Left, None, None, 0),
+                (Dir::Up, None, None, 0),
+            ];
+
+            for (main_dir, sub_dir, adjust_dir, adjust_pane) in options {
+                if let Some(sub_dir) = sub_dir {
+                    let main_strategy = ResizeStrategy {
+                        direction: Some(main_dir),
+                        invert_on_boundaries: false,
+                        ..strategy
+                    };
+                    let sub_strategy = ResizeStrategy {
+                        direction: Some(sub_dir),
+                        invert_on_boundaries: false,
+                        ..strategy
+                    };
+
+                    if self.can_change_pane_size(pane_id, &main_strategy, change_by)?
+                        && self.can_change_pane_size(pane_id, &sub_strategy, change_by)?
+                    {
+                        let result = self
+                            .change_pane_size(pane_id, &main_strategy, change_by)
+                            .and_then(|ret| {
+                                Ok(ret
+                                    && self.change_pane_size(pane_id, &sub_strategy, change_by)?)
+                            })
+                            .and_then(|ret| {
+                                if let Some(aligned_pane) = aligned_panes[adjust_pane] {
+                                    Ok(ret
+                                        && self.change_pane_size(
+                                            &aligned_pane,
+                                            &ResizeStrategy {
+                                                direction: adjust_dir,
+                                                invert_on_boundaries: false,
+                                                resize: strategy.resize.invert(),
+                                            },
+                                            change_by,
+                                        )?)
+                                } else {
+                                    Ok(ret)
+                                }
+                            })
+                            .with_context(err_context)?;
+                        return Ok(result);
+                    }
+                } else {
+                    let new_strategy = ResizeStrategy {
+                        direction: Some(main_dir),
+                        invert_on_boundaries: false,
+                        ..strategy
+                    };
+                    if self
+                        .change_pane_size(pane_id, &new_strategy, change_by)
+                        .with_context(err_context)?
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+            return Ok(false);
         }
-    }
-    fn can_increase_pane_and_surroundings_left(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(pane_id) {
-            panes_to_the_left
-                .iter()
-                .all(|id| self.can_reduce_pane_width(id, increase_by))
-        } else {
-            false
+
+        #[cfg(debug_assertions)]
+        {
+            let area = self.total_panes_area() * 100.0;
+            debug_assert!(
+                f64::abs(area - 100.0) < 1.0, // Tolerate a little rounding error
+                "area consumed by panes doesn't fill the viewport! Total area is {area} %
+                During operation: '{strategy}', on pane {pane_id:?}",
+            );
         }
+
+        Ok(true)
     }
-    fn can_increase_pane_and_surroundings_down(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        if let Some(panes_below) = self.pane_ids_directly_below(pane_id) {
-            panes_below
-                .iter()
-                .all(|id| self.can_reduce_pane_height(id, increase_by))
-        } else {
-            false
-        }
-    }
-    fn can_increase_pane_and_surroundings_up(&self, pane_id: &PaneId, increase_by: f64) -> bool {
-        if let Some(panes_above) = self.pane_ids_directly_above(pane_id) {
-            panes_above
-                .iter()
-                .all(|id| self.can_reduce_pane_height(id, increase_by))
-        } else {
-            false
-        }
-    }
-    fn can_reduce_pane_width(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
+
+    fn can_reduce_pane_width(&self, pane_id: &PaneId, reduce_by: f64) -> Result<bool> {
+        let err_context =
+            || format!("failed to determine if pane {pane_id:?} can reduce width by {reduce_by} %");
+
         let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
+        let pane = panes
+            .get(pane_id)
+            .with_context(|| no_pane_id(pane_id))
+            .with_context(err_context)?;
         let current_fixed_cols = pane.position_and_size().cols.as_usize();
         let will_reduce_by = ((self.display_area.cols as f64 / 100.0) * reduce_by) as usize;
         if current_fixed_cols.saturating_sub(will_reduce_by) < pane.min_width() {
-            false
+            Ok(false)
         } else if let Some(cols) = pane.position_and_size().cols.as_percent() {
-            cols - reduce_by >= RESIZE_PERCENT
+            Ok(cols - reduce_by >= RESIZE_PERCENT)
         } else {
-            false
+            Ok(false)
         }
     }
-    fn can_reduce_pane_height(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
+    fn can_reduce_pane_height(&self, pane_id: &PaneId, reduce_by: f64) -> Result<bool> {
+        let err_context = || {
+            format!("failed to determine if pane {pane_id:?} can reduce height by {reduce_by} %")
+        };
+
         let panes = self.panes.borrow();
-        let pane = panes.get(pane_id).unwrap();
+        let pane = panes
+            .get(pane_id)
+            .with_context(|| no_pane_id(pane_id))
+            .with_context(err_context)?;
         let current_fixed_rows = pane.position_and_size().rows.as_usize();
         let will_reduce_by = ((self.display_area.rows as f64 / 100.0) * reduce_by) as usize;
         if current_fixed_rows.saturating_sub(will_reduce_by) < pane.min_height() {
-            false
+            Ok(false)
         } else if let Some(rows) = pane.position_and_size().rows.as_percent() {
-            rows - reduce_by >= RESIZE_PERCENT
+            Ok(rows - reduce_by >= RESIZE_PERCENT)
         } else {
-            false
+            Ok(false)
         }
     }
-    fn can_reduce_pane_and_surroundings_right(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let ids_left = self.pane_ids_directly_left_of(pane_id);
-        let flexible_left = self.ids_are_flexible(SplitDirection::Horizontal, ids_left);
-        if flexible_left {
-            self.can_reduce_pane_width(pane_id, reduce_by)
-        } else {
-            false
-        }
-    }
-    fn can_reduce_pane_and_surroundings_left(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let ids_right = self.pane_ids_directly_right_of(pane_id);
-        let flexible_right = self.ids_are_flexible(SplitDirection::Horizontal, ids_right);
-        if flexible_right {
-            self.can_reduce_pane_width(pane_id, reduce_by)
-        } else {
-            false
-        }
-    }
-    fn can_reduce_pane_and_surroundings_down(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let ids_above = self.pane_ids_directly_above(pane_id);
-        let flexible_above = self.ids_are_flexible(SplitDirection::Vertical, ids_above);
-        if flexible_above {
-            self.can_reduce_pane_height(pane_id, reduce_by)
-        } else {
-            false
-        }
-    }
-    fn can_reduce_pane_and_surroundings_up(&self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        let ids_below = self.pane_ids_directly_below(pane_id);
-        let flexible_below = self.ids_are_flexible(SplitDirection::Vertical, ids_below);
-        if flexible_below {
-            self.can_reduce_pane_height(pane_id, reduce_by)
-        } else {
-            false
-        }
-    }
+
     fn reduce_pane_height(&mut self, id: &PaneId, percent: f64) {
-        let mut panes = self.panes.borrow_mut();
-        let terminal = panes.get_mut(id).unwrap();
-        terminal.reduce_height(percent);
+        if self.can_reduce_pane_height(id, percent).unwrap() {
+            let mut panes = self.panes.borrow_mut();
+            let terminal = panes.get_mut(id).unwrap();
+            terminal.reduce_height(percent);
+        }
     }
     fn increase_pane_height(&mut self, id: &PaneId, percent: f64) {
         let mut panes = self.panes.borrow_mut();
@@ -237,708 +496,192 @@ impl<'a> TiledPaneGrid<'a> {
         terminal.increase_width(percent);
     }
     fn reduce_pane_width(&mut self, id: &PaneId, percent: f64) {
-        let mut panes = self.panes.borrow_mut();
-        let terminal = panes.get_mut(id).unwrap();
-        terminal.reduce_width(percent);
-    }
-    fn increase_pane_and_surroundings_up(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_above = self
-            .pane_ids_directly_above(id)
-            .expect("can't increase pane size up if there are no terminals above");
-        let terminal_borders_above: HashSet<usize> = terminals_above
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().x())
-            .collect();
-        let (left_resize_border, terminals_to_the_left) =
-            self.top_aligned_contiguous_panes_to_the_left(id, &terminal_borders_above);
-        let (right_resize_border, terminals_to_the_right) =
-            self.top_aligned_contiguous_panes_to_the_right(id, &terminal_borders_above);
-        terminals_above.retain(|t| {
-            self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
-        });
-        self.increase_pane_height(id, percent);
-        for terminal_id in terminals_above {
-            self.reduce_pane_height(&terminal_id, percent);
-        }
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            self.increase_pane_height(terminal_id, percent);
+        if self.can_reduce_pane_width(id, percent).unwrap() {
+            let mut panes = self.panes.borrow_mut();
+            let terminal = panes.get_mut(id).unwrap();
+            terminal.reduce_width(percent);
         }
     }
-    fn increase_pane_and_surroundings_down(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_below = self
-            .pane_ids_directly_below(id)
-            .expect("can't increase pane size down if there are no terminals below");
-        let terminal_borders_below: HashSet<usize> = terminals_below
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().x())
-            .collect();
-        let (left_resize_border, terminals_to_the_left) =
-            self.bottom_aligned_contiguous_panes_to_the_left(id, &terminal_borders_below);
-        let (right_resize_border, terminals_to_the_right) =
-            self.bottom_aligned_contiguous_panes_to_the_right(id, &terminal_borders_below);
-        terminals_below.retain(|t| {
-            self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
-        });
-        self.increase_pane_height(id, percent);
-        for terminal_id in terminals_below {
-            self.reduce_pane_height(&terminal_id, percent);
-        }
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            self.increase_pane_height(terminal_id, percent);
-        }
-    }
-    fn increase_pane_and_surroundings_right(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_to_the_right = self
-            .pane_ids_directly_right_of(id)
-            .expect("can't increase pane size right if there are no terminals to the right");
-        let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
-            .iter()
-            .map(|t| {
-                return self.panes.borrow().get(t).unwrap().y();
-            })
-            .collect();
-        let (top_resize_border, terminals_above) =
-            self.right_aligned_contiguous_panes_above(id, &terminal_borders_to_the_right);
-        let (bottom_resize_border, terminals_below) =
-            self.right_aligned_contiguous_panes_below(id, &terminal_borders_to_the_right);
-        terminals_to_the_right.retain(|t| {
-            self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
-        });
-        self.increase_pane_width(id, percent);
-        for terminal_id in terminals_to_the_right {
-            self.reduce_pane_width(&terminal_id, percent);
-        }
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            self.increase_pane_width(terminal_id, percent);
-        }
-    }
-    fn increase_pane_and_surroundings_left(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_to_the_left = self
-            .pane_ids_directly_left_of(id)
-            .expect("can't increase pane size right if there are no terminals to the right");
-        let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().y())
-            .collect();
-        let (top_resize_border, terminals_above) =
-            self.left_aligned_contiguous_panes_above(id, &terminal_borders_to_the_left);
-        let (bottom_resize_border, terminals_below) =
-            self.left_aligned_contiguous_panes_below(id, &terminal_borders_to_the_left);
-        terminals_to_the_left.retain(|t| {
-            self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
-        });
-        self.increase_pane_width(id, percent);
-        for terminal_id in terminals_to_the_left {
-            self.reduce_pane_width(&terminal_id, percent);
-        }
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            self.increase_pane_width(terminal_id, percent);
-        }
-    }
-    fn reduce_pane_and_surroundings_up(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_below = self
-            .pane_ids_directly_below(id)
-            .expect("can't reduce pane size up if there are no terminals below");
-        let terminal_borders_below: HashSet<usize> = terminals_below
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().x())
-            .collect();
-        let (left_resize_border, terminals_to_the_left) =
-            self.bottom_aligned_contiguous_panes_to_the_left(id, &terminal_borders_below);
-        let (right_resize_border, terminals_to_the_right) =
-            self.bottom_aligned_contiguous_panes_to_the_right(id, &terminal_borders_below);
-        terminals_below.retain(|t| {
-            self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
-        });
 
-        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
-        // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            let panes = self.panes.borrow();
-            let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
-                return;
-            }
-        }
+    /// Return a vector of [`PaneId`]s directly adjacent to the given [`PaneId`], if any.
+    ///
+    /// The vector is empty for example if the given pane (`id`) is at the boundary of the viewport
+    /// already.
+    fn pane_ids_directly_next_to(&self, id: &PaneId, direction: &Direction) -> Result<Vec<PaneId>> {
+        let err_context = || format!("failed to find panes {direction} from pane {id:?}");
 
-        self.reduce_pane_height(id, percent);
-        for terminal_id in terminals_below {
-            self.increase_pane_height(&terminal_id, percent);
-        }
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            self.reduce_pane_height(terminal_id, percent);
-        }
-    }
-    fn reduce_pane_and_surroundings_down(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_above = self
-            .pane_ids_directly_above(id)
-            .expect("can't reduce pane size down if there are no terminals above");
-        let terminal_borders_above: HashSet<usize> = terminals_above
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().x())
-            .collect();
-        let (left_resize_border, terminals_to_the_left) =
-            self.top_aligned_contiguous_panes_to_the_left(id, &terminal_borders_above);
-        let (right_resize_border, terminals_to_the_right) =
-            self.top_aligned_contiguous_panes_to_the_right(id, &terminal_borders_above);
-        terminals_above.retain(|t| {
-            self.pane_is_between_vertical_borders(t, left_resize_border, right_resize_border)
-        });
-
-        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
-        // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            let panes = self.panes.borrow();
-            let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().rows.as_percent().unwrap() - percent < RESIZE_PERCENT {
-                return;
-            }
-        }
-
-        self.reduce_pane_height(id, percent);
-        for terminal_id in terminals_above {
-            self.increase_pane_height(&terminal_id, percent);
-        }
-        for terminal_id in terminals_to_the_left.iter().chain(&terminals_to_the_right) {
-            self.reduce_pane_height(terminal_id, percent);
-        }
-    }
-    fn reduce_pane_and_surroundings_right(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_to_the_left = self
-            .pane_ids_directly_left_of(id)
-            .expect("can't reduce pane size right if there are no terminals to the left");
-        let terminal_borders_to_the_left: HashSet<usize> = terminals_to_the_left
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().y())
-            .collect();
-        let (top_resize_border, terminals_above) =
-            self.left_aligned_contiguous_panes_above(id, &terminal_borders_to_the_left);
-        let (bottom_resize_border, terminals_below) =
-            self.left_aligned_contiguous_panes_below(id, &terminal_borders_to_the_left);
-        terminals_to_the_left.retain(|t| {
-            self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
-        });
-
-        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
-        // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            let panes = self.panes.borrow();
-            let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
-                return;
-            }
-        }
-
-        self.reduce_pane_width(id, percent);
-        for terminal_id in terminals_to_the_left {
-            self.increase_pane_width(&terminal_id, percent);
-        }
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            self.reduce_pane_width(terminal_id, percent);
-        }
-    }
-    fn reduce_pane_and_surroundings_left(&mut self, id: &PaneId, percent: f64) {
-        let mut terminals_to_the_right = self
-            .pane_ids_directly_right_of(id)
-            .expect("can't reduce pane size left if there are no terminals to the right");
-        let terminal_borders_to_the_right: HashSet<usize> = terminals_to_the_right
-            .iter()
-            .map(|t| self.panes.borrow().get(t).unwrap().y())
-            .collect();
-        let (top_resize_border, terminals_above) =
-            self.right_aligned_contiguous_panes_above(id, &terminal_borders_to_the_right);
-        let (bottom_resize_border, terminals_below) =
-            self.right_aligned_contiguous_panes_below(id, &terminal_borders_to_the_right);
-        terminals_to_the_right.retain(|t| {
-            self.pane_is_between_horizontal_borders(t, top_resize_border, bottom_resize_border)
-        });
-
-        // FIXME: This checks that we aren't violating the resize constraints of the aligned panes
-        // above and below this one. This should be moved to a `can_resize` function eventually.
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            let panes = self.panes.borrow();
-            let pane = panes.get(terminal_id).unwrap();
-            if pane.current_geom().cols.as_percent().unwrap() - percent < RESIZE_PERCENT {
-                return;
-            }
-        }
-
-        self.reduce_pane_width(id, percent);
-        for terminal_id in terminals_to_the_right {
-            self.increase_pane_width(&terminal_id, percent);
-        }
-        for terminal_id in terminals_above.iter().chain(&terminals_below) {
-            self.reduce_pane_width(terminal_id, percent);
-        }
-    }
-    fn pane_ids_directly_left_of(&self, id: &PaneId) -> Option<Vec<PaneId>> {
         let panes = self.panes.borrow();
         let mut ids = vec![];
-        let terminal_to_check = panes.get(id).unwrap();
-        if terminal_to_check.x() == 0 {
-            return None;
-        }
-        // for (&pid, terminal) in self.get_panes() {
+        let terminal_to_check = panes
+            .get(id)
+            .with_context(|| no_pane_id(id))
+            .with_context(err_context)?;
+
         for (&pid, terminal) in panes.iter() {
-            if terminal.x() + terminal.cols() == terminal_to_check.x() {
+            // We cannot resize plugin panes, so we do not even bother trying.
+            if let PaneId::Plugin(_) = pid {
+                continue;
+            }
+
+            if match direction {
+                Direction::Left => (terminal.x() + terminal.cols()) == terminal_to_check.x(),
+                Direction::Down => {
+                    terminal.y() == (terminal_to_check.y() + terminal_to_check.rows())
+                },
+                Direction::Up => (terminal.y() + terminal.rows()) == terminal_to_check.y(),
+                Direction::Right => {
+                    terminal.x() == (terminal_to_check.x() + terminal_to_check.cols())
+                },
+            } {
                 ids.push(pid);
             }
         }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
+        Ok(ids)
     }
-    fn pane_ids_directly_right_of(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
+
+    /// Return a vector of [`PaneId`]s aligned with the given [`PaneId`] on the `direction` border.
+    fn pane_ids_aligned_with(
+        &self,
+        pane_id: &PaneId,
+        direction: &Direction,
+    ) -> Result<Vec<PaneId>> {
+        let err_context = || format!("failed to find panes aligned {direction} with {pane_id:?}");
+
         let panes = self.panes.borrow();
-        let terminal_to_check = panes.get(id).unwrap();
-        // for (&pid, terminal) in self.get_panes() {
-        for (&pid, terminal) in panes.iter() {
-            if terminal.x() == terminal_to_check.x() + terminal_to_check.cols() {
-                ids.push(pid);
+        let pane_to_check = panes
+            .get(pane_id)
+            .with_context(|| no_pane_id(pane_id))
+            .with_context(err_context)?;
+        let mut result = vec![];
+
+        for (p_id, pane) in panes.iter() {
+            if p_id == pane_id {
+                continue;
+            }
+
+            if match direction {
+                Direction::Left => pane.x() == pane_to_check.x(),
+                Direction::Down => {
+                    (pane.y() + pane.rows()) == (pane_to_check.y() + pane_to_check.rows())
+                },
+                Direction::Up => pane.y() == pane_to_check.y(),
+                Direction::Right => {
+                    (pane.x() + pane.cols()) == (pane_to_check.x() + pane_to_check.cols())
+                },
+            } {
+                result.push(*p_id)
             }
         }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
+        Ok(result)
     }
-    fn pane_ids_directly_below(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
+
+    /// Searches for contiguous panes
+    fn contiguous_panes_with_alignment(
+        &self,
+        id: &PaneId,
+        border: &HashSet<usize>,
+        alignment: &Direction,
+        direction: &Direction,
+    ) -> Result<BorderAndPaneIds> {
+        let err_context = || {
+            format!("failed to find contiguous panes {direction} from pane {id:?} with {alignment} alignment")
+        };
+        let input_error =
+            anyhow!("Invalid combination of alignment ({alignment}) and direction ({direction})");
+
         let panes = self.panes.borrow();
-        let terminal_to_check = panes.get(id).unwrap();
-        // for (&pid, terminal) in self.get_panes() {
-        for (&pid, terminal) in panes.iter() {
-            if terminal.y() == terminal_to_check.y() + terminal_to_check.rows() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn pane_ids_directly_above(&self, id: &PaneId) -> Option<Vec<PaneId>> {
-        let mut ids = vec![];
-        let panes = self.panes.borrow();
-        let terminal_to_check = panes.get(id).unwrap();
-        // for (&pid, terminal) in self.get_panes() {
-        for (&pid, terminal) in panes.iter() {
-            if terminal.y() + terminal.rows() == terminal_to_check.y() {
-                ids.push(pid);
-            }
-        }
-        if ids.is_empty() {
-            None
-        } else {
-            Some(ids)
-        }
-    }
-    fn pane_ids_top_aligned_with_pane_id(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        let panes = self.panes.borrow();
-        let pane_to_check = panes.get(pane_id).unwrap();
-        panes
-            .iter()
-            .filter(|(p_id, p)| *p_id != pane_id && p.y() == pane_to_check.y())
-            .map(|(p_id, _p)| *p_id)
-            .collect()
-    }
-    fn pane_ids_bottom_aligned_with_pane_id(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        let panes = self.panes.borrow();
-        let pane_to_check = panes.get(pane_id).unwrap();
-        panes
-            .iter()
-            .filter(|(p_id, p)| {
-                *p_id != pane_id && p.y() + p.rows() == pane_to_check.y() + pane_to_check.rows()
+        let pane_to_check = panes
+            .get(id)
+            .with_context(|| no_pane_id(id))
+            .with_context(err_context)?;
+        let mut result = vec![];
+        let mut aligned_panes: Vec<_> = self
+            .pane_ids_aligned_with(id, alignment)
+            .and_then(|pane_ids| {
+                Ok(pane_ids
+                    .iter()
+                    .map(|p_id| panes.get(p_id).unwrap()) // <-- TODO: Bad unwrap!
+                    .collect())
             })
-            .map(|(p_id, _p)| *p_id)
-            .collect()
-    }
-    fn pane_ids_right_aligned_with_pane_id(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        let panes = self.panes.borrow();
-        let pane_to_check = panes.get(pane_id).unwrap();
-        panes
-            .iter()
-            .filter(|(p_id, p)| {
-                *p_id != pane_id && p.x() + p.cols() == pane_to_check.x() + pane_to_check.cols()
-            })
-            .map(|(p_id, _p)| *p_id)
-            .collect()
-    }
-    fn pane_ids_left_aligned_with_pane_id(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        let panes = self.panes.borrow();
-        let pane_to_check = panes.get(pane_id).unwrap();
-        panes
-            .iter()
-            .filter(|(p_id, p)| *p_id != pane_id && p.x() == pane_to_check.x())
-            .map(|(p_id, _p)| *p_id)
-            .collect()
-    }
-    fn right_aligned_contiguous_panes_above(
-        &self,
-        id: &PaneId,
-        pane_borders_to_the_right: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut right_aligned_panes: Vec<_> = self
-            .pane_ids_right_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        right_aligned_panes.sort_by_key(|a| Reverse(a.y()));
-        for pane in right_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.y() + pane.rows() == pane_to_check.y() {
-                result_panes.push(pane);
-            }
-        }
-        // top-most border aligned with a pane border to the right
-        let mut top_resize_border = 0;
-        for pane in &result_panes {
-            let bottom_pane_boundary = pane.y() + pane.rows();
-            if pane_borders_to_the_right
-                .get(&bottom_pane_boundary)
-                .is_some()
-                && top_resize_border < bottom_pane_boundary
-            {
-                top_resize_border = bottom_pane_boundary;
-            }
-        }
-        result_panes.retain(|pane| pane.y() >= top_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let top_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.y()
-        } else {
-            top_resize_border
+            .with_context(err_context)?;
+
+        use Direction::Down as D;
+        use Direction::Left as L;
+        use Direction::Right as R;
+        use Direction::Up as U;
+
+        match (alignment, direction) {
+            (&R, &U) | (&L, &U) => aligned_panes.sort_by_key(|a| Reverse(a.y())),
+            (&R, &D) | (&L, &D) => aligned_panes.sort_by_key(|a| a.y()),
+            (&D, &L) | (&U, &L) => aligned_panes.sort_by_key(|a| Reverse(a.x())),
+            (&D, &R) | (&U, &R) => aligned_panes.sort_by_key(|a| a.x()),
+            _ => return Err(input_error).with_context(err_context),
         };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (top_resize_border, pane_ids)
-    }
-    fn right_aligned_contiguous_panes_below(
-        &self,
-        id: &PaneId,
-        pane_borders_to_the_right: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut right_aligned_panes: Vec<_> = self
-            .pane_ids_right_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        right_aligned_panes.sort_by_key(|a| a.y());
-        for pane in right_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.y() == pane_to_check.y() + pane_to_check.rows() {
-                result_panes.push(pane);
+
+        for pane in aligned_panes {
+            let pane_to_check = result.last().unwrap_or(&pane_to_check);
+            if match (alignment, direction) {
+                (&R, &U) | (&L, &U) => (pane.y() + pane.rows()) == pane_to_check.y(),
+                (&R, &D) | (&L, &D) => pane.y() == (pane_to_check.y() + pane_to_check.rows()),
+                (&D, &L) | (&U, &L) => (pane.x() + pane.cols()) == pane_to_check.x(),
+                (&D, &R) | (&U, &R) => pane.x() == (pane_to_check.x() + pane_to_check.cols()),
+                _ => return Err(input_error).with_context(err_context),
+            } {
+                result.push(pane);
             }
         }
-        // bottom-most border aligned with a pane border to the right
-        let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
-        for pane in &result_panes {
-            let top_pane_boundary = pane.y();
-            if pane_borders_to_the_right
-                .get(&(top_pane_boundary))
-                .is_some()
-                && top_pane_boundary < bottom_resize_border
-            {
-                bottom_resize_border = top_pane_boundary;
-            }
-        }
-        result_panes.retain(|pane| pane.y() + pane.rows() <= bottom_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let bottom_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.y() + pane_to_check.rows()
-        } else {
-            bottom_resize_border
+
+        let mut resize_border = match direction {
+            &L => 0,
+            &D => self.viewport.y + self.viewport.rows,
+            &U => 0,
+            &R => self.viewport.x + self.viewport.cols,
         };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (bottom_resize_border, pane_ids)
-    }
-    fn left_aligned_contiguous_panes_above(
-        &self,
-        id: &PaneId,
-        pane_borders_to_the_left: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut left_aligned_panes: Vec<_> = self
-            .pane_ids_left_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        left_aligned_panes.sort_by_key(|a| Reverse(a.y()));
-        for pane in left_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.y() + pane.rows() == pane_to_check.y() {
-                result_panes.push(pane);
+
+        for pane in &result {
+            let pane_boundary = match direction {
+                &L => pane.x() + pane.cols(),
+                &D => pane.y(),
+                &U => pane.y() + pane.rows(),
+                &R => pane.x(),
+            };
+            if border.get(&pane_boundary).is_some() {
+                match direction {
+                    &R | &D => {
+                        if pane_boundary < resize_border {
+                            resize_border = pane_boundary
+                        }
+                    },
+                    &L | &U => {
+                        if pane_boundary > resize_border {
+                            resize_border = pane_boundary
+                        }
+                    },
+                }
             }
         }
-        // top-most border aligned with a pane border to the right
-        let mut top_resize_border = 0;
-        for pane in &result_panes {
-            let bottom_pane_boundary = pane.y() + pane.rows();
-            if pane_borders_to_the_left
-                .get(&bottom_pane_boundary)
-                .is_some()
-                && top_resize_border < bottom_pane_boundary
-            {
-                top_resize_border = bottom_pane_boundary;
+        result.retain(|pane| match direction {
+            &L => pane.x() >= resize_border,
+            &D => (pane.y() + pane.rows()) <= resize_border,
+            &U => pane.y() >= resize_border,
+            &R => (pane.x() + pane.cols()) <= resize_border,
+        });
+
+        let resize_border = if result.is_empty() {
+            match direction {
+                &L => pane_to_check.x(),
+                &D => pane_to_check.y() + pane_to_check.rows(),
+                &U => pane_to_check.y(),
+                &R => pane_to_check.x() + pane_to_check.cols(),
             }
-        }
-        result_panes.retain(|pane| pane.y() >= top_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let top_resize_border = if panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.y()
         } else {
-            top_resize_border
+            resize_border
         };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (top_resize_border, pane_ids)
+        let pane_ids: Vec<PaneId> = result.iter().map(|t| t.pid()).collect();
+
+        Ok((resize_border, pane_ids))
     }
-    fn left_aligned_contiguous_panes_below(
-        &self,
-        id: &PaneId,
-        pane_borders_to_the_left: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut left_aligned_panes: Vec<_> = self
-            .pane_ids_left_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        left_aligned_panes.sort_by_key(|a| a.y());
-        for pane in left_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.y() == pane_to_check.y() + pane_to_check.rows() {
-                result_panes.push(pane);
-            }
-        }
-        // bottom-most border aligned with a pane border to the left
-        let mut bottom_resize_border = self.viewport.y + self.viewport.rows;
-        for pane in &result_panes {
-            let top_pane_boundary = pane.y();
-            if pane_borders_to_the_left.get(&(top_pane_boundary)).is_some()
-                && top_pane_boundary < bottom_resize_border
-            {
-                bottom_resize_border = top_pane_boundary;
-            }
-        }
-        result_panes.retain(|pane| pane.y() + pane.rows() <= bottom_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let bottom_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.y() + pane_to_check.rows()
-        } else {
-            bottom_resize_border
-        };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (bottom_resize_border, pane_ids)
-    }
-    fn top_aligned_contiguous_panes_to_the_left(
-        &self,
-        id: &PaneId,
-        pane_borders_above: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut top_aligned_panes: Vec<_> = self
-            .pane_ids_top_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        top_aligned_panes.sort_by_key(|a| Reverse(a.x()));
-        for pane in top_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.x() + pane.cols() == pane_to_check.x() {
-                result_panes.push(pane);
-            }
-        }
-        // leftmost border aligned with a pane border above
-        let mut left_resize_border = 0;
-        for pane in &result_panes {
-            let right_pane_boundary = pane.x() + pane.cols();
-            if pane_borders_above.get(&right_pane_boundary).is_some()
-                && left_resize_border < right_pane_boundary
-            {
-                left_resize_border = right_pane_boundary
-            }
-        }
-        result_panes.retain(|pane| pane.x() >= left_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let left_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.x()
-        } else {
-            left_resize_border
-        };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (left_resize_border, pane_ids)
-    }
-    fn top_aligned_contiguous_panes_to_the_right(
-        &self,
-        id: &PaneId,
-        pane_borders_above: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut top_aligned_panes: Vec<_> = self
-            .pane_ids_top_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        // panes that are next to each other up to current
-        top_aligned_panes.sort_by_key(|a| a.x());
-        for pane in top_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.x() == pane_to_check.x() + pane_to_check.cols() {
-                result_panes.push(pane);
-            }
-        }
-        // rightmost border aligned with a pane border above
-        let mut right_resize_border = self.viewport.x + self.viewport.cols;
-        for pane in &result_panes {
-            let left_pane_boundary = pane.x();
-            if pane_borders_above.get(&left_pane_boundary).is_some()
-                && right_resize_border > left_pane_boundary
-            {
-                right_resize_border = left_pane_boundary;
-            }
-        }
-        result_panes.retain(|pane| pane.x() + pane.cols() <= right_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let right_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.x() + pane_to_check.cols()
-        } else {
-            right_resize_border
-        };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (right_resize_border, pane_ids)
-    }
-    fn bottom_aligned_contiguous_panes_to_the_left(
-        &self,
-        id: &PaneId,
-        pane_borders_below: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut bottom_aligned_panes: Vec<_> = self
-            .pane_ids_bottom_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        bottom_aligned_panes.sort_by_key(|a| Reverse(a.x()));
-        // panes that are next to each other up to current
-        for pane in bottom_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.x() + pane.cols() == pane_to_check.x() {
-                result_panes.push(pane);
-            }
-        }
-        // leftmost border aligned with a pane border above
-        let mut left_resize_border = 0;
-        for pane in &result_panes {
-            let right_pane_boundary = pane.x() + pane.cols();
-            if pane_borders_below.get(&right_pane_boundary).is_some()
-                && left_resize_border < right_pane_boundary
-            {
-                left_resize_border = right_pane_boundary;
-            }
-        }
-        result_panes.retain(|terminal| terminal.x() >= left_resize_border);
-        // if there are no adjacent panes to resize, we use the border of the main pane we're
-        // resizing
-        let left_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.x()
-        } else {
-            left_resize_border
-        };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (left_resize_border, pane_ids)
-    }
-    fn bottom_aligned_contiguous_panes_to_the_right(
-        &self,
-        id: &PaneId,
-        pane_borders_below: &HashSet<usize>,
-    ) -> BorderAndPaneIds {
-        let panes = self.panes.borrow();
-        let mut result_panes = vec![];
-        let mut bottom_aligned_panes: Vec<_> = self
-            .pane_ids_bottom_aligned_with_pane_id(id)
-            .iter()
-            .map(|p_id| panes.get(p_id).unwrap())
-            .collect();
-        bottom_aligned_panes.sort_by_key(|a| a.x());
-        // panes that are next to each other up to current
-        for pane in bottom_aligned_panes {
-            let pane_to_check = panes.get(id).unwrap();
-            let pane_to_check = result_panes.last().unwrap_or(&pane_to_check);
-            if pane.x() == pane_to_check.x() + pane_to_check.cols() {
-                result_panes.push(pane);
-            }
-        }
-        // leftmost border aligned with a pane border above
-        let mut right_resize_border = self.viewport.x + self.viewport.cols;
-        for pane in &result_panes {
-            let left_pane_boundary = pane.x();
-            if pane_borders_below.get(&left_pane_boundary).is_some()
-                && right_resize_border > left_pane_boundary
-            {
-                right_resize_border = left_pane_boundary;
-            }
-        }
-        result_panes.retain(|terminal| terminal.x() + terminal.cols() <= right_resize_border);
-        let right_resize_border = if result_panes.is_empty() {
-            let pane_to_check = panes.get(id).unwrap();
-            pane_to_check.x() + pane_to_check.cols()
-        } else {
-            right_resize_border
-        };
-        let pane_ids: Vec<PaneId> = result_panes.iter().map(|t| t.pid()).collect();
-        (right_resize_border, pane_ids)
-    }
-    fn ids_are_flexible(&self, direction: SplitDirection, pane_ids: Option<Vec<PaneId>>) -> bool {
-        let panes = self.panes.borrow();
-        pane_ids.is_some()
-            && pane_ids.unwrap().iter().all(|id| {
-                let pane_to_check = panes.get(id).unwrap();
-                let geom = pane_to_check.current_geom();
-                let dimension = match direction {
-                    SplitDirection::Vertical => geom.rows,
-                    SplitDirection::Horizontal => geom.cols,
-                };
-                !dimension.is_fixed()
-            })
-    }
+
     fn pane_is_between_vertical_borders(
         &self,
         id: &PaneId,
@@ -949,6 +692,7 @@ impl<'a> TiledPaneGrid<'a> {
         let pane = panes.get(id).unwrap();
         pane.x() >= left_border_x && pane.x() + pane.cols() <= right_border_x
     }
+
     fn pane_is_between_horizontal_borders(
         &self,
         id: &PaneId,
@@ -959,341 +703,27 @@ impl<'a> TiledPaneGrid<'a> {
         let pane = panes.get(id).unwrap();
         pane.y() >= top_border_y && pane.y() + pane.rows() <= bottom_border_y
     }
-    fn try_increase_pane_and_surroundings_right(
-        &mut self,
-        pane_id: &PaneId,
-        reduce_by: f64,
-    ) -> bool {
-        if self.can_increase_pane_and_surroundings_right(pane_id, reduce_by) {
-            self.increase_pane_and_surroundings_right(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
-            return true;
-        }
-        false
-    }
-    fn try_increase_pane_and_surroundings_left(
-        &mut self,
-        pane_id: &PaneId,
-        reduce_by: f64,
-    ) -> bool {
-        if self.can_increase_pane_and_surroundings_left(pane_id, reduce_by) {
-            self.increase_pane_and_surroundings_left(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
-            return true;
-        }
-        false
-    }
-    fn try_increase_pane_and_surroundings_up(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        if self.can_increase_pane_and_surroundings_up(pane_id, reduce_by) {
-            self.increase_pane_and_surroundings_up(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
-            return true;
-        }
-        false
-    }
-    fn try_increase_pane_and_surroundings_down(
-        &mut self,
-        pane_id: &PaneId,
-        reduce_by: f64,
-    ) -> bool {
-        if self.can_increase_pane_and_surroundings_down(pane_id, reduce_by) {
-            self.increase_pane_and_surroundings_down(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
-            return true;
-        }
-        false
-    }
-    fn try_increase_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
-        let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-        if can_increase_pane_right && can_increase_pane_up {
-            let pane_above_with_right_aligned_border = self
-                .viewport_pane_ids_directly_above(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() == pane.x()
-                });
-            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
-            {
-                self.try_reduce_pane_and_surroundings_right(
-                    &pane_above_with_right_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_increase_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
-        let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_up =
-            self.can_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-        if can_increase_pane_left && can_increase_pane_up {
-            let pane_above_with_left_aligned_border = self
-                .viewport_pane_ids_directly_above(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() == pane.x() + pane.cols()
-                });
-            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
-                self.try_reduce_pane_and_surroundings_left(
-                    &pane_above_with_left_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_increase_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
-        let can_increase_pane_right =
-            self.can_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-        if can_increase_pane_right && can_increase_pane_down {
-            let pane_below_with_right_aligned_border = self
-                .viewport_pane_ids_directly_below(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() == pane.x()
-                });
-            self.try_increase_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
-            {
-                self.try_reduce_pane_and_surroundings_right(
-                    &pane_below_with_right_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_increase_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
-        let can_increase_pane_left =
-            self.can_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_increase_pane_down =
-            self.can_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-        if can_increase_pane_left && can_increase_pane_down {
-            let pane_below_with_left_aligned_border = self
-                .viewport_pane_ids_directly_below(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() == pane.x() + pane.cols()
-                });
-            self.try_increase_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_increase_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
-                self.try_reduce_pane_and_surroundings_left(
-                    &pane_below_with_left_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_reduce_pane_and_surroundings_right_and_up(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-        if can_reduce_pane_right && can_reduce_pane_up {
-            let pane_below_with_left_aligned_border = self
-                .viewport_pane_ids_directly_below(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() == pane.x() + pane.cols()
-                });
-            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            if let Some(pane_below_with_left_aligned_border) = pane_below_with_left_aligned_border {
-                self.try_increase_pane_and_surroundings_right(
-                    &pane_below_with_left_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_reduce_pane_and_surroundings_left_and_up(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_up = self.can_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-        if can_reduce_pane_left && can_reduce_pane_up {
-            let pane_below_with_right_aligned_border = self
-                .viewport_pane_ids_directly_below(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() == pane.x()
-                });
-            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_up(pane_id, RESIZE_PERCENT);
-            if let Some(pane_below_with_right_aligned_border) = pane_below_with_right_aligned_border
-            {
-                self.try_increase_pane_and_surroundings_left(
-                    &pane_below_with_right_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_reduce_pane_and_surroundings_right_and_down(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_right =
-            self.can_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-        if can_reduce_pane_right && can_reduce_pane_down {
-            let pane_above_with_left_aligned_border = self
-                .viewport_pane_ids_directly_above(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() == pane.x() + pane.cols()
-                });
-            self.try_reduce_pane_and_surroundings_right(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            if let Some(pane_above_with_left_aligned_border) = pane_above_with_left_aligned_border {
-                self.try_increase_pane_and_surroundings_right(
-                    &pane_above_with_left_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_reduce_pane_and_surroundings_left_and_down(&mut self, pane_id: &PaneId) -> bool {
-        let can_reduce_pane_left =
-            self.can_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-        let can_reduce_pane_down =
-            self.can_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-        if can_reduce_pane_left && can_reduce_pane_down {
-            let pane_above_with_right_aligned_border = self
-                .viewport_pane_ids_directly_above(pane_id)
-                .iter()
-                .copied()
-                .find(|p_id| {
-                    let panes = self.panes.borrow();
-                    let pane = panes.get(p_id).unwrap();
-                    let active_pane = panes.get(pane_id).unwrap();
-                    active_pane.x() + active_pane.cols() == pane.x()
-                });
-            self.try_reduce_pane_and_surroundings_left(pane_id, RESIZE_PERCENT);
-            self.try_reduce_pane_and_surroundings_down(pane_id, RESIZE_PERCENT);
-            if let Some(pane_above_with_right_aligned_border) = pane_above_with_right_aligned_border
-            {
-                self.try_increase_pane_and_surroundings_left(
-                    &pane_above_with_right_aligned_border,
-                    RESIZE_PERCENT,
-                );
-            }
-            true
-        } else {
-            false
-        }
-    }
-    fn try_reduce_pane_and_surroundings_right(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        if self.can_reduce_pane_and_surroundings_right(pane_id, reduce_by) {
-            self.reduce_pane_and_surroundings_right(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
-            return true;
-        }
-        false
-    }
-    fn try_reduce_pane_and_surroundings_left(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        if self.can_reduce_pane_and_surroundings_left(pane_id, reduce_by) {
-            self.reduce_pane_and_surroundings_left(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Horizontal, self.display_area.cols);
-            return true;
-        }
-        false
-    }
-    fn try_reduce_pane_and_surroundings_up(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        if self.can_reduce_pane_and_surroundings_up(pane_id, reduce_by) {
-            self.reduce_pane_and_surroundings_up(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
-            return true;
-        }
-        false
-    }
-    fn try_reduce_pane_and_surroundings_down(&mut self, pane_id: &PaneId, reduce_by: f64) -> bool {
-        if self.can_reduce_pane_and_surroundings_down(pane_id, reduce_by) {
-            self.reduce_pane_and_surroundings_down(pane_id, reduce_by);
-            let mut pane_resizer = PaneResizer::new(self.panes.clone());
-            let _ = pane_resizer.layout(SplitDirection::Vertical, self.display_area.rows);
-            return true;
-        }
-        false
-    }
+
     fn viewport_pane_ids_directly_above(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        self.pane_ids_directly_above(pane_id)
+        self.pane_ids_directly_next_to(pane_id, &Direction::Up)
             .unwrap_or_default()
             .into_iter()
             .filter(|id| self.is_inside_viewport(id))
             .collect()
     }
+
     fn viewport_pane_ids_directly_below(&self, pane_id: &PaneId) -> Vec<PaneId> {
-        self.pane_ids_directly_below(pane_id)
+        self.pane_ids_directly_next_to(pane_id, &Direction::Down)
             .unwrap_or_default()
             .into_iter()
             .filter(|id| self.is_inside_viewport(id))
             .collect()
     }
+
     fn is_inside_viewport(&self, pane_id: &PaneId) -> bool {
         is_inside_viewport(&self.viewport, self.panes.borrow().get(pane_id).unwrap())
     }
+
     pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
         let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
@@ -1317,6 +747,7 @@ impl<'a> TiledPaneGrid<'a> {
             .unwrap();
         next_active_pane_id
     }
+
     pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> PaneId {
         let panes = self.panes.borrow();
         let mut panes: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
@@ -1341,6 +772,7 @@ impl<'a> TiledPaneGrid<'a> {
         };
         previous_active_pane_id
     }
+
     pub fn next_selectable_pane_id_to_the_left(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
@@ -1445,24 +877,25 @@ impl<'a> TiledPaneGrid<'a> {
             let upper_close_border = pane.y();
             let lower_close_border = pane.y() + pane.rows();
 
-            if let Some(panes_to_the_left) = self.pane_ids_directly_left_of(&id) {
-                let mut selectable_panes: Vec<_> = panes_to_the_left
-                    .into_iter()
-                    .filter(|pid| panes.get(pid).unwrap().selectable())
-                    .collect();
-                let pane_borders_to_the_left = self.horizontal_borders(&selectable_panes);
-                if pane_borders_to_the_left.contains(&upper_close_border)
-                    && pane_borders_to_the_left.contains(&lower_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_horizontal_borders(
-                            t,
-                            upper_close_border,
-                            lower_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
+            let panes_to_the_left = self
+                .pane_ids_directly_next_to(&id, &Direction::Left)
+                .unwrap();
+            let mut selectable_panes: Vec<_> = panes_to_the_left
+                .into_iter()
+                .filter(|pid| panes.get(pid).unwrap().selectable())
+                .collect();
+            let pane_borders_to_the_left = self.horizontal_borders(&selectable_panes);
+            if pane_borders_to_the_left.contains(&upper_close_border)
+                && pane_borders_to_the_left.contains(&lower_close_border)
+            {
+                selectable_panes.retain(|t| {
+                    self.pane_is_between_horizontal_borders(
+                        t,
+                        upper_close_border,
+                        lower_close_border,
+                    )
+                });
+                return Some(selectable_panes);
             }
         }
         None
@@ -1473,24 +906,25 @@ impl<'a> TiledPaneGrid<'a> {
             let upper_close_border = pane.y();
             let lower_close_border = pane.y() + pane.rows();
 
-            if let Some(panes_to_the_right) = self.pane_ids_directly_right_of(&id) {
-                let mut selectable_panes: Vec<_> = panes_to_the_right
-                    .into_iter()
-                    .filter(|pid| panes.get(pid).unwrap().selectable())
-                    .collect();
-                let pane_borders_to_the_right = self.horizontal_borders(&selectable_panes);
-                if pane_borders_to_the_right.contains(&upper_close_border)
-                    && pane_borders_to_the_right.contains(&lower_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_horizontal_borders(
-                            t,
-                            upper_close_border,
-                            lower_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
+            let panes_to_the_right = self
+                .pane_ids_directly_next_to(&id, &Direction::Right)
+                .unwrap();
+            let mut selectable_panes: Vec<_> = panes_to_the_right
+                .into_iter()
+                .filter(|pid| panes.get(pid).unwrap().selectable())
+                .collect();
+            let pane_borders_to_the_right = self.horizontal_borders(&selectable_panes);
+            if pane_borders_to_the_right.contains(&upper_close_border)
+                && pane_borders_to_the_right.contains(&lower_close_border)
+            {
+                selectable_panes.retain(|t| {
+                    self.pane_is_between_horizontal_borders(
+                        t,
+                        upper_close_border,
+                        lower_close_border,
+                    )
+                });
+                return Some(selectable_panes);
             }
         }
         None
@@ -1501,24 +935,19 @@ impl<'a> TiledPaneGrid<'a> {
             let left_close_border = pane.x();
             let right_close_border = pane.x() + pane.cols();
 
-            if let Some(panes_above) = self.pane_ids_directly_above(&id) {
-                let mut selectable_panes: Vec<_> = panes_above
-                    .into_iter()
-                    .filter(|pid| panes.get(pid).unwrap().selectable())
-                    .collect();
-                let pane_borders_above = self.vertical_borders(&selectable_panes);
-                if pane_borders_above.contains(&left_close_border)
-                    && pane_borders_above.contains(&right_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_vertical_borders(
-                            t,
-                            left_close_border,
-                            right_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
+            let panes_above = self.pane_ids_directly_next_to(&id, &Direction::Up).unwrap();
+            let mut selectable_panes: Vec<_> = panes_above
+                .into_iter()
+                .filter(|pid| panes.get(pid).unwrap().selectable())
+                .collect();
+            let pane_borders_above = self.vertical_borders(&selectable_panes);
+            if pane_borders_above.contains(&left_close_border)
+                && pane_borders_above.contains(&right_close_border)
+            {
+                selectable_panes.retain(|t| {
+                    self.pane_is_between_vertical_borders(t, left_close_border, right_close_border)
+                });
+                return Some(selectable_panes);
             }
         }
         None
@@ -1529,24 +958,21 @@ impl<'a> TiledPaneGrid<'a> {
             let left_close_border = pane.x();
             let right_close_border = pane.x() + pane.cols();
 
-            if let Some(panes_below) = self.pane_ids_directly_below(&id) {
-                let mut selectable_panes: Vec<_> = panes_below
-                    .into_iter()
-                    .filter(|pid| panes[pid].selectable())
-                    .collect();
-                let pane_borders_below = self.vertical_borders(&selectable_panes);
-                if pane_borders_below.contains(&left_close_border)
-                    && pane_borders_below.contains(&right_close_border)
-                {
-                    selectable_panes.retain(|t| {
-                        self.pane_is_between_vertical_borders(
-                            t,
-                            left_close_border,
-                            right_close_border,
-                        )
-                    });
-                    return Some(selectable_panes);
-                }
+            let panes_below = self
+                .pane_ids_directly_next_to(&id, &Direction::Down)
+                .unwrap();
+            let mut selectable_panes: Vec<_> = panes_below
+                .into_iter()
+                .filter(|pid| panes[pid].selectable())
+                .collect();
+            let pane_borders_below = self.vertical_borders(&selectable_panes);
+            if pane_borders_below.contains(&left_close_border)
+                && pane_borders_below.contains(&right_close_border)
+            {
+                selectable_panes.retain(|t| {
+                    self.pane_is_between_vertical_borders(t, left_close_border, right_close_border)
+                });
+                return Some(selectable_panes);
             }
         }
         None

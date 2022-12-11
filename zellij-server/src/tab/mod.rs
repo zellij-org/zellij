@@ -7,6 +7,7 @@ mod copy_command;
 use copy_command::CopyCommand;
 use std::env::temp_dir;
 use uuid::Uuid;
+use zellij_utils::data::{Direction, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
@@ -23,15 +24,14 @@ use crate::{
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
+    plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
-    wasm_vm::PluginInstruction,
     ClientId, ServerInstruction,
 };
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::mpsc::channel;
 use std::time::Instant;
 use std::{
     collections::{HashMap, HashSet},
@@ -41,7 +41,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{PaneLayout, Run},
+        layout::{PaneLayout, Run, RunPluginLocation},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -70,13 +70,18 @@ macro_rules! resize_pty {
     }};
 }
 
-type HoldForCommand = Option<RunCommand>;
-
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
+
+type HoldForCommand = Option<RunCommand>;
+
+enum BufferedTabInstruction {
+    SetPaneSelectable(PaneId, bool),
+    HandlePtyBytes(u32, VteBytes),
+}
 
 pub(crate) struct Tab {
     pub index: usize,
@@ -113,8 +118,11 @@ pub(crate) struct Tab {
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     pids_waiting_resize: HashSet<u32>, // u32 is the terminal_id
     cursor_positions_and_shape: HashMap<ClientId, (usize, usize, String)>, // (x_position,
-                                       // y_position,
-                                       // cursor_shape_csi)
+    // y_position,
+    // cursor_shape_csi)
+    is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
+    pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
+                      // pending and need to be re-applied
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -489,13 +497,16 @@ impl Tab {
             terminal_emulator_color_codes,
             pids_waiting_resize: HashSet::new(),
             cursor_positions_and_shape: HashMap::new(),
+            is_pending: true, // will be switched to false once the layout is applied
+            pending_instructions: vec![],
         }
     }
 
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
-        new_ids: Vec<(u32, HoldForCommand)>,
+        new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        mut new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
@@ -523,7 +534,7 @@ impl Tab {
         match layout.position_panes_in_space(&free_space) {
             Ok(positions_in_layout) => {
                 let positions_and_size = positions_in_layout.iter();
-                let mut new_ids = new_ids.iter();
+                let mut new_terminal_ids = new_terminal_ids.iter();
 
                 let mut focus_pane_id: Option<PaneId> = None;
                 let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
@@ -535,18 +546,16 @@ impl Tab {
                 for (layout, position_and_size) in positions_and_size {
                     // A plugin pane
                     if let Some(Run::Plugin(run)) = layout.run.clone() {
-                        let (pid_tx, pid_rx) = channel();
+                        // let (pid_tx, pid_rx) = channel();
                         let pane_title = run.location.to_string();
-                        self.senders
-                            .send_to_plugin(PluginInstruction::Load(
-                                pid_tx,
-                                run,
-                                tab_index,
-                                client_id,
-                                position_and_size.into(),
-                            ))
-                            .with_context(err_context)?;
-                        let pid = pid_rx.recv().with_context(err_context)?;
+                        let pid = new_plugin_ids
+                            .get_mut(&run.location)
+                            .unwrap()
+                            .pop()
+                            .unwrap(); // TODO:
+                                       // err_context
+                                       // and
+                                       // stuff
                         let mut new_plugin = PluginPane::new(
                             pid,
                             *position_and_size,
@@ -570,7 +579,7 @@ impl Tab {
                         set_focus_pane_id(layout, PaneId::Plugin(pid));
                     } else {
                         // there are still panes left to fill, use the pids we received in this method
-                        if let Some((pid, hold_for_command)) = new_ids.next() {
+                        if let Some((pid, hold_for_command)) = new_terminal_ids.next() {
                             let next_terminal_position = self.get_next_terminal_position();
                             let initial_title = match &layout.run {
                                 Some(Run::Command(run_command)) => Some(run_command.to_string()),
@@ -601,7 +610,7 @@ impl Tab {
                         }
                     }
                 }
-                for (unused_pid, _) in new_ids {
+                for (unused_pid, _) in new_terminal_ids {
                     // this is a bit of a hack and happens because we don't have any central location that
                     // can query the screen as to how many panes it needs to create a layout
                     // fixing this will require a bit of an architecture change
@@ -639,14 +648,17 @@ impl Tab {
                         },
                     }
                 }
+                self.is_pending = false;
+                self.apply_buffered_instructions()?;
                 Ok(())
             },
             Err(e) => {
-                for (unused_pid, _) in new_ids {
+                for (unused_pid, _) in new_terminal_ids {
                     self.senders
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(unused_pid)))
                         .with_context(err_context)?;
                 }
+                self.is_pending = false;
                 Err::<(), _>(anyError::msg(e))
                     .with_context(err_context)
                     .non_fatal(); // TODO: propagate this to the user
@@ -654,24 +666,32 @@ impl Tab {
             },
         }
     }
+    pub fn apply_buffered_instructions(&mut self) -> Result<()> {
+        let buffered_instructions: Vec<BufferedTabInstruction> =
+            self.pending_instructions.drain(..).collect();
+        for buffered_instruction in buffered_instructions {
+            match buffered_instruction {
+                BufferedTabInstruction::SetPaneSelectable(pane_id, selectable) => {
+                    self.set_pane_selectable(pane_id, selectable);
+                },
+                BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
+                    self.handle_pty_bytes(terminal_id, bytes)?;
+                },
+            }
+        }
+        Ok(())
+    }
     pub fn update_input_modes(&mut self) -> Result<()> {
         // this updates all plugins with the client's input mode
         let mode_infos = self.mode_info.borrow();
+        let mut plugin_updates = vec![];
         for client_id in self.connected_clients.borrow().iter() {
             let mode_info = mode_infos.get(client_id).unwrap_or(&self.default_mode_info);
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
-                    None,
-                    Some(*client_id),
-                    Event::ModeUpdate(mode_info.clone()),
-                ))
-                .with_context(|| {
-                    format!(
-                        "failed to update plugins with mode info {:?}",
-                        mode_info.mode
-                    )
-                })?;
+            plugin_updates.push((None, Some(*client_id), Event::ModeUpdate(mode_info.clone())));
         }
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .with_context(|| format!("failed to update plugins with mode info"))?;
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId, mode_info: Option<ModeInfo>) -> Result<()> {
@@ -716,8 +736,7 @@ impl Tab {
             );
         }
         self.set_force_render();
-        self.update_input_modes()
-            .with_context(|| format!("failed to add client {client_id} to tab"))
+        Ok(())
     }
 
     pub fn change_mode_info(&mut self, mode_info: ModeInfo, client_id: ClientId) {
@@ -948,6 +967,7 @@ impl Tab {
                 let replaced_pane = if self.floating_panes.panes_are_visible() {
                     self.floating_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
+                        .ok()
                 } else {
                     self.tiled_panes
                         .replace_active_pane(Box::new(new_pane), client_id)
@@ -1120,6 +1140,11 @@ impl Tab {
                 .any(|s_p| s_p.pid() == PaneId::Plugin(plugin_id))
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
+        if self.is_pending {
+            self.pending_instructions
+                .push(BufferedTabInstruction::HandlePtyBytes(pid, bytes));
+            return Ok(());
+        }
         let err_context = || format!("failed to handle pty bytes from fd {pid}");
         if let Some(terminal_output) = self
             .tiled_panes
@@ -1267,7 +1292,7 @@ impl Tab {
         let err_context = || format!("failed to write to terminal at position {position:?}");
 
         if self.floating_panes.panes_are_visible() {
-            let pane_id = self.floating_panes.get_pane_id_at(position, false);
+            let pane_id = self.floating_panes.get_pane_id_at(position, false).unwrap();
             if let Some(pane_id) = pane_id {
                 self.write_to_pane_id(input_bytes, pane_id)
                     .with_context(err_context)?;
@@ -1326,11 +1351,13 @@ impl Tab {
                 }
             },
             PaneId::Plugin(pid) => {
+                let mut plugin_updates = vec![];
                 for key in parse_keys(&input_bytes) {
-                    self.senders
-                        .send_to_plugin(PluginInstruction::Update(Some(pid), None, Event::Key(key)))
-                        .with_context(err_context)?;
+                    plugin_updates.push((Some(pid), None, Event::Key(key)));
                 }
+                self.senders
+                    .send_to_plugin(PluginInstruction::Update(plugin_updates))
+                    .with_context(err_context)?;
             },
         }
         Ok(should_update_ui)
@@ -1555,81 +1582,27 @@ impl Tab {
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
         self.floating_panes.resize(new_screen_size);
-        self.floating_panes.resize_pty_all_panes(&mut self.os_api); // we need to do this explicitly because floating_panes.resize does not do this
+        self.floating_panes
+            .resize_pty_all_panes(&mut self.os_api)
+            .unwrap(); // we need to do this explicitly because floating_panes.resize does not do this
         self.tiled_panes.resize(new_screen_size);
         self.should_clear_display_before_rendering = true;
     }
-    pub fn resize_left(&mut self, client_id: ClientId) {
+    pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
-                .resize_active_pane_left(client_id, &mut self.os_api);
+                .resize_active_pane(client_id, &mut self.os_api, &strategy)
+                .unwrap();
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes.resize_active_pane_left(client_id);
+            self.tiled_panes
+                .resize_active_pane(client_id, &strategy)
+                .unwrap();
         }
-    }
-    pub fn resize_right(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_right(client_id, &mut self.os_api);
-            if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
-            }
-        } else {
-            self.tiled_panes.resize_active_pane_right(client_id);
-        }
-    }
-    pub fn resize_down(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_down(client_id, &mut self.os_api);
-            if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
-            }
-        } else {
-            self.tiled_panes.resize_active_pane_down(client_id);
-        }
-    }
-    pub fn resize_up(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_up(client_id, &mut self.os_api);
-            if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
-            }
-        } else {
-            self.tiled_panes.resize_active_pane_up(client_id);
-        }
-    }
-    pub fn resize_increase(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_increase(client_id, &mut self.os_api);
-            if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
-            }
-        } else {
-            self.tiled_panes.resize_active_pane_increase(client_id);
-        }
-    }
-    pub fn resize_decrease(&mut self, client_id: ClientId) {
-        if self.floating_panes.panes_are_visible() {
-            let successfully_resized = self
-                .floating_panes
-                .resize_active_pane_decrease(client_id, &mut self.os_api);
-            if successfully_resized {
-                self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
-            }
-        } else {
-            self.tiled_panes.resize_active_pane_decrease(client_id);
-        }
+        Ok(())
     }
     fn set_pane_active_at(&mut self, pane_id: PaneId) {
         if let Some(pane) = self.tiled_panes.get_pane_mut(pane_id) {
@@ -1661,10 +1634,13 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_left(
-                client_id,
-                &self.connected_clients.borrow().iter().copied().collect(),
-            )
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Left,
+                )
+                .unwrap()
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1678,10 +1654,13 @@ impl Tab {
     }
     pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_down(
-                client_id,
-                &self.connected_clients.borrow().iter().copied().collect(),
-            )
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Down,
+                )
+                .unwrap()
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1694,10 +1673,13 @@ impl Tab {
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_up(
-                client_id,
-                &self.connected_clients.borrow().iter().copied().collect(),
-            )
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Up,
+                )
+                .unwrap()
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1711,10 +1693,13 @@ impl Tab {
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_focus_right(
-                client_id,
-                &self.connected_clients.borrow().iter().copied().collect(),
-            )
+            self.floating_panes
+                .move_focus(
+                    client_id,
+                    &self.connected_clients.borrow().iter().copied().collect(),
+                    &Direction::Right,
+                )
+                .unwrap()
         } else {
             if !self.has_selectable_panes() {
                 return false;
@@ -1818,6 +1803,11 @@ impl Tab {
             .collect()
     }
     pub fn set_pane_selectable(&mut self, id: PaneId, selectable: bool) {
+        if self.is_pending {
+            self.pending_instructions
+                .push(BufferedTabInstruction::SetPaneSelectable(id, selectable));
+            return;
+        }
         if let Some(pane) = self.tiled_panes.get_pane_mut(id) {
             pane.set_selectable(selectable);
             if !selectable {
@@ -1890,7 +1880,9 @@ impl Tab {
             .and_then(|suppressed_pane| {
                 let suppressed_pane_id = suppressed_pane.pid();
                 let replaced_pane = if self.are_floating_panes_visible() {
-                    self.floating_panes.replace_pane(pane_id, suppressed_pane)
+                    Some(self.floating_panes.replace_pane(pane_id, suppressed_pane))
+                        .transpose()
+                        .unwrap()
                 } else {
                     self.tiled_panes.replace_pane(pane_id, suppressed_pane)
                 };
@@ -2149,7 +2141,11 @@ impl Tab {
         search_selectable: bool,
     ) -> Result<Option<&mut Box<dyn Pane>>> {
         if self.floating_panes.panes_are_visible() {
-            if let Some(pane_id) = self.floating_panes.get_pane_id_at(point, search_selectable) {
+            if let Some(pane_id) = self
+                .floating_panes
+                .get_pane_id_at(point, search_selectable)
+                .unwrap()
+            {
                 return Ok(self.floating_panes.get_pane_mut(pane_id));
             }
         }
@@ -2291,7 +2287,7 @@ impl Tab {
             || format!("failed to focus pane at position {point:?} for client {client_id}");
 
         if self.floating_panes.panes_are_visible() {
-            if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true) {
+            if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true).unwrap() {
                 self.floating_panes.focus_pane(clicked_pane, client_id);
                 self.set_pane_active_at(clicked_pane);
                 return Ok(());
@@ -2597,11 +2593,11 @@ impl Tab {
                     format!("failed to write selection to clipboard for client {client_id}")
                 })?;
             self.senders
-                .send_to_plugin(PluginInstruction::Update(
+                .send_to_plugin(PluginInstruction::Update(vec![(
                     None,
                     None,
                     Event::CopyToClipboard(self.clipboard_provider.as_copy_destination()),
-                ))
+                )]))
                 .with_context(|| {
                     format!("failed to inform plugins about copy selection for client {client_id}")
                 })
@@ -2641,7 +2637,11 @@ impl Tab {
                 },
             };
         self.senders
-            .send_to_plugin(PluginInstruction::Update(None, None, clipboard_event))
+            .send_to_plugin(PluginInstruction::Update(vec![(
+                None,
+                None,
+                clipboard_event,
+            )]))
             .context("failed to notify plugins about new clipboard event")
             .non_fatal();
 
@@ -2676,15 +2676,13 @@ impl Tab {
             PaneId::Plugin(pid) => Some(pid),
             _ => None,
         });
+        let mut plugin_updates = vec![];
         for pid in pids_in_this_tab {
-            self.senders
-                .send_to_plugin(PluginInstruction::Update(
-                    Some(*pid),
-                    None,
-                    Event::Visible(visible),
-                ))
-                .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
+            plugin_updates.push((Some(*pid), None, Event::Visible(visible)));
         }
+        self.senders
+            .send_to_plugin(PluginInstruction::Update(plugin_updates))
+            .with_context(|| format!("failed to set visibility of tab to {visible}"))?;
         Ok(())
     }
 
@@ -2805,6 +2803,10 @@ impl Tab {
         if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
             active_pane.clear_search();
         }
+    }
+
+    pub fn is_pending(&self) -> bool {
+        self.is_pending
     }
 
     fn show_floating_panes(&mut self) {

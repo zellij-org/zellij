@@ -11,6 +11,9 @@ use crate::{
 };
 use std::path::PathBuf;
 use zellij_utils::channels::Receiver;
+use zellij_utils::data::Direction;
+use zellij_utils::data::Resize;
+use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::layout::{Layout, PaneLayout};
@@ -224,8 +227,14 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -274,8 +283,14 @@ fn create_new_tab_with_os_api(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -328,7 +343,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| (i as u32, None))
         .collect();
-    tab.apply_layout(tab_layout, pane_ids, index, client_id)
+    tab.apply_layout(tab_layout, pane_ids, HashMap::new(), index, client_id)
         .unwrap();
     tab
 }
@@ -379,8 +394,14 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -432,8 +453,14 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_colors,
         terminal_emulator_color_codes,
     );
-    tab.apply_layout(PaneLayout::default(), vec![(1, None)], index, client_id)
-        .unwrap();
+    tab.apply_layout(
+        PaneLayout::default(),
+        vec![(1, None)],
+        HashMap::new(),
+        index,
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -741,7 +768,8 @@ fn increase_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_increase(client_id);
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
+        .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -770,7 +798,8 @@ fn decrease_floating_pane_size() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_decrease(client_id);
+    tab.resize(client_id, ResizeStrategy::new(Resize::Decrease, None))
+        .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -799,7 +828,11 @@ fn resize_floating_pane_left() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_left(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -828,7 +861,11 @@ fn resize_floating_pane_right() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_right(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -857,7 +894,11 @@ fn resize_floating_pane_up() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_up(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -886,7 +927,11 @@ fn resize_floating_pane_down() {
         Vec::from("\n\n\n                   I am scratch terminal".as_bytes()),
     )
     .unwrap();
-    tab.resize_down(client_id);
+    tab.resize(
+        client_id,
+        ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
+    )
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),

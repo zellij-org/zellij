@@ -1,5 +1,5 @@
 //! Trigger a command
-use super::actions::Direction;
+use crate::data::Direction;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

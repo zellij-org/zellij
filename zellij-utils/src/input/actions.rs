@@ -4,6 +4,7 @@ use super::command::RunCommandAction;
 use super::layout::{Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
+use crate::data::{Direction, Resize};
 use crate::input::config::{ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use miette::{NamedSource, Report};
@@ -13,30 +14,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::position::Position;
-
-/// The four directions (left, right, up, down).
-#[derive(Eq, Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
-pub enum Direction {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-impl FromStr for Direction {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Left" | "left" => Ok(Direction::Left),
-            "Right" | "right" => Ok(Direction::Right),
-            "Up" | "up" => Ok(Direction::Up),
-            "Down" | "down" => Ok(Direction::Down),
-            _ => Err(format!(
-                "Failed to parse Direction. Unknown Direction: {}",
-                s
-            )),
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub enum ResizeDirection {
@@ -126,8 +103,8 @@ pub enum Action {
     SwitchToMode(InputMode),
     /// Switch all connected clients to the specified input mode.
     SwitchModeForAllClients(InputMode),
-    /// Resize focus pane in specified direction.
-    Resize(ResizeDirection),
+    /// Shrink/enlarge focused pane at specified border
+    Resize(Resize, Option<Direction>),
     /// Switch focus to next pane in specified direction.
     FocusNextPane,
     FocusPreviousPane,
@@ -235,7 +212,7 @@ impl Action {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
             CliAction::WriteChars { chars } => Ok(vec![Action::WriteChars(chars)]),
-            CliAction::Resize { resize_direction } => Ok(vec![Action::Resize(resize_direction)]),
+            CliAction::Resize { resize, direction } => Ok(vec![Action::Resize(resize, direction)]),
             CliAction::FocusNextPane => Ok(vec![Action::FocusNextPane]),
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),

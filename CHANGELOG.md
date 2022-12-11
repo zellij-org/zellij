@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+## [0.34.3] - 2022-12-09
+
 * (BREAKING CHANGE) performance: change plugin data flow to improve render speed (https://github.com/zellij-org/zellij/pull/1934)
 * (BREAKING CHANGE) performance: various render pipeline improvements (https://github.com/zellij-org/zellij/pull/1960)
 * feat: support text input from clipboard (https://github.com/zellij-org/zellij/pull/1926)
@@ -22,6 +24,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * plugins: Cache plugins, don't load builtin plugins from disk (https://github.com/zellij-org/zellij/pull/1924)
 * fix: server on longer crashes on client crash (https://github.com/zellij-org/zellij/pull/1965)
 * fix: preserve pane focus properly when closing panes and switching tabs (https://github.com/zellij-org/zellij/pull/1966)
+* fix(themes): missing tokyo-night-dark theme (https://github.com/zellij-org/zellij/pull/1972)
+* refactor(plugins): fix plugin loading data flow (https://github.com/zellij-org/zellij/pull/1995)
+* refactor(messaging): reduce extraneous cross-thread messaging (https://github.com/zellij-org/zellij/pull/1996)
+* errors: preserve caller location in `to_log` (https://github.com/zellij-org/zellij/pull/1994)
+* feat: show loading screen on startup (https://github.com/zellij-org/zellij/pull/1997)
+* feat: Allow "reducing" resizes, refactor resizing code (https://github.com/zellij-org/zellij/pull/1990)
 
 ## [0.33.0] - 2022-11-10
 

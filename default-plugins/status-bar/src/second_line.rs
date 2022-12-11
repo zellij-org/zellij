@@ -109,8 +109,7 @@ fn full_shortcut_list_nonstandard_mode(help: &ModeInfo) -> LinePart {
 fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
     use Action as A;
     use InputMode as IM;
-    use actions::Direction as Dir;
-    use actions::ResizeDirection as RDir;
+    use Direction as Dir;
     use actions::SearchDirection as SDir;
     use actions::SearchOption as SOpt;
 
@@ -188,11 +187,23 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Toggle"), s("Toggle"), action_key(&km, &[A::ToggleTab])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Resize { vec![
-        (s("Resize"), s("Resize"), action_key_group(&km, &[
-            &[A::Resize(RDir::Left)], &[A::Resize(RDir::Down)],
-            &[A::Resize(RDir::Up)], &[A::Resize(RDir::Right)]])),
+        (s("Increase to"), s("Increase"), action_key_group(&km, &[
+            &[A::Resize(Resize::Increase, Some(Dir::Left))],
+            &[A::Resize(Resize::Increase, Some(Dir::Down))],
+            &[A::Resize(Resize::Increase, Some(Dir::Up))],
+            &[A::Resize(Resize::Increase, Some(Dir::Right))]
+            ])),
+        (s("Decrease from"), s("Decrease"), action_key_group(&km, &[
+            &[A::Resize(Resize::Decrease, Some(Dir::Left))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Down))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Up))],
+            &[A::Resize(Resize::Decrease, Some(Dir::Right))]
+            ])),
         (s("Increase/Decrease size"), s("Increase/Decrease"),
-            action_key_group(&km, &[&[A::Resize(RDir::Increase)], &[A::Resize(RDir::Decrease)]])),
+            action_key_group(&km, &[
+                &[A::Resize(Resize::Increase, None)],
+                &[A::Resize(Resize::Decrease, None)]
+            ])),
         (s("Select pane"), s("Select"), to_normal_key),
     ]} else if mi.mode == IM::Move { vec![
         (s("Move"), s("Move"), action_key_group(&km, &[
@@ -666,13 +677,10 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
-                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
-                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
-                    (
-                        Key::Right,
-                        vec![Action::MoveFocus(actions::Direction::Right)],
-                    ),
+                    (Key::Left, vec![Action::MoveFocus(Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(Direction::Up)]),
+                    (Key::Right, vec![Action::MoveFocus(Direction::Right)]),
                     (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
@@ -701,13 +709,10 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (Key::Left, vec![Action::MoveFocus(actions::Direction::Left)]),
-                    (Key::Down, vec![Action::MoveFocus(actions::Direction::Down)]),
-                    (Key::Up, vec![Action::MoveFocus(actions::Direction::Up)]),
-                    (
-                        Key::Right,
-                        vec![Action::MoveFocus(actions::Direction::Right)],
-                    ),
+                    (Key::Left, vec![Action::MoveFocus(Direction::Left)]),
+                    (Key::Down, vec![Action::MoveFocus(Direction::Down)]),
+                    (Key::Up, vec![Action::MoveFocus(Direction::Up)]),
+                    (Key::Right, vec![Action::MoveFocus(Direction::Right)]),
                     (Key::Char('n'), vec![Action::NewPane(None, None), TO_NORMAL]),
                     (Key::Char('x'), vec![Action::CloseFocus, TO_NORMAL]),
                     (
@@ -732,22 +737,10 @@ mod tests {
             keybinds: vec![(
                 InputMode::Pane,
                 vec![
-                    (
-                        Key::Ctrl('a'),
-                        vec![Action::MoveFocus(actions::Direction::Left)],
-                    ),
-                    (
-                        Key::Ctrl('\n'),
-                        vec![Action::MoveFocus(actions::Direction::Down)],
-                    ),
-                    (
-                        Key::Ctrl('1'),
-                        vec![Action::MoveFocus(actions::Direction::Up)],
-                    ),
-                    (
-                        Key::Ctrl(' '),
-                        vec![Action::MoveFocus(actions::Direction::Right)],
-                    ),
+                    (Key::Ctrl('a'), vec![Action::MoveFocus(Direction::Left)]),
+                    (Key::Ctrl('\n'), vec![Action::MoveFocus(Direction::Down)]),
+                    (Key::Ctrl('1'), vec![Action::MoveFocus(Direction::Up)]),
+                    (Key::Ctrl(' '), vec![Action::MoveFocus(Direction::Right)]),
                     (Key::Backspace, vec![Action::NewPane(None, None), TO_NORMAL]),
                     (Key::Esc, vec![Action::CloseFocus, TO_NORMAL]),
                     (Key::End, vec![Action::ToggleFocusFullscreen, TO_NORMAL]),

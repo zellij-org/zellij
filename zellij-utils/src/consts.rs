@@ -49,17 +49,9 @@ mod not_wasm {
         ($assets:expr, $plugin:literal) => {
             $assets.insert(
                 PathBuf::from("plugins").join($plugin),
-                #[cfg(debug_assertions)]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
-                    "/../target/wasm32-wasi/debug/",
-                    $plugin
-                ))
-                .to_vec(),
-                #[cfg(not(debug_assertions))]
-                include_bytes!(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/../assets/plugins/",
+                    "/assets/plugins/",
                     $plugin
                 ))
                 .to_vec(),

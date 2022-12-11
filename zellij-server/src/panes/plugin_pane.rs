@@ -3,10 +3,10 @@ use std::time::Instant;
 
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
+use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
 use crate::ui::pane_boundaries_frame::{FrameParams, PaneFrame};
-use crate::wasm_vm::PluginInstruction;
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -378,20 +378,20 @@ impl Pane for PluginPane {
     }
     fn scroll_up(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollUp(count)),
-            ))
+            )]))
             .unwrap();
     }
     fn scroll_down(&mut self, count: usize, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::ScrollDown(count)),
-            ))
+            )]))
             .unwrap();
     }
     fn clear_scroll(&mut self) {
@@ -399,29 +399,29 @@ impl Pane for PluginPane {
     }
     fn start_selection(&mut self, start: &Position, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::LeftClick(start.line.0, start.column.0)),
-            ))
+            )]))
             .unwrap();
     }
     fn update_selection(&mut self, position: &Position, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::Hold(position.line.0, position.column.0)),
-            ))
+            )]))
             .unwrap();
     }
     fn end_selection(&mut self, end: &Position, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::Release(end.line(), end.column())),
-            ))
+            )]))
             .unwrap();
     }
     fn is_scrolled(&self) -> bool {
@@ -462,11 +462,11 @@ impl Pane for PluginPane {
     }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
-            .send(PluginInstruction::Update(
+            .send(PluginInstruction::Update(vec![(
                 Some(self.pid),
                 Some(client_id),
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
-            ))
+            )]))
             .unwrap();
     }
 }

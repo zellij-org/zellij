@@ -10,8 +10,9 @@ use crate::{
 use insta::assert_snapshot;
 use std::path::PathBuf;
 use zellij_utils::cli::CliAction;
+use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::actions::{Action, Direction, ResizeDirection};
+use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
 use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
@@ -23,12 +24,12 @@ use std::env::set_var;
 use std::os::unix::io::RawFd;
 use std::sync::{Arc, Mutex};
 
-use crate::{pty::PtyInstruction, wasm_vm::PluginInstruction};
+use crate::{plugins::PluginInstruction, pty::PtyInstruction};
 use zellij_utils::ipc::PixelDimensions;
 
 use zellij_utils::{
     channels::{self, ChannelWithContext, Receiver},
-    data::{InputMode, ModeInfo, Palette, PluginCapabilities},
+    data::{Direction, InputMode, ModeInfo, Palette, PluginCapabilities},
     interprocess::local_socket::LocalSocketStream,
     ipc::{ClientAttributes, ClientToServerMsg, ServerToClientMsg},
 };
@@ -221,7 +222,7 @@ fn create_new_screen(size: Size) -> Screen {
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
 
-    Screen::new(
+    let screen = Screen::new(
         bus,
         &client_attributes,
         max_panes,
@@ -229,7 +230,8 @@ fn create_new_screen(size: Size) -> Screen {
         draw_pane_frames,
         session_is_mirrored,
         copy_options,
-    )
+    );
+    screen
 }
 
 struct MockScreen {
@@ -248,6 +250,7 @@ struct MockScreen {
     pub client_attributes: ClientAttributes,
     pub config_options: Options,
     pub session_metadata: SessionMetaData,
+    last_opened_tab_index: Option<usize>,
 }
 
 impl MockScreen {
@@ -280,27 +283,53 @@ impl MockScreen {
         let pane_layout = initial_layout.unwrap_or_default();
         let pane_count = pane_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
+        let plugin_ids = HashMap::new();
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
+        let default_shell = None;
+        let tab_name = None;
+        let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
-            pane_layout,
-            pane_ids,
+            default_shell,
+            Some(pane_layout.clone()),
+            tab_name,
             self.main_client_id,
         ));
+        let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
+            pane_layout,
+            pane_ids,
+            plugin_ids,
+            tab_index,
+            self.main_client_id,
+        ));
+        self.last_opened_tab_index = Some(tab_index);
         screen_thread
     }
     pub fn new_tab(&mut self, tab_layout: PaneLayout) {
         let pane_count = tab_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
+        let plugin_ids = HashMap::new();
+        let default_shell = None;
+        let tab_name = None;
+        let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         for i in 0..pane_count {
             pane_ids.push((i as u32, None));
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
-            tab_layout,
-            pane_ids,
+            default_shell,
+            Some(tab_layout.clone()),
+            tab_name,
             self.main_client_id,
         ));
+        let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
+            tab_layout,
+            pane_ids,
+            plugin_ids,
+            0,
+            self.main_client_id,
+        ));
+        self.last_opened_tab_index = Some(tab_index);
     }
     pub fn teardown(&mut self, threads: Vec<std::thread::JoinHandle<()>>) {
         let _ = self.to_pty.send(PtyInstruction::Exit);
@@ -321,7 +350,7 @@ impl MockScreen {
             default_shell: self.session_metadata.default_shell.clone(),
             screen_thread: None,
             pty_thread: None,
-            wasm_thread: None,
+            plugin_thread: None,
             pty_writer_thread: None,
         }
     }
@@ -369,7 +398,7 @@ impl MockScreen {
             client_attributes: client_attributes.clone(),
             screen_thread: None,
             pty_thread: None,
-            wasm_thread: None,
+            plugin_thread: None,
             pty_writer_thread: None,
         };
 
@@ -392,6 +421,7 @@ impl MockScreen {
             client_attributes,
             config_options,
             session_metadata,
+            last_opened_tab_index: None,
         }
     }
 }
@@ -421,10 +451,19 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn new_tab(screen: &mut Screen, pid: u32) {
+fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let client_id = 1;
+    let new_terminal_ids = vec![(pid, None)];
+    let new_plugin_ids = HashMap::new();
+    screen.new_tab(tab_index, client_id).expect("TEST");
     screen
-        .new_tab(PaneLayout::default(), vec![(pid, None)], client_id)
+        .apply_layout(
+            PaneLayout::default(),
+            new_terminal_ids,
+            new_plugin_ids,
+            tab_index,
+            client_id,
+        )
         .expect("TEST");
 }
 
@@ -436,8 +475,8 @@ fn open_new_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
 
     assert_eq!(screen.tabs.len(), 2, "Screen now has two tabs");
     assert_eq!(
@@ -455,8 +494,8 @@ pub fn switch_to_prev_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
     screen.switch_tab_prev(1).expect("TEST");
 
     assert_eq!(
@@ -474,8 +513,8 @@ pub fn switch_to_next_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
     screen.switch_tab_prev(1).expect("TEST");
     screen.switch_tab_next(1).expect("TEST");
 
@@ -494,8 +533,8 @@ pub fn close_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
     screen.close_tab(1).expect("TEST");
 
     assert_eq!(screen.tabs.len(), 1, "Only one tab left");
@@ -514,9 +553,9 @@ pub fn close_the_middle_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
-    new_tab(&mut screen, 3);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
+    new_tab(&mut screen, 3, 3);
     screen.switch_tab_prev(1).expect("TEST");
     screen.close_tab(1).expect("TEST");
 
@@ -536,9 +575,9 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
-    new_tab(&mut screen, 3);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
+    new_tab(&mut screen, 3, 3);
     screen.switch_tab_prev(1).expect("TEST");
     screen.move_focus_left_or_previous_tab(1).expect("TEST");
 
@@ -557,9 +596,9 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
-    new_tab(&mut screen, 3);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
+    new_tab(&mut screen, 3, 3);
     screen.switch_tab_prev(1).expect("TEST");
     screen.move_focus_right_or_next_tab(1).expect("TEST");
 
@@ -578,8 +617,8 @@ pub fn toggle_to_previous_tab_simple() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
     screen.go_to_tab(1, 1).expect("TEST");
     screen.go_to_tab(2, 1).expect("TEST");
 
@@ -606,9 +645,9 @@ pub fn toggle_to_previous_tab_create_tabs_only() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    new_tab(&mut screen, 1);
-    new_tab(&mut screen, 2);
-    new_tab(&mut screen, 3);
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
 
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
@@ -656,10 +695,10 @@ pub fn toggle_to_previous_tab_delete() {
     };
     let mut screen = create_new_screen(position_and_size);
 
-    new_tab(&mut screen, 1); // 0
-    new_tab(&mut screen, 2); // 1
-    new_tab(&mut screen, 3); // 2
-    new_tab(&mut screen, 4); // 3
+    new_tab(&mut screen, 1, 0);
+    new_tab(&mut screen, 2, 1);
+    new_tab(&mut screen, 3, 2);
+    new_tab(&mut screen, 4, 3);
 
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
@@ -752,7 +791,7 @@ fn switch_to_tab_with_fullscreen() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 1, 1);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
@@ -760,7 +799,7 @@ fn switch_to_tab_with_fullscreen() {
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 2, 2);
 
     screen.switch_tab_prev(1).expect("TEST");
 
@@ -867,7 +906,7 @@ fn attach_after_first_tab_closed() {
     };
     let mut screen = create_new_screen(size);
 
-    new_tab(&mut screen, 1);
+    new_tab(&mut screen, 1, 0);
     {
         let active_tab = screen.get_active_tab_mut(1).unwrap();
         active_tab
@@ -875,7 +914,7 @@ fn attach_after_first_tab_closed() {
             .unwrap();
         active_tab.toggle_active_pane_fullscreen(1);
     }
-    new_tab(&mut screen, 2);
+    new_tab(&mut screen, 2, 1);
 
     screen.close_tab_at_index(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
@@ -959,7 +998,8 @@ pub fn send_cli_resize_action_to_screen() {
         server_receiver
     );
     let resize_cli_action = CliAction::Resize {
-        resize_direction: ResizeDirection::Left,
+        resize: Resize::Increase,
+        direction: Some(Direction::Left),
     };
     send_cli_action_to_server(
         &session_metadata,
@@ -2208,12 +2248,12 @@ pub fn send_cli_new_tab_action_default_params() {
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
-    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
-    let pty_thread = log_actions_in_thread!(
-        received_pty_instructions,
-        PtyInstruction::Exit,
-        pty_receiver
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
     );
     let new_tab_action = CliAction::NewTab {
         name: None,
@@ -2227,8 +2267,16 @@ pub fn send_cli_new_tab_action_default_params() {
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![pty_thread, screen_thread]);
-    assert_snapshot!(format!("{:?}", *received_pty_instructions.lock().unwrap()));
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let received_plugin_instructions = received_plugin_instructions.lock().unwrap();
+    let new_tab_action =
+        received_plugin_instructions
+            .iter()
+            .find(|instruction| match instruction {
+                PluginInstruction::NewTab(..) => true,
+                _ => false,
+            });
+    assert_snapshot!(format!("{:#?}", new_tab_action));
 }
 
 #[test]
@@ -2241,12 +2289,12 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
-    let received_pty_instructions = Arc::new(Mutex::new(vec![]));
-    let pty_receiver = mock_screen.pty_receiver.take().unwrap();
-    let pty_thread = log_actions_in_thread!(
-        received_pty_instructions,
-        PtyInstruction::Exit,
-        pty_receiver
+    let received_plugin_instructions = Arc::new(Mutex::new(vec![]));
+    let plugin_receiver = mock_screen.plugin_receiver.take().unwrap();
+    let plugin_thread = log_actions_in_thread!(
+        received_plugin_instructions,
+        PluginInstruction::Exit,
+        plugin_receiver
     );
     let new_tab_action = CliAction::NewTab {
         name: Some("my-awesome-tab-name".into()),
@@ -2263,13 +2311,14 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
         client_id,
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
-    mock_screen.teardown(vec![pty_thread, screen_thread]);
-    let new_tab_instruction = received_pty_instructions
+    mock_screen.teardown(vec![plugin_thread, screen_thread]);
+    let new_tab_instruction = received_plugin_instructions
         .lock()
         .unwrap()
         .iter()
+        .rev()
         .find(|i| {
-            if let PtyInstruction::NewTab(..) = i {
+            if let PluginInstruction::NewTab(..) = i {
                 return true;
             } else {
                 return false;
