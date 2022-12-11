@@ -4,14 +4,18 @@ use std::path::Path;
 use xshell::{cmd, Shell};
 
 pub fn test(sh: &Shell, _flags: flags::Test) -> anyhow::Result<()> {
-    let cargo = crate::cargo()?;
-    let host_triple = host_target_triple(sh)?;
+    let err_context = "failed to run task 'test'";
+
+    let cargo = crate::cargo().context(err_context)?;
+    let host_triple = host_target_triple(sh).context(err_context)?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
         let _pd = sh.push_dir(Path::new(subcrate));
         // Tell the user where we are now
         println!("");
-        println!(">> Testing '{}'", subcrate);
+        let msg = format!(">> Testing '{}'", subcrate);
+        println!("{}", msg);
+        crate::status(&msg);
 
         cmd!(sh, "{cargo} test --target {host_triple} --")
             .run()

@@ -6,11 +6,6 @@ xflags::xflags! {
 
     /// Custom build commands for zellij
     cmd xtask {
-        default cmd help {
-            /// Print help information
-            optional -h, --help
-        }
-
         /// Run `cargo clippy` on all crates
         cmd clippy {}
 
@@ -24,9 +19,9 @@ xflags::xflags! {
         }
 
         /// Generate a runnable `zellij` executable with plugins bundled
-        cmd install
+        cmd install {
             required destination: PathBuf
-        {}
+        }
 
         /// Build the application and all plugins
         cmd build {
@@ -55,7 +50,6 @@ pub struct Xtask {
 
 #[derive(Debug)]
 pub enum XtaskCmd {
-    Help(Help),
     Clippy(Clippy),
     Format(Format),
     Make(Make),
@@ -63,11 +57,6 @@ pub enum XtaskCmd {
     Build(Build),
     Dist(Dist),
     Test(Test),
-}
-
-#[derive(Debug)]
-pub struct Help {
-    pub help: bool,
 }
 
 #[derive(Debug)]
@@ -100,7 +89,10 @@ pub struct Dist;
 pub struct Test;
 
 impl Xtask {
-    pub const HELP: &'static str = Self::HELP_;
+    #[allow(dead_code)]
+    pub fn from_env_or_exit() -> Self {
+        Self::from_env_or_exit_()
+    }
 
     #[allow(dead_code)]
     pub fn from_env() -> xflags::Result<Self> {

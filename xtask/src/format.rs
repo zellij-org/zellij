@@ -5,14 +5,17 @@ use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
 pub fn format(sh: &Shell, _flags: flags::Format) -> anyhow::Result<()> {
-    let cargo = crate::cargo()?;
-    check_rustfmt()?;
+    let cargo = check_rustfmt()
+        .and_then(|_| crate::cargo())
+        .context("failed to run task 'format'")?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
         let _pd = sh.push_dir(Path::new(subcrate));
         // Tell the user where we are now
         println!();
-        println!(">> Formatting '{subcrate}'");
+        let msg = format!(">> Formatting '{subcrate}'");
+        println!("{}", msg);
+        crate::status(&msg);
 
         cmd!(sh, "{cargo} fmt")
             .run()

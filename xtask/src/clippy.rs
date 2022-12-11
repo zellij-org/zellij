@@ -5,21 +5,21 @@ use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
 pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
-    let cargo = crate::cargo()?;
-    check_clippy()?;
+    let cargo = check_clippy()
+        .and_then(|_| crate::cargo())
+        .context("failed to run task 'clippy'")?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
         let _pd = sh.push_dir(Path::new(subcrate));
         // Tell the user where we are now
         println!();
-        println!(">> Running clippy on '{subcrate}'");
+        let msg = format!(">> Running clippy on '{subcrate}'");
+        println!("{}", msg);
+        crate::status(&msg);
 
-        cmd!(
-            sh,
-            "{cargo} clippy --all-targets --all-features -- --deny warnings"
-        )
-        .run()
-        .with_context(|| format!("Failed to run clippy on '{subcrate}'"))?;
+        cmd!(sh, "{cargo} clippy --all-targets --all-features")
+            .run()
+            .with_context(|| format!("failed to run task 'clippy' on '{subcrate}'"))?;
     }
     Ok(())
 }
