@@ -45,20 +45,31 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         if flags.release {
             base_cmd = base_cmd.arg("--release");
         }
-        base_cmd
-            .run()
-            .with_context(err_context)?;
+        base_cmd.run().with_context(err_context)?;
 
         if subcrate.contains("plugins") {
+            let (_, plugin_name) = subcrate
+                .rsplit_once('/')
+                .context("Cannot determine plugin name from '{subcrate}'")?;
+
             if flags.release {
                 // Perform wasm-opt on plugin
-                subcrate.rsplit_once('/')
-                    .context("Cannot determine plugin name from '{subcrate}'")
-                    .and_then(|(_pre, name)| wasm_opt_plugins(sh, name))
-                    .with_context(err_context)?;
+                wasm_opt_plugins(sh, plugin_name).with_context(err_context)?;
             } else {
                 // Must copy plugins to zellij-utils, too!
-                // TODO
+                let source = PathBuf::from(
+                    std::env::var_os("CARGO_TARGET_DIR")
+                        .unwrap_or(crate::project_root().join("target").into_os_string()),
+                )
+                .join("wasm32-wasi")
+                .join("debug")
+                .join(plugin_name)
+                .with_extension("wasm");
+                let target = crate::project_root()
+                    .join("zellij-utils")
+                    .join("assets")
+                    .join("plugins");
+                sh.copy_file(source, target).with_context(err_context)?;
             }
         }
     }
