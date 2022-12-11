@@ -84,6 +84,7 @@ fn main() -> anyhow::Result<()> {
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
         flags::XtaskCmd::Install(flags) => pipelines::install(shell, flags),
+        flags::XtaskCmd::Run(_flags) => pipelines::run(shell),
     }?;
 
     let elapsed = now.elapsed().as_secs();
@@ -110,5 +111,5 @@ pub fn cargo() -> anyhow::Result<PathBuf> {
 
 // Set terminal title to 'msg'
 pub fn status(msg: &str) {
-    println!("\u{1b}]0;{}\u{07}", msg);
+    print!("\u{1b}]0;{}\u{07}", msg);
 }

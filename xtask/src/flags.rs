@@ -12,8 +12,11 @@ xflags::xflags! {
         /// Run `cargo fmt` on all crates
         cmd format {}
 
+        /// Run debug version of zellij
+        cmd run {}
+
         /// Sequentially call: format, build, test, clippy
-        cmd make {
+        default cmd make {
             /// Build in release mode without debug symbols
             optional -r, --release
         }
@@ -52,6 +55,7 @@ pub struct Xtask {
 pub enum XtaskCmd {
     Clippy(Clippy),
     Format(Format),
+    Run(Run),
     Make(Make),
     Install(Install),
     Build(Build),
@@ -64,6 +68,9 @@ pub struct Clippy;
 
 #[derive(Debug)]
 pub struct Format;
+
+#[derive(Debug)]
+pub struct Run;
 
 #[derive(Debug)]
 pub struct Make {

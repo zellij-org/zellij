@@ -4,7 +4,7 @@
 use crate::flags;
 use crate::{build, clippy, format, test};
 use anyhow::Context;
-use xshell::Shell;
+use xshell::{cmd, Shell};
 
 /// Perform a default build.
 ///
@@ -74,6 +74,22 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
     sh.copy_file("target/release/zellij", &destination)
         .with_context(|| format!("Failed to copy executable to '{}", destination.display()))?;
     Ok(())
+}
+
+/// Run zellij debug build.
+pub fn run(sh: &Shell) -> anyhow::Result<()> {
+    build::build(
+        sh,
+        flags::Build {
+            release: false,
+            no_plugins: false,
+            plugins_only: true,
+        },
+    )?;
+
+    crate::cargo()
+        .and_then(|cargo| cmd!(sh, "{cargo} run").run().context("command failure"))
+        .context("failed to run debug build")
 }
 
 /// Bundle all distributable content to `target/dist`.
