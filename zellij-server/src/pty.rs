@@ -444,21 +444,10 @@ impl Pty {
         }
     }
     pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
-        let mut shell_path = env::var("SHELL").unwrap_or_else(|_| {
+        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
             log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
             "/bin/sh".to_string()
-        });
-        if shell_path.chars().next().unwrap_or('/') != '/' {
-            shell_path = which::which(shell_path)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
-        }
-        let shell = PathBuf::from(shell_path);
-        if !shell.exists() {
-            panic!("Cannot find shell {}", shell.display());
-        }
+        }));
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: shell,
