@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context};
 use std::path::Path;
 use xshell::{cmd, Shell};
 
-pub fn test(sh: &Shell, _flags: flags::Test) -> anyhow::Result<()> {
+pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     let err_context = "failed to run task 'test'";
 
     let cargo = crate::cargo().context(err_context)?;
@@ -14,10 +14,11 @@ pub fn test(sh: &Shell, _flags: flags::Test) -> anyhow::Result<()> {
         // Tell the user where we are now
         println!("");
         let msg = format!(">> Testing '{}'", subcrate);
-        println!("{}", msg);
         crate::status(&msg);
+        println!("{}", msg);
 
         cmd!(sh, "{cargo} test --target {host_triple} --")
+            .args(&flags.args)
             .run()
             .with_context(|| format!("Failed to run tests for '{}'", subcrate))?;
     }

@@ -24,7 +24,7 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
             plugins_only: false,
         },
     )?;
-    test::test(sh, flags::Test {})?;
+    test::test(sh, flags::Test { args: vec![] })?;
     clippy::clippy(sh, flags::Clippy {})?;
     Ok(())
 }
@@ -77,7 +77,7 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
 }
 
 /// Run zellij debug build.
-pub fn run(sh: &Shell) -> anyhow::Result<()> {
+pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
     build::build(
         sh,
         flags::Build {
@@ -88,7 +88,12 @@ pub fn run(sh: &Shell) -> anyhow::Result<()> {
     )?;
 
     crate::cargo()
-        .and_then(|cargo| cmd!(sh, "{cargo} run").run().context("command failure"))
+        .and_then(|cargo| {
+            cmd!(sh, "{cargo} run")
+                .args(flags.args)
+                .run()
+                .context("command failure")
+        })
         .context("failed to run debug build")
 }
 

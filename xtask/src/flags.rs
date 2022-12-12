@@ -26,6 +26,17 @@ xflags::xflags! {
             required destination: PathBuf
         }
 
+        /// Run debug version of zellij
+        cmd run {
+            /// Arguments to pass after `cargo run --`
+            repeated args: OsString
+        }
+        /// Run application tests
+        cmd test {
+            /// Arguments to pass after `cargo test --`
+            repeated args: OsString
+        }
+
         /// Build the application and all plugins
         cmd build {
             /// Build in release mode without debug symbols
