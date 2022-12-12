@@ -14,8 +14,8 @@ pub fn format(sh: &Shell, _flags: flags::Format) -> anyhow::Result<()> {
         // Tell the user where we are now
         println!();
         let msg = format!(">> Formatting '{subcrate}'");
-        println!("{}", msg);
         crate::status(&msg);
+        println!("{}", msg);
 
         cmd!(sh, "{cargo} fmt")
             .run()

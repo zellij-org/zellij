@@ -14,8 +14,8 @@ pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
         // Tell the user where we are now
         println!();
         let msg = format!(">> Running clippy on '{subcrate}'");
-        println!("{}", msg);
         crate::status(&msg);
+        println!("{}", msg);
 
         cmd!(sh, "{cargo} clippy --all-targets --all-features")
             .run()

@@ -1,19 +1,20 @@
 //! CLI flags for `cargo xtask`
 use std::path::PathBuf;
+use std::ffi::OsString;
 
 xflags::xflags! {
     src "./src/flags.rs"
 
     /// Custom build commands for zellij
     cmd xtask {
+        /// Deprecation warning. Compatibility to transition from `cargo make`.
+        cmd deprecated {}
+
+        /// Package zellij for distribution (result found in ./target/dist)
+        cmd dist {}
+
         /// Run `cargo clippy` on all crates
         cmd clippy {}
-
-        /// Run `cargo fmt` on all crates
-        cmd format {}
-
-        /// Run debug version of zellij
-        cmd run {}
 
         /// Sequentially call: format, build, test, clippy
         default cmd make {
@@ -31,6 +32,10 @@ xflags::xflags! {
             /// Arguments to pass after `cargo run --`
             repeated args: OsString
         }
+
+        /// Run `cargo fmt` on all crates
+        cmd format {}
+
         /// Run application tests
         cmd test {
             /// Arguments to pass after `cargo test --`
@@ -46,12 +51,6 @@ xflags::xflags! {
             /// Build everything except the plugins
             optional --no-plugins
         }
-
-        /// Package zellij for distribution (result found in ./target/dist)
-        cmd dist {}
-
-        /// Run application tests
-        cmd test {}
     }
 }
 // generated start
@@ -64,24 +63,16 @@ pub struct Xtask {
 
 #[derive(Debug)]
 pub enum XtaskCmd {
-    Clippy(Clippy),
-    Format(Format),
-    Run(Run),
     Make(Make),
-    Install(Install),
-    Build(Build),
+    Deprecated(Deprecated),
     Dist(Dist),
+    Clippy(Clippy),
+    Install(Install),
+    Run(Run),
+    Format(Format),
     Test(Test),
+    Build(Build),
 }
-
-#[derive(Debug)]
-pub struct Clippy;
-
-#[derive(Debug)]
-pub struct Format;
-
-#[derive(Debug)]
-pub struct Run;
 
 #[derive(Debug)]
 pub struct Make {
@@ -89,8 +80,30 @@ pub struct Make {
 }
 
 #[derive(Debug)]
+pub struct Deprecated;
+
+#[derive(Debug)]
+pub struct Dist;
+
+#[derive(Debug)]
+pub struct Clippy;
+
+#[derive(Debug)]
 pub struct Install {
     pub destination: PathBuf,
+}
+
+#[derive(Debug)]
+pub struct Run {
+    pub args: Vec<OsString>,
+}
+
+#[derive(Debug)]
+pub struct Format;
+
+#[derive(Debug)]
+pub struct Test {
+    pub args: Vec<OsString>,
 }
 
 #[derive(Debug)]
@@ -99,12 +112,6 @@ pub struct Build {
     pub plugins_only: bool,
     pub no_plugins: bool,
 }
-
-#[derive(Debug)]
-pub struct Dist;
-
-#[derive(Debug)]
-pub struct Test;
 
 impl Xtask {
     #[allow(dead_code)]

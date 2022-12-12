@@ -38,8 +38,8 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         // Tell the user where we are now
         println!();
         let msg = format!(">> Building '{subcrate}'");
-        println!("{}", msg);
         crate::status(&msg);
+        println!("{}", msg);
 
         let mut base_cmd = cmd!(sh, "{cargo} build");
         if flags.release {
@@ -124,8 +124,8 @@ pub fn wasm_opt_plugins(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     // This is a plugin we want to optimize
     println!();
     let msg = format!(">> Optimizing plugin '{name}'");
-    println!("{}", msg);
     crate::status(&msg);
+    println!("{}", msg);
 
     let input = plugin.as_path();
     cmd!(sh, "{wasm_opt} -O {input} -o {name}")
