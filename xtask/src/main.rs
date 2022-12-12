@@ -75,6 +75,7 @@ fn main() -> anyhow::Result<()> {
     let now = Instant::now();
 
     match flags.subcommand {
+        flags::XtaskCmd::Deprecated(_flags) => deprecation_notice(),
         flags::XtaskCmd::Dist(flags) => pipelines::dist(shell, flags),
         flags::XtaskCmd::Build(flags) => build::build(shell, flags),
         flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
@@ -84,12 +85,12 @@ fn main() -> anyhow::Result<()> {
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
         flags::XtaskCmd::Install(flags) => pipelines::install(shell, flags),
-        flags::XtaskCmd::Run(_flags) => pipelines::run(shell),
+        flags::XtaskCmd::Run(flags) => pipelines::run(shell, flags),
     }?;
 
     let elapsed = now.elapsed().as_secs();
-    println!("\n\n>> Command took {} s", elapsed);
     status(&format!("xtask (done after {} s)", elapsed));
+    println!("\n\n>> Command took {} s", elapsed);
     Ok(())
 }
 
@@ -112,4 +113,29 @@ pub fn cargo() -> anyhow::Result<PathBuf> {
 // Set terminal title to 'msg'
 pub fn status(msg: &str) {
     print!("\u{1b}]0;{}\u{07}", msg);
+}
+
+fn deprecation_notice() -> anyhow::Result<()> {
+    Err(anyhow::anyhow!(" !!! cargo make has been deprecated by zellij !!!
+
+Our build system is now `cargo xtask`. Don't worry, you won't have to install
+anything!
+
+- To get an overview of the new build tasks, run `cargo xtask --help`
+- Quick compatibility table:
+
+| cargo make task                 | cargo xtask equivalent        |
+| ------------------------------- | ----------------------------- |
+| make                            | xtask                         |
+| make format                     | xtask format                  |
+| make build                      | xtask build                   |
+| make test                       | xtask test                    |
+| make run                        | xtask run                     |
+| make run -l strider             | xtask run -- -l strider       |
+| make clippy                     | xtask clippy                  |
+| make clippy -W clippy::pedantic | N/A                           |
+| make install /path/to/binary    | xtask install /path/to/binary |
+| make publish                    | N/A                           |
+| make manpage                    | N/A                           |
+"))
 }

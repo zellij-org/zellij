@@ -3,3 +3,4 @@ parallel-compiler = true
 [alias]
 xtask = "run --package xtask --"
 x = "xtask"
+make = "xtask deprecated"
