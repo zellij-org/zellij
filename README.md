@@ -80,9 +80,8 @@ To get started, you can:
 ## How do I start a development environment?
 
 * Clone the project
-* Install cargo-make with `cargo install --locked --force cargo-make`
-* In the project folder, for debug builds run: `cargo make run`
-* To run all tests: `cargo make test`
+* In the project folder, for debug builds run: `cargo xtask run`
+* To run all tests: `cargo xtask test`
 
 For more build commands, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

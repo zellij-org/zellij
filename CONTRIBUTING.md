@@ -11,8 +11,9 @@ Before contributing please read our [Code of Conduct](CODE_OF_CONDUCT.md) which
 all contributors are expected to adhere to.
 
 ## Building
-To build Zellij, we're using cargo-make – you can install it by running `cargo
-install --locked --force cargo-make`.
+
+To build Zellij, we're using cargo xtask. This is a standalone package shipped
+inside the repository, so you don't have to install additional dependencies.
 
 To edit our manpage, the mandown crate (`cargo install --locked
 mandown`) is used and the work is done on a markdown file in docs/MANPAGE.md.
@@ -21,24 +22,26 @@ Here are some of the commands currently supported by the build system:
 
 ```sh
 # Format code, build, then run tests and clippy
-cargo make
+cargo xtask
 # You can also perform these actions individually
-cargo make format
-cargo make build
-cargo make test
+cargo xtask format
+cargo xtask build
+cargo xtask test
 # Run Zellij (optionally with additional arguments)
-cargo make run
-cargo make run -l strider
-# Run Clippy (potentially with additional options)
-cargo make clippy
-cargo make clippy -W clippy::pedantic
+cargo xtask run
+cargo xtask run -l strider
+# Run Clippy
+cargo xtask clippy
 # Install Zellij to some directory
-cargo make install /path/of/zellij/binary
+cargo xtask install /path/of/zellij/binary
 # Publish the zellij and zellij-tile crates
-cargo make publish
+cargo xtask publish
 # Update manpage
-cargo make manpage
+cargo xtask manpage
 ```
+
+You can see a list of all commands (with supported arguments) with `cargo xtask
+--help`. For convenience, `xtask` may be shortened to `x`: `cargo x build` etc.
 
 To run `install` or `publish`, you'll need the package `binaryen` in the
 version `wasm-opt --version` > 97, for it's command `wasm-opt`.
@@ -78,8 +81,8 @@ To run these tests locally, you'll need to have either `docker` or `podman` and 
 Once you do, in the repository root:
 
 1. `docker-compose up -d` will start up the docker container
-2. `cargo make build-e2e` will build the generic linux executable of Zellij in the target folder, which is shared with the container
-3. `cargo make e2e-test` will run the tests
+2. `cargo xtask build-e2e` will build the generic linux executable of Zellij in the target folder, which is shared with the container
+3. `cargo xtask e2e-test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
 
