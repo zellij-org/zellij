@@ -59,9 +59,6 @@ jobs:
       - name: Add WASM target
         run: rustup target add wasm32-wasi
 
-      - name: Install cargo-make
-        run: cargo install --debug cargo-make
-
       - name: Install musl-tools
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get install -y --no-install-recommends musl-tools
@@ -83,7 +80,7 @@ jobs:
           EOF
 
       - name: Build release binary
-        run: cargo make ci-build-release ${{ matrix.target }}
+        run: cargo xtask ci-build-release ${{ matrix.target }}
 
       # this breaks on aarch64 and this if conditional isn't working for some reason: TODO: investigate
       #- name: Strip release binary

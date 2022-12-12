@@ -32,12 +32,10 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Add WASM target
       run: rustup target add wasm32-wasi
-    - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Build
-      run: cargo make build
+      run: cargo xtask build
     - name: Test
-      run: cargo make test
+      run: cargo xtask test
 
   format:
     name: Check Formatting
@@ -53,10 +51,8 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Check Format
-      run: cargo make check-format
+      run: cargo xtask check-format
 
   clippy:
     name: Check Clippy Lints
@@ -72,7 +68,5 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-    - name: Install cargo-make
-      run: test -x "${HOME}/.cargo/bin/cargo-make" || cargo install --debug cargo-make
     - name: Check clippy lints
-      run: cargo make clippy
+      run: cargo xtask clippy
