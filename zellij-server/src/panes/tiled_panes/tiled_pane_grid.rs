@@ -57,15 +57,11 @@ impl<'a> TiledPaneGrid<'a> {
         let mut summed_area: f64 = 0.0;
 
         for pane in self.panes.clone().borrow().values() {
-            if let PaneId::Terminal(_id) = pane.pid() {
-                let geom = pane.current_geom();
-                summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
-                    (Some(rows), Some(cols)) => rows * cols,
-                    _ => continue,
-                };
-            } else {
-                continue;
-            }
+            let geom = pane.current_geom();
+            summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
+                (Some(rows), Some(cols)) => rows * cols,
+                _ => continue,
+            };
         }
 
         summed_area / (100.0 * 100.0)
