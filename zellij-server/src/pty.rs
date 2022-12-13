@@ -732,7 +732,13 @@ impl Pty {
                         },
                         Err(err) => match err.downcast_ref::<ZellijError>() {
                             Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                                new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
+                                if self.task_handles.is_empty() {
+                                    // This instance of zellij is being spawned. If we find no
+                                    // terminal here, just bail out
+                                    Err::<(), _>(err).fatal();
+                                } else {
+                                    new_pane_pids.push((*terminal_id, starts_held, None, Err(err)));
+                                }
                             },
                             _ => {
                                 Err::<(), _>(err).non_fatal();

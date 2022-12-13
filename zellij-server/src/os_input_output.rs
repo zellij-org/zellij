@@ -221,7 +221,9 @@ fn handle_terminal(
     // Create a pipe to allow the child the communicate the shell's pid to its
     // parent.
     match openpty(None, Some(&orig_termios)) {
-        Ok(open_pty_res) => handle_openpty(open_pty_res, cmd, quit_cb, terminal_id),
+        Ok(open_pty_res) => {
+            handle_openpty(open_pty_res, cmd, quit_cb, terminal_id).with_context(err_context)
+        },
         Err(e) => match failover_cmd {
             Some(failover_cmd) => {
                 handle_terminal(failover_cmd, None, orig_termios, quit_cb, terminal_id)
