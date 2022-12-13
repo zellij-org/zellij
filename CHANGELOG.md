@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 * hotfix: fix panics when resizing with flexible plugin panes in layout (https://github.com/zellij-org/zellij/pull/2019)
 * hotfix: allow non-absolute `SHELL` variables (https://github.com/zellij-org/zellij/pull/2013)
+* fix: Crash application if shell is non-existent (https://github.com/zellij-org/zellij/pull/2020)
 
 ## [0.34.3] - 2022-12-09
 
