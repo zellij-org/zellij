@@ -4,7 +4,7 @@ use crate::tab::{MIN_TERMINAL_HEIGHT, MIN_TERMINAL_WIDTH};
 use crate::{panes::PaneId, tab::Pane};
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet};
-use zellij_utils::data::{Direction, ResizeStrategy};
+use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::{
     errors::prelude::*,
     input::layout::SplitDirection,
@@ -57,15 +57,11 @@ impl<'a> TiledPaneGrid<'a> {
         let mut summed_area: f64 = 0.0;
 
         for pane in self.panes.clone().borrow().values() {
-            if let PaneId::Terminal(_id) = pane.pid() {
-                let geom = pane.current_geom();
-                summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
-                    (Some(rows), Some(cols)) => rows * cols,
-                    _ => continue,
-                };
-            } else {
-                continue;
-            }
+            let geom = pane.current_geom();
+            summed_area += match (geom.rows.as_percent(), geom.cols.as_percent()) {
+                (Some(rows), Some(cols)) => rows * cols,
+                _ => continue,
+            };
         }
 
         summed_area / (100.0 * 100.0)
@@ -103,23 +99,19 @@ impl<'a> TiledPaneGrid<'a> {
     ) -> Result<bool> {
         let err_context = || format!("failed to determine if pane {pane_id:?} can {strategy}");
 
-        let pane_ids = if let Some(direction) = strategy.direction {
-            let mut vec = self
+        if let Some(direction) = strategy.direction {
+            let mut pane_ids = self
                 .pane_ids_directly_next_to(pane_id, &direction)
                 .with_context(err_context)?;
-            vec.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
-            vec
-        } else {
-            return Ok(true);
-        };
+            pane_ids.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
 
-        use zellij_utils::data::Resize::Decrease as Dec;
-        use zellij_utils::data::Resize::Increase as Inc;
+            if pane_ids.is_empty() {
+                return Ok(false);
+            }
 
-        if !pane_ids.is_empty() {
-            if strategy.direction_horizontal() {
+            if direction.is_horizontal() {
                 match strategy.resize {
-                    Inc => {
+                    Resize::Increase => {
                         for id in pane_ids {
                             if !self
                                 .can_reduce_pane_width(&id, change_by.0 as f64)
@@ -130,13 +122,13 @@ impl<'a> TiledPaneGrid<'a> {
                         }
                         Ok(true)
                     },
-                    Dec => self
+                    Resize::Decrease => self
                         .can_reduce_pane_width(pane_id, change_by.0 as f64)
                         .with_context(err_context),
                 }
-            } else if strategy.direction_vertical() {
+            } else {
                 match strategy.resize {
-                    Inc => {
+                    Resize::Increase => {
                         for id in pane_ids {
                             if !self
                                 .can_reduce_pane_height(&id, change_by.1 as f64)
@@ -147,15 +139,14 @@ impl<'a> TiledPaneGrid<'a> {
                         }
                         Ok(true)
                     },
-                    Dec => self
+                    Resize::Decrease => self
                         .can_reduce_pane_height(pane_id, change_by.1 as f64)
                         .with_context(err_context),
                 }
-            } else {
-                unimplemented!();
             }
         } else {
-            Ok(false)
+            // Undirected resize, this is checked elsewhere
+            Ok(true)
         }
     }
 
@@ -181,10 +172,10 @@ impl<'a> TiledPaneGrid<'a> {
                 .direction
                 .and_then(|direction| {
                     // Only invert if there are no neighbor IDs in the given direction
-                    self.pane_ids_directly_next_to(pane_id, &direction)
-                        .unwrap_or_default()
-                        .is_empty()
-                        .then_some(true)
+                    let mut neighbors = self.pane_ids_directly_next_to(pane_id, &direction)
+                        .unwrap_or_default();
+                    neighbors.retain(|pane_id| self.pane_is_flexible(direction.into(), pane_id).unwrap_or(false));
+                    neighbors.is_empty().then_some(true)
                 })
                 .unwrap_or(false)
         {
@@ -518,11 +509,6 @@ impl<'a> TiledPaneGrid<'a> {
             .with_context(err_context)?;
 
         for (&pid, terminal) in panes.iter() {
-            // We cannot resize plugin panes, so we do not even bother trying.
-            if let PaneId::Plugin(_) = pid {
-                continue;
-            }
-
             if match direction {
                 Direction::Left => (terminal.x() + terminal.cols()) == terminal_to_check.x(),
                 Direction::Down => {
