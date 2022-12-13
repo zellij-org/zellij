@@ -172,10 +172,10 @@ impl<'a> TiledPaneGrid<'a> {
                 .direction
                 .and_then(|direction| {
                     // Only invert if there are no neighbor IDs in the given direction
-                    self.pane_ids_directly_next_to(pane_id, &direction)
-                        .unwrap_or_default()
-                        .is_empty()
-                        .then_some(true)
+                    let mut neighbors = self.pane_ids_directly_next_to(pane_id, &direction)
+                        .unwrap_or_default();
+                    neighbors.retain(|pane_id| self.pane_is_flexible(direction.into(), pane_id).unwrap_or(false));
+                    neighbors.is_empty().then_some(true)
                 })
                 .unwrap_or(false)
         {
@@ -509,11 +509,6 @@ impl<'a> TiledPaneGrid<'a> {
             .with_context(err_context)?;
 
         for (&pid, terminal) in panes.iter() {
-            // We cannot resize plugin panes, so we do not even bother trying.
-            if let PaneId::Plugin(_) = pid {
-                continue;
-            }
-
             if match direction {
                 Direction::Left => (terminal.x() + terminal.cols()) == terminal_to_check.x(),
                 Direction::Down => {
