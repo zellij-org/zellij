@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 
+* hotfix: fix panics when resizing with flexible plugin panes in layout (https://github.com/zellij-org/zellij/pull/2019)
+
 ## [0.34.3] - 2022-12-09
 
 * (BREAKING CHANGE) performance: change plugin data flow to improve render speed (https://github.com/zellij-org/zellij/pull/1934)
