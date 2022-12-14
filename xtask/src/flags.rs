@@ -1,6 +1,6 @@
 //! CLI flags for `cargo xtask`
-use std::path::PathBuf;
 use std::ffi::OsString;
+use std::path::PathBuf;
 
 xflags::xflags! {
     src "./src/flags.rs"
@@ -10,6 +10,25 @@ xflags::xflags! {
         /// Deprecation warning. Compatibility to transition from `cargo make`.
         cmd deprecated {}
 
+        /// Tasks for the CI
+        cmd ci {
+            /// end-to-end tests
+            cmd e2e {
+                /// Build E2E binary of zellij
+                optional --build
+                /// Run the E2E tests
+                optional --test
+                /// Additional arguments for `--test`
+                repeated args: OsString
+            }
+
+            /// Perform cross-compiled release builds
+            cmd cross {
+                /// Target-triple to compile the application for
+                required triple: OsString
+            }
+        }
+
         /// Package zellij for distribution (result found in ./target/dist)
         cmd dist {}
 
@@ -17,9 +36,11 @@ xflags::xflags! {
         cmd clippy {}
 
         /// Sequentially call: format, build, test, clippy
-        default cmd make {
+        cmd make {
             /// Build in release mode without debug symbols
             optional -r, --release
+            /// Clean project before building
+            optional -c, --clean
         }
 
         /// Generate a runnable `zellij` executable with plugins bundled
@@ -34,7 +55,10 @@ xflags::xflags! {
         }
 
         /// Run `cargo fmt` on all crates
-        cmd format {}
+        cmd format {
+            /// Run `cargo fmt` in check mode
+            optional --check
+        }
 
         /// Run application tests
         cmd test {
@@ -47,7 +71,7 @@ xflags::xflags! {
             /// Build in release mode without debug symbols
             optional -r, --release
             /// Build only the plugins
-            optional --plugins-only
+            optional -p, --plugins-only
             /// Build everything except the plugins
             optional --no-plugins
         }
@@ -63,10 +87,11 @@ pub struct Xtask {
 
 #[derive(Debug)]
 pub enum XtaskCmd {
-    Make(Make),
     Deprecated(Deprecated),
+    Ci(Ci),
     Dist(Dist),
     Clippy(Clippy),
+    Make(Make),
     Install(Install),
     Run(Run),
     Format(Format),
@@ -75,18 +100,43 @@ pub enum XtaskCmd {
 }
 
 #[derive(Debug)]
-pub struct Make {
-    pub release: bool,
+pub struct Deprecated;
+
+#[derive(Debug)]
+pub struct Ci {
+    pub subcommand: CiCmd,
 }
 
 #[derive(Debug)]
-pub struct Deprecated;
+pub enum CiCmd {
+    E2e(E2e),
+    Cross(Cross),
+}
+
+#[derive(Debug)]
+pub struct E2e {
+    pub args: Vec<OsString>,
+
+    pub build: bool,
+    pub test: bool,
+}
+
+#[derive(Debug)]
+pub struct Cross {
+    pub triple: OsString,
+}
 
 #[derive(Debug)]
 pub struct Dist;
 
 #[derive(Debug)]
 pub struct Clippy;
+
+#[derive(Debug)]
+pub struct Make {
+    pub release: bool,
+    pub clean: bool,
+}
 
 #[derive(Debug)]
 pub struct Install {
@@ -99,7 +149,9 @@ pub struct Run {
 }
 
 #[derive(Debug)]
-pub struct Format;
+pub struct Format {
+    pub check: bool,
+}
 
 #[derive(Debug)]
 pub struct Test {
