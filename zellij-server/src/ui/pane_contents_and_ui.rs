@@ -238,7 +238,9 @@ impl<'a> PaneContentsAndUi<'a> {
         session_is_mirrored: bool,
     ) -> Option<PaletteColor> {
         let pane_focused_for_client_id = self.focused_clients.contains(&client_id);
-        if pane_focused_for_client_id {
+        if let Some(override_color) = self.pane.frame_color_override() {
+            Some(override_color)
+        } else if pane_focused_for_client_id {
             match mode {
                 InputMode::Normal | InputMode::Locked => {
                     if session_is_mirrored || !self.multiple_users_exist_in_session {

@@ -56,7 +56,7 @@ impl Dimension {
     pub fn fixed(size: usize) -> Dimension {
         Self {
             constraint: Constraint::Fixed(size),
-            inner: 1,
+            inner: size,
         }
     }
 
