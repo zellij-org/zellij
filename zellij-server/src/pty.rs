@@ -448,9 +448,6 @@ impl Pty {
             log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
             "/bin/sh".to_string()
         }));
-        if !shell.exists() {
-            panic!("Cannot find shell {}", shell.display());
-        }
         TerminalAction::RunCommand(RunCommand {
             args: vec![],
             command: shell,
