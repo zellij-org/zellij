@@ -37,6 +37,7 @@
 // - publish-zellij: `cargo publish [tile, client, server, utils, tile-utils, zellij]`
 
 mod build;
+mod ci;
 mod clippy;
 mod dist;
 mod flags;
@@ -86,6 +87,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
         flags::XtaskCmd::Install(flags) => pipelines::install(shell, flags),
         flags::XtaskCmd::Run(flags) => pipelines::run(shell, flags),
+        flags::XtaskCmd::Ci(flags) => ci::main(shell, flags),
     }?;
 
     let elapsed = now.elapsed().as_secs();
@@ -116,7 +118,8 @@ pub fn status(msg: &str) {
 }
 
 fn deprecation_notice() -> anyhow::Result<()> {
-    Err(anyhow::anyhow!(" !!! cargo make has been deprecated by zellij !!!
+    Err(anyhow::anyhow!(
+        " !!! cargo make has been deprecated by zellij !!!
 
 Our build system is now `cargo xtask`. Don't worry, you won't have to install
 anything!
@@ -137,5 +140,6 @@ anything!
 | make install /path/to/binary    | xtask install /path/to/binary |
 | make publish                    | N/A                           |
 | make manpage                    | N/A                           |
-"))
+"
+    ))
 }

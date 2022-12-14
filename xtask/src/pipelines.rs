@@ -15,18 +15,28 @@ use xshell::{cmd, Shell};
 /// - test
 /// - clippy
 pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
-    format::format(sh, flags::Format {})?;
-    build::build(
-        sh,
-        flags::Build {
-            release: flags.release,
-            no_plugins: false,
-            plugins_only: false,
-        },
-    )?;
-    test::test(sh, flags::Test { args: vec![] })?;
-    clippy::clippy(sh, flags::Clippy {})?;
-    Ok(())
+    let err_context = || format!("failed to run pipeline 'make' with args {flags:?}");
+
+    if flags.clean {
+        crate::cargo()
+            .and_then(|cargo| cmd!(sh, "{cargo} clean").run().map_err(anyhow::Error::new))
+            .with_context(err_context)?;
+    }
+
+    format::format(sh, flags::Format { check: false })
+        .and_then(|_| {
+            build::build(
+                sh,
+                flags::Build {
+                    release: flags.release,
+                    no_plugins: false,
+                    plugins_only: false,
+                },
+            )
+        })
+        .and_then(|_| test::test(sh, flags::Test { args: vec![] }))
+        .and_then(|_| clippy::clippy(sh, flags::Clippy {}))
+        .with_context(err_context)
 }
 
 /// Generate a runnable executable.
@@ -39,6 +49,8 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
 /// - [`manpage`](build::manpage)
 /// - Copy the executable to [target file](flags::Install::destination)
 pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
+    let err_context = || format!("failed to run pipeline 'install' with args {flags:?}");
+
     // Build and optimize plugins
     build::build(
         sh,
@@ -47,37 +59,41 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
         },
-    )?;
-
-    // Build the main executable
-    build::build(
-        sh,
-        flags::Build {
-            release: true,
-            no_plugins: true,
-            plugins_only: false,
-        },
-    )?;
-
-    // Generate man page
-    build::manpage(sh)?;
+    )
+    .and_then(|_| {
+        // Build the main executable
+        build::build(
+            sh,
+            flags::Build {
+                release: true,
+                no_plugins: true,
+                plugins_only: false,
+            },
+        )
+    })
+    .and_then(|_| {
+        // Generate man page
+        build::manpage(sh)
+    })
+    .with_context(err_context)?;
 
     // Copy binary to destination
     let destination = if flags.destination.is_absolute() {
-        flags.destination
+        flags.destination.clone()
     } else {
         std::env::current_dir()
             .context("Can't determine current working directory")?
-            .join(flags.destination)
+            .join(&flags.destination)
     };
     sh.change_dir(crate::project_root());
     sh.copy_file("target/release/zellij", &destination)
-        .with_context(|| format!("Failed to copy executable to '{}", destination.display()))?;
-    Ok(())
+        .with_context(err_context)
 }
 
 /// Run zellij debug build.
 pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
+    let err_context = || format!("failed to run pipeline 'run' with args {flags:?}");
+
     build::build(
         sh,
         flags::Build {
@@ -85,16 +101,15 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
         },
-    )?;
-
-    crate::cargo()
-        .and_then(|cargo| {
-            cmd!(sh, "{cargo} run")
-                .args(flags.args)
-                .run()
-                .context("command failure")
-        })
-        .context("failed to run debug build")
+    )
+    .and_then(|_| crate::cargo())
+    .and_then(|cargo| {
+        cmd!(sh, "{cargo} run")
+            .args(&flags.args)
+            .run()
+            .map_err(anyhow::Error::new)
+    })
+    .with_context(err_context)
 }
 
 /// Bundle all distributable content to `target/dist`.
@@ -102,29 +117,27 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
 /// This includes the optimized zellij executable from the [`install`] pipeline, the man page, the
 /// `.desktop` file and the application logo.
 pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
+    let err_context = || format!("failed to run pipeline 'dist'");
+
     sh.change_dir(crate::project_root());
     if sh.path_exists("target/dist") {
-        sh.remove_path("target/dist")
-            .context("Failed to clean up dist directory")?;
+        sh.remove_path("target/dist").with_context(err_context)?;
     }
     sh.create_dir("target/dist")
-        .context("Failed to create dist directory")?;
-
-    install(
-        sh,
-        flags::Install {
-            destination: crate::project_root().join("./target/dist/zellij"),
-        },
-    )
-    .context("Failed to build zellij for distributing")?;
+        .map_err(anyhow::Error::new)
+        .and_then(|_| {
+            install(
+                sh,
+                flags::Install {
+                    destination: crate::project_root().join("./target/dist/zellij"),
+                },
+            )
+        })
+        .with_context(err_context)?;
 
     sh.create_dir("target/dist/man")
-        .context("Failed to create directory for man pages in dist folder")?;
-    sh.copy_file("assets/man/zellij.1", "target/dist/man/zellij.1")
-        .context("Failed to copy generated manpage to dist folder")?;
-    sh.copy_file("assets/zellij.desktop", "target/dist/zellij.desktop")
-        .context("Failed to copy zellij desktop file to dist folder")?;
-    sh.copy_file("assets/logo.png", "target/dist/logo.png")
-        .context("Failed to copy zellij logo to dist folder")?;
-    Ok(())
+        .and_then(|_| sh.copy_file("assets/man/zellij.1", "target/dist/man/zellij.1"))
+        .and_then(|_| sh.copy_file("assets/zellij.desktop", "target/dist/zellij.desktop"))
+        .and_then(|_| sh.copy_file("assets/logo.png", "target/dist/logo.png"))
+        .with_context(err_context)
 }

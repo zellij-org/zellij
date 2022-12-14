@@ -54,7 +54,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
 
             if flags.release {
                 // Perform wasm-opt on plugin
-                wasm_opt_plugins(sh, plugin_name).with_context(err_context)?;
+                wasm_opt_plugin(sh, plugin_name).with_context(err_context)?;
             } else {
                 // Must copy plugins to zellij-utils, too!
                 let source = PathBuf::from(
@@ -82,7 +82,7 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
 /// for filenames ending with `.wasm`. For this to work the plugins must be built beforehand.
 // TODO: Should this panic if there is no plugin found? What should we do when only some plugins
 // have been built before?
-pub fn wasm_opt_plugins(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
+pub fn wasm_opt_plugin(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     let err_context = || format!("failed to run 'wasm-opt' on plugin '{plugin_name}'");
 
     let wasm_opt = wasm_opt(sh).with_context(err_context)?;
@@ -102,11 +102,7 @@ pub fn wasm_opt_plugins(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     .join("release")
     .join(plugin_name)
     .with_extension("wasm");
-    //target_dir.push("wasm32-wasi");
-    //target_dir.push("release");
-    //plugin_name
-    //target_dir.push(plugin);
-    //
+
     if !plugin.is_file() {
         return Err(anyhow::anyhow!("No plugin found at '{}'", plugin.display()))
             .with_context(err_context);
@@ -115,7 +111,7 @@ pub fn wasm_opt_plugins(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
         Some(name) => name,
         None => {
             return Err(anyhow::anyhow!(
-                "Couldn't read filename containing invalid unicode"
+                "couldn't read filename containing invalid unicode"
             ))
             .with_context(err_context)
         },
@@ -145,7 +141,7 @@ fn wasm_opt(_sh: &Shell) -> anyhow::Result<PathBuf> {
         Err(e) => {
             println!("!! 'wasm-opt' wasn't found but is needed for this build step.");
             println!("!! Please install it from here: https://github.com/WebAssembly/binaryen");
-            Err(e).context("Couldn't find 'wasm-opt' executable")
+            Err(e).context("couldn't find 'wasm-opt' executable")
         },
     }
 }
@@ -154,21 +150,19 @@ fn wasm_opt(_sh: &Shell) -> anyhow::Result<PathBuf> {
 //      mkdir -p ${root_dir}/assets/man
 //      mandown ${root_dir}/docs/MANPAGE.md 1 > ${root_dir}/assets/man/zellij.1
 pub fn manpage(sh: &Shell) -> anyhow::Result<()> {
-    let mandown = mandown(sh)?;
+    let err_context = "failed to generate manpage";
+
+    let mandown = mandown(sh).context(err_context)?;
 
     let project_root = crate::project_root();
     let asset_dir = &project_root.join("assets").join("man");
-    sh.create_dir(&asset_dir)
-        .context("Couldn't create asset dir for plugins")?;
+    sh.create_dir(&asset_dir).context(err_context)?;
     let _pd = sh.push_dir(asset_dir);
 
-    let text = cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
+    cmd!(sh, "{mandown} {project_root}/docs/MANPAGE.md 1")
         .read()
-        .context("Generating man pages failed")?;
-    sh.write_file("zellij.1", text)
-        .context("Writing man pages failed")?;
-
-    Ok(())
+        .and_then(|text| sh.write_file("zellij.1", text))
+        .context(err_context)
 }
 
 /// Get the path to a `mandown` executable.

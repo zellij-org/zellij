@@ -4,7 +4,7 @@ use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
-pub fn format(sh: &Shell, _flags: flags::Format) -> anyhow::Result<()> {
+pub fn format(sh: &Shell, flags: flags::Format) -> anyhow::Result<()> {
     let cargo = check_rustfmt()
         .and_then(|_| crate::cargo())
         .context("failed to run task 'format'")?;
@@ -17,8 +17,11 @@ pub fn format(sh: &Shell, _flags: flags::Format) -> anyhow::Result<()> {
         crate::status(&msg);
         println!("{}", msg);
 
-        cmd!(sh, "{cargo} fmt")
-            .run()
+        let mut cmd = cmd!(sh, "{cargo} fmt");
+        if flags.check {
+            cmd = cmd.arg("--check");
+        }
+        cmd.run()
             .with_context(|| format!("Failed to format '{subcrate}'"))?;
     }
     Ok(())
