@@ -52,7 +52,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Check Format
-      run: cargo xtask check-format
+      run: cargo xtask format --check
 
   clippy:
     name: Check Clippy Lints

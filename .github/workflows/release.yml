@@ -80,7 +80,7 @@ jobs:
           EOF
 
       - name: Build release binary
-        run: cargo xtask ci-build-release ${{ matrix.target }}
+        run: cargo xtask ci cross ${{ matrix.target }}
 
       # this breaks on aarch64 and this if conditional isn't working for some reason: TODO: investigate
       #- name: Strip release binary

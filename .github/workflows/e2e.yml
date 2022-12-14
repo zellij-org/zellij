@@ -45,7 +45,7 @@ jobs:
       run: sudo apt-get install -y --no-install-recommends binaryen
       #run: cargo install --debug cargo-make
     - name: Build asset
-      run: cargo xtask build-e2e
+      run: cargo xtask ci e2e --build
       # we copy this manually into the target folder instead of mounting it because
       # github actions creates the service first, and if it has a mount that is part
       # of your yet unchecked out code, you cannot checkout the code after the mount
@@ -58,4 +58,4 @@ jobs:
       with:
         args: docker restart ssh
     - name: Test
-      run: cargo xtask e2e-test
+      run: cargo xtask ci e2e --test
