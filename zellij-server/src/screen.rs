@@ -224,6 +224,8 @@ pub enum ScreenInstruction {
     SearchToggleCaseSensitivity(ClientId),
     SearchToggleWholeWord(ClientId),
     SearchToggleWrap(ClientId),
+    AddRedPaneFrameColorOverride(PaneId, Option<String>), // Option<String> => optional error text
+    ClearPaneFrameColorOverride(PaneId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -355,6 +357,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
             ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
+            ScreenInstruction::AddRedPaneFrameColorOverride(..) => {
+                ScreenContext::AddRedPaneFrameColorOverride
+            },
+            ScreenInstruction::ClearPaneFrameColorOverride(..) => {
+                ScreenContext::ClearPaneFrameColorOverride
+            },
         }
     }
 }
@@ -2111,6 +2119,26 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::AddRedPaneFrameColorOverride(pane_id, error_text) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.add_red_pane_frame_color_override(pane_id, error_text);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::ClearPaneFrameColorOverride(pane_id) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_pane_with_pid(&pane_id) {
+                        tab.clear_pane_frame_color_override(pane_id);
+                        break;
+                    }
+                }
+                screen.render()?;
             },
         }
     }

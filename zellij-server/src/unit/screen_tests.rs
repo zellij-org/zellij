@@ -14,11 +14,12 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{PaneLayout, SplitDirection};
+use zellij_utils::input::layout::{PaneLayout, SplitDirection, SplitSize};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
+use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
 use std::env::set_var;
 use std::os::unix::io::RawFd;
@@ -238,6 +239,7 @@ struct MockScreen {
     pub main_client_id: u16,
     pub pty_receiver: Option<Receiver<(PtyInstruction, ErrorContext)>>,
     pub pty_writer_receiver: Option<Receiver<(PtyWriteInstruction, ErrorContext)>>,
+    pub background_jobs_receiver: Option<Receiver<(BackgroundJob, ErrorContext)>>,
     pub screen_receiver: Option<Receiver<(ScreenInstruction, ErrorContext)>>,
     pub server_receiver: Option<Receiver<(ServerInstruction, ErrorContext)>>,
     pub plugin_receiver: Option<Receiver<(PluginInstruction, ErrorContext)>>,
@@ -246,6 +248,7 @@ struct MockScreen {
     pub to_plugin: SenderWithContext<PluginInstruction>,
     pub to_server: SenderWithContext<ServerInstruction>,
     pub to_pty_writer: SenderWithContext<PtyWriteInstruction>,
+    pub to_background_jobs: SenderWithContext<BackgroundJob>,
     pub os_input: FakeInputOutput,
     pub client_attributes: ClientAttributes,
     pub config_options: Options,
@@ -264,6 +267,7 @@ impl MockScreen {
             Some(&self.to_plugin.clone()),
             Some(&self.to_server.clone()),
             Some(&self.to_pty_writer.clone()),
+            Some(&self.to_background_jobs.clone()),
             Some(Box::new(self.os_input.clone())),
         )
         .should_silently_fail();
@@ -352,6 +356,7 @@ impl MockScreen {
             pty_thread: None,
             plugin_thread: None,
             pty_writer_thread: None,
+            background_jobs_thread: None,
         }
     }
 }
@@ -376,6 +381,10 @@ impl MockScreen {
             channels::unbounded();
         let to_pty_writer = SenderWithContext::new(to_pty_writer);
 
+        let (to_background_jobs, background_jobs_receiver): ChannelWithContext<BackgroundJob> =
+            channels::unbounded();
+        let to_background_jobs = SenderWithContext::new(to_background_jobs);
+
         let client_attributes = ClientAttributes {
             size,
             ..Default::default()
@@ -390,6 +399,7 @@ impl MockScreen {
                 to_pty: Some(to_pty.clone()),
                 to_plugin: Some(to_plugin.clone()),
                 to_pty_writer: Some(to_pty_writer.clone()),
+                to_background_jobs: Some(to_background_jobs.clone()),
                 to_server: Some(to_server.clone()),
                 should_silently_fail: true,
             },
@@ -400,6 +410,7 @@ impl MockScreen {
             pty_thread: None,
             plugin_thread: None,
             pty_writer_thread: None,
+            background_jobs_thread: None,
         };
 
         let os_input = FakeInputOutput::default();
@@ -409,6 +420,7 @@ impl MockScreen {
             main_client_id,
             pty_receiver: Some(pty_receiver),
             pty_writer_receiver: Some(pty_writer_receiver),
+            background_jobs_receiver: Some(background_jobs_receiver),
             screen_receiver: Some(screen_receiver),
             server_receiver: Some(server_receiver),
             plugin_receiver: Some(plugin_receiver),
@@ -417,6 +429,7 @@ impl MockScreen {
             to_plugin,
             to_server,
             to_pty_writer,
+            to_background_jobs,
             os_input,
             client_attributes,
             config_options,

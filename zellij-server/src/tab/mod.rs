@@ -13,6 +13,7 @@ use zellij_utils::input::command::RunCommand;
 use zellij_utils::position::{Column, Line};
 use zellij_utils::{position::Position, serde};
 
+use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
 use crate::ui::pane_boundaries_frame::FrameParams;
@@ -386,6 +387,9 @@ pub trait Pane {
     fn hold(&mut self, _exit_status: Option<i32>, _is_first_run: bool, _run_command: RunCommand) {
         // No-op by default, only terminal panes support holding
     }
+    fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
+    fn clear_pane_frame_color_override(&mut self);
+    fn frame_color_override(&self) -> Option<PaletteColor>;
 }
 
 #[derive(Clone, Debug)]
@@ -618,14 +622,18 @@ impl Tab {
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                         .with_context(err_context)?;
                 }
-                // FIXME: This is another hack to crop the viewport to fixed-size panes. Once you can have
-                // non-fixed panes that are part of the viewport, get rid of this!
+
+                // here we offset the viewport from borderless panes that are on the edges of the
+                // screen, this is so that when we don't have pane boundaries (eg. when they were
+                // disabled by the user) boundaries won't be drawn around these panes
+                // geometrically, we can only do this with panes that are on the edges of the
+                // screen - so it's mostly a best-effort thing
                 let display_area = {
                     let display_area = self.display_area.borrow();
                     *display_area
                 };
                 self.resize_whole_tab(display_area);
-                let boundary_geoms = self.tiled_panes.fixed_pane_geoms();
+                let boundary_geoms = self.tiled_panes.borderless_pane_geoms();
                 for geom in boundary_geoms {
                     self.offset_viewport(&geom)
                 }
@@ -1035,6 +1043,20 @@ impl Tab {
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
+        } else {
+            log::error!("No room to split pane horizontally");
+            if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
+                self.senders
+                    .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                        active_pane_id,
+                        "TOO SMALL!".into(),
+                    ))
+                    .with_context(err_context)?;
+            }
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pid))
+                .with_context(err_context)?;
+            return Ok(());
         }
         Ok(())
     }
@@ -1075,6 +1097,20 @@ impl Tab {
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
+        } else {
+            log::error!("No room to split pane vertically");
+            if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
+                self.senders
+                    .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                        active_pane_id,
+                        "TOO SMALL!".into(),
+                    ))
+                    .with_context(err_context)?;
+            }
+            self.senders
+                .send_to_pty(PtyInstruction::ClosePane(pid))
+                .with_context(err_context)?;
+            return Ok(());
         }
         Ok(())
     }
@@ -1138,6 +1174,11 @@ impl Tab {
                 .suppressed_panes
                 .values()
                 .any(|s_p| s_p.pid() == PaneId::Plugin(plugin_id))
+    }
+    pub fn has_pane_with_pid(&self, pid: &PaneId) -> bool {
+        self.tiled_panes.panes_contain(pid)
+            || self.floating_panes.panes_contain(pid)
+            || self.suppressed_panes.values().any(|s_p| s_p.pid() == *pid)
     }
     pub fn handle_pty_bytes(&mut self, pid: u32, bytes: VteBytes) -> Result<()> {
         if self.is_pending {
@@ -2807,6 +2848,39 @@ impl Tab {
 
     pub fn is_pending(&self) -> bool {
         self.is_pending
+    }
+
+    pub fn add_red_pane_frame_color_override(
+        &mut self,
+        pane_id: PaneId,
+        error_text: Option<String>,
+    ) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == pane_id)
+            })
+        {
+            pane.add_red_pane_frame_color_override(error_text);
+        }
+    }
+    pub fn clear_pane_frame_color_override(&mut self, pane_id: PaneId) {
+        if let Some(pane) = self
+            .tiled_panes
+            .get_pane_mut(pane_id)
+            .or_else(|| self.floating_panes.get_pane_mut(pane_id))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == pane_id)
+            })
+        {
+            pane.clear_pane_frame_color_override();
+        }
     }
 
     fn show_floating_panes(&mut self) {

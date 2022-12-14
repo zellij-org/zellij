@@ -205,6 +205,19 @@ impl TiledPanes {
             })
             .collect()
     }
+    pub fn borderless_pane_geoms(&self) -> Vec<Viewport> {
+        self.panes
+            .values()
+            .filter_map(|p| {
+                let geom = p.position_and_size();
+                if p.borderless() {
+                    Some(geom.into())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
     pub fn first_selectable_pane_id(&self) -> Option<PaneId> {
         self.panes
             .iter()
@@ -295,6 +308,19 @@ impl TiledPanes {
         }
         false
     }
+    pub fn can_split_active_pane_horizontally(&self, client_id: ClientId) -> bool {
+        let active_pane_id = &self.active_panes.get(&client_id).unwrap();
+        let active_pane = self.panes.get(active_pane_id).unwrap();
+        let full_pane_size = active_pane.position_and_size();
+        if full_pane_size.rows.is_fixed() {
+            return false;
+        }
+        if split(SplitDirection::Horizontal, &full_pane_size).is_some() {
+            true
+        } else {
+            false
+        }
+    }
     pub fn split_pane_horizontally(
         &mut self,
         pid: PaneId,
@@ -311,6 +337,19 @@ impl TiledPanes {
             new_pane.set_geom(bottom_winsize);
             self.panes.insert(pid, new_pane);
             self.relayout(SplitDirection::Vertical);
+        }
+    }
+    pub fn can_split_active_pane_vertically(&self, client_id: ClientId) -> bool {
+        let active_pane_id = &self.active_panes.get(&client_id).unwrap();
+        let active_pane = self.panes.get(active_pane_id).unwrap();
+        let full_pane_size = active_pane.position_and_size();
+        if full_pane_size.cols.is_fixed() {
+            return false;
+        }
+        if split(SplitDirection::Vertical, &full_pane_size).is_some() {
+            true
+        } else {
+            false
         }
     }
     pub fn split_pane_vertically(
