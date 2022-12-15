@@ -81,8 +81,8 @@ To run these tests locally, you'll need to have either `docker` or `podman` and 
 Once you do, in the repository root:
 
 1. `docker-compose up -d` will start up the docker container
-2. `cargo xtask build-e2e` will build the generic linux executable of Zellij in the target folder, which is shared with the container
-3. `cargo xtask e2e-test` will run the tests
+2. `cargo xtask ci e2e --build` will build the generic linux executable of Zellij in the target folder, which is shared with the container
+3. `cargo xtask ci e2e --test` will run the tests
 
 To re-run the tests after you've changed something in the code base, be sure to repeat steps 2 and 3.
 
