@@ -29,6 +29,12 @@ xflags::xflags! {
             }
         }
 
+        /// Publish zellij and all the sub-crates
+        cmd publish {
+            /// Perform a dry-run (don't push/publish anything)
+            optional --dry-run
+        }
+
         /// Package zellij for distribution (result found in ./target/dist)
         cmd dist {}
 
@@ -89,6 +95,7 @@ pub struct Xtask {
 pub enum XtaskCmd {
     Deprecated(Deprecated),
     Ci(Ci),
+    Publish(Publish),
     Dist(Dist),
     Clippy(Clippy),
     Make(Make),
@@ -124,6 +131,11 @@ pub struct E2e {
 #[derive(Debug)]
 pub struct Cross {
     pub triple: OsString,
+}
+
+#[derive(Debug)]
+pub struct Publish {
+    pub dry_run: bool,
 }
 
 #[derive(Debug)]

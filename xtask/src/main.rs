@@ -88,6 +88,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Install(flags) => pipelines::install(shell, flags),
         flags::XtaskCmd::Run(flags) => pipelines::run(shell, flags),
         flags::XtaskCmd::Ci(flags) => ci::main(shell, flags),
+        flags::XtaskCmd::Publish(flags) => pipelines::publish(shell, flags),
     }?;
 
     let elapsed = now.elapsed().as_secs();
