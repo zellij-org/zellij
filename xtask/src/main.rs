@@ -82,6 +82,7 @@ fn main() -> anyhow::Result<()> {
         flags::XtaskCmd::Clippy(flags) => clippy::clippy(shell, flags),
         flags::XtaskCmd::Format(flags) => format::format(shell, flags),
         flags::XtaskCmd::Test(flags) => test::test(shell, flags),
+        flags::XtaskCmd::Manpage(_flags) => build::manpage(shell),
         // Pipelines
         // These are composite commands, made up of multiple "stages" defined above.
         flags::XtaskCmd::Make(flags) => pipelines::make(shell, flags),
@@ -140,7 +141,7 @@ anything!
 | make clippy -W clippy::pedantic | N/A                           |
 | make install /path/to/binary    | xtask install /path/to/binary |
 | make publish                    | xtask publish                 |
-| make manpage                    | N/A                           |
+| make manpage                    | xtask manpage                 |
 "
     ))
 }

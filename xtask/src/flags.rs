@@ -31,6 +31,9 @@ xflags::xflags! {
             }
         }
 
+        /// Build the manpage
+        cmd manpage {}
+
         /// Publish zellij and all the sub-crates
         cmd publish {
             /// Perform a dry-run (don't push/publish anything)
@@ -97,6 +100,7 @@ pub struct Xtask {
 pub enum XtaskCmd {
     Deprecated(Deprecated),
     Ci(Ci),
+    Manpage(Manpage),
     Publish(Publish),
     Dist(Dist),
     Clippy(Clippy),
@@ -136,6 +140,9 @@ pub struct E2e {
 pub struct Cross {
     pub triple: OsString,
 }
+
+#[derive(Debug)]
+pub struct Manpage;
 
 #[derive(Debug)]
 pub struct Publish {
