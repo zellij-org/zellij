@@ -146,7 +146,11 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
 
-    let dry_run = if flags.dry_run { Some("--dry-run") } else { None };
+    let dry_run = if flags.dry_run {
+        Some("--dry-run")
+    } else {
+        None
+    };
     let cargo = crate::cargo().context(err_context)?;
     let project_dir = crate::project_root();
     let manifest = sh
@@ -188,7 +192,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     println!(" --> Unknown input '{buffer}', ignoring...");
                     println!();
                     println!("Skip build phase and continue to publish? [y/n]");
-                }
+                },
             }
         }
     }
@@ -250,9 +254,53 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
             }
 
             let _pd = sh.push_dir(project_dir.join(member));
-            cmd!(sh, "{cargo} publish {dry_run...}").run().context(err_context)?;
-            println!("Waiting for crates.io to catch up...");
-            std::thread::sleep(std::time::Duration::from_secs(15));
+            loop {
+                if let Err(err) = cmd!(sh, "{cargo} publish {dry_run...}")
+                    .run()
+                    .context(err_context)
+                {
+                    println!();
+                    println!("Publishing crate '{member}' failed with error:");
+                    println!("{:?}", err);
+                    println!();
+                    println!("Retry? [y/n]");
+
+                    let stdin = std::io::stdin();
+                    let mut buffer = String::new();
+                    let retry: bool;
+
+                    loop {
+                        stdin.read_line(&mut buffer).context(err_context)?;
+
+                        match buffer.trim_end() {
+                            "y" | "Y" => {
+                                retry = true;
+                                break;
+                            },
+                            "n" | "N" => {
+                                retry = false;
+                                break;
+                            }
+                            _ => {
+                                println!(" --> Unknown input '{buffer}', ignoring...");
+                                println!();
+                                println!("Retry? [y/n]");
+                            },
+                        }
+                    }
+
+                    if retry {
+                        continue;
+                    } else {
+                        println!("Aborting publish for crate '{member}'");
+                        break;
+                    }
+                } else {
+                    println!("Waiting for crates.io to catch up...");
+                    std::thread::sleep(std::time::Duration::from_secs(15));
+                    break;
+                }
+            }
         }
         Ok(())
     };
@@ -269,4 +317,3 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
     result
 }
-
