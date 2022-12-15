@@ -8,7 +8,9 @@ xflags::xflags! {
     /// Custom build commands for zellij
     cmd xtask {
         /// Deprecation warning. Compatibility to transition from `cargo make`.
-        cmd deprecated {}
+        cmd deprecated {
+            repeated args: OsString
+        }
 
         /// Tasks for the CI
         cmd ci {
@@ -107,7 +109,9 @@ pub enum XtaskCmd {
 }
 
 #[derive(Debug)]
-pub struct Deprecated;
+pub struct Deprecated {
+    pub args: Vec<OsString>,
+}
 
 #[derive(Debug)]
 pub struct Ci {

@@ -139,7 +139,7 @@ anything!
 | make clippy                     | xtask clippy                  |
 | make clippy -W clippy::pedantic | N/A                           |
 | make install /path/to/binary    | xtask install /path/to/binary |
-| make publish                    | N/A                           |
+| make publish                    | xtask publish                 |
 | make manpage                    | N/A                           |
 "
     ))
