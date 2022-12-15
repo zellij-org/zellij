@@ -61,6 +61,8 @@ xflags::xflags! {
 
         /// Run debug version of zellij
         cmd run {
+            /// Take plugins from here, skip building plugins. Passed to zellij verbatim
+            optional --data-dir path: PathBuf
             /// Arguments to pass after `cargo run --`
             repeated args: OsString
         }
@@ -169,6 +171,8 @@ pub struct Install {
 #[derive(Debug)]
 pub struct Run {
     pub args: Vec<OsString>,
+
+    pub data_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]

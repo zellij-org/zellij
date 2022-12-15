@@ -94,22 +94,37 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
 pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
     let err_context = || format!("failed to run pipeline 'run' with args {flags:?}");
 
-    build::build(
-        sh,
-        flags::Build {
-            release: false,
-            no_plugins: false,
-            plugins_only: true,
-        },
-    )
-    .and_then(|_| crate::cargo())
-    .and_then(|cargo| {
-        cmd!(sh, "{cargo} run --")
-            .args(&flags.args)
-            .run()
-            .map_err(anyhow::Error::new)
-    })
-    .with_context(err_context)
+    if let Some(ref data_dir) = flags.data_dir {
+        let data_dir = sh.current_dir().join(data_dir);
+
+        crate::cargo()
+            .and_then(|cargo| {
+                cmd!(sh, "{cargo} run")
+                    .args(["--package", "zellij"])
+                    .args(["--features", "disable_automatic_asset_installation"])
+                    .args(["--", "--data-dir", &format!("{}", data_dir.display())])
+                    .run()
+                    .map_err(anyhow::Error::new)
+            })
+            .with_context(err_context)
+    } else {
+        build::build(
+            sh,
+            flags::Build {
+                release: false,
+                no_plugins: false,
+                plugins_only: true,
+            },
+        )
+        .and_then(|_| crate::cargo())
+        .and_then(|cargo| {
+            cmd!(sh, "{cargo} run --")
+                .args(&flags.args)
+                .run()
+                .map_err(anyhow::Error::new)
+        })
+        .with_context(err_context)
+    }
 }
 
 /// Bundle all distributable content to `target/dist`.
@@ -146,6 +161,7 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
 
+    sh.change_dir(crate::project_root());
     let dry_run = if flags.dry_run {
         Some("--dry-run")
     } else {
