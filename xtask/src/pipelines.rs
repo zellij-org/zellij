@@ -280,7 +280,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                             "n" | "N" => {
                                 retry = false;
                                 break;
-                            }
+                            },
                             _ => {
                                 println!(" --> Unknown input '{buffer}', ignoring...");
                                 println!();
@@ -293,7 +293,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                         continue;
                     } else {
                         println!("Aborting publish for crate '{member}'");
-                        break;
+                        return Err::<(), _>(err);
                     }
                 } else {
                     println!("Waiting for crates.io to catch up...");
