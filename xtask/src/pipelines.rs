@@ -104,7 +104,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
     )
     .and_then(|_| crate::cargo())
     .and_then(|cargo| {
-        cmd!(sh, "{cargo} run")
+        cmd!(sh, "{cargo} run --")
             .args(&flags.args)
             .run()
             .map_err(anyhow::Error::new)
