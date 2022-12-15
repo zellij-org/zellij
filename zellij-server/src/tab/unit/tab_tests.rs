@@ -233,7 +233,6 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     }
     tab.apply_layout(
         layout,
-        // vec![(1, None), (2, None)],
         new_terminal_ids,
         HashMap::new(),
         index,
@@ -5933,6 +5932,52 @@ pub fn cannot_resize_down_when_pane_below_is_at_minimum_height() {
 }
 
 #[test]
+pub fn cannot_resize_down_when_pane_has_fixed_rows() {
+    // ┌───────────┐                  ┌───────────┐
+    // │███████████│                  │███████████│
+    // ├───────────┤ ==resize=down==> ├───────────┤
+    // │           │                  │           │
+    // └───────────┘                  └───────────┘
+    // █ == focused pane
+
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let mut initial_layout = PaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Horizontal;
+    let mut fixed_child = PaneLayout::default();
+    fixed_child.split_size = Some(SplitSize::Fixed(10));
+    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    let mut tab = create_new_tab_with_layout(size, initial_layout);
+    tab_resize_down(&mut tab, 1);
+
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(0))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        10,
+        "pane 1 height stayed the same"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(1))
+            .unwrap()
+            .position_and_size()
+            .rows
+            .as_usize(),
+        10,
+        "pane 2 height stayed the same"
+    );
+}
+
+#[test]
 pub fn resize_left_with_pane_to_the_left() {
     // ┌─────┬─────┐                    ┌───┬───────┐
     // │     │█████│                    │   │███████│
@@ -11214,6 +11259,52 @@ pub fn cannot_resize_right_when_pane_to_the_left_is_at_minimum_width() {
             .as_usize(),
         5,
         "pane 2 columns stayed the same"
+    );
+}
+
+#[test]
+pub fn cannot_resize_right_when_pane_has_fixed_columns() {
+    // ┌──┬──┐                   ┌──┬──┐
+    // │██│  │                   │██│  │
+    // │██│  │ ==resize=right==> │██│  │
+    // │██│  │                   │██│  │
+    // └──┴──┘                   └──┴──┘
+    // █ == focused pane
+
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+
+    let mut initial_layout = PaneLayout::default();
+    initial_layout.children_split_direction = SplitDirection::Vertical;
+    let mut fixed_child = PaneLayout::default();
+    fixed_child.split_size = Some(SplitSize::Fixed(60));
+    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    let mut tab = create_new_tab_with_layout(size, initial_layout);
+    tab_resize_down(&mut tab, 1);
+
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(0))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        60,
+        "pane 1 height stayed the same"
+    );
+    assert_eq!(
+        tab.tiled_panes
+            .panes
+            .get(&PaneId::Terminal(1))
+            .unwrap()
+            .position_and_size()
+            .cols
+            .as_usize(),
+        61,
+        "pane 2 height stayed the same"
     );
 }
 

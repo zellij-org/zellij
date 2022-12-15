@@ -10,7 +10,7 @@ use crate::thread_bus::Bus;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
-    DisplayPaneError(PaneId, String),
+    DisplayPaneError(Vec<PaneId>, String),
     Exit,
 }
 
@@ -34,7 +34,7 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
         err_ctx.add_call(ContextType::BackgroundJob((&event).into()));
         let job = event.clone();
         match event {
-            BackgroundJob::DisplayPaneError(pane_id, text) => {
+            BackgroundJob::DisplayPaneError(pane_ids, text) => {
                 if job_already_running(job, &mut running_jobs) {
                     continue;
                 }
@@ -42,11 +42,11 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
-                            ScreenInstruction::AddRedPaneFrameColorOverride(pane_id, Some(text)),
+                            ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids.clone(), Some(text)),
                         );
                         task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
                         let _ = senders.send_to_screen(
-                            ScreenInstruction::ClearPaneFrameColorOverride(pane_id),
+                            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids),
                         );
                     }
                 });

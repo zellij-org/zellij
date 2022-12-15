@@ -495,6 +495,12 @@ open an issue on GitHub:
         source: anyhow::Error,
     },
 
+    // this is a temporary hack until we're able to merge custom errors from within the various
+    // crates themselves without having to move their payload types here
+    #[error("Cannot resize fixed panes")]
+    CantResizeFixedPanes { pane_ids: Vec<(u32, bool)> }, // bool: 0 => terminal_pane, 1 =>
+                                                         // plugin_pane
+
     #[error("an error occured")]
     GenericError { source: anyhow::Error },
 }

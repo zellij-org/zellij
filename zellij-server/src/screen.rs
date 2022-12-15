@@ -224,8 +224,8 @@ pub enum ScreenInstruction {
     SearchToggleCaseSensitivity(ClientId),
     SearchToggleWholeWord(ClientId),
     SearchToggleWrap(ClientId),
-    AddRedPaneFrameColorOverride(PaneId, Option<String>), // Option<String> => optional error text
-    ClearPaneFrameColorOverride(PaneId),
+    AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
+    ClearPaneFrameColorOverride(Vec<PaneId>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -2120,22 +2120,26 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::AddRedPaneFrameColorOverride(pane_id, error_text) => {
+            ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
                 let all_tabs = screen.get_tabs_mut();
-                for tab in all_tabs.values_mut() {
-                    if tab.has_pane_with_pid(&pane_id) {
-                        tab.add_red_pane_frame_color_override(pane_id, error_text);
-                        break;
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            break;
+                        }
                     }
                 }
                 screen.render()?;
             },
-            ScreenInstruction::ClearPaneFrameColorOverride(pane_id) => {
+            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
                 let all_tabs = screen.get_tabs_mut();
-                for tab in all_tabs.values_mut() {
-                    if tab.has_pane_with_pid(&pane_id) {
-                        tab.clear_pane_frame_color_override(pane_id);
-                        break;
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.clear_pane_frame_color_override(pane_id);
+                            break;
+                        }
                     }
                 }
                 screen.render()?;

@@ -100,12 +100,20 @@ impl<'a> TiledPaneGrid<'a> {
         let err_context = || format!("failed to determine if pane {pane_id:?} can {strategy}");
 
         if let Some(direction) = strategy.direction {
+            if !self.pane_is_flexible(direction.into(), pane_id).unwrap_or(false) {
+                let pane_ids = match pane_id {
+                    PaneId::Terminal(id) => vec![(*id, true)],
+                    PaneId::Plugin(id) => vec![(*id, false)],
+                };
+                return Err(ZellijError::CantResizeFixedPanes{ pane_ids }).with_context(err_context);
+            }
             let mut pane_ids = self
                 .pane_ids_directly_next_to(pane_id, &direction)
                 .with_context(err_context)?;
             pane_ids.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
 
             if pane_ids.is_empty() {
+                // TODO: proper error
                 return Ok(false);
             }
 
