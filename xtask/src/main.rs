@@ -70,7 +70,6 @@ lazy_static::lazy_static! {
 
 fn main() -> anyhow::Result<()> {
     let shell = &Shell::new()?;
-    shell.change_dir(project_root());
 
     let flags = flags::Xtask::from_env()?;
     let now = Instant::now();

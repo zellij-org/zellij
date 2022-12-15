@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
 pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
+    let _pd = sh.push_dir(crate::project_root());
+
     let cargo = check_clippy()
         .and_then(|_| crate::cargo())
         .context("failed to run task 'clippy'")?;

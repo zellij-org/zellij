@@ -15,6 +15,8 @@ use xshell::{cmd, Shell};
 /// Build behavior is controlled by the [`flags`](flags::Build). Calls some variation of `cargo
 /// build` under the hood.
 pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
+    let _pd = sh.push_dir(crate::project_root());
+
     let cargo = crate::cargo()?;
     if flags.no_plugins && flags.plugins_only {
         eprintln!("Cannot use both '--no-plugins' and '--plugins-only'");

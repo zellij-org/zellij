@@ -6,6 +6,7 @@ use xshell::{cmd, Shell};
 pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     let err_context = "failed to run task 'test'";
 
+    let _pdo = sh.push_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
     let host_triple = host_target_triple(sh).context(err_context)?;
 

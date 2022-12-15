@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
 pub fn format(sh: &Shell, flags: flags::Format) -> anyhow::Result<()> {
+    let _pd = sh.push_dir(crate::project_root());
+
     let cargo = check_rustfmt()
         .and_then(|_| crate::cargo())
         .context("failed to run task 'format'")?;
