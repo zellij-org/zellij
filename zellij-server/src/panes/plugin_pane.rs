@@ -16,7 +16,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
-    pane_size::{Dimension, PaneGeom},
+    pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
 };
@@ -341,28 +341,28 @@ impl Pane for PluginPane {
     }
     fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p - percent);
+            self.geom.rows.set_percent(p - percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p + percent);
+            self.geom.rows.set_percent(p + percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p - percent);
+            self.geom.cols.set_percent(p - percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p + percent);
+            self.geom.cols.set_percent(p + percent);
             self.resize_grids();
             self.set_should_render(true);
         }

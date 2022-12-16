@@ -501,6 +501,9 @@ open an issue on GitHub:
     CantResizeFixedPanes { pane_ids: Vec<(u32, bool)> }, // bool: 0 => terminal_pane, 1 =>
                                                          // plugin_pane
 
+    #[error("Pane size remains unchanged")]
+    PaneSizeUnchanged,
+
     #[error("an error occured")]
     GenericError { source: anyhow::Error },
 }

@@ -577,9 +577,32 @@ impl TiledPanes {
                 *self.viewport.borrow(),
             );
 
-            pane_grid
+            match pane_grid
                 .change_pane_size(&active_pane_id, strategy, (RESIZE_PERCENT, RESIZE_PERCENT))
-                .with_context(err_context)?;
+                .with_context(err_context) {
+                    Ok(_) => {},
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::PaneSizeUnchanged) => {
+                            // try once more with double the resize percent, but let's keep it at that
+                            match pane_grid
+                                .change_pane_size(&active_pane_id, strategy, (RESIZE_PERCENT * 2.0, RESIZE_PERCENT * 2.0))
+                                .with_context(err_context) {
+                                    Ok(_) => {},
+                                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                                        Some(ZellijError::PaneSizeUnchanged) => {
+                                            Err::<(), _>(err).non_fatal()
+                                        },
+                                        _ => {
+                                            return Err(err);
+                                        }
+                                    }
+                                }
+                        },
+                        _ => {
+                            return Err(err);
+                        },
+                    }
+                }
 
             for pane in self.panes.values_mut() {
                 resize_pty!(pane, self.os_api, self.senders).unwrap();
