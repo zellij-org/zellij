@@ -57,21 +57,6 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             if flags.release {
                 // Perform wasm-opt on plugin
                 wasm_opt_plugin(sh, plugin_name).with_context(err_context)?;
-            } else {
-                // Must copy plugins to zellij-utils, too!
-                let source = PathBuf::from(
-                    std::env::var_os("CARGO_TARGET_DIR")
-                        .unwrap_or(crate::project_root().join("target").into_os_string()),
-                )
-                .join("wasm32-wasi")
-                .join("debug")
-                .join(plugin_name)
-                .with_extension("wasm");
-                let target = crate::project_root()
-                    .join("zellij-utils")
-                    .join("assets")
-                    .join("plugins");
-                sh.copy_file(source, target).with_context(err_context)?;
             }
         }
     }
