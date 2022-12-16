@@ -88,6 +88,56 @@ impl<'a> TiledPaneGrid<'a> {
         }
         .is_fixed())
     }
+    fn neighbor_pane_ids(&self, pane_id: &PaneId, direction: Direction) -> Result<Vec<PaneId>> {
+        let err_context = || format!("Failed to get neighboring panes");
+        // Shorthand
+        use Direction as Dir;
+        let mut neighbor_terminals = self
+            .pane_ids_directly_next_to(pane_id, &direction)
+            .with_context(err_context)?;
+
+        let neighbor_terminal_borders: HashSet<_> = if direction.is_horizontal() {
+            neighbor_terminals
+                .iter()
+                .map(|t| self.panes.borrow().get(t).unwrap().y())
+                .collect()
+        } else {
+            neighbor_terminals
+                .iter()
+                .map(|t| self.panes.borrow().get(t).unwrap().x())
+                .collect()
+        };
+
+        // Only return those neighbors that are aligned and between pane borders
+        let (some_direction, other_direction) = match direction {
+            Dir::Left | Dir::Right => (Dir::Up, Dir::Down),
+            Dir::Down | Dir::Up => (Dir::Left, Dir::Right),
+        };
+        let (some_borders, _some_terminals) = self
+            .contiguous_panes_with_alignment(
+                pane_id,
+                &neighbor_terminal_borders,
+                &direction,
+                &some_direction,
+            )
+            .with_context(err_context)?;
+        let (other_borders, _other_terminals) = self
+            .contiguous_panes_with_alignment(
+                pane_id,
+                &neighbor_terminal_borders,
+                &direction,
+                &other_direction,
+            )
+            .with_context(err_context)?;
+        neighbor_terminals.retain(|t| {
+            if direction.is_horizontal() {
+                self.pane_is_between_horizontal_borders(t, some_borders, other_borders)
+            } else {
+                self.pane_is_between_vertical_borders(t, some_borders, other_borders)
+            }
+        });
+        Ok(neighbor_terminals)
+    }
 
     // Check if panes in the desired direction can be resized. Returns the maximum resize that's
     // possible (at most `change_by`).
@@ -107,11 +157,21 @@ impl<'a> TiledPaneGrid<'a> {
                 };
                 return Err(ZellijError::CantResizeFixedPanes{ pane_ids }).with_context(err_context);
             }
-            let mut pane_ids = self
-                .pane_ids_directly_next_to(pane_id, &direction)
+            let pane_ids = self
+                .neighbor_pane_ids(pane_id, direction)
                 .with_context(err_context)?;
-            pane_ids.retain(|id| self.pane_is_flexible(direction.into(), id).unwrap_or(false));
 
+            let fixed_panes: Vec<PaneId> = pane_ids.iter().filter(|p| !self.pane_is_flexible(direction.into(), p).unwrap_or(false)).copied().collect();
+            if !fixed_panes.is_empty() {
+                let mut pane_ids = vec![];
+                for fixed_pane in fixed_panes {
+                    match fixed_pane {
+                        PaneId::Terminal(id) => pane_ids.push((id, true)),
+                        PaneId::Plugin(id) => pane_ids.push((id, false))
+                    };
+                }
+                return Err(ZellijError::CantResizeFixedPanes{ pane_ids }).with_context(err_context);
+            }
             if pane_ids.is_empty() {
                 // TODO: proper error
                 return Ok(false);
@@ -168,37 +228,43 @@ impl<'a> TiledPaneGrid<'a> {
         change_by: (f64, f64),
     ) -> Result<bool> {
         let err_context = || format!("failed to {strategy} by {change_by:?} for pane {pane_id:?}");
-
         // Shorthand
         use Direction as Dir;
+        let mut fixed_panes_blocking_resize = vec![];
+
         // Default behavior is to only increase pane size, unless the direction being resized to is
         // a boundary. In this case, decrease size from the other side (invert strategy)!
-        let strategy = if strategy.resize_increase()  // Only invert when increasing
+        let can_invert_strategy_if_needed = strategy.resize_increase()  // Only invert when increasing
             && strategy.invert_on_boundaries          // Only invert if configured to do so
-            && strategy.direction.is_some()           // Only invert if there's a direction
-            && strategy
-                .direction
-                .and_then(|direction| {
-                    // Only invert if there are no neighbor IDs in the given direction
-                    let mut neighbors = self.pane_ids_directly_next_to(pane_id, &direction)
-                        .unwrap_or_default();
-                    neighbors.retain(|pane_id| self.pane_is_flexible(direction.into(), pane_id).unwrap_or(false));
-                    neighbors.is_empty().then_some(true)
-                })
-                .unwrap_or(false)
-        {
-            strategy.invert()
-        } else {
-            *strategy
-        };
+            && strategy.direction.is_some();           // Only invert if there's a direction
 
-        if !self
-            .can_change_pane_size(pane_id, &strategy, change_by)
-            .with_context(err_context)?
-        {
-            // Resize not possible, quit
-            return Ok(false);
+        let can_change_pane_size_in_main_direction = self.can_change_pane_size(pane_id, &strategy, change_by).unwrap_or_else(|err| {
+            if let Some(ZellijError::CantResizeFixedPanes { pane_ids }) = err.downcast_ref::<ZellijError>() {
+                fixed_panes_blocking_resize.append(&mut pane_ids.clone());
+            }
+            false
+        });
+        let can_change_pane_size_in_inverted_direction = if can_invert_strategy_if_needed {
+            let strategy = strategy.invert();
+            self.can_change_pane_size(pane_id, &strategy, change_by).unwrap_or_else(|err| {
+                if let Some(ZellijError::CantResizeFixedPanes { pane_ids }) = err.downcast_ref::<ZellijError>() {
+                    fixed_panes_blocking_resize.append(&mut pane_ids.clone());
+                }
+                false
+            })
+        } else {
+            false
+        };
+        if strategy.direction.is_some() && !can_change_pane_size_in_main_direction && !can_change_pane_size_in_inverted_direction {
+            // we can't resize in any direction, not playing the blame game, but I'm looking at
+            // you: fixed_panes_blocking_resize
+            return Err(ZellijError::CantResizeFixedPanes{ pane_ids: fixed_panes_blocking_resize }).with_context(err_context);
         }
+        let strategy = if can_change_pane_size_in_main_direction {
+            *strategy
+        } else {
+            strategy.invert()
+        };
 
         if let Some(direction) = strategy.direction {
             let mut neighbor_terminals = self
@@ -413,10 +479,7 @@ impl<'a> TiledPaneGrid<'a> {
                         invert_on_boundaries: false,
                         ..strategy
                     };
-                    if self
-                        .change_pane_size(pane_id, &new_strategy, change_by)
-                        .with_context(err_context)?
-                    {
+                    if self.change_pane_size(pane_id, &new_strategy, change_by).unwrap_or(false) {
                         return Ok(true);
                     }
                 }
