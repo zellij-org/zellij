@@ -128,6 +128,18 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
 fn cross_compile(sh: &Shell, target: &OsString) -> anyhow::Result<()> {
     let err_context = || format!("failed to cross-compile for {target:?}");
 
+    crate::cargo()
+        .and_then(|cargo| {
+            cmd!(sh, "{cargo} install mandown").run()?;
+            Ok(cargo)
+        })
+        .and_then(|cargo| {
+            cmd!(sh, "{cargo} install cross")
+                .run()
+                .map_err(anyhow::Error::new)
+        })
+        .with_context(err_context)?;
+
     build::build(
         sh,
         flags::Build {
