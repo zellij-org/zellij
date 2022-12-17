@@ -17,7 +17,8 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
             no_plugins: false,
             plugins_only: true,
         },
-    ).context(err_context)?;
+    )
+    .context(err_context)?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
         let _pd = sh.push_dir(Path::new(subcrate));
