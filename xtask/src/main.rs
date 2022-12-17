@@ -141,6 +141,12 @@ anything!
 | make install /path/to/binary    | xtask install /path/to/binary |
 | make publish                    | xtask publish                 |
 | make manpage                    | xtask manpage                 |
+
+
+In order to disable xtask during the transitioning period: Delete/comment the
+`[alias]` section in `.cargo/config.toml` and use `cargo make` as before.
+If you're unhappy with `xtask` and decide to disable it, please tell us why so
+we can discuss this before making it final for the next release. Thank you!
 "
     ))
 }
