@@ -1,11 +1,21 @@
 //! Handle running `cargo clippy` on the sources.
-use crate::flags;
+use crate::{build, flags};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
 
 pub fn clippy(sh: &Shell, _flags: flags::Clippy) -> anyhow::Result<()> {
     let _pd = sh.push_dir(crate::project_root());
+
+    build::build(
+        sh,
+        flags::Build {
+            release: false,
+            no_plugins: false,
+            plugins_only: true,
+        },
+    )
+    .context("failed to run task 'clippy'")?;
 
     let cargo = check_clippy()
         .and_then(|_| crate::cargo())

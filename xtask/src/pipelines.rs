@@ -101,6 +101,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
             .and_then(|cargo| {
                 cmd!(sh, "{cargo} run")
                     .args(["--package", "zellij"])
+                    .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .run()
