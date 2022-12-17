@@ -1,4 +1,4 @@
-use crate::flags;
+use crate::{build, flags};
 use anyhow::{anyhow, Context};
 use std::path::Path;
 use xshell::{cmd, Shell};
@@ -9,6 +9,15 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     let _pdo = sh.push_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
     let host_triple = host_target_triple(sh).context(err_context)?;
+
+    build::build(
+        sh,
+        flags::Build {
+            release: false,
+            no_plugins: false,
+            plugins_only: true,
+        },
+    ).context(err_context)?;
 
     for subcrate in crate::WORKSPACE_MEMBERS.iter() {
         let _pd = sh.push_dir(Path::new(subcrate));
