@@ -45,13 +45,28 @@ mod not_wasm {
     use std::path::PathBuf;
 
     // Convenience macro to add plugins to the asset map (see `ASSET_MAP`)
+    //
+    // Plugins are taken from:
+    //
+    // - `zellij-utils/assets/plugins`: When building in release mode OR when the
+    //   `plugins_from_target` feature IS NOT set
+    // - `zellij-utils/../target/wasm32-wasi/debug`: When building in debug mode AND the
+    //   `plugins_from_target` feature IS set
     macro_rules! add_plugin {
         ($assets:expr, $plugin:literal) => {
             $assets.insert(
                 PathBuf::from("plugins").join($plugin),
+                #[cfg(any(not(feature = "plugins_from_target"), not(debug_assertions)))]
                 include_bytes!(concat!(
                     env!("CARGO_MANIFEST_DIR"),
                     "/assets/plugins/",
+                    $plugin
+                ))
+                .to_vec(),
+                #[cfg(all(feature = "plugins_from_target", debug_assertions))]
+                include_bytes!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../target/wasm32-wasi/debug/",
                     $plugin
                 ))
                 .to_vec(),
