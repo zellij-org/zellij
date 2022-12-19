@@ -42,7 +42,10 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     let senders = bus.senders.clone();
                     async move {
                         let _ = senders.send_to_screen(
-                            ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids.clone(), Some(text)),
+                            ScreenInstruction::AddRedPaneFrameColorOverride(
+                                pane_ids.clone(),
+                                Some(text),
+                            ),
                         );
                         task::sleep(std::time::Duration::from_millis(FLASH_DURATION_MS)).await;
                         let _ = senders.send_to_screen(

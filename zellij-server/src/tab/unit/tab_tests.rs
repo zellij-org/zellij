@@ -231,14 +231,8 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     for i in 0..layout.extract_run_instructions().len() {
         new_terminal_ids.push((i as u32, None));
     }
-    tab.apply_layout(
-        layout,
-        new_terminal_ids,
-        HashMap::new(),
-        index,
-        client_id,
-    )
-    .unwrap();
+    tab.apply_layout(layout, new_terminal_ids, HashMap::new(), index, client_id)
+        .unwrap();
     tab
 }
 

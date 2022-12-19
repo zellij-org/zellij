@@ -146,7 +146,9 @@ impl<'a> PaneResizer<'a> {
                     ..pane.current_geom()
                 },
             };
-            if new_geom.rows.as_usize() != current_geom.rows.as_usize() || new_geom.cols.as_usize() != current_geom.cols.as_usize() {
+            if new_geom.rows.as_usize() != current_geom.rows.as_usize()
+                || new_geom.cols.as_usize() != current_geom.cols.as_usize()
+            {
                 geoms_changed = true;
             }
             if pane.geom_override().is_some() {

@@ -18,8 +18,8 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
+    pane_size::PaneGeom,
     pane_size::SizeInPixels,
-    pane_size::{PaneGeom},
     position::Position,
     shared::make_terminal_title,
     vte,
