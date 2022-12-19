@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 ## [Unreleased]
 * fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
 * build: Use `xtask` as build system (https://github.com/zellij-org/zellij/pull/2012)
+* fix: show visual error when failing to resize panes in various situations (https://github.com/zellij-org/zellij/pull/2036)
 
 ## [0.34.4] - 2022-12-13
 
