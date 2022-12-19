@@ -40,6 +40,7 @@ members = [
     "zellij-utils",
     "zellij-tile",
     "zellij-tile-utils",
+    "xtask",
     ".",
 ]
 
@@ -69,6 +70,6 @@ pkg-fmt = "tgz"
 
 [features]
 # See remarks in zellij_utils/Cargo.toml
-default = [ "zellij-utils/asset_map" ]
+default = [ "zellij-utils/plugins_from_target" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]

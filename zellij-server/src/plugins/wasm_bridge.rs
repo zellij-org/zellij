@@ -98,7 +98,7 @@ If you're a user:
 
 If you're a developer:
     Please run zellij with updated plugins. The easiest way to achieve this
-    is to build zellij with `cargo make install`. Also refer to the docs:
+    is to build zellij with `cargo xtask install`. Also refer to the docs:
     https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
 ",
             first_line,
