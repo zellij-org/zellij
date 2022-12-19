@@ -1048,7 +1048,7 @@ impl Tab {
             if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
                 self.senders
                     .send_to_background_jobs(BackgroundJob::DisplayPaneError(
-                        active_pane_id,
+                        vec![active_pane_id],
                         "TOO SMALL!".into(),
                     ))
                     .with_context(err_context)?;
@@ -1102,7 +1102,7 @@ impl Tab {
             if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
                 self.senders
                     .send_to_background_jobs(BackgroundJob::DisplayPaneError(
-                        active_pane_id,
+                        vec![active_pane_id],
                         "TOO SMALL!".into(),
                     ))
                     .with_context(err_context)?;
@@ -1630,6 +1630,7 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
+        let err_context = || format!("unable to resize pane");
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -1639,9 +1640,28 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            self.tiled_panes
-                .resize_active_pane(client_id, &strategy)
-                .unwrap();
+            match self.tiled_panes.resize_active_pane(client_id, &strategy) {
+                Ok(_) => {},
+                Err(err) => match err.downcast_ref::<ZellijError>() {
+                    Some(ZellijError::CantResizeFixedPanes { pane_ids }) => {
+                        let mut pane_ids_to_error = vec![];
+                        for (id, is_terminal) in pane_ids {
+                            if *is_terminal {
+                                pane_ids_to_error.push(PaneId::Terminal(*id));
+                            } else {
+                                pane_ids_to_error.push(PaneId::Plugin(*id));
+                            };
+                        }
+                        self.senders
+                            .send_to_background_jobs(BackgroundJob::DisplayPaneError(
+                                pane_ids_to_error,
+                                "FIXED!".into(),
+                            ))
+                            .with_context(err_context)?;
+                    },
+                    _ => Err::<(), _>(err).fatal(),
+                },
+            }
         }
         Ok(())
     }

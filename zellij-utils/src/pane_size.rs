@@ -79,6 +79,10 @@ impl Dimension {
         }
     }
 
+    pub fn set_percent(&mut self, percent: f64) {
+        self.constraint = Constraint::Percent(percent);
+    }
+
     pub fn set_inner(&mut self, inner: usize) {
         self.inner = inner;
     }
