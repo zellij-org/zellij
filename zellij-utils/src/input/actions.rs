@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{Layout, PaneLayout};
+use super::layout::{Layout, PaneLayout, FloatingPanesLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
@@ -162,7 +162,7 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, Option<String>), // the String is the tab name
+    NewTab(Option<PaneLayout>, Vec<FloatingPanesLayout>, Option<String>), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -368,15 +368,15 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
-                        let (tab_name, layout) = tabs.drain(..).next().unwrap();
+                        let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
-                        Ok(vec![Action::NewTab(Some(layout), name)])
+                        Ok(vec![Action::NewTab(Some(layout), floating_panes_layout, name)])
                     } else {
-                        let layout = layout.new_tab();
-                        Ok(vec![Action::NewTab(Some(layout), name)])
+                        let (layout, floating_panes_layout) = layout.new_tab();
+                        Ok(vec![Action::NewTab(Some(layout), floating_panes_layout, name)])
                     }
                 } else {
-                    Ok(vec![Action::NewTab(None, name)])
+                    Ok(vec![Action::NewTab(None, vec![], name)])
                 }
             },
         }

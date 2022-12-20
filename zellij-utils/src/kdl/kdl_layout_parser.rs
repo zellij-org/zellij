@@ -1,7 +1,7 @@
 use crate::input::{
     command::RunCommand,
     config::ConfigError,
-    layout::{Layout, PaneLayout, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize},
+    layout::{Layout, PaneLayout, FloatingPanesLayout, PercentOrFixed, Run, RunPlugin, RunPluginLocation, SplitDirection, SplitSize},
 };
 
 use kdl::*;
@@ -77,6 +77,18 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "split_direction"
             || property_name == "pane"
             || property_name == "children"
+    }
+    fn is_a_valid_floating_pane_property(&self, property_name: &str) -> bool {
+        property_name == "borderless"
+            || property_name == "focus"
+            || property_name == "name"
+            || property_name == "plugin"
+            || property_name == "command"
+            || property_name == "edit"
+            || property_name == "cwd"
+            || property_name == "args"
+            || property_name == "close_on_exit"
+            || property_name == "start_suspended"
     }
     fn is_a_valid_tab_property(&self, property_name: &str) -> bool {
         property_name == "focus"
@@ -161,6 +173,44 @@ impl<'a> KdlLayoutParser<'a> {
             Err(kdl_parsing_error!(
                 format!(
                     "size cannot be bare, it should have a value (eg. 'size 1', or 'size \"50%\"')"
+                ),
+                node
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+    fn parse_percent_or_fixed(&self, kdl_node: &KdlNode, value_name: &str) -> Result<Option<PercentOrFixed>, ConfigError> {
+        if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, value_name) {
+            match PercentOrFixed::from_str(size) {
+                Ok(size) => Ok(Some(size)),
+                Err(_e) => Err(kdl_parsing_error!(
+                    format!(
+                        "{} should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")",
+                        value_name
+                    ),
+                    kdl_node
+                )),
+            }
+        } else if let Some(size) = kdl_get_int_property_or_child_value!(kdl_node, value_name) {
+            // TODO: width/height should not be 0
+//             if size == 0 {
+//                 return Err(kdl_parsing_error!(
+//                     format!("{} should be greater than 0", value_name),
+//                     kdl_node
+//                 ));
+//             }
+            Ok(Some(PercentOrFixed::Fixed(size as usize)))
+        } else if let Some(node) = kdl_property_or_child_value_node!(kdl_node, "size") {
+            Err(kdl_parsing_error!(
+                format!("{} should be a fixed number (eg. 1) or a quoted percent (eg. \"50%\")", value_name),
+                node
+            ))
+        } else if let Some(node) = kdl_child_with_name!(kdl_node, "size") {
+            Err(kdl_parsing_error!(
+                format!(
+                    "{} cannot be bare, it should have a value (eg. 'size 1', or 'size \"50%\"')",
+                    value_name
                 ),
                 node
             ))
@@ -347,6 +397,28 @@ impl<'a> KdlLayoutParser<'a> {
             ..Default::default()
         })
     }
+    fn parse_floating_pane_node(&self, kdl_node: &KdlNode) -> Result<FloatingPanesLayout, ConfigError> {
+        self.assert_valid_floating_pane_properties(kdl_node)?;
+        let height = self.parse_percent_or_fixed(kdl_node, "height")?;
+        let width = self.parse_percent_or_fixed(kdl_node, "width")?;
+        let x = self.parse_percent_or_fixed(kdl_node, "x")?;
+        let y = self.parse_percent_or_fixed(kdl_node, "y")?;
+        let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
+        let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
+        let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
+            .map(|name| name.to_string());
+        self.assert_no_mixed_children_and_properties(kdl_node)?;
+        Ok(FloatingPanesLayout {
+            name,
+            height,
+            width,
+            x,
+            y,
+            run,
+            focus,
+            ..Default::default()
+        })
+    }
     fn insert_children_to_pane_template(
         &self,
         kdl_node: &KdlNode,
@@ -489,7 +561,7 @@ impl<'a> KdlLayoutParser<'a> {
     fn parse_tab_node(
         &mut self,
         kdl_node: &KdlNode,
-    ) -> Result<(bool, Option<String>, PaneLayout), ConfigError> {
+    ) -> Result<(bool, Option<String>, PaneLayout, Vec<FloatingPanesLayout>), ConfigError> {
         // (is_focused, Option<tab_name>, PaneLayout)
         self.assert_valid_tab_properties(kdl_node)?;
         let tab_name =
@@ -510,7 +582,8 @@ impl<'a> KdlLayoutParser<'a> {
         if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
             pane_layout.add_cwd_to_layout(&cwd_prefix);
         }
-        Ok((is_focused, tab_name, pane_layout))
+        // TODO: handle floating_panes
+        Ok((is_focused, tab_name, pane_layout, vec![]))
     }
     fn parse_child_pane_nodes_for_tab(
         &self,
@@ -528,6 +601,8 @@ impl<'a> KdlLayoutParser<'a> {
                     pane_template,
                     &pane_template_kdl_node,
                 )?);
+            } else if kdl_name!(child) == "floating_panes" {
+                // TODO
             } else if self.is_a_valid_tab_property(kdl_name!(child)) {
                 return Err(ConfigError::new_layout_kdl_error(
                     format!("Tab property '{}' must be placed on the tab title line and not in the child braces", kdl_name!(child)),
@@ -705,6 +780,33 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(())
     }
+    fn assert_valid_floating_pane_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
+        for entry in pane_node.entries() {
+            match entry
+                .name()
+                .map(|e| e.value())
+                .or_else(|| entry.value().as_string())
+            {
+                Some(string_name) => {
+                    if !self.is_a_valid_floating_pane_property(string_name) {
+                        return Err(ConfigError::new_layout_kdl_error(
+                            format!("Unknown pane property: {}", string_name),
+                            entry.span().offset(),
+                            entry.span().len(),
+                        ));
+                    }
+                },
+                None => {
+                    return Err(ConfigError::new_layout_kdl_error(
+                        "Unknown floating pane property".into(),
+                        entry.span().offset(),
+                        entry.span().len(),
+                    ));
+                },
+            }
+        }
+        Ok(())
+    }
     fn assert_valid_tab_properties(&self, pane_node: &KdlNode) -> Result<(), ConfigError> {
         let all_property_names = kdl_property_names!(pane_node);
         for name in all_property_names {
@@ -786,7 +888,7 @@ impl<'a> KdlLayoutParser<'a> {
         kdl_node: &KdlNode,
         mut tab_layout: PaneLayout,
         tab_layout_kdl_node: &KdlNode,
-    ) -> Result<(bool, Option<String>, PaneLayout), ConfigError> {
+    ) -> Result<(bool, Option<String>, PaneLayout, Vec<FloatingPanesLayout>), ConfigError> {
         // (is_focused, Option<tab_name>, PaneLayout)
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
@@ -821,7 +923,8 @@ impl<'a> KdlLayoutParser<'a> {
             tab_layout.add_cwd_to_layout(&cwd_prefix);
         }
         tab_layout.external_children_index = None;
-        Ok((is_focused, tab_name, tab_layout))
+        // TODO: handle floating_panes
+        Ok((is_focused, tab_name, tab_layout, vec![]))
     }
     fn populate_one_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         let template_name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
@@ -1058,7 +1161,7 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn layout_with_tabs(
         &self,
-        tabs: Vec<(Option<String>, PaneLayout)>,
+        tabs: Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)>,
         focused_tab_index: Option<usize>,
     ) -> Result<Layout, ConfigError> {
         let template = self
@@ -1072,7 +1175,7 @@ impl<'a> KdlLayoutParser<'a> {
             ..Default::default()
         })
     }
-    fn layout_with_one_tab(&self, panes: Vec<PaneLayout>) -> Result<Layout, ConfigError> {
+    fn layout_with_one_tab(&self, panes: Vec<PaneLayout>, floating_panes: Vec<FloatingPanesLayout>) -> Result<Layout, ConfigError> {
         let main_tab_layout = PaneLayout {
             children: panes,
             ..Default::default()
@@ -1083,13 +1186,14 @@ impl<'a> KdlLayoutParser<'a> {
             // to explicitly place it in the first tab
             vec![]
         } else {
-            vec![(None, main_tab_layout.clone())]
+            vec![(None, main_tab_layout.clone(), floating_panes.clone())]
         };
         let template = default_template.unwrap_or_else(|| main_tab_layout.clone());
         // create a layout with one tab that has these child panes
         Ok(Layout {
             tabs,
             template: Some(template),
+            floating_panes_template: floating_panes,
             ..Default::default()
         })
     }
@@ -1105,8 +1209,9 @@ impl<'a> KdlLayoutParser<'a> {
     fn populate_layout_child(
         &mut self,
         child: &KdlNode,
-        child_tabs: &mut Vec<(bool, Option<String>, PaneLayout)>,
+        child_tabs: &mut Vec<(bool, Option<String>, PaneLayout, Vec<FloatingPanesLayout>)>,
         child_panes: &mut Vec<PaneLayout>,
+        child_floating_panes: &mut Vec<FloatingPanesLayout>,
     ) -> Result<(), ConfigError> {
         let child_name = kdl_name!(child);
         if child_name == "pane" {
@@ -1122,6 +1227,23 @@ impl<'a> KdlLayoutParser<'a> {
                 pane_node.add_cwd_to_layout(&global_cwd);
             }
             child_panes.push(pane_node);
+        } else if child_name == "floating_panes" {
+            // TODO
+            // * get children
+            // * loop through children and do
+            if let Some(children) = kdl_children_nodes!(child) {
+                for child in children {
+                    if kdl_name!(child) == "pane" {
+                        let mut pane_node = self.parse_floating_pane_node(child)?;
+                        if let Some(global_cwd) = &self.global_cwd {
+                            pane_node.add_cwd_to_layout(&global_cwd);
+                        }
+                        child_floating_panes.push(pane_node);
+                    } else {
+                        // TODO: invalid node name
+                    }
+                }
+            }
         } else if child_name == "tab" {
             if !child_panes.is_empty() {
                 return Err(ConfigError::new_layout_kdl_error(
@@ -1209,18 +1331,19 @@ impl<'a> KdlLayoutParser<'a> {
         }
         let mut child_tabs = vec![];
         let mut child_panes = vec![];
+        let mut child_floating_panes = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {
             self.populate_global_cwd(layout_node)?;
             self.populate_pane_templates(children, &kdl_layout)?;
             self.populate_tab_templates(children)?;
             for child in children {
-                self.populate_layout_child(child, &mut child_tabs, &mut child_panes)?;
+                self.populate_layout_child(child, &mut child_tabs, &mut child_panes, &mut child_floating_panes)?;
             }
         }
         if !child_tabs.is_empty() {
             let has_more_than_one_focused_tab = child_tabs
                 .iter()
-                .filter(|(is_focused, _, _)| *is_focused)
+                .filter(|(is_focused, _, _, _)| *is_focused)
                 .count()
                 > 1;
             if has_more_than_one_focused_tab {
@@ -1230,15 +1353,16 @@ impl<'a> KdlLayoutParser<'a> {
                     kdl_layout.span().len(),
                 ));
             }
-            let focused_tab_index = child_tabs.iter().position(|(is_focused, _, _)| *is_focused);
-            let child_tabs: Vec<(Option<String>, PaneLayout)> = child_tabs
+            let focused_tab_index = child_tabs.iter().position(|(is_focused, _, _, _)| *is_focused);
+            let child_tabs: Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)> = child_tabs
                 .drain(..)
-                .map(|(_is_focused, tab_name, pane_layout)| (tab_name, pane_layout))
+                .map(|(_is_focused, tab_name, pane_layout, floating_panes_layout)| (tab_name, pane_layout, floating_panes_layout))
                 .collect();
             self.layout_with_tabs(child_tabs, focused_tab_index)
         } else if !child_panes.is_empty() {
-            self.layout_with_one_tab(child_panes)
+            self.layout_with_one_tab(child_panes, child_floating_panes)
         } else {
+            // TODO: add floating panes
             self.layout_with_one_pane()
         }
     }

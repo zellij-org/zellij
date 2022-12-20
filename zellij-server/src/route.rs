@@ -430,12 +430,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .with_context(err_context)?;
         },
-        Action::NewTab(tab_layout, tab_name) => {
+        Action::NewTab(tab_layout, floating_panes_layout, tab_name) => {
             let shell = session.default_shell.clone();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::NewTab(
-                    shell, tab_layout, tab_name, client_id,
+                    shell, tab_layout, floating_panes_layout, tab_name, client_id,
                 ))
                 .with_context(err_context)?;
         },

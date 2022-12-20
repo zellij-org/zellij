@@ -12,7 +12,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
+        layout::{Layout, PaneLayout, FloatingPanesLayout, Run, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
     pane_size::Size,
@@ -29,6 +29,7 @@ pub enum PluginInstruction {
     NewTab(
         Option<TerminalAction>,
         Option<PaneLayout>,
+        Vec<FloatingPanesLayout>,
         Option<String>, // tab name
         usize,          // tab_index
         ClientId,
@@ -91,6 +92,7 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::NewTab(
                 terminal_action,
                 tab_layout,
+                floating_panes_layout,
                 tab_name,
                 tab_index,
                 client_id,
@@ -98,7 +100,7 @@ pub(crate) fn plugin_thread_main(
                 let mut plugin_ids: HashMap<RunPluginLocation, Vec<u32>> = HashMap::new();
                 let extracted_run_instructions = tab_layout
                     .clone()
-                    .unwrap_or_else(|| layout.new_tab())
+                    .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
                 let size = Size::default(); // TODO: is this bad?
                 for run_instruction in extracted_run_instructions {
@@ -108,9 +110,11 @@ pub(crate) fn plugin_thread_main(
                         plugin_ids.entry(run.location).or_default().push(plugin_id);
                     }
                 }
+                // TODO: look for plugins in floating_panes_layout
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
                     terminal_action,
                     tab_layout,
+                    floating_panes_layout,
                     tab_name,
                     tab_index,
                     plugin_ids,

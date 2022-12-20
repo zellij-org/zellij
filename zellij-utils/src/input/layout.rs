@@ -213,9 +213,66 @@ impl fmt::Display for RunPluginLocation {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
-    pub tabs: Vec<(Option<String>, PaneLayout)>,
+    pub tabs: Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)>,
     pub focused_tab_index: Option<usize>,
     pub template: Option<PaneLayout>,
+    pub floating_panes_template: Vec<FloatingPanesLayout>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub enum PercentOrFixed {
+    Percent(usize), // 1 to 100
+    Fixed(usize), // An absolute number of columns or rows
+}
+
+impl PercentOrFixed {
+    pub fn to_position(&self, whole: usize) -> usize {
+        match self {
+            PercentOrFixed::Percent(percent) => (whole as f64 / 100.0 * *percent as f64).ceil() as usize,
+            PercentOrFixed::Fixed(fixed) => if *fixed > whole { whole } else { *fixed }
+        }
+    }
+}
+
+impl FromStr for PercentOrFixed {
+    type Err = Box<dyn std::error::Error>;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.chars().last() == Some('%') {
+            let char_count = s.chars().count();
+            let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
+            // TODO: 0% for width/height?
+            if percent_size >= 0 && percent_size <= 100 {
+                Ok(PercentOrFixed::Percent(percent_size))
+            } else {
+                Err("Percent must be between 0 and 100".into())
+            }
+        } else {
+            let fixed_size = usize::from_str_radix(s, 10)?;
+            Ok(PercentOrFixed::Fixed(fixed_size))
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub struct FloatingPanesLayout { // TODO: change name to singular
+    pub name: Option<String>,
+    pub height: Option<PercentOrFixed>,
+    pub width: Option<PercentOrFixed>,
+    pub x: Option<PercentOrFixed>,
+    pub y: Option<PercentOrFixed>,
+    pub run: Option<Run>,
+    pub focus: Option<bool>,
+}
+
+impl FloatingPanesLayout {
+    pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
+        match self.run.as_mut() {
+            Some(run) => run.add_cwd(cwd),
+            None => {
+                self.run = Some(Run::Cwd(cwd.clone()));
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
@@ -452,11 +509,12 @@ impl Layout {
         Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
     }
 
-    pub fn new_tab(&self) -> PaneLayout {
-        match &self.template {
+    pub fn new_tab(&self) -> (PaneLayout, Vec<FloatingPanesLayout>) {
+        let template = match &self.template {
             Some(template) => template.clone(),
             None => PaneLayout::default(),
-        }
+        };
+        (template, self.floating_panes_template.clone())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -467,7 +525,7 @@ impl Layout {
         !self.tabs.is_empty()
     }
 
-    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout)> {
+    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)> {
         // String is the tab name
         self.tabs.clone()
     }

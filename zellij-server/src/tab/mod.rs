@@ -42,7 +42,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{PaneLayout, Run, RunPluginLocation},
+        layout::{PaneLayout, FloatingPanesLayout, Run, RunPluginLocation},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -509,7 +509,9 @@ impl Tab {
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
+        floating_panes_layout: Vec<FloatingPanesLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
@@ -657,8 +659,6 @@ impl Tab {
                     }
                 }
                 self.is_pending = false;
-                self.apply_buffered_instructions()?;
-                Ok(())
             },
             Err(e) => {
                 for (unused_pid, _) in new_terminal_ids {
@@ -670,9 +670,54 @@ impl Tab {
                 Err::<(), _>(anyError::msg(e))
                     .with_context(err_context)
                     .non_fatal(); // TODO: propagate this to the user
-                Ok(())
+                return Ok(());
             },
+        };
+        let mut layout_has_floating_panes = false;
+        let mut floating_panes_layout = floating_panes_layout.iter();
+        for (pid, hold_for_command) in new_floating_terminal_ids.iter() {
+            layout_has_floating_panes = true;
+            // TODO: handle floating pane focus
+            let floating_pane_layout = floating_panes_layout.next().unwrap(); // TODO: no unwrap
+            let position_and_size = self.floating_panes.position_floating_pane_layout(&floating_pane_layout);
+            let mut focus_pane_id: Option<PaneId> = None;
+            let next_terminal_position = self.get_next_terminal_position();
+            let initial_title = match &layout.run {
+                Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                _ => None,
+            };
+            let mut new_pane = TerminalPane::new(
+                *pid,
+                position_and_size,
+                self.style,
+                next_terminal_position,
+                layout.name.clone().unwrap_or_default(),
+                self.link_handler.clone(),
+                self.character_cell_size.clone(),
+                self.sixel_image_store.clone(),
+                self.terminal_emulator_colors.clone(),
+                self.terminal_emulator_color_codes.clone(),
+                initial_title,
+            );
+            new_pane.set_borderless(false);
+            new_pane.set_content_offset(Offset::frame(1));
+            if let Some(held_command) = hold_for_command {
+                new_pane.hold(None, true, held_command.clone());
+            }
+            resize_pty!(new_pane, self.os_api, self.senders);
+            self.floating_panes.add_pane(
+                PaneId::Terminal(*pid),
+                Box::new(new_pane),
+            );
+            // set_focus_pane_id(layout, PaneId::Terminal(*pid));
         }
+        if layout_has_floating_panes {
+            if !self.floating_panes.panes_are_visible() {
+                self.toggle_floating_panes(client_id, None)?;
+            }
+        }
+        self.apply_buffered_instructions()?;
+        Ok(())
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
