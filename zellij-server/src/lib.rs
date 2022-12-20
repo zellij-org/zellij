@@ -3,6 +3,7 @@ pub mod output;
 pub mod panes;
 pub mod tab;
 
+mod background_jobs;
 mod logging_pipe;
 mod plugins;
 mod pty;
@@ -13,6 +14,7 @@ mod terminal_bytes;
 mod thread_bus;
 mod ui;
 
+use background_jobs::{background_jobs_main, BackgroundJob};
 use log::info;
 use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
@@ -110,6 +112,7 @@ pub(crate) struct SessionMetaData {
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
     pty_writer_thread: Option<thread::JoinHandle<()>>,
+    background_jobs_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Drop for SessionMetaData {
@@ -118,6 +121,7 @@ impl Drop for SessionMetaData {
         let _ = self.senders.send_to_screen(ScreenInstruction::Exit);
         let _ = self.senders.send_to_plugin(PluginInstruction::Exit);
         let _ = self.senders.send_to_pty_writer(PtyWriteInstruction::Exit);
+        let _ = self.senders.send_to_background_jobs(BackgroundJob::Exit);
         if let Some(screen_thread) = self.screen_thread.take() {
             let _ = screen_thread.join();
         }
@@ -129,6 +133,9 @@ impl Drop for SessionMetaData {
         }
         if let Some(pty_writer_thread) = self.pty_writer_thread.take() {
             let _ = pty_writer_thread.join();
+        }
+        if let Some(background_jobs_thread) = self.background_jobs_thread.take() {
+            let _ = background_jobs_thread.join();
         }
     }
 }
@@ -638,6 +645,10 @@ fn init_session(
         channels::unbounded();
     let to_pty_writer = SenderWithContext::new(to_pty_writer);
 
+    let (to_background_jobs, background_jobs_receiver): ChannelWithContext<BackgroundJob> =
+        channels::unbounded();
+    let to_background_jobs = SenderWithContext::new(to_background_jobs);
+
     // Determine and initialize the data directory
     let data_dir = opts.data_dir.unwrap_or_else(get_default_data_dir);
 
@@ -664,6 +675,7 @@ fn init_session(
                     Some(&to_plugin),
                     Some(&to_server),
                     Some(&to_pty_writer),
+                    Some(&to_background_jobs),
                     Some(os_input.clone()),
                 ),
                 opts.debug,
@@ -684,6 +696,7 @@ fn init_session(
                 Some(&to_plugin),
                 Some(&to_server),
                 Some(&to_pty_writer),
+                Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
             let max_panes = opts.max_panes;
@@ -711,6 +724,7 @@ fn init_session(
                 Some(&to_plugin),
                 None,
                 Some(&to_pty_writer),
+                Some(&to_background_jobs),
                 None,
             );
             let store = Store::default();
@@ -738,9 +752,27 @@ fn init_session(
                 Some(&to_plugin),
                 Some(&to_server),
                 None,
+                Some(&to_background_jobs),
                 Some(os_input.clone()),
             );
             || pty_writer_main(pty_writer_bus).fatal()
+        })
+        .unwrap();
+
+    let background_jobs_thread = thread::Builder::new()
+        .name("background_jobs".to_string())
+        .spawn({
+            let background_jobs_bus = Bus::new(
+                vec![background_jobs_receiver],
+                Some(&to_screen),
+                Some(&to_pty),
+                Some(&to_plugin),
+                Some(&to_server),
+                Some(&to_pty_writer),
+                None,
+                Some(os_input.clone()),
+            );
+            || background_jobs_main(background_jobs_bus).fatal()
         })
         .unwrap();
 
@@ -750,6 +782,7 @@ fn init_session(
             to_pty: Some(to_pty),
             to_plugin: Some(to_plugin),
             to_pty_writer: Some(to_pty_writer),
+            to_background_jobs: Some(to_background_jobs),
             to_server: None,
             should_silently_fail: false,
         },
@@ -760,5 +793,6 @@ fn init_session(
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
+        background_jobs_thread: Some(background_jobs_thread),
     }
 }

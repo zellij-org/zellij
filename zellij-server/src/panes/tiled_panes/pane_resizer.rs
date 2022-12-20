@@ -53,7 +53,7 @@ impl<'a> PaneResizer<'a> {
         let spans = self
             .discretize_spans(grid, space)
             .map_err(|err| anyhow!("{}", err))?;
-        self.apply_spans(spans);
+        self.apply_spans(spans)?;
         Ok(())
     }
 
@@ -127,10 +127,13 @@ impl<'a> PaneResizer<'a> {
         Ok(grid.into_iter().flatten().collect())
     }
 
-    fn apply_spans(&mut self, spans: Vec<Span>) {
+    fn apply_spans(&mut self, spans: Vec<Span>) -> Result<()> {
+        let err_context = || format!("Failed to apply spans");
         let mut panes = self.panes.borrow_mut();
+        let mut geoms_changed = false;
         for span in spans {
             let pane = panes.get_mut(&span.pid).unwrap();
+            let current_geom = pane.position_and_size();
             let new_geom = match span.direction {
                 SplitDirection::Horizontal => PaneGeom {
                     x: span.pos,
@@ -143,11 +146,25 @@ impl<'a> PaneResizer<'a> {
                     ..pane.current_geom()
                 },
             };
+            if new_geom.rows.as_usize() != current_geom.rows.as_usize()
+                || new_geom.cols.as_usize() != current_geom.cols.as_usize()
+            {
+                geoms_changed = true;
+            }
             if pane.geom_override().is_some() {
                 pane.set_geom_override(new_geom);
             } else {
                 pane.set_geom(new_geom);
             }
+        }
+        if geoms_changed {
+            Ok(())
+        } else {
+            // probably a rounding issue - this might be considered an error depending on who
+            // called us - if it's an explicit resize operation, it's clearly an error (the user
+            // wanted to resize and doesn't care about percentage rounding), if it's resizing the
+            // terminal window as a whole, it might not be
+            Err(ZellijError::PaneSizeUnchanged).with_context(err_context)
         }
     }
 

@@ -1,8 +1,9 @@
 //! Definitions and helpers for sending and receiving messages between threads.
 
 use crate::{
-    os_input_output::ServerOsApi, plugins::PluginInstruction, pty::PtyInstruction,
-    pty_writer::PtyWriteInstruction, screen::ScreenInstruction, ServerInstruction,
+    background_jobs::BackgroundJob, os_input_output::ServerOsApi, plugins::PluginInstruction,
+    pty::PtyInstruction, pty_writer::PtyWriteInstruction, screen::ScreenInstruction,
+    ServerInstruction,
 };
 use zellij_utils::errors::prelude::*;
 use zellij_utils::{channels, channels::SenderWithContext, errors::ErrorContext};
@@ -15,6 +16,7 @@ pub struct ThreadSenders {
     pub to_plugin: Option<SenderWithContext<PluginInstruction>>,
     pub to_server: Option<SenderWithContext<ServerInstruction>>,
     pub to_pty_writer: Option<SenderWithContext<PtyWriteInstruction>>,
+    pub to_background_jobs: Option<SenderWithContext<BackgroundJob>>,
     // this is a convenience for the unit tests
     // it's not advisable to set it to true in production code
     pub should_silently_fail: bool,
@@ -109,6 +111,23 @@ impl ThreadSenders {
                 .context("failed to send message to pty writer")
         }
     }
+    pub fn send_to_background_jobs(&self, background_job: BackgroundJob) -> Result<()> {
+        if self.should_silently_fail {
+            let _ = self
+                .to_background_jobs
+                .as_ref()
+                .map(|sender| sender.send(background_job))
+                .unwrap_or_else(|| Ok(()));
+            Ok(())
+        } else {
+            self.to_background_jobs
+                .as_ref()
+                .context("failed to get background jobs sender")?
+                .send(background_job)
+                .to_anyhow()
+                .context("failed to send message to background jobs")
+        }
+    }
 
     #[allow(unused)]
     pub fn silently_fail_on_send(mut self) -> Self {
@@ -142,6 +161,7 @@ impl<T> Bus<T> {
         to_plugin: Option<&SenderWithContext<PluginInstruction>>,
         to_server: Option<&SenderWithContext<ServerInstruction>>,
         to_pty_writer: Option<&SenderWithContext<PtyWriteInstruction>>,
+        to_background_jobs: Option<&SenderWithContext<BackgroundJob>>,
         os_input: Option<Box<dyn ServerOsApi>>,
     ) -> Self {
         Bus {
@@ -152,6 +172,7 @@ impl<T> Bus<T> {
                 to_plugin: to_plugin.cloned(),
                 to_server: to_server.cloned(),
                 to_pty_writer: to_pty_writer.cloned(),
+                to_background_jobs: to_background_jobs.cloned(),
                 should_silently_fail: false,
             },
             os_input: os_input.clone(),
@@ -174,6 +195,7 @@ impl<T> Bus<T> {
                 to_plugin: None,
                 to_server: None,
                 to_pty_writer: None,
+                to_background_jobs: None,
                 should_silently_fail: true,
             },
             os_input: None,

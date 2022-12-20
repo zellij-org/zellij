@@ -39,10 +39,12 @@ For the removal of doubt: changing this rule itself requires a two thirds majori
 * Kunal Mohan <kunalmohan99@gmail.com>
 * Henil Dedania <dedaniahenil@gmail.com>
 * Roee Shapira <ro33.sha@gmail.com>
-* Alex Kenji Berthold <aks.kenji@protonmail.com>
 * Kyle Sutherland-Cash <kyle.sutherlandcash@gmail.com>
 * Dante Pippi <dante.dpf@gmail.com>
 * Thomas Linford <linford.t@gmail.com>
 * Jaeheon Ji <atx6419@gmail.com>
 * Raph <zellij@raphtec.net>
 * Andreas Hartmann <hartan@7x.de>
+
+## Emeritus (past Organization Members)
+* Alex Kenji Berthold <aks.kenji@protonmail.com>
