@@ -98,7 +98,7 @@ fn layout_with_tabs() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        tabs: vec![(None, PaneLayout::default())],
+        tabs: vec![(None, PaneLayout::default(), vec![])],
         template: Some(PaneLayout::default()),
         ..Default::default()
     };
@@ -134,6 +134,7 @@ fn layout_with_nested_differing_tabs() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 None,
@@ -142,6 +143,7 @@ fn layout_with_nested_differing_tabs() {
                     children: vec![PaneLayout::default(), PaneLayout::default()],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),
@@ -412,6 +414,7 @@ fn layout_with_tab_names() {
                     children: vec![],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 Some("my cool tab name 2".into()),
@@ -419,6 +422,7 @@ fn layout_with_tab_names() {
                     children: vec![],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),
@@ -439,9 +443,9 @@ fn layout_with_focused_tab() {
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
         tabs: vec![
-            (None, PaneLayout::default()),
-            (None, PaneLayout::default()),
-            (None, PaneLayout::default()),
+            (None, PaneLayout::default(), vec![]),
+            (None, PaneLayout::default(), vec![]),
+            (None, PaneLayout::default(), vec![]),
         ],
         template: Some(PaneLayout::default()),
         focused_tab_index: Some(1),
@@ -488,6 +492,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 Some("my second tab".into()),
@@ -504,6 +509,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 None,
@@ -516,6 +522,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),

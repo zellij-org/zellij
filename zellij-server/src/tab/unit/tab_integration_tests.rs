@@ -229,7 +229,9 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
         index,
         client_id,
@@ -285,7 +287,9 @@ fn create_new_tab_with_os_api(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
         index,
         client_id,
@@ -316,7 +320,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let layout = Layout::from_str(layout, "layout_file_name".into(), None).unwrap();
-    let tab_layout = layout.new_tab();
+    let (tab_layout, floating_panes_layout) = layout.new_tab();
     let mut tab = Tab::new(
         index,
         position,
@@ -343,7 +347,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| (i as u32, None))
         .collect();
-    tab.apply_layout(tab_layout, pane_ids, HashMap::new(), index, client_id)
+    tab.apply_layout(tab_layout, vec![], pane_ids, vec![], HashMap::new(), index, client_id)
         .unwrap();
     tab
 }
@@ -396,7 +400,9 @@ fn create_new_tab_with_mock_pty_writer(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
         index,
         client_id,
@@ -455,7 +461,9 @@ fn create_new_tab_with_sixel_support(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
         index,
         client_id,

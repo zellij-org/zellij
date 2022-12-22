@@ -552,7 +552,6 @@ impl Tab {
                 for (layout, position_and_size) in positions_and_size {
                     // A plugin pane
                     if let Some(Run::Plugin(run)) = layout.run.clone() {
-                        // let (pid_tx, pid_rx) = channel();
                         let pane_title = run.location.to_string();
                         let pid = new_plugin_ids
                             .get_mut(&run.location)
@@ -675,12 +674,11 @@ impl Tab {
         };
         let mut layout_has_floating_panes = false;
         let mut floating_panes_layout = floating_panes_layout.iter();
+        let mut focused_floating_pane = None;
         for (pid, hold_for_command) in new_floating_terminal_ids.iter() {
             layout_has_floating_panes = true;
-            // TODO: handle floating pane focus
             let floating_pane_layout = floating_panes_layout.next().unwrap(); // TODO: no unwrap
             let position_and_size = self.floating_panes.position_floating_pane_layout(&floating_pane_layout);
-            let mut focus_pane_id: Option<PaneId> = None;
             let next_terminal_position = self.get_next_terminal_position();
             let initial_title = match &layout.run {
                 Some(Run::Command(run_command)) => Some(run_command.to_string()),
@@ -691,7 +689,7 @@ impl Tab {
                 position_and_size,
                 self.style,
                 next_terminal_position,
-                layout.name.clone().unwrap_or_default(),
+                floating_pane_layout.name.clone().unwrap_or_default(),
                 self.link_handler.clone(),
                 self.character_cell_size.clone(),
                 self.sixel_image_store.clone(),
@@ -709,11 +707,16 @@ impl Tab {
                 PaneId::Terminal(*pid),
                 Box::new(new_pane),
             );
-            // set_focus_pane_id(layout, PaneId::Terminal(*pid));
+            if floating_pane_layout.focus.unwrap_or(false) {
+                focused_floating_pane = Some(PaneId::Terminal(*pid));
+            }
         }
         if layout_has_floating_panes {
             if !self.floating_panes.panes_are_visible() {
                 self.toggle_floating_panes(client_id, None)?;
+            }
+            if let Some(focused_floating_pane) = focused_floating_pane {
+                self.floating_panes.focus_pane_for_all_clients(focused_floating_pane);
             }
         }
         self.apply_buffered_instructions()?;
@@ -897,7 +900,7 @@ impl Tab {
             self.set_force_render();
         } else {
             self.show_floating_panes();
-            match self.floating_panes.first_floating_pane_id() {
+            match self.floating_panes.last_floating_pane_id() {
                 Some(first_floating_pane_id) => {
                     if !self.floating_panes.active_panes_contain(&client_id) {
                         self.floating_panes

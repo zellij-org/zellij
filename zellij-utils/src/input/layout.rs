@@ -234,6 +234,15 @@ impl PercentOrFixed {
     }
 }
 
+impl PercentOrFixed {
+    pub fn is_zero(&self) -> bool {
+        match self {
+            PercentOrFixed::Percent(percent) => *percent == 0,
+            PercentOrFixed::Fixed(fixed) => *fixed == 0
+        }
+    }
+}
+
 impl FromStr for PercentOrFixed {
     type Err = Box<dyn std::error::Error>;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -271,6 +280,17 @@ impl FloatingPanesLayout {
             None => {
                 self.run = Some(Run::Cwd(cwd.clone()));
             },
+        }
+    }
+}
+
+impl From<&PaneLayout> for FloatingPanesLayout {
+    fn from(pane_layout: &PaneLayout) -> Self {
+        FloatingPanesLayout {
+            name: pane_layout.name.clone(),
+            run: pane_layout.run.clone(),
+            focus: pane_layout.focus,
+            ..Default::default()
         }
     }
 }

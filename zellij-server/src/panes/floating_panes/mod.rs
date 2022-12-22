@@ -270,6 +270,9 @@ impl FloatingPanes {
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
     }
+    pub fn last_floating_pane_id(&self) -> Option<PaneId> {
+        self.panes.keys().last().copied()
+    }
     pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
         self.active_panes.values().next().copied()
     }
