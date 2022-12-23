@@ -98,11 +98,13 @@ pub(crate) fn plugin_thread_main(
                 client_id,
             ) => {
                 let mut plugin_ids: HashMap<RunPluginLocation, Vec<u32>> = HashMap::new();
-                let extracted_run_instructions = tab_layout
+                let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
                 let size = Size::default(); // TODO: is this bad?
+                let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout.iter().map(|f| f.run.clone()).collect();
+                extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let plugin_id =

@@ -675,40 +675,80 @@ impl Tab {
         let mut layout_has_floating_panes = false;
         let mut floating_panes_layout = floating_panes_layout.iter();
         let mut focused_floating_pane = None;
-        for (pid, hold_for_command) in new_floating_terminal_ids.iter() {
+        let mut new_floating_terminal_ids = new_floating_terminal_ids.iter();
+        for floating_pane_layout in floating_panes_layout {
             layout_has_floating_panes = true;
-            let floating_pane_layout = floating_panes_layout.next().unwrap(); // TODO: no unwrap
-            let position_and_size = self.floating_panes.position_floating_pane_layout(&floating_pane_layout);
-            let next_terminal_position = self.get_next_terminal_position();
-            let initial_title = match &layout.run {
-                Some(Run::Command(run_command)) => Some(run_command.to_string()),
-                _ => None,
-            };
-            let mut new_pane = TerminalPane::new(
-                *pid,
-                position_and_size,
-                self.style,
-                next_terminal_position,
-                floating_pane_layout.name.clone().unwrap_or_default(),
-                self.link_handler.clone(),
-                self.character_cell_size.clone(),
-                self.sixel_image_store.clone(),
-                self.terminal_emulator_colors.clone(),
-                self.terminal_emulator_color_codes.clone(),
-                initial_title,
-            );
-            new_pane.set_borderless(false);
-            new_pane.set_content_offset(Offset::frame(1));
-            if let Some(held_command) = hold_for_command {
-                new_pane.hold(None, true, held_command.clone());
-            }
-            resize_pty!(new_pane, self.os_api, self.senders);
-            self.floating_panes.add_pane(
-                PaneId::Terminal(*pid),
-                Box::new(new_pane),
-            );
-            if floating_pane_layout.focus.unwrap_or(false) {
-                focused_floating_pane = Some(PaneId::Terminal(*pid));
+            if let Some(Run::Plugin(run)) = floating_pane_layout.run.clone() {
+                let position_and_size = self.floating_panes.position_floating_pane_layout(&floating_pane_layout);
+                let pane_title = run.location.to_string();
+                let pid = new_plugin_ids
+                    .get_mut(&run.location)
+                    .unwrap()
+                    .pop()
+                    .unwrap(); // TODO:
+                               // err_context
+                               // and
+                               // stuff
+                let mut new_pane = PluginPane::new(
+                    pid,
+                    position_and_size,
+                    self.senders
+                        .to_plugin
+                        .as_ref()
+                        .with_context(err_context)?
+                        .clone(),
+                    pane_title,
+                    layout.name.clone().unwrap_or_default(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.style,
+                );
+                new_pane.set_borderless(false);
+                new_pane.set_content_offset(Offset::frame(1));
+                resize_pty!(new_pane, self.os_api, self.senders);
+                self.floating_panes.add_pane(
+                    PaneId::Plugin(pid),
+                    Box::new(new_pane),
+                );
+                if floating_pane_layout.focus.unwrap_or(false) {
+                    focused_floating_pane = Some(PaneId::Plugin(pid));
+                }
+            } else if let Some((pid, hold_for_command)) = new_floating_terminal_ids.next() {
+                let position_and_size = self.floating_panes.position_floating_pane_layout(&floating_pane_layout);
+                let next_terminal_position = self.get_next_terminal_position();
+                let initial_title = match &layout.run {
+                    Some(Run::Command(run_command)) => Some(run_command.to_string()),
+                    _ => None,
+                };
+                let mut new_pane = TerminalPane::new(
+                    *pid,
+                    position_and_size,
+                    self.style,
+                    next_terminal_position,
+                    floating_pane_layout.name.clone().unwrap_or_default(),
+                    self.link_handler.clone(),
+                    self.character_cell_size.clone(),
+                    self.sixel_image_store.clone(),
+                    self.terminal_emulator_colors.clone(),
+                    self.terminal_emulator_color_codes.clone(),
+                    initial_title,
+                );
+                new_pane.set_borderless(false);
+                new_pane.set_content_offset(Offset::frame(1));
+                if let Some(held_command) = hold_for_command {
+                    new_pane.hold(None, true, held_command.clone());
+                }
+                resize_pty!(new_pane, self.os_api, self.senders);
+                self.floating_panes.add_pane(
+                    PaneId::Terminal(*pid),
+                    Box::new(new_pane),
+                );
+                if floating_pane_layout.focus.unwrap_or(false) {
+                    focused_floating_pane = Some(PaneId::Terminal(*pid));
+                }
             }
         }
         if layout_has_floating_panes {

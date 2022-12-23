@@ -245,11 +245,6 @@ impl FloatingPanes {
             position.cols = Dimension::fixed(width.to_position(display_area.cols));
         }
         if let Some(height) = &floating_pane_layout.height {
-            log::info!("height: {:?}", height);
-            log::info!("display_area: {:?}", display_area);
-            log::info!("height_to_position: {:?}", height.to_position(display_area.rows));
-            log::info!("display_area.rows / 100 {:?}", display_area.rows / 100);
-            log::info!("display_area.rows / 100 * 50 {:?}", display_area.rows / 100 * 50);
             position.rows = Dimension::fixed(height.to_position(display_area.rows));
         }
         if position.cols.as_usize() > display_area.cols {
@@ -264,7 +259,6 @@ impl FloatingPanes {
         if position.y + position.rows.as_usize() > display_area.rows {
             position.y = position.y.saturating_sub((position.y + position.rows.as_usize()) - display_area.rows);
         }
-        log::info!("position: {:?}", position);
         position
     }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {

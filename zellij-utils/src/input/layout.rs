@@ -353,6 +353,8 @@ impl PaneLayout {
         Ok(layouts)
     }
     pub fn extract_run_instructions(&self) -> Vec<Option<Run>> {
+        // the order of these run instructions is significant and needs to be the same
+        // as the order of the "flattened" layout panes received from eg. position_panes_in_space
         let mut run_instructions = vec![];
         if self.children.is_empty() {
             run_instructions.push(self.run.clone());
