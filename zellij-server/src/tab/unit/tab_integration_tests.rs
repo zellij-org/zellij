@@ -229,9 +229,10 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
@@ -285,9 +286,10 @@ fn create_new_tab_with_os_api(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
@@ -316,7 +318,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let layout = Layout::from_str(layout, "layout_file_name".into(), None).unwrap();
-    let tab_layout = layout.new_tab();
+    let (tab_layout, floating_panes_layout) = layout.new_tab();
     let mut tab = Tab::new(
         index,
         position,
@@ -343,8 +345,20 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| (i as u32, None))
         .collect();
-    tab.apply_layout(tab_layout, pane_ids, HashMap::new(), index, client_id)
-        .unwrap();
+    let floating_pane_ids = floating_panes_layout
+        .iter()
+        .enumerate()
+        .map(|(i, _)| (i as u32, None))
+        .collect();
+    tab.apply_layout(
+        tab_layout,
+        floating_panes_layout,
+        pane_ids,
+        floating_pane_ids,
+        HashMap::new(),
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
@@ -396,9 +410,10 @@ fn create_new_tab_with_mock_pty_writer(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
@@ -455,9 +470,10 @@ fn create_new_tab_with_sixel_support(
     );
     tab.apply_layout(
         PaneLayout::default(),
+        vec![],
         vec![(1, None)],
+        vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
@@ -2499,6 +2515,34 @@ fn tab_with_basic_layout() {
                     pane
                     pane
                 }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn tab_with_layout_that_has_floating_panes() {
+    let layout = r#"
+        layout {
+            pane
+            floating_panes {
+                pane
+                pane
             }
         }
     "#;

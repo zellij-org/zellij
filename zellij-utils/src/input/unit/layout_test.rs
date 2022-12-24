@@ -90,6 +90,175 @@ fn layout_with_nested_panes() {
 }
 
 #[test]
+fn layout_with_floating_panes() {
+    let kdl_layout = r#"
+        layout {
+            floating_panes {
+                pane
+                pane {
+                    x 10
+                    y "10%"
+                    width 10
+                    height "10%"
+                }
+                pane x=10 y="10%"
+                pane command="htop"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    let expected_layout = Layout {
+        template: Some(PaneLayout::default()),
+        floating_panes_template: vec![
+            FloatingPanesLayout::default(),
+            FloatingPanesLayout {
+                x: Some(PercentOrFixed::Fixed(10)),
+                y: Some(PercentOrFixed::Percent(10)),
+                width: Some(PercentOrFixed::Fixed(10)),
+                height: Some(PercentOrFixed::Percent(10)),
+                ..Default::default()
+            },
+            FloatingPanesLayout {
+                x: Some(PercentOrFixed::Fixed(10)),
+                y: Some(PercentOrFixed::Percent(10)),
+                ..Default::default()
+            },
+            FloatingPanesLayout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    hold_on_close: true,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_mixed_panes_and_floating_panes() {
+    let kdl_layout = r#"
+        layout {
+            pane
+            pane
+            floating_panes {
+                pane
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    let expected_layout = Layout {
+        template: Some(PaneLayout {
+            children: vec![PaneLayout::default(), PaneLayout::default()],
+            ..Default::default()
+        }),
+        floating_panes_template: vec![FloatingPanesLayout::default()],
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_floating_panes_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="my_cool_template" {
+                x 10
+                y "10%"
+            }
+            pane
+            floating_panes {
+                pane
+                my_cool_template
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    let expected_layout = Layout {
+        template: Some(PaneLayout {
+            children: vec![PaneLayout::default()],
+            ..Default::default()
+        }),
+        floating_panes_template: vec![
+            FloatingPanesLayout::default(),
+            FloatingPanesLayout {
+                x: Some(PercentOrFixed::Fixed(10)),
+                y: Some(PercentOrFixed::Percent(10)),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_shared_tiled_and_floating_panes_template() {
+    let kdl_layout = r#"
+        layout {
+            pane_template name="htop" {
+                command "htop"
+            }
+            htop
+            floating_panes {
+                pane
+                htop
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    let expected_layout = Layout {
+        template: Some(PaneLayout {
+            children: vec![PaneLayout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    hold_on_close: true,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }),
+        floating_panes_template: vec![
+            FloatingPanesLayout::default(),
+            FloatingPanesLayout {
+                run: Some(Run::Command(RunCommand {
+                    command: PathBuf::from("htop"),
+                    hold_on_close: true,
+                    ..Default::default()
+                })),
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}
+
+#[test]
+fn layout_with_tabs_and_floating_panes() {
+    let kdl_layout = r#"
+        layout {
+            tab {
+                floating_panes {
+                    pane
+                }
+            }
+            tab {
+                floating_panes {
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn layout_with_tabs() {
     let kdl_layout = r#"
         layout {
@@ -98,7 +267,7 @@ fn layout_with_tabs() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        tabs: vec![(None, PaneLayout::default())],
+        tabs: vec![(None, PaneLayout::default(), vec![])],
         template: Some(PaneLayout::default()),
         ..Default::default()
     };
@@ -134,6 +303,7 @@ fn layout_with_nested_differing_tabs() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 None,
@@ -142,6 +312,7 @@ fn layout_with_nested_differing_tabs() {
                     children: vec![PaneLayout::default(), PaneLayout::default()],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),
@@ -412,6 +583,7 @@ fn layout_with_tab_names() {
                     children: vec![],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 Some("my cool tab name 2".into()),
@@ -419,6 +591,7 @@ fn layout_with_tab_names() {
                     children: vec![],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),
@@ -439,9 +612,9 @@ fn layout_with_focused_tab() {
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
         tabs: vec![
-            (None, PaneLayout::default()),
-            (None, PaneLayout::default()),
-            (None, PaneLayout::default()),
+            (None, PaneLayout::default(), vec![]),
+            (None, PaneLayout::default(), vec![]),
+            (None, PaneLayout::default(), vec![]),
         ],
         template: Some(PaneLayout::default()),
         focused_tab_index: Some(1),
@@ -488,6 +661,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 Some("my second tab".into()),
@@ -504,6 +678,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
             (
                 None,
@@ -516,6 +691,7 @@ fn layout_with_tab_templates() {
                     ],
                     ..Default::default()
                 },
+                vec![], // floating panes
             ),
         ],
         template: Some(PaneLayout::default()),

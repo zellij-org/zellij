@@ -25,7 +25,8 @@ use zellij_utils::{
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    pane_size::{Offset, PaneGeom, Size, Viewport},
+    input::layout::FloatingPanesLayout,
+    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
 
 const RESIZE_INCREMENT_WIDTH: usize = 5;
@@ -224,8 +225,54 @@ impl FloatingPanes {
         );
         floating_pane_grid.find_room_for_new_pane()
     }
+    pub fn position_floating_pane_layout(
+        &mut self,
+        floating_pane_layout: &FloatingPanesLayout,
+    ) -> PaneGeom {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        let mut position = floating_pane_grid.find_room_for_new_pane().unwrap(); // TODO: no unwrap
+        if let Some(x) = &floating_pane_layout.x {
+            position.x = x.to_position(display_area.cols);
+        }
+        if let Some(y) = &floating_pane_layout.y {
+            position.y = y.to_position(display_area.rows);
+        }
+        if let Some(width) = &floating_pane_layout.width {
+            position.cols = Dimension::fixed(width.to_position(display_area.cols));
+        }
+        if let Some(height) = &floating_pane_layout.height {
+            position.rows = Dimension::fixed(height.to_position(display_area.rows));
+        }
+        if position.cols.as_usize() > display_area.cols {
+            position.cols = Dimension::fixed(display_area.cols);
+        }
+        if position.rows.as_usize() > display_area.rows {
+            position.rows = Dimension::fixed(display_area.rows);
+        }
+        if position.x + position.cols.as_usize() > display_area.cols {
+            position.x = position
+                .x
+                .saturating_sub((position.x + position.cols.as_usize()) - display_area.cols);
+        }
+        if position.y + position.rows.as_usize() > display_area.rows {
+            position.y = position
+                .y
+                .saturating_sub((position.y + position.rows.as_usize()) - display_area.rows);
+        }
+        position
+    }
     pub fn first_floating_pane_id(&self) -> Option<PaneId> {
         self.panes.keys().next().copied()
+    }
+    pub fn last_floating_pane_id(&self) -> Option<PaneId> {
+        self.panes.keys().last().copied()
     }
     pub fn first_active_floating_pane_id(&self) -> Option<PaneId> {
         self.active_panes.values().next().copied()

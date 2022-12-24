@@ -12,7 +12,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
+        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
     pane_size::Size,
@@ -29,6 +29,7 @@ pub enum PluginInstruction {
     NewTab(
         Option<TerminalAction>,
         Option<PaneLayout>,
+        Vec<FloatingPanesLayout>,
         Option<String>, // tab name
         usize,          // tab_index
         ClientId,
@@ -69,7 +70,6 @@ pub(crate) fn plugin_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            // TODO: remove pid_tx from here
             PluginInstruction::Load(run, tab_index, client_id, size) => {
                 wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
             },
@@ -91,16 +91,22 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::NewTab(
                 terminal_action,
                 tab_layout,
+                floating_panes_layout,
                 tab_name,
                 tab_index,
                 client_id,
             ) => {
                 let mut plugin_ids: HashMap<RunPluginLocation, Vec<u32>> = HashMap::new();
-                let extracted_run_instructions = tab_layout
+                let mut extracted_run_instructions = tab_layout
                     .clone()
-                    .unwrap_or_else(|| layout.new_tab())
+                    .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
-                let size = Size::default(); // TODO: is this bad?
+                let size = Size::default();
+                let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout
+                    .iter()
+                    .map(|f| f.run.clone())
+                    .collect();
+                extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let plugin_id =
@@ -111,6 +117,7 @@ pub(crate) fn plugin_thread_main(
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
                     terminal_action,
                     tab_layout,
+                    floating_panes_layout,
                     tab_name,
                     tab_index,
                     plugin_ids,
