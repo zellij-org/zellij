@@ -44,7 +44,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{PaneLayout, FloatingPanesLayout, RunPluginLocation},
+        layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -400,7 +400,10 @@ pub enum AdjustedInput {
     ReRunCommandInThisPane(RunCommand),
     CloseThisPane,
 }
-pub fn get_next_terminal_position(tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> usize {
+pub fn get_next_terminal_position(
+    tiled_panes: &TiledPanes,
+    floating_panes: &FloatingPanes,
+) -> usize {
     let tiled_panes_count = tiled_panes
         .get_panes()
         .filter(|(k, _)| match k {
@@ -548,8 +551,16 @@ impl Tab {
             &mut self.floating_panes,
             self.draw_pane_frames,
             &mut self.focus_pane_id,
-            &self.os_api
-        ).apply_layout(layout, floating_panes_layout, new_terminal_ids, new_floating_terminal_ids, new_plugin_ids, client_id)?;
+            &self.os_api,
+        )
+        .apply_layout(
+            layout,
+            floating_panes_layout,
+            new_terminal_ids,
+            new_floating_terminal_ids,
+            new_plugin_ids,
+            client_id,
+        )?;
         if layout_has_floating_panes {
             if !self.floating_panes.panes_are_visible() {
                 self.toggle_floating_panes(client_id, None)?;

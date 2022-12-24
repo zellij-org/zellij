@@ -22,11 +22,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
-    input::layout::FloatingPanesLayout,
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    pane_size::{Offset, PaneGeom, Size, Viewport, Dimension},
+    input::layout::FloatingPanesLayout,
+    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
 
 const RESIZE_INCREMENT_WIDTH: usize = 5;
@@ -225,7 +225,10 @@ impl FloatingPanes {
         );
         floating_pane_grid.find_room_for_new_pane()
     }
-    pub fn position_floating_pane_layout(&mut self, floating_pane_layout: &FloatingPanesLayout) -> PaneGeom {
+    pub fn position_floating_pane_layout(
+        &mut self,
+        floating_pane_layout: &FloatingPanesLayout,
+    ) -> PaneGeom {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
         let floating_pane_grid = FloatingPaneGrid::new(
@@ -254,10 +257,14 @@ impl FloatingPanes {
             position.rows = Dimension::fixed(display_area.rows);
         }
         if position.x + position.cols.as_usize() > display_area.cols {
-            position.x = position.x.saturating_sub((position.x + position.cols.as_usize()) - display_area.cols);
+            position.x = position
+                .x
+                .saturating_sub((position.x + position.cols.as_usize()) - display_area.cols);
         }
         if position.y + position.rows.as_usize() > display_area.rows {
-            position.y = position.y.saturating_sub((position.y + position.rows.as_usize()) - display_area.rows);
+            position.y = position
+                .y
+                .saturating_sub((position.y + position.rows.as_usize()) - display_area.rows);
         }
         position
     }

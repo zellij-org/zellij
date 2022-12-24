@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{Layout, PaneLayout, FloatingPanesLayout, Run, RunPluginLocation},
+        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPluginLocation},
     },
 };
 
@@ -344,7 +344,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
             ) => {
                 let err_context = || format!("failed to open new tab for client {}", client_id);
 
-                let floating_panes_layout = if floating_panes_layout.is_empty() { layout.new_tab().1 } else { floating_panes_layout };
+                let floating_panes_layout = if floating_panes_layout.is_empty() {
+                    layout.new_tab().1
+                } else {
+                    floating_panes_layout
+                };
                 pty.spawn_terminals_for_layout(
                     tab_layout.unwrap_or_else(|| layout.new_tab().0),
                     floating_panes_layout,
@@ -577,21 +581,27 @@ impl Pty {
         let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
-        let extracted_floating_run_instructions = floating_panes_layout.iter().map(|f| f.run.clone());
+        let extracted_floating_run_instructions =
+            floating_panes_layout.iter().map(|f| f.run.clone());
         let mut new_pane_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // (terminal_id,
                                                                                              // starts_held,
                                                                                              // run_command,
                                                                                              // file_descriptor)
-        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> = vec![]; // same
-                                                                                                      // as
-                                                                                                      // new_pane_pids
+        let mut new_floating_panes_pids: Vec<(u32, bool, Option<RunCommand>, Result<RawFd>)> =
+            vec![]; // same
+                    // as
+                    // new_pane_pids
         for run_instruction in extracted_run_instructions {
-            if let Some(new_pane_data) = self.apply_run_instruction(run_instruction, default_shell.clone())? {
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
                 new_pane_pids.push(new_pane_data);
             }
         }
         for run_instruction in extracted_floating_run_instructions {
-            if let Some(new_pane_data) = self.apply_run_instruction(run_instruction, default_shell.clone())? {
+            if let Some(new_pane_data) =
+                self.apply_run_instruction(run_instruction, default_shell.clone())?
+            {
                 new_floating_panes_pids.push(new_pane_data);
             }
         }
@@ -686,10 +696,15 @@ impl Pty {
         }
         Ok(())
     }
-    fn apply_run_instruction(&mut self, run_instruction: Option<Run>, default_shell: TerminalAction) -> Result<Option<(u32, bool, Option<RunCommand>, Result<i32>)>> { // terminal_id,
-                                                                                                   // starts_held,
-                                                                                                   // command
-                                                                                                   // successfully opened
+    fn apply_run_instruction(
+        &mut self,
+        run_instruction: Option<Run>,
+        default_shell: TerminalAction,
+    ) -> Result<Option<(u32, bool, Option<RunCommand>, Result<i32>)>> {
+        // terminal_id,
+        // starts_held,
+        // command
+        // successfully opened
         let err_context = || format!("failed to apply run instruction");
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
@@ -712,8 +727,8 @@ impl Pty {
                                 None,
                             ));
                         } else {
-                            let _ = senders
-                                .send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
+                            let _ =
+                                senders.send_to_screen(ScreenInstruction::ClosePane(pane_id, None));
                         }
                     }
                 });
@@ -758,18 +773,13 @@ impl Pty {
                                 Ok(pid_primary),
                             )))
                         },
-                        Err(err) => match err.downcast_ref::<ZellijError>() {
-                            Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                                Ok(Some((
-                                    *terminal_id,
-                                    starts_held,
-                                    Some(command.clone()),
-                                    Err(err),
-                                )))
-                            },
-                            _ => {
-                                Err(err)
-                            },
+                        Err(err) => {
+                            match err.downcast_ref::<ZellijError>() {
+                                Some(ZellijError::CommandNotFound { terminal_id, .. }) => Ok(Some(
+                                    (*terminal_id, starts_held, Some(command.clone()), Err(err)),
+                                )),
+                                _ => Err(err),
+                            }
                         },
                     }
                 }
@@ -794,9 +804,7 @@ impl Pty {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
-                        _ => {
-                            Err(err)
-                        },
+                        _ => Err(err),
                     },
                 }
             },
@@ -823,9 +831,7 @@ impl Pty {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
-                        _ => {
-                            Err(err)
-                        },
+                        _ => Err(err),
                     },
                 }
             },
@@ -848,14 +854,12 @@ impl Pty {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
-                        _ => {
-                            Err(err)
-                        },
+                        _ => Err(err),
                     },
                 }
             },
             // Investigate moving plugin loading to here.
-            Some(Run::Plugin(_)) => Ok(None)
+            Some(Run::Plugin(_)) => Ok(None),
         }
     }
     pub fn close_pane(&mut self, id: PaneId) -> Result<()> {

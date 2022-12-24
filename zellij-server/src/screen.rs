@@ -12,7 +12,7 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{PaneLayout, FloatingPanesLayout, RunPluginLocation},
+    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
     position::Position,
 };
 
@@ -1884,7 +1884,13 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render()?;
             },
-            ScreenInstruction::NewTab(default_shell, layout, floating_panes_layout, tab_name, client_id) => {
+            ScreenInstruction::NewTab(
+                default_shell,
+                layout,
+                floating_panes_layout,
+                tab_name,
+                client_id,
+            ) => {
                 let tab_index = screen.get_new_tab_index();
                 screen.new_tab(tab_index, client_id)?;
                 screen
@@ -1908,7 +1914,15 @@ pub(crate) fn screen_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                screen.apply_layout(layout, floating_panes_layout, new_pane_pids, new_floating_pane_pids, new_plugin_ids, tab_index, client_id)?;
+                screen.apply_layout(
+                    layout,
+                    floating_panes_layout,
+                    new_pane_pids,
+                    new_floating_pane_pids,
+                    new_plugin_ids,
+                    tab_index,
+                    client_id,
+                )?;
                 screen.unblock_input()?;
                 screen.render()?;
             },

@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{Layout, PaneLayout, FloatingPanesLayout};
+use super::layout::{FloatingPanesLayout, Layout, PaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
@@ -368,12 +368,21 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
-                        let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
+                        let (tab_name, layout, floating_panes_layout) =
+                            tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
-                        Ok(vec![Action::NewTab(Some(layout), floating_panes_layout, name)])
+                        Ok(vec![Action::NewTab(
+                            Some(layout),
+                            floating_panes_layout,
+                            name,
+                        )])
                     } else {
                         let (layout, floating_panes_layout) = layout.new_tab();
-                        Ok(vec![Action::NewTab(Some(layout), floating_panes_layout, name)])
+                        Ok(vec![Action::NewTab(
+                            Some(layout),
+                            floating_panes_layout,
+                            name,
+                        )])
                     }
                 } else {
                     Ok(vec![Action::NewTab(None, vec![], name)])

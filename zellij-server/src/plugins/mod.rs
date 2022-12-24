@@ -12,7 +12,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{Layout, PaneLayout, FloatingPanesLayout, Run, RunPlugin, RunPluginLocation},
+        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
     pane_size::Size,
@@ -102,7 +102,10 @@ pub(crate) fn plugin_thread_main(
                     .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
                 let size = Size::default();
-                let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout.iter().map(|f| f.run.clone()).collect();
+                let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout
+                    .iter()
+                    .map(|f| f.run.clone())
+                    .collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {

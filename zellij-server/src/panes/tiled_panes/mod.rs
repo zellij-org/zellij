@@ -540,12 +540,12 @@ impl TiledPanes {
                     display_area.cols = cols;
                 },
                 Err(e) => match e.downcast_ref::<ZellijError>() {
-                    Some(ZellijError::PaneSizeUnchanged) => {} // ignore unchanged layout
+                    Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
                     _ => {
                         Err::<(), _>(anyError::msg(e))
                             .context("failed to resize tab horizontally")
                             .non_fatal();
-                    }
+                    },
                 },
             };
             match pane_grid.layout(SplitDirection::Vertical, rows) {
@@ -555,12 +555,12 @@ impl TiledPanes {
                     display_area.rows = rows;
                 },
                 Err(e) => match e.downcast_ref::<ZellijError>() {
-                    Some(ZellijError::PaneSizeUnchanged) => {} // ignore unchanged layout
+                    Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
                     _ => {
                         Err::<(), _>(anyError::msg(e))
                             .context("failed to resize tab vertically")
                             .non_fatal();
-                    }
+                    },
                 },
             };
         }

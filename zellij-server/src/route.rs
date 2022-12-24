@@ -435,7 +435,11 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::NewTab(
-                    shell, tab_layout, floating_panes_layout, tab_name, client_id,
+                    shell,
+                    tab_layout,
+                    floating_panes_layout,
+                    tab_name,
+                    client_id,
                 ))
                 .with_context(err_context)?;
         },

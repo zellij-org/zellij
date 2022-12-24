@@ -124,7 +124,7 @@ fn layout_with_floating_panes() {
                 ..Default::default()
             },
             FloatingPanesLayout {
-                run: Some(Run::Command(RunCommand{
+                run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
                     ..Default::default()
@@ -151,15 +151,10 @@ fn layout_with_mixed_panes_and_floating_panes() {
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
         template: Some(PaneLayout {
-            children: vec![
-                PaneLayout::default(),
-                PaneLayout::default(),
-            ],
+            children: vec![PaneLayout::default(), PaneLayout::default()],
             ..Default::default()
         }),
-        floating_panes_template: vec![
-            FloatingPanesLayout::default(),
-        ],
+        floating_panes_template: vec![FloatingPanesLayout::default()],
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -192,7 +187,7 @@ fn layout_with_floating_panes_template() {
                 x: Some(PercentOrFixed::Fixed(10)),
                 y: Some(PercentOrFixed::Percent(10)),
                 ..Default::default()
-            }
+            },
         ],
         ..Default::default()
     };
@@ -217,7 +212,7 @@ fn layout_with_shared_tiled_and_floating_panes_template() {
     let expected_layout = Layout {
         template: Some(PaneLayout {
             children: vec![PaneLayout {
-                run: Some(Run::Command(RunCommand{
+                run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
                     ..Default::default()
@@ -229,7 +224,7 @@ fn layout_with_shared_tiled_and_floating_panes_template() {
         floating_panes_template: vec![
             FloatingPanesLayout::default(),
             FloatingPanesLayout {
-                run: Some(Run::Command(RunCommand{
+                run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
                     ..Default::default()

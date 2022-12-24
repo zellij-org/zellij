@@ -222,14 +222,22 @@ pub struct Layout {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
-    Fixed(usize), // An absolute number of columns or rows
+    Fixed(usize),   // An absolute number of columns or rows
 }
 
 impl PercentOrFixed {
     pub fn to_position(&self, whole: usize) -> usize {
         match self {
-            PercentOrFixed::Percent(percent) => (whole as f64 / 100.0 * *percent as f64).ceil() as usize,
-            PercentOrFixed::Fixed(fixed) => if *fixed > whole { whole } else { *fixed }
+            PercentOrFixed::Percent(percent) => {
+                (whole as f64 / 100.0 * *percent as f64).ceil() as usize
+            },
+            PercentOrFixed::Fixed(fixed) => {
+                if *fixed > whole {
+                    whole
+                } else {
+                    *fixed
+                }
+            },
         }
     }
 }
@@ -238,7 +246,7 @@ impl PercentOrFixed {
     pub fn is_zero(&self) -> bool {
         match self {
             PercentOrFixed::Percent(percent) => *percent == 0,
-            PercentOrFixed::Fixed(fixed) => *fixed == 0
+            PercentOrFixed::Fixed(fixed) => *fixed == 0,
         }
     }
 }
@@ -262,7 +270,8 @@ impl FromStr for PercentOrFixed {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct FloatingPanesLayout { // TODO: change name to singular
+pub struct FloatingPanesLayout {
+    // TODO: change name to singular
     pub name: Option<String>,
     pub height: Option<PercentOrFixed>,
     pub width: Option<PercentOrFixed>,

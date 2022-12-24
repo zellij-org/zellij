@@ -351,7 +351,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
 
                 if layout.has_tabs() {
                     for (tab_name, tab_layout, floating_panes_layout) in layout.tabs() {
-                        spawn_tabs(Some(tab_layout.clone()), floating_panes_layout.clone(), tab_name);
+                        spawn_tabs(
+                            Some(tab_layout.clone()),
+                            floating_panes_layout.clone(),
+                            tab_name,
+                        );
                     }
 
                     if let Some(focused_tab_index) = layout.focused_tab_index() {

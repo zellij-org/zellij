@@ -350,8 +350,15 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         .enumerate()
         .map(|(i, _)| (i as u32, None))
         .collect();
-    tab.apply_layout(tab_layout, floating_panes_layout, pane_ids, floating_pane_ids, HashMap::new(), client_id)
-        .unwrap();
+    tab.apply_layout(
+        tab_layout,
+        floating_panes_layout,
+        pane_ids,
+        floating_pane_ids,
+        HashMap::new(),
+        client_id,
+    )
+    .unwrap();
     tab
 }
 
