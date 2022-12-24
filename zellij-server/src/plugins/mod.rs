@@ -70,7 +70,6 @@ pub(crate) fn plugin_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            // TODO: remove pid_tx from here
             PluginInstruction::Load(run, tab_index, client_id, size) => {
                 wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
             },
@@ -102,7 +101,7 @@ pub(crate) fn plugin_thread_main(
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
-                let size = Size::default(); // TODO: is this bad?
+                let size = Size::default();
                 let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout.iter().map(|f| f.run.clone()).collect();
                 extracted_run_instructions.append(&mut extracted_floating_plugins);
                 for run_instruction in extracted_run_instructions {
@@ -112,7 +111,6 @@ pub(crate) fn plugin_thread_main(
                         plugin_ids.entry(run.location).or_default().push(plugin_id);
                     }
                 }
-                // TODO: look for plugins in floating_panes_layout
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
                     terminal_action,
                     tab_layout,

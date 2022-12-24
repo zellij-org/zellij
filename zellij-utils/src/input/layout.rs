@@ -249,8 +249,7 @@ impl FromStr for PercentOrFixed {
         if s.chars().last() == Some('%') {
             let char_count = s.chars().count();
             let percent_size = usize::from_str_radix(&s[..char_count.saturating_sub(1)], 10)?;
-            // TODO: 0% for width/height?
-            if percent_size >= 0 && percent_size <= 100 {
+            if percent_size <= 100 {
                 Ok(PercentOrFixed::Percent(percent_size))
             } else {
                 Err("Percent must be between 0 and 100".into())

@@ -1640,6 +1640,11 @@ impl<'a> KdlLayoutParser<'a> {
                     child_floating_panes.push(pane_node);
                 } else {
                     // TODO: invalid node name
+                    return Err(ConfigError::new_layout_kdl_error(
+                        format!("floating_panes can only contain pane nodes, found: {}", kdl_name!(child)),
+                        child.span().offset(),
+                        child.span().len(),
+                    ));
                 }
             }
         };

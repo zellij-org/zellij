@@ -631,7 +631,6 @@ impl Pty {
         let mut terminals_to_start = vec![];
         terminals_to_start.append(&mut new_pane_pids);
         terminals_to_start.append(&mut new_floating_panes_pids);
-        // for (terminal_id, starts_held, run_command, pid_primary) in new_pane_pids {
         for (terminal_id, starts_held, run_command, pid_primary) in terminals_to_start {
             if starts_held {
                 // we do not run a command or start listening for bytes on held panes
@@ -692,7 +691,6 @@ impl Pty {
                                                                                                    // command
                                                                                                    // successfully opened
         let err_context = || format!("failed to apply run instruction");
-        // let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
         let quit_cb = Box::new({
             let senders = self.bus.senders.clone();
             move |pane_id, _exit_status, _command| {
@@ -739,8 +737,7 @@ impl Pty {
                                                         // stripped later
                             )))
                         },
-                        // Err(e) => Err::<(), _>(e).with_context(err_context).non_fatal(),
-                        Err(e) => Err(e), // TODO: place the non_fatal stuff outside
+                        Err(e) => Err(e),
                     }
                 } else {
                     match self
@@ -771,8 +768,6 @@ impl Pty {
                                 )))
                             },
                             _ => {
-                                // Err::<(), _>(err).non_fatal();
-                                // TODO: place the non_fatal stuff outside
                                 Err(err)
                             },
                         },
@@ -800,7 +795,6 @@ impl Pty {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
                         _ => {
-                            // Err::<(), _>(err).non_fatal();
                             Err(err)
                         },
                     },
@@ -830,7 +824,6 @@ impl Pty {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
                         _ => {
-                            // Err::<(), _>(err).non_fatal();
                             Err(err)
                         },
                     },
@@ -856,7 +849,6 @@ impl Pty {
                             Ok(Some((*terminal_id, starts_held, None, Err(err))))
                         },
                         _ => {
-                            // Err::<(), _>(err).non_fatal();
                             Err(err)
                         },
                     },
