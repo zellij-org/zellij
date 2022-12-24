@@ -983,9 +983,7 @@ impl<'a> KdlLayoutParser<'a> {
     fn has_child_nodes(&self, kdl_node: &KdlNode) -> bool {
         if let Some(children) = kdl_children_nodes!(kdl_node) {
             for child in children {
-                if kdl_name!(child) == "pane" || kdl_name!(child) == "children" {
-                    return true;
-                } else if self.pane_templates.get(kdl_name!(child)).is_some() {
+                if kdl_name!(child) == "pane" || kdl_name!(child) == "children" || self.pane_templates.get(kdl_name!(child)).is_some() {
                     return true;
                 }
             }
