@@ -977,7 +977,6 @@ impl Screen {
             new_terminal_ids,
             new_floating_terminal_ids,
             new_plugin_ids,
-            tab_index,
             client_id,
         )
         .with_context(err_context)?;

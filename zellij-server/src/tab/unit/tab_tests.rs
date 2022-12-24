@@ -182,7 +182,6 @@ fn create_new_tab(size: Size) -> Tab {
         vec![(1, None)],
         vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
@@ -233,7 +232,7 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     for i in 0..layout.extract_run_instructions().len() {
         new_terminal_ids.push((i as u32, None));
     }
-    tab.apply_layout(layout, vec![], new_terminal_ids, vec![], HashMap::new(), index, client_id)
+    tab.apply_layout(layout, vec![], new_terminal_ids, vec![], HashMap::new(), client_id)
         .unwrap();
     tab
 }
@@ -286,7 +285,6 @@ fn create_new_tab_with_cell_size(
         vec![(1, None)],
         vec![],
         HashMap::new(),
-        index,
         client_id,
     )
     .unwrap();
