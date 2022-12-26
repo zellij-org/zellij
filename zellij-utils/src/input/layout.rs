@@ -219,6 +219,14 @@ pub struct Layout {
     pub floating_panes_template: Vec<FloatingPanesLayout>,
 }
 
+// TODO CONTINUE HERE:
+// 0. Make tests pass
+// 1. Change FloatingPanesLayout to singular
+// 2. Change PaneLayout to TiledPanesLayout
+// 3. merge floating_panes_template and template, changing its type to: type TabLayout =
+//    (TiledPaneLayout, Vec<FloatingPanesLayout>) // not an option, if it doesn't exist we'll take
+//    PaneLayout::default()
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum PercentOrFixed {
     Percent(usize), // 1 to 100
