@@ -12,7 +12,7 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
+    input::layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation},
     position::Position,
 };
 
@@ -176,14 +176,14 @@ pub enum ScreenInstruction {
     UndoRenamePane(ClientId),
     NewTab(
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>,
         ClientId,
     ),
     ApplyLayout(
-        PaneLayout,
-        Vec<FloatingPanesLayout>,
+        TiledPaneLayout,
+        Vec<FloatingPaneLayout>,
         Vec<(u32, HoldForCommand)>, // new pane pids
         Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginLocation, Vec<u32>>,
@@ -924,8 +924,8 @@ impl Screen {
     }
     pub fn apply_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,

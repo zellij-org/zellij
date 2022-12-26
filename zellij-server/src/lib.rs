@@ -372,7 +372,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.floating_panes_template.clone(), None);
+                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None);
                 }
                 session_data
                     .read()

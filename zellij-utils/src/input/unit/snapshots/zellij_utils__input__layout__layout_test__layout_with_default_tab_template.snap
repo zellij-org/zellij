@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 555
+assertion_line: 720
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -9,11 +9,11 @@ Layout {
             Some(
                 "my first tab",
             ),
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -23,11 +23,11 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Vertical,
                         name: None,
                         children: [
-                            PaneLayout {
+                            TiledPaneLayout {
                                 children_split_direction: Horizontal,
                                 name: None,
                                 children: [],
@@ -37,7 +37,7 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                             },
-                            PaneLayout {
+                            TiledPaneLayout {
                                 children_split_direction: Horizontal,
                                 name: None,
                                 children: [],
@@ -54,7 +54,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -77,11 +77,11 @@ Layout {
             Some(
                 "my second tab",
             ),
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -91,11 +91,11 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [
-                            PaneLayout {
+                            TiledPaneLayout {
                                 children_split_direction: Horizontal,
                                 name: None,
                                 children: [],
@@ -105,7 +105,7 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                             },
-                            PaneLayout {
+                            TiledPaneLayout {
                                 children_split_direction: Horizontal,
                                 name: None,
                                 children: [],
@@ -122,7 +122,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -143,11 +143,11 @@ Layout {
         ),
         (
             None,
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -157,7 +157,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -167,7 +167,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -189,47 +189,49 @@ Layout {
     ],
     focused_tab_index: None,
     template: Some(
-        PaneLayout {
-            children_split_direction: Horizontal,
-            name: None,
-            children: [
-                PaneLayout {
-                    children_split_direction: Horizontal,
-                    name: None,
-                    children: [],
-                    split_size: None,
-                    run: None,
-                    borderless: false,
-                    focus: None,
-                    external_children_index: None,
-                },
-                PaneLayout {
-                    children_split_direction: Horizontal,
-                    name: None,
-                    children: [],
-                    split_size: None,
-                    run: None,
-                    borderless: false,
-                    focus: None,
-                    external_children_index: None,
-                },
-                PaneLayout {
-                    children_split_direction: Horizontal,
-                    name: None,
-                    children: [],
-                    split_size: None,
-                    run: None,
-                    borderless: false,
-                    focus: None,
-                    external_children_index: None,
-                },
-            ],
-            split_size: None,
-            run: None,
-            borderless: false,
-            focus: None,
-            external_children_index: None,
-        },
+        (
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                    TiledPaneLayout {
+                        children_split_direction: Horizontal,
+                        name: None,
+                        children: [],
+                        split_size: None,
+                        run: None,
+                        borderless: false,
+                        focus: None,
+                        external_children_index: None,
+                    },
+                ],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+            [],
+        ),
     ),
-    floating_panes_template: [],
 }

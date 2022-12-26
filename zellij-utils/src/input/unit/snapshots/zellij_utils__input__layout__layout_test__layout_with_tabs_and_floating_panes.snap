@@ -1,17 +1,17 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 263
+assertion_line: 254
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
     tabs: [
         (
             None,
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -29,7 +29,7 @@ Layout {
                 external_children_index: None,
             },
             [
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -42,11 +42,11 @@ Layout {
         ),
         (
             None,
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -64,7 +64,7 @@ Layout {
                 external_children_index: None,
             },
             [
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -73,7 +73,7 @@ Layout {
                     run: None,
                     focus: None,
                 },
-                FloatingPanesLayout {
+                FloatingPaneLayout {
                     name: None,
                     height: None,
                     width: None,
@@ -87,16 +87,18 @@ Layout {
     ],
     focused_tab_index: None,
     template: Some(
-        PaneLayout {
-            children_split_direction: Horizontal,
-            name: None,
-            children: [],
-            split_size: None,
-            run: None,
-            borderless: false,
-            focus: None,
-            external_children_index: None,
-        },
+        (
+            TiledPaneLayout {
+                children_split_direction: Horizontal,
+                name: None,
+                children: [],
+                split_size: None,
+                run: None,
+                borderless: false,
+                focus: None,
+                external_children_index: None,
+            },
+            [],
+        ),
     ),
-    floating_panes_template: [],
 }

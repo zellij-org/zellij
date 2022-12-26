@@ -201,6 +201,7 @@ fn read_from_channel(
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
                     None,
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {

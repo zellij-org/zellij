@@ -12,7 +12,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, TiledPaneLayout, Run, RunPlugin, RunPluginLocation},
         plugins::PluginsConfig,
     },
     pane_size::Size,
@@ -28,8 +28,8 @@ pub enum PluginInstruction {
     RemoveClient(ClientId),
     NewTab(
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>, // tab name
         usize,          // tab_index
         ClientId,

@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
-    input::layout::{FloatingPanesLayout, PaneLayout, Run, RunPluginLocation},
+    input::layout::{FloatingPaneLayout, TiledPaneLayout, Run, RunPluginLocation},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
@@ -85,8 +85,8 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn apply_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         mut new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
@@ -105,8 +105,8 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn apply_layout_to_existing_panes(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => layout has floating panes
@@ -121,7 +121,7 @@ impl<'a> LayoutApplier<'a> {
 //         return Ok(layout_has_floating_panes);
         return Ok(false); // TODO: no!
     }
-    fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: PaneLayout, client_id: ClientId) -> Result<()> {
+    fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: TiledPaneLayout, client_id: ClientId) -> Result<()> {
         // TODO: CONTINUE HERE - find out why this isn't working (to test, open zellij, split right and do
         // target/debug/zellij action relayout-focused-tab)
         let err_context = || format!("failed to apply tiled panes layout");
@@ -139,7 +139,7 @@ impl<'a> LayoutApplier<'a> {
 
                 let mut focus_pane_id: Option<PaneId> = None; // TODO: this should default to the
                                                               // currently focused pane
-                let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
+                let mut set_focus_pane_id = |layout: &TiledPaneLayout, pane_id: PaneId| {
                     if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
                         focus_pane_id = Some(pane_id);
                     }
@@ -184,7 +184,7 @@ impl<'a> LayoutApplier<'a> {
     }
     fn apply_tiled_panes_layout(
         &mut self,
-        layout: PaneLayout,
+        layout: TiledPaneLayout,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: &mut HashMap<RunPluginLocation, Vec<u32>>,
         client_id: ClientId,
@@ -203,7 +203,7 @@ impl<'a> LayoutApplier<'a> {
                 let mut new_terminal_ids = new_terminal_ids.iter();
 
                 let mut focus_pane_id: Option<PaneId> = None;
-                let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
+                let mut set_focus_pane_id = |layout: &TiledPaneLayout, pane_id: PaneId| {
                     if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
                         focus_pane_id = Some(pane_id);
                     }
@@ -297,7 +297,7 @@ impl<'a> LayoutApplier<'a> {
     }
     fn apply_floating_panes_layout(
         &mut self,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: &mut HashMap<RunPluginLocation, Vec<u32>>,
         layout_name: Option<String>,

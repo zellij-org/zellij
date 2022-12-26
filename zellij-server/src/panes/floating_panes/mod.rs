@@ -25,7 +25,7 @@ use zellij_utils::{
     data::{ModeInfo, Style},
     errors::prelude::*,
     input::command::RunCommand,
-    input::layout::FloatingPanesLayout,
+    input::layout::FloatingPaneLayout,
     pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
 };
 
@@ -227,7 +227,7 @@ impl FloatingPanes {
     }
     pub fn position_floating_pane_layout(
         &mut self,
-        floating_pane_layout: &FloatingPanesLayout,
+        floating_pane_layout: &FloatingPaneLayout,
     ) -> PaneGeom {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();

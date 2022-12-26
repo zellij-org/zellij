@@ -1,7 +1,7 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{FloatingPanesLayout, Layout, PaneLayout};
+use super::layout::{FloatingPaneLayout, Layout, TiledPaneLayout};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
@@ -162,7 +162,7 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, Vec<FloatingPanesLayout>, Option<String>), // the String is the tab name
+    NewTab(Option<TiledPaneLayout>, Vec<FloatingPaneLayout>, Option<String>), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.

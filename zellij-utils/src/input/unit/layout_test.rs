@@ -6,7 +6,7 @@ fn empty_layout() {
     let kdl_layout = "layout";
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout::default()),
+        template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -21,10 +21,10 @@ fn layout_with_one_pane() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout::default()],
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout::default()],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -41,14 +41,14 @@ fn layout_with_multiple_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
+        template: Some((TiledPaneLayout {
             children: vec![
-                PaneLayout::default(),
-                PaneLayout::default(),
-                PaneLayout::default(),
+                TiledPaneLayout::default(),
+                TiledPaneLayout::default(),
+                TiledPaneLayout::default(),
             ],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -70,20 +70,20 @@ fn layout_with_nested_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
+        template: Some((TiledPaneLayout {
             children: vec![
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Vertical,
-                    children: vec![PaneLayout::default(), PaneLayout::default()],
+                    children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
                     ..Default::default()
                 },
-                PaneLayout {
-                    children: vec![PaneLayout::default(), PaneLayout::default()],
+                TiledPaneLayout {
+                    children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
                     ..Default::default()
                 },
             ],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -108,22 +108,21 @@ fn layout_with_floating_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout::default()),
-        floating_panes_template: vec![
-            FloatingPanesLayout::default(),
-            FloatingPanesLayout {
+        template: Some((TiledPaneLayout::default(), vec![
+            FloatingPaneLayout::default(),
+            FloatingPaneLayout {
                 x: Some(PercentOrFixed::Fixed(10)),
                 y: Some(PercentOrFixed::Percent(10)),
                 width: Some(PercentOrFixed::Fixed(10)),
                 height: Some(PercentOrFixed::Percent(10)),
                 ..Default::default()
             },
-            FloatingPanesLayout {
+            FloatingPaneLayout {
                 x: Some(PercentOrFixed::Fixed(10)),
                 y: Some(PercentOrFixed::Percent(10)),
                 ..Default::default()
             },
-            FloatingPanesLayout {
+            FloatingPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
@@ -131,7 +130,7 @@ fn layout_with_floating_panes() {
                 })),
                 ..Default::default()
             },
-        ],
+        ])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -150,11 +149,10 @@ fn layout_with_mixed_panes_and_floating_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout::default(), PaneLayout::default()],
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
             ..Default::default()
-        }),
-        floating_panes_template: vec![FloatingPanesLayout::default()],
+        }, vec![FloatingPaneLayout::default()])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -177,18 +175,17 @@ fn layout_with_floating_panes_template() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout::default()],
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout::default()],
             ..Default::default()
-        }),
-        floating_panes_template: vec![
-            FloatingPanesLayout::default(),
-            FloatingPanesLayout {
+        }, vec![
+            FloatingPaneLayout::default(),
+            FloatingPaneLayout {
                 x: Some(PercentOrFixed::Fixed(10)),
                 y: Some(PercentOrFixed::Percent(10)),
                 ..Default::default()
             },
-        ],
+        ])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -210,8 +207,8 @@ fn layout_with_shared_tiled_and_floating_panes_template() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
@@ -220,10 +217,9 @@ fn layout_with_shared_tiled_and_floating_panes_template() {
                 ..Default::default()
             }],
             ..Default::default()
-        }),
-        floating_panes_template: vec![
-            FloatingPanesLayout::default(),
-            FloatingPanesLayout {
+        }, vec![
+            FloatingPaneLayout::default(),
+            FloatingPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
@@ -231,7 +227,7 @@ fn layout_with_shared_tiled_and_floating_panes_template() {
                 })),
                 ..Default::default()
             },
-        ],
+        ])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -267,8 +263,8 @@ fn layout_with_tabs() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        tabs: vec![(None, PaneLayout::default(), vec![])],
-        template: Some(PaneLayout::default()),
+        tabs: vec![(None, TiledPaneLayout::default(), vec![])],
+        template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -294,12 +290,12 @@ fn layout_with_nested_differing_tabs() {
         tabs: vec![
             (
                 None,
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Vertical,
                     children: vec![
-                        PaneLayout::default(),
-                        PaneLayout::default(),
-                        PaneLayout::default(),
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout::default(),
                     ],
                     ..Default::default()
                 },
@@ -307,15 +303,15 @@ fn layout_with_nested_differing_tabs() {
             ),
             (
                 None,
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Horizontal,
-                    children: vec![PaneLayout::default(), PaneLayout::default()],
+                    children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
                     ..Default::default()
                 },
                 vec![], // floating panes
             ),
         ],
-        template: Some(PaneLayout::default()),
+        template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -333,27 +329,27 @@ fn layout_with_panes_in_different_mixed_split_sizes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
+        template: Some((TiledPaneLayout {
             children: vec![
-                PaneLayout {
+                TiledPaneLayout {
                     split_size: Some(SplitSize::Fixed(1)),
                     ..Default::default()
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     split_size: Some(SplitSize::Percent(10)),
                     ..Default::default()
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     split_size: None,
                     ..Default::default()
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     split_size: Some(SplitSize::Fixed(2)),
                     ..Default::default()
                 },
             ],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -368,8 +364,8 @@ fn layout_with_command_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     hold_on_close: true,
@@ -378,7 +374,7 @@ fn layout_with_command_panes() {
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -393,8 +389,8 @@ fn layout_with_command_panes_and_cwd() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     cwd: Some(PathBuf::from("/path/to/my/cwd")),
@@ -404,7 +400,7 @@ fn layout_with_command_panes_and_cwd() {
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -421,8 +417,8 @@ fn layout_with_command_panes_and_cwd_and_args() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 run: Some(Run::Command(RunCommand {
                     command: PathBuf::from("htop"),
                     cwd: Some(PathBuf::from("/path/to/my/cwd")),
@@ -433,7 +429,7 @@ fn layout_with_command_panes_and_cwd_and_args() {
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -479,16 +475,16 @@ fn layout_with_plugin_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
+        template: Some((TiledPaneLayout {
             children: vec![
-                PaneLayout {
+                TiledPaneLayout {
                     run: Some(Run::Plugin(RunPlugin {
                         location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
                         _allow_exec_host_cmd: false,
                     })),
                     ..Default::default()
                 },
-                PaneLayout {
+                TiledPaneLayout {
                     run: Some(Run::Plugin(RunPlugin {
                         location: RunPluginLocation::File(PathBuf::from("/path/to/my/plugin.wasm")),
                         _allow_exec_host_cmd: false,
@@ -497,7 +493,7 @@ fn layout_with_plugin_panes() {
                 },
             ],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -512,13 +508,13 @@ fn layout_with_borderless_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 borderless: true,
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -533,13 +529,13 @@ fn layout_with_focused_panes() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 focus: Some(true),
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -554,13 +550,13 @@ fn layout_with_pane_names() {
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
-        template: Some(PaneLayout {
-            children: vec![PaneLayout {
+        template: Some((TiledPaneLayout {
+            children: vec![TiledPaneLayout {
                 name: Some("my awesome pane".into()),
                 ..Default::default()
             }],
             ..Default::default()
-        }),
+        }, vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -579,7 +575,7 @@ fn layout_with_tab_names() {
         tabs: vec![
             (
                 Some("my cool tab name 1".into()),
-                PaneLayout {
+                TiledPaneLayout {
                     children: vec![],
                     ..Default::default()
                 },
@@ -587,14 +583,14 @@ fn layout_with_tab_names() {
             ),
             (
                 Some("my cool tab name 2".into()),
-                PaneLayout {
+                TiledPaneLayout {
                     children: vec![],
                     ..Default::default()
                 },
                 vec![], // floating panes
             ),
         ],
-        template: Some(PaneLayout::default()),
+        template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);
@@ -612,11 +608,11 @@ fn layout_with_focused_tab() {
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None).unwrap();
     let expected_layout = Layout {
         tabs: vec![
-            (None, PaneLayout::default(), vec![]),
-            (None, PaneLayout::default(), vec![]),
-            (None, PaneLayout::default(), vec![]),
+            (None, TiledPaneLayout::default(), vec![]),
+            (None, TiledPaneLayout::default(), vec![]),
+            (None, TiledPaneLayout::default(), vec![]),
         ],
-        template: Some(PaneLayout::default()),
+        template: Some((TiledPaneLayout::default(), vec![])),
         focused_tab_index: Some(1),
         ..Default::default()
     };
@@ -648,16 +644,16 @@ fn layout_with_tab_templates() {
         tabs: vec![
             (
                 Some("my first tab".into()),
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Horizontal,
                     children: vec![
-                        PaneLayout::default(),
-                        PaneLayout {
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout {
                             children_split_direction: SplitDirection::Vertical,
-                            children: vec![PaneLayout::default(), PaneLayout::default()],
+                            children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
                             ..Default::default()
                         },
-                        PaneLayout::default(),
+                        TiledPaneLayout::default(),
                     ],
                     ..Default::default()
                 },
@@ -665,16 +661,16 @@ fn layout_with_tab_templates() {
             ),
             (
                 Some("my second tab".into()),
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Horizontal,
                     children: vec![
-                        PaneLayout::default(),
-                        PaneLayout {
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout {
                             children_split_direction: SplitDirection::Horizontal,
-                            children: vec![PaneLayout::default(), PaneLayout::default()],
+                            children: vec![TiledPaneLayout::default(), TiledPaneLayout::default()],
                             ..Default::default()
                         },
-                        PaneLayout::default(),
+                        TiledPaneLayout::default(),
                     ],
                     ..Default::default()
                 },
@@ -682,19 +678,19 @@ fn layout_with_tab_templates() {
             ),
             (
                 None,
-                PaneLayout {
+                TiledPaneLayout {
                     children_split_direction: SplitDirection::Horizontal,
                     children: vec![
-                        PaneLayout::default(),
-                        PaneLayout::default(),
-                        PaneLayout::default(),
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout::default(),
+                        TiledPaneLayout::default(),
                     ],
                     ..Default::default()
                 },
                 vec![], // floating panes
             ),
         ],
-        template: Some(PaneLayout::default()),
+        template: Some((TiledPaneLayout::default(), vec![])),
         ..Default::default()
     };
     assert_eq!(layout, expected_layout);

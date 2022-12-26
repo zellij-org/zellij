@@ -14,7 +14,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{PaneLayout, SplitDirection};
+use zellij_utils::input::layout::{TiledPaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -257,7 +257,7 @@ struct MockScreen {
 }
 
 impl MockScreen {
-    pub fn run(&mut self, initial_layout: Option<PaneLayout>) -> std::thread::JoinHandle<()> {
+    pub fn run(&mut self, initial_layout: Option<TiledPaneLayout>) -> std::thread::JoinHandle<()> {
         let config_options = self.config_options.clone();
         let client_attributes = self.client_attributes.clone();
         let screen_bus = Bus::new(
@@ -313,7 +313,7 @@ impl MockScreen {
         self.last_opened_tab_index = Some(tab_index);
         screen_thread
     }
-    pub fn new_tab(&mut self, tab_layout: PaneLayout) {
+    pub fn new_tab(&mut self, tab_layout: TiledPaneLayout) {
         let pane_count = tab_layout.extract_run_instructions().len();
         let mut pane_ids = vec![];
         let plugin_ids = HashMap::new();
@@ -477,7 +477,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     screen.new_tab(tab_index, client_id).expect("TEST");
     screen
         .apply_layout(
-            PaneLayout::default(),
+            TiledPaneLayout::default(),
             vec![], // floating panes layout
             new_terminal_ids,
             vec![], // new floating terminal ids
@@ -1005,9 +1005,9 @@ pub fn send_cli_write_action_to_screen() {
 pub fn send_cli_resize_action_to_screen() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1044,9 +1044,9 @@ pub fn send_cli_resize_action_to_screen() {
 pub fn send_cli_focus_next_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1082,9 +1082,9 @@ pub fn send_cli_focus_next_pane_action() {
 pub fn send_cli_focus_previous_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1120,9 +1120,9 @@ pub fn send_cli_focus_previous_pane_action() {
 pub fn send_cli_move_focus_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1160,9 +1160,9 @@ pub fn send_cli_move_focus_pane_action() {
 pub fn send_cli_move_focus_or_tab_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1200,9 +1200,9 @@ pub fn send_cli_move_focus_or_tab_pane_action() {
 pub fn send_cli_move_pane_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1234,9 +1234,9 @@ pub fn send_cli_move_pane_action() {
 pub fn send_cli_dump_screen_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1268,9 +1268,9 @@ pub fn send_cli_dump_screen_action() {
 pub fn send_cli_edit_scrollback_action() {
     let size = Size { cols: 80, rows: 20 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1316,9 +1316,9 @@ pub fn send_cli_edit_scrollback_action() {
 pub fn send_cli_scroll_up_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1370,9 +1370,9 @@ pub fn send_cli_scroll_up_action() {
 pub fn send_cli_scroll_down_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1450,9 +1450,9 @@ pub fn send_cli_scroll_down_action() {
 pub fn send_cli_scroll_to_bottom_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1524,9 +1524,9 @@ pub fn send_cli_scroll_to_bottom_action() {
 pub fn send_cli_page_scroll_up_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1570,9 +1570,9 @@ pub fn send_cli_page_scroll_up_action() {
 pub fn send_cli_page_scroll_down_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1633,9 +1633,9 @@ pub fn send_cli_page_scroll_down_action() {
 pub fn send_cli_half_page_scroll_up_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1679,9 +1679,9 @@ pub fn send_cli_half_page_scroll_up_action() {
 pub fn send_cli_half_page_scroll_down_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1742,9 +1742,9 @@ pub fn send_cli_half_page_scroll_down_action() {
 pub fn send_cli_toggle_full_screen_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1779,9 +1779,9 @@ pub fn send_cli_toggle_full_screen_action() {
 pub fn send_cli_toggle_pane_frames_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -1822,9 +1822,9 @@ pub fn send_cli_toggle_active_tab_sync_action() {
     let mut mock_screen = MockScreen::new(size);
     let pty_writer_receiver = mock_screen.pty_writer_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_writer_thread = log_actions_in_thread!(
@@ -1863,9 +1863,9 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -1903,9 +1903,9 @@ pub fn send_cli_new_pane_action_with_split_direction() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -1943,9 +1943,9 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -1983,9 +1983,9 @@ pub fn send_cli_edit_action_with_default_parameters() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -2021,9 +2021,9 @@ pub fn send_cli_edit_action_with_line_number() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -2059,9 +2059,9 @@ pub fn send_cli_edit_action_with_split_direction() {
     let mut mock_screen = MockScreen::new(size);
     let pty_receiver = mock_screen.pty_receiver.take().unwrap();
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let received_pty_instructions = Arc::new(Mutex::new(vec![]));
     let pty_thread = log_actions_in_thread!(
@@ -2096,9 +2096,9 @@ pub fn send_cli_switch_mode_action() {
     let client_id = 10; // fake client id should not appear in the screen's state
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let screen_thread = mock_screen.run(Some(initial_layout));
     let cli_switch_mode = CliAction::SwitchMode {
         input_mode: InputMode::Locked,
@@ -2125,9 +2125,9 @@ pub fn send_cli_switch_mode_action() {
 pub fn send_cli_toggle_pane_embed_or_float() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -2171,9 +2171,9 @@ pub fn send_cli_toggle_pane_embed_or_float() {
 pub fn send_cli_toggle_floating_panes() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -2226,9 +2226,9 @@ pub fn send_cli_toggle_floating_panes() {
 pub fn send_cli_close_pane_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -2263,9 +2263,9 @@ pub fn send_cli_close_pane_action() {
 pub fn send_cli_new_tab_action_default_params() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -2304,9 +2304,9 @@ pub fn send_cli_new_tab_action_default_params() {
 pub fn send_cli_new_tab_action_with_name_and_layout() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     let session_metadata = mock_screen.clone_session_metadata();
     let screen_thread = mock_screen.run(Some(initial_layout));
@@ -2354,12 +2354,12 @@ pub fn send_cli_new_tab_action_with_name_and_layout() {
 pub fn send_cli_next_tab_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -2395,12 +2395,12 @@ pub fn send_cli_next_tab_action() {
 pub fn send_cli_previous_tab_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -2436,12 +2436,12 @@ pub fn send_cli_previous_tab_action() {
 pub fn send_cli_goto_tab_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -2472,12 +2472,12 @@ pub fn send_cli_goto_tab_action() {
 pub fn send_cli_close_tab_action() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -2508,12 +2508,12 @@ pub fn send_cli_close_tab_action() {
 pub fn send_cli_rename_tab() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();
@@ -2541,12 +2541,12 @@ pub fn send_cli_rename_tab() {
 pub fn send_cli_undo_rename_tab() {
     let size = Size { cols: 80, rows: 10 };
     let client_id = 10; // fake client id should not appear in the screen's state
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    initial_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
-    let mut second_tab_layout = PaneLayout::default();
+    initial_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
+    let mut second_tab_layout = TiledPaneLayout::default();
     second_tab_layout.children_split_direction = SplitDirection::Horizontal;
-    second_tab_layout.children = vec![PaneLayout::default(), PaneLayout::default()];
+    second_tab_layout.children = vec![TiledPaneLayout::default(), TiledPaneLayout::default()];
     let mut mock_screen = MockScreen::new(size);
     mock_screen.new_tab(second_tab_layout);
     let session_metadata = mock_screen.clone_session_metadata();

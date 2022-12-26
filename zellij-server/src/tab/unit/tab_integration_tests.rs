@@ -16,7 +16,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::layout::{Layout, PaneLayout};
+use zellij_utils::input::layout::{Layout, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -228,7 +228,7 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -285,7 +285,7 @@ fn create_new_tab_with_os_api(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -409,7 +409,7 @@ fn create_new_tab_with_mock_pty_writer(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -469,7 +469,7 @@ fn create_new_tab_with_sixel_support(
         terminal_emulator_color_codes,
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],

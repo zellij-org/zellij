@@ -7,11 +7,11 @@ Some(
     NewTab(
         None,
         Some(
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Vertical,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -21,7 +21,7 @@ Some(
                         focus: None,
                         external_children_index: None,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],

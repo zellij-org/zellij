@@ -44,7 +44,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{FloatingPanesLayout, PaneLayout, Layout, RunPluginLocation, Run},
+        layout::{FloatingPaneLayout, TiledPaneLayout, Layout, RunPluginLocation, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -531,8 +531,8 @@ impl Tab {
 
     pub fn apply_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
@@ -622,7 +622,7 @@ impl Tab {
 //     pub fn apply_layout_to_existing_panes(
 //         &mut self,
 //         layout: PaneLayout,
-//         floating_panes_layout: Vec<FloatingPanesLayout>,
+//         floating_panes_layout: Vec<FloatingPaneLayout>,
 //         client_id: ClientId,
 //     ) -> Result<bool> {
     }

@@ -213,19 +213,10 @@ impl fmt::Display for RunPluginLocation {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
-    pub tabs: Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)>,
+    pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
-    pub template: Option<PaneLayout>,
-    pub floating_panes_template: Vec<FloatingPanesLayout>,
+    pub template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
 }
-
-// TODO CONTINUE HERE:
-// 0. Make tests pass
-// 1. Change FloatingPanesLayout to singular
-// 2. Change PaneLayout to TiledPanesLayout
-// 3. merge floating_panes_template and template, changing its type to: type TabLayout =
-//    (TiledPaneLayout, Vec<FloatingPanesLayout>) // not an option, if it doesn't exist we'll take
-//    PaneLayout::default()
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum PercentOrFixed {
@@ -278,7 +269,7 @@ impl FromStr for PercentOrFixed {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct FloatingPanesLayout {
+pub struct FloatingPaneLayout {
     // TODO: change name to singular
     pub name: Option<String>,
     pub height: Option<PercentOrFixed>,
@@ -289,7 +280,7 @@ pub struct FloatingPanesLayout {
     pub focus: Option<bool>,
 }
 
-impl FloatingPanesLayout {
+impl FloatingPaneLayout {
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
         match self.run.as_mut() {
             Some(run) => run.add_cwd(cwd),
@@ -300,9 +291,9 @@ impl FloatingPanesLayout {
     }
 }
 
-impl From<&PaneLayout> for FloatingPanesLayout {
-    fn from(pane_layout: &PaneLayout) -> Self {
-        FloatingPanesLayout {
+impl From<&TiledPaneLayout> for FloatingPaneLayout {
+    fn from(pane_layout: &TiledPaneLayout) -> Self {
+        FloatingPaneLayout {
             name: pane_layout.name.clone(),
             run: pane_layout.run.clone(),
             focus: pane_layout.focus,
@@ -312,10 +303,10 @@ impl From<&PaneLayout> for FloatingPanesLayout {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
-pub struct PaneLayout {
+pub struct TiledPaneLayout {
     pub children_split_direction: SplitDirection,
     pub name: Option<String>,
-    pub children: Vec<PaneLayout>,
+    pub children: Vec<TiledPaneLayout>,
     pub split_size: Option<SplitSize>,
     pub run: Option<Run>,
     pub borderless: bool,
@@ -323,10 +314,10 @@ pub struct PaneLayout {
     pub external_children_index: Option<usize>,
 }
 
-impl PaneLayout {
+impl TiledPaneLayout {
     pub fn insert_children_layout(
         &mut self,
-        children_layout: &mut PaneLayout,
+        children_layout: &mut TiledPaneLayout,
     ) -> Result<bool, ConfigError> {
         // returns true if successfully inserted and false otherwise
         match self.external_children_index {
@@ -359,7 +350,7 @@ impl PaneLayout {
     pub fn position_panes_in_space(
         &self,
         space: &PaneGeom,
-    ) -> Result<Vec<(PaneLayout, PaneGeom)>, &'static str> {
+    ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
         let layouts = split_space(space, self, space);
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
@@ -382,8 +373,8 @@ impl PaneLayout {
         run_instructions
     }
     pub fn with_one_pane() -> Self {
-        let mut default_layout = PaneLayout::default();
-        default_layout.children = vec![PaneLayout::default()];
+        let mut default_layout = TiledPaneLayout::default();
+        default_layout.children = vec![TiledPaneLayout::default()];
         default_layout
     }
     pub fn add_cwd_to_layout(&mut self, cwd: &PathBuf) {
@@ -547,12 +538,13 @@ impl Layout {
         Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
     }
 
-    pub fn new_tab(&self) -> (PaneLayout, Vec<FloatingPanesLayout>) {
-        let template = match &self.template {
-            Some(template) => template.clone(),
-            None => PaneLayout::default(),
-        };
-        (template, self.floating_panes_template.clone())
+    pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
+        self.template.clone().unwrap_or_default()
+//         let template = match &self.template {
+//             Some(template) => template.clone(),
+//             None => TiledPaneLayout::default(),
+//         };
+//         (template, self.floating_panes_template.clone())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -563,7 +555,7 @@ impl Layout {
         !self.tabs.is_empty()
     }
 
-    pub fn tabs(&self) -> Vec<(Option<String>, PaneLayout, Vec<FloatingPanesLayout>)> {
+    pub fn tabs(&self) -> Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)> {
         // String is the tab name
         self.tabs.clone()
     }
@@ -575,9 +567,9 @@ impl Layout {
 
 fn split_space(
     space_to_split: &PaneGeom,
-    layout: &PaneLayout,
+    layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
-) -> Vec<(PaneLayout, PaneGeom)> {
+) -> Vec<(TiledPaneLayout, PaneGeom)> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> =
         layout.children.iter().map(|part| part.split_size).collect();

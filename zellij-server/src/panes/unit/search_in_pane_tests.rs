@@ -40,6 +40,7 @@ fn create_pane() -> TerminalPane {
         Rc::new(RefCell::new(Palette::default())),
         terminal_emulator_color_codes,
         None,
+        None,
     ); // 0 is the pane index
     let content = read_fixture();
     terminal_pane.handle_pty_bytes(content);
