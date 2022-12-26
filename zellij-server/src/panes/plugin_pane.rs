@@ -16,7 +16,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
-    pane_size::{Dimension, PaneGeom},
+    pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
 };
@@ -64,6 +64,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
 }
 
 impl PluginPane {
@@ -102,6 +103,7 @@ impl PluginPane {
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
             style,
+            pane_frame_color_override: None,
         }
     }
 }
@@ -244,7 +246,13 @@ impl Pane for PluginPane {
         }
         if let Some(grid) = self.grids.get(&client_id) {
             let err_context = || format!("failed to render frame for client {client_id}");
-            let pane_title = if self.pane_name.is_empty()
+            let pane_title = if let Some(text_color_override) = self
+                .pane_frame_color_override
+                .as_ref()
+                .and_then(|(_color, text)| text.as_ref())
+            {
+                text_color_override.into()
+            } else if self.pane_name.is_empty()
                 && input_mode == InputMode::RenamePane
                 && frame_params.is_main_client
             {
@@ -257,12 +265,15 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
-            let frame = PaneFrame::new(
+            let mut frame = PaneFrame::new(
                 self.current_geom().into(),
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
             );
+            if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
+                frame.override_color(*frame_color_override);
+            }
 
             let res = match self.frame.get(&client_id) {
                 // TODO: use and_then or something?
@@ -330,28 +341,28 @@ impl Pane for PluginPane {
     }
     fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p - percent);
+            self.geom.rows.set_percent(p - percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p + percent);
+            self.geom.rows.set_percent(p + percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p - percent);
+            self.geom.cols.set_percent(p - percent);
             self.resize_grids();
             self.set_should_render(true);
         }
     }
     fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p + percent);
+            self.geom.cols.set_percent(p + percent);
             self.resize_grids();
             self.set_should_render(true);
         }
@@ -468,6 +479,17 @@ impl Pane for PluginPane {
                 Event::Mouse(Mouse::RightClick(to.line.0, to.column.0)),
             )]))
             .unwrap();
+    }
+    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
+        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+    }
+    fn clear_pane_frame_color_override(&mut self) {
+        self.pane_frame_color_override = None;
+    }
+    fn frame_color_override(&self) -> Option<PaletteColor> {
+        self.pane_frame_color_override
+            .as_ref()
+            .map(|(color, _text)| *color)
     }
 }
 

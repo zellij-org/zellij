@@ -56,7 +56,7 @@ impl Dimension {
     pub fn fixed(size: usize) -> Dimension {
         Self {
             constraint: Constraint::Fixed(size),
-            inner: 1,
+            inner: size,
         }
     }
 
@@ -77,6 +77,10 @@ impl Dimension {
         } else {
             None
         }
+    }
+
+    pub fn set_percent(&mut self, percent: f64) {
+        self.constraint = Constraint::Percent(percent);
     }
 
     pub fn set_inner(&mut self, inner: usize) {

@@ -122,6 +122,9 @@ impl PaneFrame {
     pub fn indicate_first_run(&mut self) {
         self.is_first_run = true;
     }
+    pub fn override_color(&mut self, color: PaletteColor) {
+        self.color = Some(color);
+    }
     fn client_cursor(&self, client_id: ClientId) -> Vec<TerminalCharacter> {
         let color = client_id_to_colors(client_id, self.style.colors);
         background_color(" ", color.map(|c| c.0))

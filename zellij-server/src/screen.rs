@@ -12,7 +12,7 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{PaneLayout, RunPluginLocation},
+    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
     position::Position,
 };
 
@@ -177,12 +177,15 @@ pub enum ScreenInstruction {
     NewTab(
         Option<TerminalAction>,
         Option<PaneLayout>,
+        Vec<FloatingPanesLayout>,
         Option<String>,
         ClientId,
     ),
     ApplyLayout(
         PaneLayout,
-        Vec<(u32, HoldForCommand)>,
+        Vec<FloatingPanesLayout>,
+        Vec<(u32, HoldForCommand)>, // new pane pids
+        Vec<(u32, HoldForCommand)>, // new floating pane pids
         HashMap<RunPluginLocation, Vec<u32>>,
         usize, // tab_index
         ClientId,
@@ -224,6 +227,8 @@ pub enum ScreenInstruction {
     SearchToggleCaseSensitivity(ClientId),
     SearchToggleWholeWord(ClientId),
     SearchToggleWrap(ClientId),
+    AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
+    ClearPaneFrameColorOverride(Vec<PaneId>),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -355,6 +360,12 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::SearchToggleWholeWord(..) => ScreenContext::SearchToggleWholeWord,
             ScreenInstruction::SearchToggleWrap(..) => ScreenContext::SearchToggleWrap,
+            ScreenInstruction::AddRedPaneFrameColorOverride(..) => {
+                ScreenContext::AddRedPaneFrameColorOverride
+            },
+            ScreenInstruction::ClearPaneFrameColorOverride(..) => {
+                ScreenContext::ClearPaneFrameColorOverride
+            },
         }
     }
 }
@@ -912,7 +923,9 @@ impl Screen {
     pub fn apply_layout(
         &mut self,
         layout: PaneLayout,
+        floating_panes_layout: Vec<FloatingPanesLayout>,
         new_terminal_ids: Vec<(u32, HoldForCommand)>,
+        new_floating_terminal_ids: Vec<(u32, HoldForCommand)>,
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,
         client_id: ClientId,
@@ -960,9 +973,10 @@ impl Screen {
         let tab = self.tabs.get_mut(&tab_index).unwrap(); // TODO: no unwrap
         tab.apply_layout(
             layout,
+            floating_panes_layout,
             new_terminal_ids,
+            new_floating_terminal_ids,
             new_plugin_ids,
-            tab_index,
             client_id,
         )
         .with_context(err_context)?;
@@ -1870,7 +1884,13 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
                 screen.render()?;
             },
-            ScreenInstruction::NewTab(default_shell, layout, tab_name, client_id) => {
+            ScreenInstruction::NewTab(
+                default_shell,
+                layout,
+                floating_panes_layout,
+                tab_name,
+                client_id,
+            ) => {
                 let tab_index = screen.get_new_tab_index();
                 screen.new_tab(tab_index, client_id)?;
                 screen
@@ -1879,6 +1899,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::NewTab(
                         default_shell,
                         layout,
+                        floating_panes_layout,
                         tab_name,
                         tab_index,
                         client_id,
@@ -1886,12 +1907,22 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ApplyLayout(
                 layout,
+                floating_panes_layout,
                 new_pane_pids,
+                new_floating_pane_pids,
                 new_plugin_ids,
                 tab_index,
                 client_id,
             ) => {
-                screen.apply_layout(layout, new_pane_pids, new_plugin_ids, tab_index, client_id)?;
+                screen.apply_layout(
+                    layout,
+                    floating_panes_layout,
+                    new_pane_pids,
+                    new_floating_pane_pids,
+                    new_plugin_ids,
+                    tab_index,
+                    client_id,
+                )?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
@@ -2111,6 +2142,30 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.render()?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::AddRedPaneFrameColorOverride(pane_ids, error_text) => {
+                let all_tabs = screen.get_tabs_mut();
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.add_red_pane_frame_color_override(pane_id, error_text.clone());
+                            break;
+                        }
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::ClearPaneFrameColorOverride(pane_ids) => {
+                let all_tabs = screen.get_tabs_mut();
+                for pane_id in pane_ids {
+                    for tab in all_tabs.values_mut() {
+                        if tab.has_pane_with_pid(&pane_id) {
+                            tab.clear_pane_frame_color_override(pane_id);
+                            break;
+                        }
+                    }
+                }
+                screen.render()?;
             },
         }
     }

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
+* build: Use `xtask` as build system (https://github.com/zellij-org/zellij/pull/2012)
+* fix: show visual error when failing to resize panes in various situations (https://github.com/zellij-org/zellij/pull/2036)
+* dist: remove nix support (https://github.com/zellij-org/zellij/pull/2038)
+* feat: support floating panes in layouts (https://github.com/zellij-org/zellij/pull/2047)
+
+## [0.34.4] - 2022-12-13
+
+* hotfix: fix panics when resizing with flexible plugin panes in layout (https://github.com/zellij-org/zellij/pull/2019)
+* hotfix: allow non-absolute `SHELL` variables (https://github.com/zellij-org/zellij/pull/2013)
 
 ## [0.34.3] - 2022-12-09
 

@@ -215,6 +215,7 @@ pub enum ContextType {
     StdinHandler,
     AsyncTask,
     PtyWrite(PtyWriteContext),
+    BackgroundJob(BackgroundJobContext),
     /// An empty, placeholder call. This should be thought of as representing no call at all.
     /// A call stack representation filled with these is the representation of an empty call stack.
     Empty,
@@ -231,6 +232,7 @@ impl Display for ContextType {
             ContextType::StdinHandler => Some(("stdin_handler_thread:", "AcceptInput".to_string())),
             ContextType::AsyncTask => Some(("stream_terminal_bytes:", "AsyncTask".to_string())),
             ContextType::PtyWrite(c) => Some(("pty_writer_thread:", format!("{:?}", c))),
+            ContextType::BackgroundJob(c) => Some(("background_jobs_thread:", format!("{:?}", c))),
             ContextType::Empty => None,
         } {
             write!(f, "{} {}", left.purple(), right.green())
@@ -350,6 +352,8 @@ pub enum ScreenContext {
     SearchToggleCaseSensitivity,
     SearchToggleWholeWord,
     SearchToggleWrap,
+    AddRedPaneFrameColorOverride,
+    ClearPaneFrameColorOverride,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -420,6 +424,12 @@ pub enum PtyWriteContext {
     Exit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BackgroundJobContext {
+    DisplayPaneError,
+    Exit,
+}
+
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ZellijError {
@@ -484,6 +494,14 @@ open an issue on GitHub:
         #[source]
         source: anyhow::Error,
     },
+
+    // this is a temporary hack until we're able to merge custom errors from within the various
+    // crates themselves without having to move their payload types here
+    #[error("Cannot resize fixed panes")]
+    CantResizeFixedPanes { pane_ids: Vec<(u32, bool)> }, // bool: 0 => terminal_pane, 1 =>
+    // plugin_pane
+    #[error("Pane size remains unchanged")]
+    PaneSizeUnchanged,
 
     #[error("an error occured")]
     GenericError { source: anyhow::Error },

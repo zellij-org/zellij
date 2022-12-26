@@ -18,8 +18,8 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
+    pane_size::PaneGeom,
     pane_size::SizeInPixels,
-    pane_size::{Dimension, PaneGeom},
     position::Position,
     shared::make_terminal_title,
     vte,
@@ -109,7 +109,8 @@ pub struct TerminalPane {
     is_held: Option<(Option<i32>, IsFirstRun, RunCommand)>, // a "held" pane means that its command has either exited and the pane is waiting for a
     // possible user instruction to be re-run, or that the command has not yet been run
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
-                            // held on startup and can possibly be used to display some errors
+    // held on startup and can possibly be used to display some errors
+    pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
 }
 
 impl Pane for TerminalPane {
@@ -301,7 +302,13 @@ impl Pane for TerminalPane {
     ) -> Result<Option<(Vec<CharacterChunk>, Option<String>)>> {
         let err_context = || format!("failed to render frame for client {client_id}");
         // TODO: remove the cursor stuff from here
-        let pane_title = if self.pane_name.is_empty()
+        let pane_title = if let Some(text_color_override) = self
+            .pane_frame_color_override
+            .as_ref()
+            .and_then(|(_color, text)| text.as_ref())
+        {
+            text_color_override.into()
+        } else if self.pane_name.is_empty()
             && input_mode == InputMode::RenamePane
             && frame_params.is_main_client
         {
@@ -352,6 +359,9 @@ impl Pane for TerminalPane {
             } else {
                 frame.add_exit_status(exit_status.as_ref().copied());
             }
+        }
+        if let Some((frame_color_override, _text)) = self.pane_frame_color_override.as_ref() {
+            frame.override_color(*frame_color_override);
         }
 
         let res = match self.frame.get(&client_id) {
@@ -436,25 +446,25 @@ impl Pane for TerminalPane {
     }
     fn reduce_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p - percent);
+            self.geom.rows.set_percent(p - percent);
             self.set_should_render(true);
         }
     }
     fn increase_height(&mut self, percent: f64) {
         if let Some(p) = self.geom.rows.as_percent() {
-            self.geom.rows = Dimension::percent(p + percent);
+            self.geom.rows.set_percent(p + percent);
             self.set_should_render(true);
         }
     }
     fn reduce_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p - percent);
+            self.geom.cols.set_percent(p - percent);
             self.set_should_render(true);
         }
     }
     fn increase_width(&mut self, percent: f64) {
         if let Some(p) = self.geom.cols.as_percent() {
-            self.geom.cols = Dimension::percent(p + percent);
+            self.geom.cols.set_percent(p + percent);
             self.set_should_render(true);
         }
     }
@@ -669,6 +679,17 @@ impl Pane for TerminalPane {
         }
         self.set_should_render(true);
     }
+    fn add_red_pane_frame_color_override(&mut self, error_text: Option<String>) {
+        self.pane_frame_color_override = Some((self.style.colors.red, error_text));
+    }
+    fn clear_pane_frame_color_override(&mut self) {
+        self.pane_frame_color_override = None;
+    }
+    fn frame_color_override(&self) -> Option<PaletteColor> {
+        self.pane_frame_color_override
+            .as_ref()
+            .map(|(color, _text)| *color)
+    }
 }
 
 impl TerminalPane {
@@ -717,6 +738,7 @@ impl TerminalPane {
             search_term: String::new(),
             is_held: None,
             banner: None,
+            pane_frame_color_override: None,
         }
     }
     pub fn get_x(&self) -> usize {

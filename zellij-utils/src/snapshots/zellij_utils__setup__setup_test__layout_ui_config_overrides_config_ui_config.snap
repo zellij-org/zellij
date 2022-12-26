@@ -1,5 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
+assertion_line: 654
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -975,6 +976,7 @@ Config {
             ): [
                 NewTab(
                     None,
+                    [],
                     None,
                 ),
                 SwitchToMode(
@@ -3049,6 +3051,7 @@ Config {
             ): [
                 NewTab(
                     None,
+                    [],
                     None,
                 ),
                 SwitchToMode(
