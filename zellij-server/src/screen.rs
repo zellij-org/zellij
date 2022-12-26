@@ -229,6 +229,7 @@ pub enum ScreenInstruction {
     SearchToggleWrap(ClientId),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
+    RelayoutFocusedTab(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -366,6 +367,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearPaneFrameColorOverride(..) => {
                 ScreenContext::ClearPaneFrameColorOverride
             },
+            ScreenInstruction::RelayoutFocusedTab(..) => ScreenContext::RelayoutFocusedTab,
         }
     }
 }
@@ -2167,6 +2169,15 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render()?;
             },
+            ScreenInstruction::RelayoutFocusedTab(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.relayout(client_id)
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            }
         }
     }
     Ok(())

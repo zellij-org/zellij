@@ -202,6 +202,7 @@ pub enum Action {
     /// Toggle case sensitivity of search
     SearchToggleOption(SearchOption),
     ToggleMouseMode,
+    RelayoutFocusedTab,
 }
 
 impl Action {
@@ -388,6 +389,7 @@ impl Action {
                     Ok(vec![Action::NewTab(None, vec![], name)])
                 }
             },
+            CliAction::RelayoutFocusedTab => Ok(vec![Action::RelayoutFocusedTab]),
         }
     }
 }

@@ -44,7 +44,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
+        layout::{FloatingPanesLayout, PaneLayout, Layout, RunPluginLocation, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -392,6 +392,7 @@ pub trait Pane {
     fn add_red_pane_frame_color_override(&mut self, _error_text: Option<String>);
     fn clear_pane_frame_color_override(&mut self);
     fn frame_color_override(&self) -> Option<PaletteColor>;
+    fn invoked_with(&self) -> &Option<Run>;
 }
 
 #[derive(Clone, Debug)]
@@ -570,6 +571,60 @@ impl Tab {
         self.is_pending = false;
         self.apply_buffered_instructions()?;
         Ok(())
+    }
+    pub fn relayout(&mut self, client_id: ClientId) -> Result<()> {
+        // TODO CONTINUE HERE:
+        // * create a mock PaneLayout and use the LayoutApplier to apply it
+        log::info!("tab relayout");
+        let layout = Layout::from_kdl("
+            layout {
+                pane size=1 borderless=true {
+                    plugin location=\"zellij:tab-bar\"
+                }
+                pane
+                pane
+                pane size=2 borderless=true {
+                    plugin location=\"zellij:status-bar\"
+                }
+            }
+        ", String::new(), None).unwrap();
+        let (tiled_panes_layout, floating_panes_layout) = layout.new_tab();
+        let layout_has_floating_panes = LayoutApplier::new(
+            &self.viewport,
+            &self.senders,
+            &self.sixel_image_store,
+            &self.link_handler,
+            &self.terminal_emulator_colors,
+            &self.terminal_emulator_color_codes,
+            &self.character_cell_size,
+            &self.style,
+            &self.display_area,
+            &mut self.tiled_panes,
+            &mut self.floating_panes,
+            self.draw_pane_frames,
+            &mut self.focus_pane_id,
+            &self.os_api,
+        )
+        .apply_layout_to_existing_panes(
+            tiled_panes_layout,
+            floating_panes_layout,
+            client_id,
+        )?;
+        if layout_has_floating_panes {
+            if !self.floating_panes.panes_are_visible() {
+                self.toggle_floating_panes(client_id, None)?;
+            }
+        }
+        self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+        self.is_pending = false;
+        self.apply_buffered_instructions()?;
+        Ok(())
+//     pub fn apply_layout_to_existing_panes(
+//         &mut self,
+//         layout: PaneLayout,
+//         floating_panes_layout: Vec<FloatingPanesLayout>,
+//         client_id: ClientId,
+//     ) -> Result<bool> {
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
@@ -807,6 +862,7 @@ impl Tab {
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
                         initial_pane_title,
+                        None,
                     );
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api, self.senders).with_context(err_context)?;
@@ -833,6 +889,7 @@ impl Tab {
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
                         initial_pane_title,
+                        None,
                     );
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
@@ -864,6 +921,7 @@ impl Tab {
                     self.sixel_image_store.clone(),
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
+                    None,
                     None,
                 );
                 new_pane.update_name("EDITING SCROLLBACK"); // we do this here and not in the
@@ -934,6 +992,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
+                    None,
                 );
                 self.tiled_panes
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
@@ -988,6 +1047,7 @@ impl Tab {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
+                    None,
                 );
                 self.tiled_panes
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
@@ -2775,6 +2835,7 @@ impl Tab {
             pane.clear_pane_frame_color_override();
         }
     }
+
 
     fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)

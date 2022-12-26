@@ -16,6 +16,7 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
+    input::layout::Run,
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
     pane_size::PaneGeom,
@@ -111,6 +112,7 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
 }
 
 impl Pane for TerminalPane {
@@ -690,6 +692,9 @@ impl Pane for TerminalPane {
             .as_ref()
             .map(|(color, _text)| *color)
     }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
+    }
 }
 
 impl TerminalPane {
@@ -706,6 +711,7 @@ impl TerminalPane {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -739,6 +745,7 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            invoked_with,
         }
     }
     pub fn get_x(&self) -> usize {

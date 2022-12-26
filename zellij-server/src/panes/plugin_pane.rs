@@ -13,6 +13,7 @@ use std::rc::Rc;
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
+    input::layout::Run,
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
@@ -65,6 +66,7 @@ pub(crate) struct PluginPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
 }
 
 impl PluginPane {
@@ -80,6 +82,7 @@ impl PluginPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         style: Style,
+        invoked_with: Option<Run>,
     ) -> Self {
         Self {
             pid,
@@ -104,6 +107,7 @@ impl PluginPane {
             grids: HashMap::new(),
             style,
             pane_frame_color_override: None,
+            invoked_with,
         }
     }
 }
@@ -490,6 +494,9 @@ impl Pane for PluginPane {
         self.pane_frame_color_override
             .as_ref()
             .map(|(color, _text)| *color)
+    }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
     }
 }
 

@@ -354,6 +354,7 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    RelayoutFocusedTab,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

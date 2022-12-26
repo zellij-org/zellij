@@ -103,6 +103,85 @@ impl<'a> LayoutApplier<'a> {
         )?;
         return Ok(layout_has_floating_panes);
     }
+    pub fn apply_layout_to_existing_panes(
+        &mut self,
+        layout: PaneLayout,
+        floating_panes_layout: Vec<FloatingPanesLayout>,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        // true => layout has floating panes
+        let layout_name = layout.name.clone();
+        self.apply_tiled_panes_layout_to_existing_panes(layout, client_id)?;
+//         let layout_has_floating_panes = self.apply_floating_panes_layout(
+//             floating_panes_layout,
+//             new_floating_terminal_ids,
+//             &mut new_plugin_ids,
+//             layout_name,
+//         )?;
+//         return Ok(layout_has_floating_panes);
+        return Ok(false); // TODO: no!
+    }
+    fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: PaneLayout, client_id: ClientId) -> Result<()> {
+        // TODO: CONTINUE HERE - find out why this isn't working (to test, open zellij, split right and do
+        // target/debug/zellij action relayout-focused-tab)
+        let err_context = || format!("failed to apply tiled panes layout");
+        let (viewport_cols, viewport_rows) = {
+            let viewport = self.viewport.borrow();
+            (viewport.cols, viewport.rows)
+        };
+        let mut free_space = PaneGeom::default();
+        free_space.cols.set_inner(viewport_cols);
+        free_space.rows.set_inner(viewport_rows);
+        match layout.position_panes_in_space(&free_space) {
+            Ok(positions_in_layout) => {
+                let positions_and_size = positions_in_layout.iter();
+                // let mut new_terminal_ids = new_terminal_ids.iter();
+
+                let mut focus_pane_id: Option<PaneId> = None; // TODO: this should default to the
+                                                              // currently focused pane
+                let mut set_focus_pane_id = |layout: &PaneLayout, pane_id: PaneId| {
+                    if layout.focus.unwrap_or(false) && focus_pane_id.is_none() {
+                        focus_pane_id = Some(pane_id);
+                    }
+                };
+
+                let mut existing_panes = self.tiled_panes.drain();
+                let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom| -> Option<Box<dyn Pane>> {
+                    let candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
+                    if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
+                        return existing_panes.remove(&same_position_candidate_id);
+                    } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
+                        return existing_panes.remove(&first_candidate);
+                    }
+                    None
+                };
+                for (layout, position_and_size) in positions_and_size {
+                    let mut pane = find_and_extract_pane(&layout.run, &position_and_size).unwrap(); // TODO:
+                                                                                                      // err
+                                                                                                      // context
+                                                                                                      // and
+                                                                                                      // stuff
+                    // TODO: pane title and other layout attributes
+                    pane.set_geom(*position_and_size);
+                    let pane_pid = pane.pid();
+                    pane.set_borderless(layout.borderless);
+                    resize_pty!(pane, self.os_api, self.senders)?;
+                    self.tiled_panes
+                        .add_pane_with_existing_geom(pane_pid, pane);
+                    set_focus_pane_id(layout, pane_pid);
+                }
+                // TODO: what if existing_panes is not empty at this point?
+                // self.adjust_viewport(); // TODO: ???
+                self.set_focused_tiled_pane(focus_pane_id, client_id);
+            },
+            Err(e) => {
+                Err::<(), _>(anyError::msg(e))
+                    .with_context(err_context)
+                    .non_fatal(); // TODO: propagate this to the user
+            },
+        };
+        Ok(())
+    }
     fn apply_tiled_panes_layout(
         &mut self,
         layout: PaneLayout,
@@ -154,6 +233,7 @@ impl<'a> LayoutApplier<'a> {
                             self.link_handler.clone(),
                             self.character_cell_size.clone(),
                             self.style,
+                            layout.run.clone(),
                         );
                         new_plugin.set_borderless(layout.borderless);
                         self.tiled_panes
@@ -180,6 +260,7 @@ impl<'a> LayoutApplier<'a> {
                                 self.terminal_emulator_colors.clone(),
                                 self.terminal_emulator_color_codes.clone(),
                                 initial_title,
+                                layout.run.clone(),
                             );
                             new_pane.set_borderless(layout.borderless);
                             if let Some(held_command) = hold_for_command {
@@ -254,6 +335,7 @@ impl<'a> LayoutApplier<'a> {
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
                     self.style,
+                    floating_pane_layout.run.clone(),
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
@@ -285,6 +367,7 @@ impl<'a> LayoutApplier<'a> {
                     self.terminal_emulator_colors.clone(),
                     self.terminal_emulator_color_codes.clone(),
                     initial_title,
+                    floating_pane_layout.run.clone(),
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));

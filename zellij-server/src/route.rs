@@ -610,6 +610,12 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
+        Action::RelayoutFocusedTab => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RelayoutFocusedTab(client_id))
+                .with_context(err_context)?;
+        }
     }
     Ok(should_break)
 }
