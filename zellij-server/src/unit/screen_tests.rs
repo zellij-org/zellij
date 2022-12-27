@@ -470,11 +470,11 @@ macro_rules! log_actions_in_thread {
     };
 }
 
-fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
+fn new_tab(screen: &mut Screen, pid: u32, tab_position: usize) {
     let client_id = 1;
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
-    screen.new_tab(tab_index, client_id).expect("TEST");
+    screen.new_tab(tab_position, client_id).expect("TEST");
     screen
         .apply_layout(
             PaneLayout::default(),
@@ -482,7 +482,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
             new_terminal_ids,
             vec![], // new floating terminal ids
             new_plugin_ids,
-            tab_index,
+            tab_position,
             client_id,
         )
         .expect("TEST");
@@ -521,7 +521,7 @@ pub fn switch_to_prev_tab() {
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        0,
+        1,
         "Active tab switched to previous tab"
     );
 }
@@ -561,7 +561,7 @@ pub fn close_tab() {
     assert_eq!(screen.tabs.len(), 1, "Only one tab left");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        0,
+        1,
         "Active tab switched to previous tab"
     );
 }
@@ -583,7 +583,7 @@ pub fn close_the_middle_tab() {
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        1,
+        2,
         "Active tab switched to previous tab"
     );
 }
@@ -604,7 +604,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        0,
+        1,
         "Active tab switched to previous"
     );
 }
@@ -646,15 +646,15 @@ pub fn toggle_to_previous_tab_simple() {
     screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        0,
-        "Active tab toggler to previous tab"
+        2,
+        "Active tab toggles to previous tab"
     );
 
     screen.toggle_tab(1).expect("TEST");
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
         1,
-        "Active tab toggler to previous tab"
+        "Active tab toggles to previous tab"
     );
 }
 
@@ -826,7 +826,7 @@ fn switch_to_tab_with_fullscreen() {
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
-        0,
+        1,
         "Active tab switched to previous"
     );
     assert_eq!(
@@ -937,7 +937,7 @@ fn attach_after_first_tab_closed() {
     }
     new_tab(&mut screen, 2, 1);
 
-    screen.close_tab_at_index(0).expect("TEST");
+    screen.close_tab_at_position(0).expect("TEST");
     screen.remove_client(1).expect("TEST");
     screen.add_client(1).expect("TEST");
 }
