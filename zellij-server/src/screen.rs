@@ -582,32 +582,36 @@ impl Screen {
                         return Ok(());
                     }
 
-                    let current_tab_index = current_tab.index;
-                    let new_tab_index = new_tab.index;
+                    let current_tab_position = current_tab.position;
+                    let new_tab_position = new_tab.position;
                     if self.session_is_mirrored {
-                        self.move_clients_between_tabs(current_tab_index, new_tab_index, None)
-                            .with_context(err_context)?;
+                        self.move_clients_between_tabs(
+                            current_tab_position,
+                            new_tab_position,
+                            None,
+                        )
+                        .with_context(err_context)?;
                         let all_connected_clients: Vec<ClientId> =
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
-                            self.update_client_tab_focus(client_id, new_tab_index);
+                            self.update_client_tab_focus(client_id, new_tab_position);
                         }
                     } else {
                         self.move_clients_between_tabs(
-                            current_tab_index,
-                            new_tab_index,
+                            current_tab_position,
+                            new_tab_position,
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
-                        self.update_client_tab_focus(client_id, new_tab_index);
+                        self.update_client_tab_focus(client_id, new_tab_position);
                     }
 
-                    if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_index) {
+                    if let Some(current_tab) = self.get_indexed_tab_mut(current_tab_position) {
                         if current_tab.has_no_connected_clients() {
                             current_tab.visible(false).with_context(err_context)?;
                         }
                     } else {
-                        Err::<(), _>(anyhow!("Tab index {:?} not found", current_tab_index))
+                        Err::<(), _>(anyhow!("Tab position {:?} not found", current_tab_position))
                             .with_context(err_context)
                             .non_fatal();
                     }
@@ -676,10 +680,10 @@ impl Screen {
         self.switch_active_tab(tab_index.saturating_sub(1), client_id)
     }
 
-    fn close_tab_at_index(&mut self, tab_index: usize) -> Result<()> {
-        let err_context = || format!("failed to close tab at index {tab_index:?}");
+    fn close_tab_at_position(&mut self, tab_position: usize) -> Result<()> {
+        let err_context = || format!("failed to close tab at index {tab_position:?}");
 
-        let mut tab_to_close = self.tabs.remove(&tab_index).with_context(err_context)?;
+        let mut tab_to_close = self.tabs.remove(&tab_position).with_context(err_context)?;
         let pane_ids = tab_to_close.get_all_pane_ids();
         // below we don't check the result of sending the CloseTab instruction to the pty thread
         // because this might be happening when the app is closing, at which point the pty thread
@@ -698,44 +702,43 @@ impl Screen {
             let client_mode_infos_in_closed_tab = tab_to_close.drain_connected_clients(None);
             self.move_clients_from_closed_tab(client_mode_infos_in_closed_tab)
                 .with_context(err_context)?;
-            let visible_tab_indices: HashSet<usize> =
+            let visible_tab_positions: HashSet<usize> =
                 self.active_tab_indices.values().copied().collect();
 
-            let split_off_tabs = self.tabs.split_off(&tab_index);
+            let split_off_tabs = self.tabs.split_off(&tab_position);
             for t in self.tabs.values_mut() {
-                if visible_tab_indices.contains(&t.index) {
+                if visible_tab_positions.contains(&t.position) {
                     t.set_force_render();
                     t.visible(true).with_context(err_context)?;
                 }
             }
 
             for mut tab in split_off_tabs.into_values() {
-                let old_index = tab.index;
+                let old_position = tab.position;
 
                 tab.position -= 1;
-                tab.index -= 1;
 
                 if tab.name.starts_with("Tab #") {
                     tab.name = format!("Tab #{}", tab.position + 1);
                 }
 
-                if visible_tab_indices.contains(&old_index) {
+                if visible_tab_positions.contains(&old_position) {
                     tab.set_force_render();
                     tab.visible(true).with_context(err_context)?;
                 }
 
-                self.tabs.insert(tab.index, tab);
+                self.tabs.insert(tab.position, tab);
             }
 
-            let new_tab_index = if tab_index >= self.tabs.len() {
+            let new_tab_position = if tab_position >= self.tabs.len() {
                 self.tabs.keys().last().copied()
             } else {
-                Some(tab_index)
+                Some(tab_position)
             };
 
-            let current_active_tab_indices = self.active_tab_indices.clone();
-            for (client_id, _idx) in current_active_tab_indices {
-                self.update_client_tab_focus(client_id.clone(), new_tab_index.unwrap_or(0));
+            let current_active_tab_positions = self.active_tab_indices.clone();
+            for (client_id, _pos) in current_active_tab_positions {
+                self.update_client_tab_focus(client_id.clone(), new_tab_position.unwrap_or(0));
             }
 
             self.update_tabs().with_context(err_context)?;
@@ -759,7 +762,7 @@ impl Screen {
                     .active_tab_indices
                     .get(&client_id)
                     .with_context(err_context)?;
-                self.close_tab_at_index(active_tab_index)
+                self.close_tab_at_position(active_tab_index)
                     .with_context(err_context)
             },
             None => Ok(()),
@@ -837,7 +840,7 @@ impl Screen {
             }
         }
         for tab_index in tabs_to_close {
-            self.close_tab_at_index(tab_index).context(err_context)?;
+            self.close_tab_at_position(tab_index).context(err_context)?;
         }
         if output.is_dirty() {
             let serialized_output = output.serialize().context(err_context)?;
@@ -921,9 +924,8 @@ impl Screen {
             client_id
         };
 
-        let position = self.tabs.len();
+        let position = tab_index;
         let tab = Tab::new(
-            tab_index,
             position,
             String::new(),
             self.size,
@@ -946,7 +948,7 @@ impl Screen {
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
         );
-        self.tabs.insert(tab_index, tab);
+        self.tabs.insert(position, tab);
         Ok(())
     }
     pub fn apply_layout(
@@ -1086,7 +1088,7 @@ impl Screen {
                     self.active_tab_indices
                         .iter()
                         .filter(|(c_id, tab_position)| {
-                            **tab_position == tab.index && *c_id != client_id
+                            **tab_position == tab.position && *c_id != client_id
                         })
                         .map(|(c_id, _)| c_id)
                         .copied()
@@ -1095,7 +1097,7 @@ impl Screen {
                 tab_data.push(TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
-                    active: *active_tab_index == tab.index,
+                    active: *active_tab_index == tab.position,
                     panes_to_hide: tab.panes_to_hide_count(),
                     is_fullscreen_active: tab.is_fullscreen_active(),
                     is_sync_panes_active: tab.is_sync_panes_active(),

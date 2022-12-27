@@ -87,7 +87,6 @@ enum BufferedTabInstruction {
 }
 
 pub(crate) struct Tab {
-    pub index: usize,
     pub position: usize,
     pub name: String,
     pub prev_name: String,
@@ -425,7 +424,6 @@ impl Tab {
     // FIXME: Still too many arguments for clippy to be happy...
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        index: usize,
         position: usize,
         name: String,
         display_area: Size,
@@ -445,7 +443,7 @@ impl Tab {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", index + 1)
+            format!("Tab #{}", position + 1)
         } else {
             name
         };
@@ -491,7 +489,6 @@ impl Tab {
         };
 
         Tab {
-            index,
             position,
             tiled_panes,
             floating_panes,
