@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2322
+assertion_line: 2350
 expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
@@ -60,6 +60,7 @@ NewTab(
             external_children_index: None,
         },
     ),
+    [],
     Some(
         "my-awesome-tab-name",
     ),

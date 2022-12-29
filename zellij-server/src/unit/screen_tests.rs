@@ -14,7 +14,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{PaneLayout, SplitDirection, SplitSize};
+use zellij_utils::input::layout::{PaneLayout, SplitDirection};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -297,12 +297,15 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             default_shell,
             Some(pane_layout.clone()),
+            vec![], // floating_panes_layout
             tab_name,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             pane_layout,
+            vec![], // floating panes layout
             pane_ids,
+            vec![], // floating pane ids
             plugin_ids,
             tab_index,
             self.main_client_id,
@@ -323,12 +326,15 @@ impl MockScreen {
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
             default_shell,
             Some(tab_layout.clone()),
+            vec![], // floating_panes_layout
             tab_name,
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
             tab_layout,
+            vec![], // floating_panes_layout
             pane_ids,
+            vec![], // floating panes ids
             plugin_ids,
             0,
             self.main_client_id,
@@ -472,7 +478,9 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     screen
         .apply_layout(
             PaneLayout::default(),
+            vec![], // floating panes layout
             new_terminal_ids,
+            vec![], // new floating terminal ids
             new_plugin_ids,
             tab_index,
             client_id,

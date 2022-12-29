@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1537
+assertion_line: 1557
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -102,6 +102,7 @@ Layout {
                 focus: None,
                 external_children_index: None,
             },
+            [],
         ),
     ],
     focused_tab_index: None,
@@ -117,4 +118,5 @@ Layout {
             external_children_index: None,
         },
     ),
+    floating_panes_template: [],
 }
