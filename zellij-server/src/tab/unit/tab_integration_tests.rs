@@ -16,7 +16,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::data::ResizeStrategy;
 use zellij_utils::envs::set_session_name;
 use zellij_utils::errors::{prelude::*, ErrorContext};
-use zellij_utils::input::layout::{Layout, TiledPaneLayout};
+use zellij_utils::input::layout::{Layout, TiledPaneLayout, FloatingPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::position::Position;
@@ -226,6 +226,61 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
+    );
+    tab.apply_layout(
+        TiledPaneLayout::default(),
+        vec![],
+        vec![(1, None)],
+        vec![],
+        HashMap::new(),
+        client_id,
+    )
+    .unwrap();
+    tab
+}
+
+fn create_new_tab_with_swap_layouts(size: Size, default_mode: ModeInfo, swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>) -> Tab {
+    set_session_name("test".into());
+    let index = 0;
+    let position = 0;
+    let name = String::new();
+    let os_api = Box::new(FakeInputOutput::default());
+    let senders = ThreadSenders::default().silently_fail_on_send();
+    let max_panes = None;
+    let mode_info = default_mode;
+    let style = Style::default();
+    let draw_pane_frames = true;
+    let client_id = 1;
+    let session_is_mirrored = true;
+    let mut connected_clients = HashSet::new();
+    connected_clients.insert(client_id);
+    let connected_clients = Rc::new(RefCell::new(connected_clients));
+    let character_cell_info = Rc::new(RefCell::new(None));
+    let terminal_emulator_colors = Rc::new(RefCell::new(Palette::default()));
+    let copy_options = CopyOptions::default();
+    let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
+    let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
+    let mut tab = Tab::new(
+        index,
+        position,
+        name,
+        size,
+        character_cell_info,
+        sixel_image_store,
+        os_api,
+        senders,
+        max_panes,
+        style,
+        mode_info,
+        draw_pane_frames,
+        connected_clients,
+        session_is_mirrored,
+        client_id,
+        copy_options,
+        terminal_emulator_colors,
+        terminal_emulator_color_codes,
+        swap_layouts,
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -283,6 +338,7 @@ fn create_new_tab_with_os_api(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -338,6 +394,7 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     let pane_ids = tab_layout
         .extract_run_instructions()
@@ -407,6 +464,7 @@ fn create_new_tab_with_mock_pty_writer(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -467,6 +525,7 @@ fn create_new_tab_with_sixel_support(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -2881,4 +2940,169 @@ fn toggle_floating_panes_off_sends_tty_csi_event() {
     .unwrap();
     tab.toggle_floating_panes(client_id, None).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
+}
+
+#[test]
+fn can_swap_tiled_layout_at_runtime() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_layouts {
+                tab {
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let swap_layouts = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap().swap_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), swap_layouts);
+    let new_pane_id_1 = PaneId::Terminal(2);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn can_swap_floating_layout_at_runtime() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_layouts {
+                tab {
+                    floating_panes {
+                        pane {
+                            x "0%"
+                        }
+                        pane {
+                            x "100%"
+                        }
+                    }
+                }
+            }
+        }
+    "#;
+    let swap_layouts = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap().swap_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), swap_layouts);
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+
+    tab.toggle_floating_panes(client_id, None).unwrap();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn can_swap_between_multiple_layouts() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_layouts {
+                tab {
+                    pane
+                    pane
+                }
+                tab {
+                    pane split_direction="vertical" {
+                        pane
+                        pane
+                    }
+                }
+            }
+        }
+    "#;
+    let swap_layouts = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap().swap_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), swap_layouts);
+    let new_pane_id_1 = PaneId::Terminal(2);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn swapping_layouts_after_resize_snaps_to_current_layout() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_layouts {
+                tab {
+                    pane
+                    pane
+                }
+                tab {
+                    pane split_direction="vertical" {
+                        pane
+                        pane
+                    }
+                }
+            }
+        }
+    "#;
+    let swap_layouts = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap().swap_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), swap_layouts);
+    let new_pane_id_1 = PaneId::Terminal(2);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None)).unwrap();
+    tab.relayout(client_id).unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
 }

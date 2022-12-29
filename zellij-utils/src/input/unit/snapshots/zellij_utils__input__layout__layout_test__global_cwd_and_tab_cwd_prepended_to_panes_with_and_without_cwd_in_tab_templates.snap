@@ -106,4 +106,5 @@ Layout {
             [],
         ),
     ),
+    swap_layouts: [],
 }

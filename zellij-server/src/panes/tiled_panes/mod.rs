@@ -522,7 +522,6 @@ impl TiledPanes {
         self.panes.iter()
     }
     pub fn resize(&mut self, new_screen_size: Size) {
-        log::info!("resize: {:#?}", self.panes.iter().map(|(pid, p)| p.position_and_size()).collect::<Vec<PaneGeom>>());
         // this is blocked out to appease the borrow checker
         {
             let mut display_area = self.display_area.borrow_mut();
@@ -1197,6 +1196,9 @@ impl TiledPanes {
 
     pub fn panes_to_hide_count(&self) -> usize {
         self.panes_to_hide.len()
+    }
+    pub fn visible_panes_count(&self) -> usize {
+        self.panes.len().saturating_sub(self.panes_to_hide.len())
     }
     pub fn add_to_hidden_panels(&mut self, pid: PaneId) {
         self.panes_to_hide.insert(pid);

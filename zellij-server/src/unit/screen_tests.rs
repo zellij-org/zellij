@@ -299,6 +299,7 @@ impl MockScreen {
             Some(pane_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
+            vec![], // swap layouts
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -328,6 +329,7 @@ impl MockScreen {
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
             tab_name,
+            vec![], // swap layouts
             self.main_client_id,
         ));
         let _ = self.to_screen.send(ScreenInstruction::ApplyLayout(
@@ -474,7 +476,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let client_id = 1;
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
-    screen.new_tab(tab_index, client_id).expect("TEST");
+    screen.new_tab(tab_index, vec![], client_id).expect("TEST");
     screen
         .apply_layout(
             TiledPaneLayout::default(),

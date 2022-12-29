@@ -36,4 +36,5 @@ Layout {
             [],
         ),
     ),
+    swap_layouts: [],
 }

@@ -42,4 +42,5 @@ Layout {
             [],
         ),
     ),
+    swap_layouts: [],
 }

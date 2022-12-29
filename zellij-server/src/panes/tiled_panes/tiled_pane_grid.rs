@@ -467,8 +467,11 @@ impl<'a> TiledPaneGrid<'a> {
                         ..strategy
                     };
 
-                    if self.can_change_pane_size(pane_id, &main_strategy, change_by)?
-                        && self.can_change_pane_size(pane_id, &sub_strategy, change_by)?
+                    // TODO: instead of unwrap_or(false) here we need to do the same with the fixed
+                    // panes error above, only make sure that we only error if we cannot resize in
+                    // any directions and have blocking fixed panes
+                    if self.can_change_pane_size(pane_id, &main_strategy, change_by).unwrap_or(false)
+                        && self.can_change_pane_size(pane_id, &sub_strategy, change_by).unwrap_or(false)
                     {
                         let result = self
                             .change_pane_size(pane_id, &main_strategy, change_by)

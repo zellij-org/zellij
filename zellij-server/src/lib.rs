@@ -332,7 +332,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name| {
+                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
                         .read()
                         .unwrap()
@@ -344,6 +344,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             tab_layout,
                             floating_panes_layout,
                             tab_name,
+                            swap_layouts,
                             client_id,
                         ))
                         .unwrap()
@@ -355,6 +356,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
                             tab_name,
+                            layout.swap_layouts.clone(),
                         );
                     }
 
@@ -372,7 +374,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None);
+                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None, layout.swap_layouts.clone());
                 }
                 session_data
                     .read()

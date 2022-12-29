@@ -216,6 +216,7 @@ pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
     pub template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -270,7 +271,6 @@ impl FromStr for PercentOrFixed {
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct FloatingPaneLayout {
-    // TODO: change name to singular
     pub name: Option<String>,
     pub height: Option<PercentOrFixed>,
     pub width: Option<PercentOrFixed>,
@@ -346,6 +346,17 @@ impl TiledPaneLayout {
             count += pane.children_block_count();
         }
         count
+    }
+    pub fn pane_count(&self) -> usize {
+        if self.children.is_empty() {
+            1 // self
+        } else {
+            let mut pane_count = 0;
+            for child in &self.children {
+                pane_count += child.pane_count();
+            }
+            pane_count
+        }
     }
     pub fn position_panes_in_space(
         &self,

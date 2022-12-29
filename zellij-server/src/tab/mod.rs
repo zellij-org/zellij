@@ -126,6 +126,49 @@ pub(crate) struct Tab {
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
                       // pending and need to be re-applied
+    swap_layouts: SwapLayouts,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SwapLayouts {
+    swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    current_layout: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    is_damaged: bool
+}
+
+impl SwapLayouts {
+    pub fn new(swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>) -> Self {
+        SwapLayouts {
+            swap_layouts,
+            ..Default::default()
+        }
+    }
+    pub fn set_current_layout(&mut self, layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
+        self.current_layout = Some(layout);
+    }
+    pub fn set_is_damaged(&mut self) {
+        self.is_damaged = true;
+    }
+    pub fn swap(&mut self, tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> Option<&(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
+        let current_tiled_panes_count = tiled_panes.visible_panes_count();
+        let current_floating_panes_count = floating_panes.visible_panes_count();
+        let layout_fits_panes = |(tiled_panes_layout, floating_panes_layout): &(TiledPaneLayout, Vec<FloatingPaneLayout>)| {
+            tiled_panes_layout.pane_count() == current_tiled_panes_count && floating_panes_layout.len() == current_floating_panes_count
+        };
+        if self.is_damaged && self.current_layout.as_ref().map(layout_fits_panes).unwrap_or(false) {
+            self.is_damaged = false;
+            return self.current_layout.as_ref()
+        }
+        if let Some(current_layout) = self.current_layout.take() {
+            self.swap_layouts.push(current_layout);
+        }
+        self.swap_layouts.iter().position(layout_fits_panes)
+        .and_then(|new_layout_position| {
+            let next_layout = self.swap_layouts.remove(new_layout_position);
+            self.current_layout = Some(next_layout);
+            self.current_layout.as_ref()
+        })
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -444,6 +487,7 @@ impl Tab {
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
+        swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -526,6 +570,7 @@ impl Tab {
             cursor_positions_and_shape: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
+            swap_layouts: SwapLayouts::new(swap_layouts),
         }
     }
 
@@ -538,6 +583,7 @@ impl Tab {
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
+        self.swap_layouts.set_current_layout((layout.clone(), floating_panes_layout.clone()));
         let layout_has_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -573,58 +619,41 @@ impl Tab {
         Ok(())
     }
     pub fn relayout(&mut self, client_id: ClientId) -> Result<()> {
-        // TODO CONTINUE HERE:
-        // * create a mock PaneLayout and use the LayoutApplier to apply it
-        log::info!("tab relayout");
-        let layout = Layout::from_kdl("
-            layout {
-                pane size=1 borderless=true {
-                    plugin location=\"zellij:tab-bar\"
-                }
-                pane
-                pane
-                pane size=2 borderless=true {
-                    plugin location=\"zellij:status-bar\"
+        // TODO: handle fullscreen
+        log::info!("relayout");
+        if let Some(layout_candidate) = self.swap_layouts.swap(&self.tiled_panes, &self.floating_panes) {
+            let layout_has_floating_panes = LayoutApplier::new(
+                &self.viewport,
+                &self.senders,
+                &self.sixel_image_store,
+                &self.link_handler,
+                &self.terminal_emulator_colors,
+                &self.terminal_emulator_color_codes,
+                &self.character_cell_size,
+                &self.style,
+                &self.display_area,
+                &mut self.tiled_panes,
+                &mut self.floating_panes,
+                self.draw_pane_frames,
+                &mut self.focus_pane_id,
+                &self.os_api,
+            )
+            .apply_layout_to_existing_panes(
+                &layout_candidate.0,
+                &layout_candidate.1,
+                client_id,
+            )?;
+            if layout_has_floating_panes {
+                if !self.floating_panes.panes_are_visible() {
+                    self.toggle_floating_panes(client_id, None)?;
                 }
             }
-        ", String::new(), None).unwrap();
-        let (tiled_panes_layout, floating_panes_layout) = layout.new_tab();
-        let layout_has_floating_panes = LayoutApplier::new(
-            &self.viewport,
-            &self.senders,
-            &self.sixel_image_store,
-            &self.link_handler,
-            &self.terminal_emulator_colors,
-            &self.terminal_emulator_color_codes,
-            &self.character_cell_size,
-            &self.style,
-            &self.display_area,
-            &mut self.tiled_panes,
-            &mut self.floating_panes,
-            self.draw_pane_frames,
-            &mut self.focus_pane_id,
-            &self.os_api,
-        )
-        .apply_layout_to_existing_panes(
-            tiled_panes_layout,
-            floating_panes_layout,
-            client_id,
-        )?;
-        if layout_has_floating_panes {
-            if !self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(client_id, None)?;
-            }
+            self.tiled_panes.set_pane_frames(self.draw_pane_frames);
         }
-        self.tiled_panes.set_pane_frames(self.draw_pane_frames);
         self.is_pending = false;
         self.apply_buffered_instructions()?;
+        // self.set_force_render();
         Ok(())
-//     pub fn apply_layout_to_existing_panes(
-//         &mut self,
-//         layout: PaneLayout,
-//         floating_panes_layout: Vec<FloatingPaneLayout>,
-//         client_id: ClientId,
-//     ) -> Result<bool> {
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
@@ -1587,7 +1616,9 @@ impl Tab {
         self.should_clear_display_before_rendering = true;
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
+        log::info!("resizing...");
         let err_context = || format!("unable to resize pane");
+        self.swap_layouts.set_is_damaged();
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -1597,6 +1628,7 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
+            log::info!("resizing active pane in tiled panes...");
             match self.tiled_panes.resize_active_pane(client_id, &strategy) {
                 Ok(_) => {},
                 Err(err) => match err.downcast_ref::<ZellijError>() {

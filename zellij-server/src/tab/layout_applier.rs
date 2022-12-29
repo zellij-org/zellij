@@ -105,23 +105,18 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn apply_layout_to_existing_panes(
         &mut self,
-        layout: TiledPaneLayout,
-        floating_panes_layout: Vec<FloatingPaneLayout>,
+        layout: &TiledPaneLayout,
+        floating_panes_layout: &Vec<FloatingPaneLayout>,
         client_id: ClientId,
     ) -> Result<bool> {
         // true => layout has floating panes
         let layout_name = layout.name.clone();
         self.apply_tiled_panes_layout_to_existing_panes(layout, client_id)?;
-//         let layout_has_floating_panes = self.apply_floating_panes_layout(
-//             floating_panes_layout,
-//             new_floating_terminal_ids,
-//             &mut new_plugin_ids,
-//             layout_name,
-//         )?;
-//         return Ok(layout_has_floating_panes);
-        return Ok(false); // TODO: no!
+        let layout_has_floating_panes = self.apply_floating_panes_layout_to_existing_panes(floating_panes_layout, layout_name, client_id)?;
+        return Ok(layout_has_floating_panes);
+        // return Ok(false); // TODO: no!
     }
-    fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: TiledPaneLayout, client_id: ClientId) -> Result<()> {
+    fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: &TiledPaneLayout, client_id: ClientId) -> Result<()> {
         // TODO: CONTINUE HERE - find out why this isn't working (to test, open zellij, split right and do
         // target/debug/zellij action relayout-focused-tab)
         let err_context = || format!("failed to apply tiled panes layout");
@@ -135,7 +130,6 @@ impl<'a> LayoutApplier<'a> {
         match layout.position_panes_in_space(&free_space) {
             Ok(positions_in_layout) => {
                 let positions_and_size = positions_in_layout.iter();
-                // let mut new_terminal_ids = new_terminal_ids.iter();
 
                 let mut focus_pane_id: Option<PaneId> = None; // TODO: this should default to the
                                                               // currently focused pane
@@ -385,6 +379,57 @@ impl<'a> LayoutApplier<'a> {
         if let Some(focused_floating_pane) = focused_floating_pane {
             self.floating_panes
                 .focus_pane_for_all_clients(focused_floating_pane);
+        }
+        if layout_has_floating_panes {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+    fn apply_floating_panes_layout_to_existing_panes(
+        &mut self,
+        floating_panes_layout: &Vec<FloatingPaneLayout>,
+        layout_name: Option<String>,
+        client_id: ClientId,
+    ) -> Result<bool> {
+        // true => has floating panes
+        let err_context = || format!("Failed to apply_floating_panes_layout");
+        let mut layout_has_floating_panes = false;
+        let floating_panes_layout = floating_panes_layout.iter();
+        // let mut focused_floating_pane = None;
+        // let mut new_floating_terminal_ids = new_floating_terminal_ids.iter();
+
+        let mut existing_panes = self.floating_panes.drain();
+        let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom| -> Option<Box<dyn Pane>> {
+            let candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
+            if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
+                return existing_panes.remove(&same_position_candidate_id);
+            } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
+                return existing_panes.remove(&first_candidate);
+            }
+            None
+        };
+
+        for floating_pane_layout in floating_panes_layout {
+            layout_has_floating_panes = true;
+            let position_and_size = self
+                .floating_panes
+                .position_floating_pane_layout(&floating_pane_layout);
+            let mut pane = find_and_extract_pane(&floating_pane_layout.run, &position_and_size).unwrap(); // TODO:
+                                                                                              // err
+                                                                                              // context
+                                                                                              // and
+                                                                                              // stuff
+            // TODO: pane title and other layout attributes
+            log::info!("new position_and_size: {:?}", position_and_size);
+            pane.set_geom(position_and_size);
+            let pane_pid = pane.pid();
+            pane.set_borderless(false);
+            pane.set_content_offset(Offset::frame(1));
+            resize_pty!(pane, self.os_api, self.senders)?;
+            self.floating_panes
+                .add_pane(pane_pid, pane);
+            // TODO: handle pane focus
         }
         if layout_has_floating_panes {
             Ok(true)

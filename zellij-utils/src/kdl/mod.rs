@@ -65,6 +65,7 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+                "RelayoutFocusedTab" => Ok(Action::RelayoutFocusedTab),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -786,6 +787,7 @@ impl TryFrom<&KdlNode> for Action {
                 };
                 Ok(Action::Run(run_command_action))
             },
+            "RelayoutFocusedTab" => Ok(Action::RelayoutFocusedTab),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),

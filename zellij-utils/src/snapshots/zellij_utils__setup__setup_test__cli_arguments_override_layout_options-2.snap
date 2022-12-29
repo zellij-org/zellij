@@ -21,4 +21,5 @@ Layout {
             [],
         ),
     ),
+    swap_layouts: [],
 }

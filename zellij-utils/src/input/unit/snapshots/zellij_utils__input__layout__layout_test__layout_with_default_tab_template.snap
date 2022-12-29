@@ -234,4 +234,5 @@ Layout {
             [],
         ),
     ),
+    swap_layouts: [],
 }

@@ -175,6 +175,7 @@ fn create_new_tab(size: Size) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -227,6 +228,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -285,6 +287,7 @@ fn create_new_tab_with_cell_size(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        vec![],
     );
     tab.apply_layout(
         TiledPaneLayout::default(),

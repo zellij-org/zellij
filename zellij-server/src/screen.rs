@@ -179,6 +179,7 @@ pub enum ScreenInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         Option<String>,
+        Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, // swap layouts
         ClientId,
     ),
     ApplyLayout(
@@ -883,7 +884,7 @@ impl Screen {
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
-    pub fn new_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
+    pub fn new_tab(&mut self, tab_index: usize, swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -918,6 +919,7 @@ impl Screen {
             self.copy_options.clone(),
             self.terminal_emulator_colors.clone(),
             self.terminal_emulator_color_codes.clone(),
+            swap_layouts,
         );
         self.tabs.insert(tab_index, tab);
         Ok(())
@@ -1891,10 +1893,12 @@ pub(crate) fn screen_thread_main(
                 layout,
                 floating_panes_layout,
                 tab_name,
+                swap_layouts,
                 client_id,
             ) => {
+        // Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, // swap layouts
                 let tab_index = screen.get_new_tab_index();
-                screen.new_tab(tab_index, client_id)?;
+                screen.new_tab(tab_index, swap_layouts, client_id)?;
                 screen
                     .bus
                     .senders

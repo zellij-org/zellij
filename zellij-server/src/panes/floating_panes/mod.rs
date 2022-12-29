@@ -735,6 +735,17 @@ impl FloatingPanes {
     pub fn get_panes(&self) -> impl Iterator<Item = (&PaneId, &Box<dyn Pane>)> {
         self.panes.iter()
     }
+    pub fn visible_panes_count(&self) -> usize {
+        self.panes.len()
+    }
+    pub fn drain(&mut self) -> BTreeMap<PaneId, Box<dyn Pane>> {
+        self.z_indices.clear();
+        self.desired_pane_positions.clear();
+        match self.panes.iter().next().map(|(pid, _p)| *pid) {
+            Some(first_pid) => self.panes.split_off(&first_pid),
+            None => BTreeMap::new(),
+        }
+    }
     fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
         let clients_in_pane: Vec<ClientId> = self
             .active_panes
