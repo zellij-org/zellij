@@ -3336,6 +3336,7 @@ Config {
         scrollback_editor: None,
         session_name: None,
         attach_to_session: None,
+        auto_layout: None,
     },
     themes: {},
     plugins: {

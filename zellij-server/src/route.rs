@@ -617,6 +617,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::RelayoutFocusedTab(client_id))
                 .with_context(err_context)?;
         }
+        Action::RelayoutFocusedTabLayer => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::RelayoutFocusedTabLayer(client_id))
+                .with_context(err_context)?;
+        }
     }
     Ok(should_break)
 }

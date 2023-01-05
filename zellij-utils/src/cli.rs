@@ -332,4 +332,5 @@ pub enum CliAction {
         cwd: Option<PathBuf>,
     },
     RelayoutFocusedTab,
+    RelayoutFocusedTabLayer,
 }

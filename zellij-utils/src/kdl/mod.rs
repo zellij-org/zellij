@@ -66,6 +66,7 @@ macro_rules! parse_kdl_action_arguments {
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 "RelayoutFocusedTab" => Ok(Action::RelayoutFocusedTab),
+                "RelayoutFocusedTabLayer" => Ok(Action::RelayoutFocusedTabLayer),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -788,6 +789,7 @@ impl TryFrom<&KdlNode> for Action {
                 Ok(Action::Run(run_command_action))
             },
             "RelayoutFocusedTab" => Ok(Action::RelayoutFocusedTab),
+            "RelayoutFocusedTabLayer" => Ok(Action::RelayoutFocusedTabLayer),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1214,6 +1216,8 @@ impl Options {
                 .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let auto_layout =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
             .map(|(theme, _entry)| theme.to_string());
         let default_mode =
@@ -1278,6 +1282,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         })
     }
 }

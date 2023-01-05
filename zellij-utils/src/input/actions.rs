@@ -203,6 +203,7 @@ pub enum Action {
     SearchToggleOption(SearchOption),
     ToggleMouseMode,
     RelayoutFocusedTab,
+    RelayoutFocusedTabLayer,
 }
 
 impl Action {
@@ -390,6 +391,7 @@ impl Action {
                 }
             },
             CliAction::RelayoutFocusedTab => Ok(vec![Action::RelayoutFocusedTab]),
+            CliAction::RelayoutFocusedTabLayer => Ok(vec![Action::RelayoutFocusedTabLayer]),
         }
     }
 }

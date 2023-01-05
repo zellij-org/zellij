@@ -220,6 +220,7 @@ fn create_new_screen(size: Size) -> Screen {
     let mut mode_info = ModeInfo::default();
     mode_info.session_name = Some("zellij-test".into());
     let draw_pane_frames = false;
+    let auto_layout = true;
     let session_is_mirrored = true;
     let copy_options = CopyOptions::default();
 
@@ -229,6 +230,7 @@ fn create_new_screen(size: Size) -> Screen {
         max_panes,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         session_is_mirrored,
         copy_options,
     );

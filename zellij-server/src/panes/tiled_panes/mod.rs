@@ -250,6 +250,10 @@ impl TiledPanes {
 
         self.set_pane_frames(self.draw_pane_frames);
     }
+    pub fn reapply_pane_frames(&mut self) {
+        // same as set_pane_frames except it reapplies the current situation
+        self.set_pane_frames(self.draw_pane_frames);
+    }
     pub fn set_pane_frames(&mut self, draw_pane_frames: bool) {
         self.draw_pane_frames = draw_pane_frames;
         let viewport = *self.viewport.borrow();
@@ -384,6 +388,27 @@ impl TiledPanes {
             }
         }
         self.reset_boundaries();
+    }
+    pub fn focus_pane_at_position(&mut self, position_and_size: PaneGeom, client_id: ClientId) {
+        if let Some(pane_id) = self.panes.iter().find(|(_pid, pane)| pane.position_and_size() == position_and_size).map(|(pid, _p)| *pid) {
+            if let Some(currently_active_pane_id) = self.active_panes.get(&client_id) {
+                let prev_geom = {
+                    if let Some(currently_focused_pane) = self.panes.get_mut(currently_active_pane_id) {
+                        let prev_geom = currently_focused_pane.position_and_size();
+                        currently_focused_pane.set_geom(position_and_size);
+                        Some(prev_geom)
+                    } else {
+                        None
+                    }
+                };
+                if let Some(prev_geom) = prev_geom {
+                    if let Some(previous_pane) = self.panes.get_mut(&pane_id) {
+                        previous_pane.set_geom(prev_geom);
+                        self.reset_boundaries();
+                    }
+                }
+            }
+        }
     }
     pub fn focus_pane_if_client_not_focused(&mut self, pane_id: PaneId, client_id: ClientId) {
         if self.active_panes.get(&client_id).is_none() {
@@ -1218,7 +1243,14 @@ impl TiledPanes {
             None => BTreeMap::new(),
         }
     }
+    pub fn active_panes(&self) -> ActivePanes {
+        self.active_panes.clone()
+    }
+    pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
+        self.active_panes = active_panes;
+    }
     pub fn find_and_extract_pane(&mut self, run: &Option<Run>, position_and_size: &PaneGeom) -> Option<Box<dyn Pane>> {
+        // TODO: do we still need this?
         let mut candidates: Vec<_> = self.panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
         if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
             return self.panes.remove(&same_position_candidate_id);

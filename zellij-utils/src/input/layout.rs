@@ -361,8 +361,18 @@ impl TiledPaneLayout {
     pub fn position_panes_in_space(
         &self,
         space: &PaneGeom,
+        max_panes: Option<usize>,
     ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
-        let layouts = split_space(space, self, space);
+        let layouts = match max_panes {
+            Some(max_panes) => {
+                let mut layout_to_split = self.clone();
+                layout_to_split.truncate(max_panes);
+                split_space(space, &layout_to_split, space)
+            },
+            None => {
+                split_space(space, self, space)
+            }
+        };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
                 return Err("No room on screen for this layout!");
@@ -397,6 +407,30 @@ impl TiledPaneLayout {
         }
         for child in self.children.iter_mut() {
             child.add_cwd_to_layout(cwd);
+        }
+    }
+    pub fn truncate(&mut self, max_panes: usize) -> usize { // returns remaining children length
+        // if max_panes is 1, it means there's only enough panes for this node,
+        // if max_panes is 0, this is probably the root layout being called with 0 max panes
+        if max_panes <= 1 {
+            self.children.clear();
+        } else if max_panes < self.children.len() {
+            self.children.truncate(max_panes);
+            self.children.iter_mut().for_each(|l| l.children.clear());
+        } else {
+            let mut remaining_panes = max_panes - self.children.iter().filter(|c| c.children.is_empty()).count();
+            for child in self.children.iter_mut() {
+                if remaining_panes > 1 && child.children.len() > 0 {
+                    remaining_panes = remaining_panes.saturating_sub(child.truncate(remaining_panes));
+                } else {
+                    child.children.clear();
+                }
+            }
+        }
+        if self.children.len() > 0 {
+            self.children.len()
+        } else {
+            1 // just me
         }
     }
 }

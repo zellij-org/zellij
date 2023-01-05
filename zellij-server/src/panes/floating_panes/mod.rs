@@ -18,7 +18,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
@@ -48,6 +48,7 @@ pub struct FloatingPanes {
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
     senders: ThreadSenders,
+    next_geoms: VecDeque<PaneGeom>, // TODO: remove this?
 }
 
 #[allow(clippy::borrowed_box)]
@@ -81,6 +82,7 @@ impl FloatingPanes {
             active_panes: ActivePanes::new(&os_input),
             pane_being_moved_with_mouse: None,
             senders,
+            next_geoms: VecDeque::new(),
         }
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
@@ -200,6 +202,12 @@ impl FloatingPanes {
     pub fn active_pane_id(&self, client_id: ClientId) -> Option<PaneId> {
         self.active_panes.get(&client_id).copied()
     }
+    pub fn active_pane_id_or_focused_pane_id(&self, client_id: Option<ClientId>) -> Option<PaneId> {
+        // returns the focused pane of any client_id - should be safe because the way things are
+        // set up at the time of writing, all clients are focused on the same floating pane due to
+        // z_index issues
+        client_id.and_then(|client_id| self.active_panes.get(&client_id).copied()).or_else(|| self.panes.keys().next().copied())
+    }
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
         self.show_panes = should_show_floating_panes;
         if should_show_floating_panes {
@@ -214,16 +222,26 @@ impl FloatingPanes {
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
     }
+    pub fn add_next_geom(&mut self, next_geom: PaneGeom) {
+        if true { // TODO: config flag to cancel this behaviour - classic_pane_algorithm?
+            self.next_geoms.push_back(next_geom);
+        }
+    }
     pub fn find_room_for_new_pane(&mut self) -> Option<PaneGeom> {
-        let display_area = *self.display_area.borrow();
-        let viewport = *self.viewport.borrow();
-        let floating_pane_grid = FloatingPaneGrid::new(
-            &mut self.panes,
-            &mut self.desired_pane_positions,
-            display_area,
-            viewport,
-        );
-        floating_pane_grid.find_room_for_new_pane()
+        match self.next_geoms.pop_front() {
+            Some(new_pane_geom) => Some(new_pane_geom),
+            None => {
+                let display_area = *self.display_area.borrow();
+                let viewport = *self.viewport.borrow();
+                let floating_pane_grid = FloatingPaneGrid::new(
+                    &mut self.panes,
+                    &mut self.desired_pane_positions,
+                    display_area,
+                    viewport,
+                );
+                floating_pane_grid.find_room_for_new_pane()
+            }
+        }
     }
     pub fn position_floating_pane_layout(
         &mut self,

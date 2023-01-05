@@ -146,6 +146,7 @@ fn create_new_tab(size: Size) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -169,6 +170,7 @@ fn create_new_tab(size: Size) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
@@ -199,6 +201,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -222,6 +225,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
@@ -259,6 +263,7 @@ fn create_new_tab_with_cell_size(
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -281,6 +286,7 @@ fn create_new_tab_with_cell_size(
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,

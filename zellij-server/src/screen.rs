@@ -231,6 +231,7 @@ pub enum ScreenInstruction {
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
     RelayoutFocusedTab(ClientId),
+    RelayoutFocusedTabLayer(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -369,6 +370,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::ClearPaneFrameColorOverride
             },
             ScreenInstruction::RelayoutFocusedTab(..) => ScreenContext::RelayoutFocusedTab,
+            ScreenInstruction::RelayoutFocusedTabLayer(..) => ScreenContext::RelayoutFocusedTabLayer,
         }
     }
 }
@@ -429,6 +431,7 @@ pub(crate) struct Screen {
     default_mode_info: ModeInfo, // TODO: restructure ModeInfo to prevent this duplication
     style: Style,
     draw_pane_frames: bool,
+    auto_layout: bool,
     session_is_mirrored: bool,
     copy_options: CopyOptions,
 }
@@ -441,6 +444,7 @@ impl Screen {
         max_panes: Option<usize>,
         mode_info: ModeInfo,
         draw_pane_frames: bool,
+        auto_layout: bool,
         session_is_mirrored: bool,
         copy_options: CopyOptions,
     ) -> Self {
@@ -462,6 +466,7 @@ impl Screen {
             mode_info: BTreeMap::new(),
             default_mode_info: mode_info,
             draw_pane_frames,
+            auto_layout,
             session_is_mirrored,
             copy_options,
         }
@@ -913,6 +918,7 @@ impl Screen {
             self.style,
             self.default_mode_info.clone(),
             self.draw_pane_frames,
+            self.auto_layout,
             self.connected_clients.clone(),
             self.session_is_mirrored,
             client_id,
@@ -1317,6 +1323,7 @@ pub(crate) fn screen_thread_main(
 ) -> Result<()> {
     let capabilities = config_options.simplified_ui;
     let draw_pane_frames = config_options.pane_frames.unwrap_or(true);
+    let auto_layout = config_options.auto_layout.unwrap_or(true);
     let session_is_mirrored = config_options.mirror_session.unwrap_or(false);
     let copy_options = CopyOptions::new(
         config_options.copy_command,
@@ -1336,6 +1343,7 @@ pub(crate) fn screen_thread_main(
             },
         ),
         draw_pane_frames,
+        auto_layout,
         session_is_mirrored,
         copy_options,
     );
@@ -1438,7 +1446,7 @@ pub(crate) fn screen_thread_main(
             },
             ScreenInstruction::ToggleFloatingPanes(client_id, default_shell) => {
                 active_tab_and_connected_client_id!(screen, client_id, |tab: &mut Tab, client_id: ClientId| tab
-                    .toggle_floating_panes(client_id, default_shell), ?);
+                    .toggle_floating_panes(Some(client_id), default_shell), ?);
                 screen.unblock_input()?;
                 screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
 
@@ -2177,7 +2185,16 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.relayout(client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.relayout(Some(client_id))
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            }
+            ScreenInstruction::RelayoutFocusedTabLayer(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.relayout_focused_layer(Some(client_id))
                 );
                 screen.render()?;
                 screen.unblock_input()?;

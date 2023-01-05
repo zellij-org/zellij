@@ -44,7 +44,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{FloatingPaneLayout, TiledPaneLayout, Layout, RunPluginLocation, Run},
+        layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, Run},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -75,6 +75,7 @@ macro_rules! resize_pty {
 
 // FIXME: This should be replaced by `RESIZE_PERCENT` at some point
 pub const MIN_TERMINAL_HEIGHT: usize = 5;
+// pub const MIN_TERMINAL_HEIGHT: usize = 3;
 pub const MIN_TERMINAL_WIDTH: usize = 5;
 
 const MAX_PENDING_VTE_EVENTS: usize = 7000;
@@ -108,6 +109,7 @@ pub(crate) struct Tab {
     pub style: Style,
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     draw_pane_frames: bool,
+    auto_layout: bool,
     pending_vte_events: HashMap<u32, Vec<VteBytes>>,
     pub selecting_with_mouse: bool, // this is only pub for the tests TODO: remove this once we combine write_text_to_clipboard with render
     link_handler: Rc<RefCell<LinkHandler>>,
@@ -132,42 +134,306 @@ pub(crate) struct Tab {
 #[derive(Clone, Debug, Default)]
 struct SwapLayouts {
     swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
-    current_layout: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
-    is_damaged: bool
+    // current_layout: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    current_floating_layout_position: Option<usize>,
+    current_tiled_layout_position: Option<usize>,
+    current_layout_position: Option<usize>,
+    is_floating_damaged: bool,
+    is_tiled_damaged: bool,
 }
 
 impl SwapLayouts {
     pub fn new(swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>) -> Self {
         SwapLayouts {
             swap_layouts,
+            is_floating_damaged: false,
+            is_tiled_damaged: false,
             ..Default::default()
         }
     }
     pub fn set_current_layout(&mut self, layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
-        self.current_layout = Some(layout);
+        self.swap_layouts.push(layout);
+        self.current_layout_position = Some(self.swap_layouts.len() - 1);
     }
-    pub fn set_is_damaged(&mut self) {
-        self.is_damaged = true;
+    pub fn set_is_floating_damaged(&mut self) {
+        self.is_floating_damaged = true;
     }
-    pub fn swap(&mut self, tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> Option<&(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
+    pub fn set_is_tiled_damaged(&mut self) {
+        self.is_tiled_damaged = true;
+    }
+    pub fn is_floating_damaged(&self) -> bool {
+        self.is_floating_damaged
+    }
+    pub fn is_tiled_damaged(&self) -> bool {
+        self.is_tiled_damaged
+    }
+    pub fn swap(&mut self, tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
         let current_tiled_panes_count = tiled_panes.visible_panes_count();
         let current_floating_panes_count = floating_panes.visible_panes_count();
         let layout_fits_panes = |(tiled_panes_layout, floating_panes_layout): &(TiledPaneLayout, Vec<FloatingPaneLayout>)| {
-            tiled_panes_layout.pane_count() == current_tiled_panes_count && floating_panes_layout.len() == current_floating_panes_count
+            tiled_panes_layout.pane_count() >= current_tiled_panes_count && floating_panes_layout.len() >= current_floating_panes_count
         };
-        if self.is_damaged && self.current_layout.as_ref().map(layout_fits_panes).unwrap_or(false) {
-            self.is_damaged = false;
-            return self.current_layout.as_ref()
+        if let Some(current_layout) = self.current_layout_position
+            .and_then(|position| self.swap_layouts.get(position)) {
+                let current_layout = current_layout.clone();
+                if (self.is_tiled_damaged || self.is_floating_damaged) && layout_fits_panes(&current_layout) {
+                    self.reset_positions_and_damage();
+                    return Some(current_layout);
+                }
+            };
+        // self.reset_positions_and_damage();
+        match self.current_layout_position {
+            Some(current_position) => {
+                // look for candidate after current
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
+                    if layout_fits_panes(&layout_candidate) {
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.clone());
+                    }
+                }
+
+                // look for candidate before current position
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
+                    if layout_fits_panes(&layout_candidate) {
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.clone());
+                    }
+                }
+
+                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
+                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
+                    self.current_layout_position = Some(current_position + 1);
+                    return Some(layout_candidate.clone());
+                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
+                    self.current_layout_position = Some(0);
+                    return Some(layout_candidate.clone());
+                }
+
+            },
+            None => {
+                // tiled panes are set to current layout if it exists, look for a candidate in the swap
+                // layouts
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
+                    if layout_fits_panes(&layout_candidate) {
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.clone());
+                    }
+                }
+
+            }
+        };
+        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
+        if let Some(layout_candidate) = self.swap_layouts.get(0) {
+            let layout_candidate = layout_candidate.clone();
+            self.current_layout_position = Some(0);
+            self.reset_positions_and_damage();
+            return Some(layout_candidate);
         }
-        if let Some(current_layout) = self.current_layout.take() {
-            self.swap_layouts.push(current_layout);
+        None
+    }
+    pub fn swap_floating_panes(&mut self, floating_panes: &FloatingPanes) -> Option<Vec<FloatingPaneLayout>> {
+        let current_floating_panes_count = floating_panes.visible_panes_count();
+        let layout_fits_panes_exactly = |floating_panes_layout: &Vec<FloatingPaneLayout>| {
+            floating_panes_layout.len() == current_floating_panes_count
+        };
+        let layout_fits_panes = |floating_panes_layout: &Vec<FloatingPaneLayout>| -> bool {
+            floating_panes_layout.len() >= current_floating_panes_count
+        };
+        if let Some(current_layout) = self.current_floating_layout_position
+            .and_then(|position| self.swap_layouts.get(position))
+            .or_else(|| self.current_layout()) {
+                let current_floating_layout = current_layout.1.clone();
+                // if self.is_floating_damaged && layout_fits_panes(&current_floating_layout) {
+                if self.is_floating_damaged && layout_fits_panes_exactly(&current_floating_layout) {
+                    self.is_floating_damaged = false;
+                    return Some(current_floating_layout);
+                }
+            };
+        self.is_floating_damaged = false;
+        match self.current_floating_layout_position {
+            Some(current_position) => {
+                // first look for layouts that fit exactly
+                // look for candidate after current
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
+                    if layout_fits_panes_exactly(&layout_candidate.1) {
+                        self.current_floating_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.1.clone());
+                    }
+                }
+
+                // look for candidate before current position
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
+                    if layout_fits_panes_exactly(&layout_candidate.1) {
+                        self.current_floating_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.1.clone());
+                    }
+                }
+
+
+                // now look for layouts with at least the desired number of panes
+                // look for candidate after current
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
+                    if layout_fits_panes(&layout_candidate.1) {
+                        self.current_floating_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.1.clone());
+                    }
+                }
+
+                // look for candidate before current position
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
+                    if layout_fits_panes(&layout_candidate.1) {
+                        self.current_floating_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.1.clone());
+                    }
+                }
+                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
+                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
+                    self.current_floating_layout_position = Some(current_position + 1);
+                    self.current_layout_position = Some(current_position + 1);
+                    return Some(layout_candidate.1.clone());
+                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
+                    self.current_floating_layout_position = Some(0);
+                    self.current_layout_position = Some(0);
+                    return Some(layout_candidate.1.clone());
+                }
+            },
+            None => {
+                // floating panes are set to current layout if it exists, look for a candidate in the swap
+                // layouts
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
+                    if layout_fits_panes(&layout_candidate.1) {
+                        self.current_floating_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.1.clone());
+                    }
+                }
+
+            }
+        };
+        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
+        if let Some(layout_candidate) = self.swap_layouts.get(0) {
+            self.current_floating_layout_position = Some(0);
+            self.current_layout_position = Some(0);
+            return Some(layout_candidate.1.clone());
         }
-        self.swap_layouts.iter().position(layout_fits_panes)
-        .and_then(|new_layout_position| {
-            let next_layout = self.swap_layouts.remove(new_layout_position);
-            self.current_layout = Some(next_layout);
-            self.current_layout.as_ref()
-        })
+        None
+    }
+    pub fn swap_tiled_panes(&mut self, tiled_panes: &TiledPanes) -> Option<TiledPaneLayout> {
+        let current_tiled_panes_count = tiled_panes.visible_panes_count();
+        let layout_fits_panes_exactly = |tiled_panes_layout: &TiledPaneLayout| {
+            tiled_panes_layout.pane_count() == current_tiled_panes_count
+        };
+        let layout_fits_panes = |tiled_panes_layout: &TiledPaneLayout| {
+            tiled_panes_layout.pane_count() >= current_tiled_panes_count
+        };
+        if let Some(current_layout) = self.current_tiled_layout_position
+            .and_then(|position| self.swap_layouts.get(position))
+            .or_else(|| self.current_layout()) {
+                let current_tiled_layout = current_layout.0.clone();
+                // if self.is_tiled_damaged && layout_fits_panes(&current_tiled_layout) {
+                if self.is_tiled_damaged && layout_fits_panes_exactly(&current_tiled_layout) {
+                    self.is_tiled_damaged = false;
+                    return Some(current_tiled_layout);
+                }
+            };
+        self.is_tiled_damaged = false;
+        match self.current_tiled_layout_position {
+            Some(current_position) => {
+                // look for exact candidates
+
+                // first look after current
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
+                    if layout_fits_panes_exactly(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+                // then look before current position
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
+                    if layout_fits_panes_exactly(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+                // look for candidates with explicit room for new panes
+
+                // first look after current
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
+                    if layout_fits_panes(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+                // then look before current position
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
+                    if layout_fits_panes(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+
+
+
+                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
+                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
+                    self.current_tiled_layout_position = Some(current_position + 1);
+                    self.current_layout_position = Some(current_position + 1);
+                    return Some(layout_candidate.0.clone());
+                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
+                    self.current_tiled_layout_position = Some(0);
+                    self.current_layout_position = Some(0);
+                    return Some(layout_candidate.0.clone());
+                }
+            },
+            None => {
+                // take the first layout that fits exactly
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
+                    if layout_fits_panes_exactly(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+                // take the first layout that fits
+                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
+                    if layout_fits_panes(&layout_candidate.0) {
+                        self.current_tiled_layout_position = Some(i);
+                        self.current_layout_position = Some(i);
+                        return Some(layout_candidate.0.clone());
+                    }
+                }
+
+            }
+        };
+        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
+        if let Some(layout_candidate) = self.swap_layouts.get(0) {
+            self.current_tiled_layout_position = Some(0);
+            self.current_layout_position = Some(0);
+            return Some(layout_candidate.0.clone());
+        }
+        None
+    }
+    fn current_layout(&self) -> Option<&(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
+        self.current_layout_position.and_then(|position| self.swap_layouts.get(position))
+    }
+    fn reset_positions_and_damage(&mut self) {
+        self.current_floating_layout_position = None;
+        self.current_tiled_layout_position = None;
+        self.is_floating_damaged = false;
+        self.is_tiled_damaged = false;
     }
 }
 
@@ -481,6 +747,7 @@ impl Tab {
         style: Style,
         default_mode_info: ModeInfo,
         draw_pane_frames: bool,
+        auto_layout: bool,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         session_is_mirrored: bool,
         client_id: ClientId,
@@ -556,6 +823,7 @@ impl Tab {
             mode_info,
             default_mode_info,
             draw_pane_frames,
+            auto_layout,
             pending_vte_events: HashMap::new(),
             connected_clients,
             selecting_with_mouse: false,
@@ -610,18 +878,91 @@ impl Tab {
         )?;
         if layout_has_floating_panes {
             if !self.floating_panes.panes_are_visible() {
-                self.toggle_floating_panes(client_id, None)?;
+                self.toggle_floating_panes(Some(client_id), None)?;
             }
         }
-        self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+        self.tiled_panes.reapply_pane_frames();
         self.is_pending = false;
         self.apply_buffered_instructions()?;
         Ok(())
     }
-    pub fn relayout(&mut self, client_id: ClientId) -> Result<()> {
-        // TODO: handle fullscreen
-        log::info!("relayout");
+    fn relayout_floating_panes(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        if let Some(layout_candidate) = self.swap_layouts.swap_floating_panes(&self.floating_panes) {
+            LayoutApplier::new(
+                &self.viewport,
+                &self.senders,
+                &self.sixel_image_store,
+                &self.link_handler,
+                &self.terminal_emulator_colors,
+                &self.terminal_emulator_color_codes,
+                &self.character_cell_size,
+                &self.style,
+                &self.display_area,
+                &mut self.tiled_panes,
+                &mut self.floating_panes,
+                self.draw_pane_frames,
+                &mut self.focus_pane_id,
+                &self.os_api,
+            )
+            .apply_floating_panes_layout_to_existing_panes(
+                &layout_candidate,
+                None,
+                client_id,
+            )?;
+        }
+        self.is_pending = false;
+        self.apply_buffered_instructions()?;
+        self.set_force_render();
+        Ok(())
+    }
+    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        log::info!("fn relayout_tiled_panes 1");
+        if self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.unset_fullscreen();
+        }
+        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes) {
+            log::info!("fn relayout_tiled_panes 2");
+            LayoutApplier::new(
+                &self.viewport,
+                &self.senders,
+                &self.sixel_image_store,
+                &self.link_handler,
+                &self.terminal_emulator_colors,
+                &self.terminal_emulator_color_codes,
+                &self.character_cell_size,
+                &self.style,
+                &self.display_area,
+                &mut self.tiled_panes,
+                &mut self.floating_panes,
+                self.draw_pane_frames,
+                &mut self.focus_pane_id,
+                &self.os_api,
+            )
+            .apply_tiled_panes_layout_to_existing_panes(
+                &layout_candidate,
+                client_id,
+            )?;
+        }
+        self.tiled_panes.reapply_pane_frames();
+        self.is_pending = false;
+        self.apply_buffered_instructions()?;
+        // self.set_force_render();
+        Ok(())
+    }
+    pub fn relayout_focused_layer(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        log::info!("relayout_focused_layer");
+        if self.floating_panes.panes_are_visible() {
+            self.relayout_floating_panes(client_id)
+        } else {
+            log::info!("relayout tiled panes");
+            self.relayout_tiled_panes(client_id)
+        }
+    }
+    pub fn relayout(&mut self, client_id: Option<ClientId>) -> Result<()> {
         if let Some(layout_candidate) = self.swap_layouts.swap(&self.tiled_panes, &self.floating_panes) {
+            if self.tiled_panes.fullscreen_is_active() {
+                self.tiled_panes.unset_fullscreen();
+            }
             let layout_has_floating_panes = LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -648,7 +989,7 @@ impl Tab {
                     self.toggle_floating_panes(client_id, None)?;
                 }
             }
-            self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+            self.tiled_panes.reapply_pane_frames();
         }
         self.is_pending = false;
         self.apply_buffered_instructions()?;
@@ -825,7 +1166,7 @@ impl Tab {
     }
     pub fn toggle_floating_panes(
         &mut self,
-        client_id: ClientId,
+        client_id: Option<ClientId>,
         default_shell: Option<TerminalAction>,
     ) -> Result<()> {
         if self.floating_panes.panes_are_visible() {
@@ -835,22 +1176,33 @@ impl Tab {
             self.show_floating_panes();
             match self.floating_panes.last_floating_pane_id() {
                 Some(first_floating_pane_id) => {
-                    if !self.floating_panes.active_panes_contain(&client_id) {
-                        self.floating_panes
-                            .focus_pane(first_floating_pane_id, client_id);
+                    match client_id {
+                        Some(client_id) => {
+                            if !self.floating_panes.active_panes_contain(&client_id) {
+                                self.floating_panes
+                                    .focus_pane(first_floating_pane_id, client_id);
+                            }
+                        },
+                        None => {
+                            self.floating_panes.focus_pane_for_all_clients(first_floating_pane_id);
+                        }
                     }
                 },
                 None => {
                     let name = None;
                     let should_float = true;
+                    let client_id_or_tab_index = match client_id {
+                        Some(client_id) => ClientOrTabIndex::ClientId(client_id),
+                        None => ClientOrTabIndex::TabIndex(self.index),
+                    };
                     let instruction = PtyInstruction::SpawnTerminal(
                         default_shell,
                         Some(should_float),
                         name,
-                        ClientOrTabIndex::ClientId(client_id),
+                        client_id_or_tab_index,
                     );
                     self.senders.send_to_pty(instruction).with_context(|| {
-                        format!("failed to open a floating pane for client {client_id}")
+                        format!("failed to open a floating pane for client")
                     })?;
                 },
             }
@@ -893,10 +1245,18 @@ impl Tab {
                         initial_pane_title,
                         None,
                     );
+                    new_pane.set_active_at(Instant::now());
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
                     resize_pty!(new_pane, self.os_api, self.senders).with_context(err_context)?;
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
                     self.floating_panes.focus_pane_for_all_clients(pid);
+                }
+                if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                    // only do this if we're already in this layout, otherwise it might be
+                    // confusing and not what the user intends
+                    self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                        // next layout
+                    self.relayout_focused_layer(client_id)?;
                 }
             }
         } else {
@@ -906,7 +1266,7 @@ impl Tab {
             if self.tiled_panes.has_room_for_new_pane() {
                 if let PaneId::Terminal(term_pid) = pid {
                     let next_terminal_position = self.get_next_terminal_position();
-                    let new_terminal = TerminalPane::new(
+                    let mut new_terminal = TerminalPane::new(
                         term_pid,
                         PaneGeom::default(), // the initial size will be set later
                         self.style,
@@ -920,12 +1280,20 @@ impl Tab {
                         initial_pane_title,
                         None,
                     );
+                    new_terminal.set_active_at(Instant::now());
                     self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     self.should_clear_display_before_rendering = true;
                     if let Some(client_id) = client_id {
                         self.tiled_panes.focus_pane(pid, client_id);
                     }
                 }
+            }
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+                // only do this if we're already in this layout, otherwise it might be
+                // confusing and not what the user intends
+                self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                    // next layout
+                self.relayout_focused_layer(client_id)?;
             }
         }
         Ok(())
@@ -1027,6 +1395,7 @@ impl Tab {
                     .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
+                self.swap_layouts.set_is_tiled_damaged();
             }
         } else {
             log::error!("No room to split pane horizontally");
@@ -1082,6 +1451,7 @@ impl Tab {
                     .split_pane_vertically(pid, Box::new(new_terminal), client_id);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
+                self.swap_layouts.set_is_tiled_damaged();
             }
         } else {
             log::error!("No room to split pane vertically");
@@ -1613,12 +1983,18 @@ impl Tab {
             .resize_pty_all_panes(&mut self.os_api)
             .unwrap(); // we need to do this explicitly because floating_panes.resize does not do this
         self.tiled_panes.resize(new_screen_size);
+        if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+            // we do this only for floating panes, because the constraint system takes care of the
+            // tiled panes
+            self.swap_layouts.set_is_floating_damaged();
+            let _ = self.relayout_floating_panes(None);
+        }
         self.should_clear_display_before_rendering = true;
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
-        log::info!("resizing...");
         let err_context = || format!("unable to resize pane");
-        self.swap_layouts.set_is_damaged();
+        self.swap_layouts.set_is_floating_damaged();
+        self.swap_layouts.set_is_tiled_damaged();
         if self.floating_panes.panes_are_visible() {
             let successfully_resized = self
                 .floating_panes
@@ -1628,7 +2004,6 @@ impl Tab {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
         } else {
-            log::info!("resizing active pane in tiled panes...");
             match self.tiled_panes.resize_active_pane(client_id, &strategy) {
                 Ok(_) => {},
                 Err(err) => match err.downcast_ref::<ZellijError>() {
@@ -1898,6 +2273,12 @@ impl Tab {
             }
             self.set_force_render();
             self.floating_panes.set_force_render();
+            if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                self.swap_layouts.set_is_floating_damaged();
+                // only relayout if the user is already "in" a layout, otherwise this might be
+                // confusing
+                let _ = self.relayout_focused_layer(None);
+            }
             closed_pane
         } else {
             if self.tiled_panes.fullscreen_is_active() {
@@ -1906,6 +2287,14 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
+            // TODO: do the below commented out stuff if a config is set (by default should not be
+            // set)... relayout_on_pane_close?
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+                self.swap_layouts.set_is_tiled_damaged();
+                // only relayout if the user is already "in" a layout, otherwise this might be
+                // confusing
+                let _ = self.relayout_focused_layer(None);
+            }
             closed_pane
         }
     }
@@ -2256,6 +2645,7 @@ impl Tab {
                 .floating_panes
                 .move_pane_with_mouse(*position, search_selectable)
         {
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render();
             return Ok(());
         }
@@ -2509,6 +2899,7 @@ impl Tab {
                 .floating_panes
                 .move_pane_with_mouse(*position_on_screen, search_selectable)
         {
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render();
             return Ok(!is_repeated); // we don't need to re-render in this case if the pane did not move
                                      // return;
