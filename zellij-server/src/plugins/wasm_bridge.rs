@@ -122,6 +122,13 @@ pub struct PluginEnv {
     plugin_own_data_dir: PathBuf,
 }
 
+impl PluginEnv {
+    // Get the name (path) of the containing plugin
+    pub fn name(&self) -> String {
+        self.plugin.path.display().to_string()
+    }
+}
+
 type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
                                                                                   // plugin_id,
                                                                                   // (usize, usize)
@@ -679,18 +686,37 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
 
         send_plugin_instructions
-            .unwrap()
-            .send(PluginInstruction::Update(vec![(
-                update_target,
-                Some(client_id),
-                Event::Timer(elapsed_time),
-            )]))
-            .unwrap();
+            .ok_or(anyhow!("found no sender to send plugin instruction to"))
+            .and_then(|sender| {
+                sender
+                    .send(PluginInstruction::Update(vec![(
+                        update_target,
+                        Some(client_id),
+                        Event::Timer(elapsed_time),
+                    )]))
+                    .to_anyhow()
+            })
+            .with_context(|| {
+                format!(
+                    "failed to set host timeout of {secs} s for plugin {}",
+                    plugin_env.name(),
+                )
+            })
+            .fatal();
     });
 }
 
 fn host_exec_cmd(plugin_env: &PluginEnv) {
-    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env);
+    let err_context = || {
+        format!(
+            "failed to execute command on host for plugin '{}'",
+            plugin_env.name()
+        )
+    };
+
+    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env)
+        .with_context(err_context)
+        .fatal();
     let command = cmdline.remove(0);
 
     // Bail out if we're forbidden to run command
@@ -704,7 +730,8 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
     process::Command::new(command)
         .args(cmdline)
         .spawn()
-        .unwrap();
+        .with_context(err_context)
+        .fatal();
 }
 
 // Custom panic handler for plugins.
@@ -713,32 +740,57 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
 fn host_report_panic(plugin_env: &PluginEnv) {
-    let msg = wasi_read_string(&plugin_env.wasi_env);
+    let msg = wasi_read_string(&plugin_env.wasi_env).fatal();
     panic!("{}", msg);
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-pub fn wasi_read_string(wasi_env: &WasiEnv) -> String {
-    let mut state = wasi_env.state();
-    let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();
+pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
+    let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
+
     let mut buf = String::new();
-    wasi_file.read_to_string(&mut buf).unwrap();
+    wasi_env
+        .state()
+        .fs
+        .stdout_mut()
+        .map_err(anyError::new)
+        .and_then(|stdout| {
+            stdout
+                .as_mut()
+                .ok_or(anyhow!("failed to get mutable reference to stdout"))
+        })
+        .and_then(|wasi_file| wasi_file.read_to_string(&mut buf).map_err(anyError::new))
+        .with_context(err_context)?;
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-    buf.replace("\n", "\n\r")
+    Ok(buf.replace("\n", "\n\r"))
 }
 
-pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
-    let mut state = wasi_env.state();
-    let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
-    writeln!(wasi_file, "{}\r", buf).unwrap();
+pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
+    wasi_env
+        .state()
+        .fs
+        .stdin_mut()
+        .map_err(anyError::new)
+        .and_then(|stdin| {
+            stdin
+                .as_mut()
+                .ok_or(anyhow!("failed to get mutable reference to stdin"))
+        })
+        .and_then(|stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
+        .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
 }
 
-pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) {
-    wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
+pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
+    serde_json::to_string(&object)
+        .map_err(anyError::new)
+        .and_then(|string| wasi_write_string(wasi_env, &string))
+        .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
+    //wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
 }
 
-pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> T {
-    let json = wasi_read_string(wasi_env);
-    serde_json::from_str(&json).unwrap()
+pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
+    wasi_read_string(wasi_env)
+        .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
+        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
 }
