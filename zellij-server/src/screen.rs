@@ -970,28 +970,31 @@ impl Screen {
         };
 
         // apply the layout to the new tab
-        let tab = self.tabs.get_mut(&tab_index).unwrap(); // TODO: no unwrap
-        tab.apply_layout(
-            layout,
-            floating_panes_layout,
-            new_terminal_ids,
-            new_floating_terminal_ids,
-            new_plugin_ids,
-            client_id,
-        )
-        .with_context(err_context)?;
-        tab.update_input_modes().with_context(err_context)?;
-        tab.visible(true).with_context(err_context)?;
-        if let Some(drained_clients) = drained_clients {
-            tab.add_multiple_clients(drained_clients)
-                .with_context(err_context)?;
-        }
+        self.tabs
+            .get_mut(&tab_index)
+            .context("couldn't find tab with index {tab_index}")
+            .and_then(|tab| {
+                tab.apply_layout(
+                    layout,
+                    floating_panes_layout,
+                    new_terminal_ids,
+                    new_floating_terminal_ids,
+                    new_plugin_ids,
+                    client_id,
+                )?;
+                tab.update_input_modes()?;
+                tab.visible(true)?;
+                if let Some(drained_clients) = drained_clients {
+                    tab.add_multiple_clients(drained_clients)?;
+                }
+                Ok(())
+            })
+            .with_context(err_context)?;
+
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id).with_context(err_context)?;
         }
-        self.update_tabs().with_context(err_context)?;
-
         self.render().with_context(err_context)
     }
 
