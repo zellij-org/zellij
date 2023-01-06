@@ -125,7 +125,11 @@ pub struct PluginEnv {
 impl PluginEnv {
     // Get the name (path) of the containing plugin
     pub fn name(&self) -> String {
-        self.plugin.path.display().to_string()
+        format!(
+            "{} (ID {})",
+            self.plugin.path.display().to_string(),
+            self.plugin_id
+        )
     }
 }
 
@@ -414,18 +418,21 @@ impl WasmBridge {
                 *current_columns = new_columns;
 
                 // TODO: consolidate with above render function
-                let render = instance
+                let rendered_bytes = instance
                     .exports
                     .get_function("render")
+                    .map_err(anyError::new)
+                    .and_then(|render| {
+                        render
+                            .call(&[
+                                Value::I32(*current_rows as i32),
+                                Value::I32(*current_columns as i32),
+                            ])
+                            .map_err(anyError::new)
+                    })
+                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                     .with_context(err_context)?;
 
-                render
-                    .call(&[
-                        Value::I32(*current_rows as i32),
-                        Value::I32(*current_columns as i32),
-                    ])
-                    .with_context(err_context)?;
-                let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
@@ -469,7 +476,7 @@ impl WasmBridge {
                         .exports
                         .get_function("update")
                         .with_context(err_context)?;
-                    wasi_write_object(&plugin_env.wasi_env, &event);
+                    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
                     let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
                         match e.downcast::<serde_json::Error>() {
                             Ok(_) => panic!(
@@ -490,14 +497,17 @@ impl WasmBridge {
                     };
 
                     if *rows > 0 && *columns > 0 && should_render {
-                        let render = instance
+                        let rendered_bytes = instance
                             .exports
                             .get_function("render")
+                            .map_err(anyError::new)
+                            .and_then(|render| {
+                                render
+                                    .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
+                                    .map_err(anyError::new)
+                            })
+                            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                             .with_context(err_context)?;
-                        render
-                            .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
-                            .with_context(err_context)?;
-                        let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
                         plugin_bytes.push((
                             plugin_id,
                             client_id,
@@ -538,10 +548,12 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
             )))
         },
     };
-    plugin_version_func.call(&[]).with_context(err_context)?;
-    let plugin_version_str = wasi_read_string(&plugin_env.wasi_env);
-    let plugin_version = Version::parse(&plugin_version_str)
-        .context("failed to parse plugin version")
+
+    let plugin_version = plugin_version_func
+        .call(&[])
+        .map_err(anyError::new)
+        .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+        .and_then(|string| Version::parse(&string).context("failed to parse plugin version"))
         .with_context(err_context)?;
     let zellij_version = Version::parse(VERSION)
         .context("failed to parse zellij version")
@@ -549,7 +561,7 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
     if plugin_version != zellij_version {
         return Err(anyError::new(VersionMismatchError::new(
             VERSION,
-            &plugin_version_str,
+            &plugin_version.to_string(),
             &plugin_env.plugin.path,
             plugin_env.plugin.is_builtin(),
         )));
@@ -597,15 +609,27 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
 }
 
 fn host_subscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
-    let new: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
-    subscriptions.extend(new);
+    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+        .and_then(|new| {
+            plugin_env.subscriptions.lock().to_anyhow()?.extend(new);
+            Ok(())
+        })
+        .with_context(|| format!("failed to subscribe for plugin {}", plugin_env.name()))
+        .fatal();
 }
 
 fn host_unsubscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
-    let old: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
-    subscriptions.retain(|k| !old.contains(k));
+    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+        .and_then(|old| {
+            plugin_env
+                .subscriptions
+                .lock()
+                .to_anyhow()?
+                .retain(|k| !old.contains(k));
+            Ok(())
+        })
+        .with_context(|| format!("failed to unsubscribe for plugin {}", plugin_env.name()))
+        .fatal();
 }
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
@@ -619,7 +643,14 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
                     selectable,
                     tab_index,
                 ))
-                .unwrap()
+                .with_context(|| {
+                    format!(
+                        "failed to set plugin {} selectable from plugin {}",
+                        selectable,
+                        plugin_env.name()
+                    )
+                })
+                .non_fatal();
         },
         _ => {
             debug!(
@@ -635,24 +666,46 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
         plugin_id: plugin_env.plugin_id,
         zellij_pid: process::id(),
     };
-    wasi_write_object(&plugin_env.wasi_env, &ids);
+    wasi_write_object(&plugin_env.wasi_env, &ids)
+        .with_context(|| {
+            format!(
+                "failed to query plugin IDs from host for plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_get_zellij_version(plugin_env: &PluginEnv) {
-    wasi_write_object(&plugin_env.wasi_env, VERSION);
+    wasi_write_object(&plugin_env.wasi_env, VERSION)
+        .with_context(|| {
+            format!(
+                "failed to request zellij version from host for plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {
-    let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
-    plugin_env
-        .senders
-        .send_to_pty(PtyInstruction::SpawnTerminal(
-            Some(TerminalAction::OpenFile(path, None)),
-            None,
-            None,
-            ClientOrTabIndex::TabIndex(plugin_env.tab_index),
-        ))
-        .unwrap();
+    wasi_read_object::<PathBuf>(&plugin_env.wasi_env)
+        .and_then(|path| {
+            plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::OpenFile(path, None)),
+                    None,
+                    None,
+                    ClientOrTabIndex::TabIndex(plugin_env.tab_index),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open file on host from plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
@@ -662,7 +715,13 @@ fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
             tab_idx,
             Some(plugin_env.client_id),
         ))
-        .unwrap();
+        .with_context(|| {
+            format!(
+                "failed to switch host to tab {tab_idx} from plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
@@ -678,6 +737,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
     let update_target = Some(plugin_env.plugin_id);
     let client_id = plugin_env.client_id;
+    let plugin_name = plugin_env.name();
     thread::spawn(move || {
         let start_time = Instant::now();
         thread::sleep(Duration::from_secs_f64(secs));
@@ -699,10 +759,10 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
             .with_context(|| {
                 format!(
                     "failed to set host timeout of {secs} s for plugin {}",
-                    plugin_env.name(),
+                    plugin_name
                 )
             })
-            .fatal();
+            .non_fatal();
     });
 }
 
@@ -731,7 +791,7 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
         .args(cmdline)
         .spawn()
         .with_context(err_context)
-        .fatal();
+        .non_fatal();
 }
 
 // Custom panic handler for plugins.
@@ -786,7 +846,6 @@ pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized))
         .map_err(anyError::new)
         .and_then(|string| wasi_write_string(wasi_env, &string))
         .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
-    //wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
 }
 
 pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
