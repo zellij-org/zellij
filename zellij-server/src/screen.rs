@@ -995,7 +995,10 @@ impl Screen {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id).with_context(err_context)?;
         }
-        self.render().with_context(err_context)
+
+        self.update_tabs()
+            .and_then(|_| self.render())
+            .with_context(err_context)
     }
 
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
