@@ -618,9 +618,7 @@ pub(crate) fn route_action(
 macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
-            Some(session_metadata) => {
-                session_metadata.senders.send_to_screen($message)
-            },
+            Some(session_metadata) => session_metadata.senders.send_to_screen($message),
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
@@ -706,7 +704,8 @@ pub(crate) fn route_thread_main(
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
                                 instruction,
                                 retry_queue
-                            ).with_context(err_context)?;
+                            )
+                            .with_context(err_context)?;
                         },
                         ClientToServerMsg::BackgroundColor(ref background_color_instruction) => {
                             send_to_screen_or_retry_queue!(
@@ -716,7 +715,8 @@ pub(crate) fn route_thread_main(
                                 ),
                                 instruction,
                                 retry_queue
-                            ).with_context(err_context)?;
+                            )
+                            .with_context(err_context)?;
                         },
                         ClientToServerMsg::ForegroundColor(ref foreground_color_instruction) => {
                             send_to_screen_or_retry_queue!(
@@ -726,7 +726,8 @@ pub(crate) fn route_thread_main(
                                 ),
                                 instruction,
                                 retry_queue
-                            ).with_context(err_context)?;
+                            )
+                            .with_context(err_context)?;
                         },
                         ClientToServerMsg::ColorRegisters(ref color_registers) => {
                             send_to_screen_or_retry_queue!(
@@ -734,7 +735,8 @@ pub(crate) fn route_thread_main(
                                 ScreenInstruction::TerminalColorRegisters(color_registers.clone()),
                                 instruction,
                                 retry_queue
-                            ).with_context(err_context)?;
+                            )
+                            .with_context(err_context)?;
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,
