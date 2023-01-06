@@ -619,13 +619,14 @@ macro_rules! send_to_screen_or_retry_queue {
     ($rlocked_sessions:expr, $message:expr, $instruction: expr, $retry_queue:expr) => {{
         match $rlocked_sessions.as_ref() {
             Some(session_metadata) => {
-                session_metadata.senders.send_to_screen($message).unwrap();
+                session_metadata.senders.send_to_screen($message)
             },
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
                     retry_queue.push($instruction);
                 }
+                Ok(())
             },
         }
     }};
@@ -645,7 +646,7 @@ pub(crate) fn route_thread_main(
         match receiver.recv() {
             Some((instruction, err_ctx)) => {
                 err_ctx.update_thread_ctx();
-                let rlocked_sessions = session_data.read().unwrap();
+                let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let handle_instruction = |instruction: ClientToServerMsg,
                                           mut retry_queue: Option<&mut Vec<ClientToServerMsg>>|
                  -> Result<bool> {
@@ -679,18 +680,24 @@ pub(crate) fn route_thread_main(
                         ClientToServerMsg::TerminalResize(new_size) => {
                             session_state
                                 .write()
-                                .unwrap()
+                                .to_anyhow()
+                                .with_context(err_context)?
                                 .set_client_size(client_id, new_size);
-                            let min_size = session_state
+                            session_state
                                 .read()
-                                .unwrap()
-                                .min_client_terminal_size()
-                                .with_context(err_context)?;
-                            rlocked_sessions
-                                .as_ref()
-                                .unwrap()
-                                .senders
-                                .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                .to_anyhow()
+                                .and_then(|state| {
+                                    state.min_client_terminal_size().ok_or(anyhow!(
+                                        "failed to determine minimal client terminal size"
+                                    ))
+                                })
+                                .and_then(|min_size| {
+                                    rlocked_sessions
+                                        .as_ref()
+                                        .context("couldn't get reference to read-locked session")?
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::TerminalResize(min_size))
+                                })
                                 .with_context(err_context)?;
                         },
                         ClientToServerMsg::TerminalPixelDimensions(pixel_dimensions) => {
@@ -699,7 +706,7 @@ pub(crate) fn route_thread_main(
                                 ScreenInstruction::TerminalPixelDimensions(pixel_dimensions),
                                 instruction,
                                 retry_queue
-                            );
+                            ).with_context(err_context)?;
                         },
                         ClientToServerMsg::BackgroundColor(ref background_color_instruction) => {
                             send_to_screen_or_retry_queue!(
@@ -709,7 +716,7 @@ pub(crate) fn route_thread_main(
                                 ),
                                 instruction,
                                 retry_queue
-                            );
+                            ).with_context(err_context)?;
                         },
                         ClientToServerMsg::ForegroundColor(ref foreground_color_instruction) => {
                             send_to_screen_or_retry_queue!(
@@ -719,7 +726,7 @@ pub(crate) fn route_thread_main(
                                 ),
                                 instruction,
                                 retry_queue
-                            );
+                            ).with_context(err_context)?;
                         },
                         ClientToServerMsg::ColorRegisters(ref color_registers) => {
                             send_to_screen_or_retry_queue!(
@@ -727,7 +734,7 @@ pub(crate) fn route_thread_main(
                                 ScreenInstruction::TerminalColorRegisters(color_registers.clone()),
                                 instruction,
                                 retry_queue
-                            );
+                            ).with_context(err_context)?;
                         },
                         ClientToServerMsg::NewClient(
                             client_attributes,
