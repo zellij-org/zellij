@@ -40,9 +40,9 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{DEBUG_MODE, DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
-    errors::{ContextType, ErrorInstruction, FatalError, ServerContext},
+    errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -150,8 +150,30 @@ macro_rules! remove_client {
 macro_rules! send_to_client {
     ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
         let send_to_client_res = $os_input.send_to_client($client_id, $msg);
-        if let Err(_) = send_to_client_res {
+        if let Err(e) = send_to_client_res {
+            // Try to recover the message
+            use zellij_utils::channels::TrySendError;
+            let message = match e.downcast_ref::<TrySendError<ServerToClientMsg>>() {
+                Some(TrySendError::Full(msg)) => Some(msg),
+                Some(TrySendError::Disconnected(msg)) => Some(msg),
+                _ => None,
+            };
             // failed to send to client, remove it
+            let context = if *DEBUG_MODE.get().unwrap_or(&true) {
+                format!(
+                    "failed to route server message to client {}\nMessage content: {:?}",
+                    $client_id,
+                    if let Some(msg) = message {
+                        format!("{:?}", msg)
+                    } else {
+                        "unknown".to_string()
+                    }
+                )
+            } else {
+                format!("failed to route server message to client {}", $client_id)
+            };
+            // Log it so it isn't lost
+            Err::<(), _>(e).context(context).non_fatal();
             remove_client!($client_id, $os_input, $session_state);
         }
     };
@@ -552,6 +574,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
                     for (client_id, client_render_instruction) in output.iter() {
+                        // TODO: When a client is too slow or unresponsive, the channel fills up
+                        // and this call will disconnect the client in turn. Should this be
+                        // changed?
                         send_to_client!(
                             *client_id,
                             os_input,
