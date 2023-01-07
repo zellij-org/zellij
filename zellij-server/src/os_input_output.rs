@@ -347,11 +347,14 @@ impl ClientSender {
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                let _ = sender.send(msg).with_context(err_context);
+                sender.send(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(
-                "Buffer full".to_string(),
-            )));
+            // If we're here, the message buffer is broken for some reason
+            let err = Err::<(), _>(anyhow!("client buffer disconnected")).with_context(err_context);
+            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(format!(
+                "{:?}",
+                err
+            ))));
         });
         ClientSender {
             client_id,
