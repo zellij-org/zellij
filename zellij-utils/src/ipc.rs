@@ -117,6 +117,7 @@ pub enum ExitReason {
     NormalDetached,
     ForceDetached,
     CannotAttach,
+    Disconnect,
     Error(String),
 }
 
@@ -132,6 +133,24 @@ impl Display for ExitReason {
             Self::CannotAttach => write!(
                 f,
                 "Session attached to another client. Use --force flag to force connect."
+            ),
+            Self::Disconnect => write!(
+                f,
+                "Your zellij client lost connection to the zellij server.
+
+As a safety measure, you have been disconnected from the current zellij session.
+However, the session should still exist and none of your data should be lost.
+
+This usually means that your terminal didn't process server messages quick
+enough. Maybe your system is currently under high load, or your terminal
+isn't performant enough.
+
+There are a few things you can try now:
+    - Reattach to your previous session and see if it works out better this
+      time (see `zellij ls` and `zellij attach`)
+    - Try using a faster terminal. GPU-accelerated terminals such as Kitty
+      or Alacritty are cross-platform and known to work well with zellij.
+"
             ),
             Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
