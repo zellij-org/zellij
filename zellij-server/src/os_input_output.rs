@@ -417,7 +417,7 @@ impl ClientSender {
                         TrySendError::Full(msg) => {
                             // Put the message back where we found it to maintain the order
                             self.client_retry_queue.borrow_mut().push_front(msg);
-                            return Ok(())
+                            return Ok(());
                         },
                         _ => return Err(err).with_context(err_context),
                     }
