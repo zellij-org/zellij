@@ -40,7 +40,7 @@ use route::route_thread_main;
 use zellij_utils::{
     channels::{self, ChannelWithContext, SenderWithContext},
     cli::CliArgs,
-    consts::{DEBUG_MODE, DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
+    consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
     errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     input::{
@@ -152,28 +152,20 @@ macro_rules! send_to_client {
         let send_to_client_res = $os_input.send_to_client($client_id, $msg);
         if let Err(e) = send_to_client_res {
             // Try to recover the message
-            use zellij_utils::channels::TrySendError;
-            let message = match e.downcast_ref::<TrySendError<ServerToClientMsg>>() {
-                Some(TrySendError::Full(msg)) => Some(msg),
-                Some(TrySendError::Disconnected(msg)) => Some(msg),
-                _ => None,
-            };
-            // failed to send to client, remove it
-            let context = if *DEBUG_MODE.get().unwrap_or(&true) {
-                format!(
-                    "failed to route server message to client {}\nMessage content: {:?}",
-                    $client_id,
-                    if let Some(msg) = message {
-                        format!("{:?}", msg)
-                    } else {
-                        "unknown".to_string()
-                    }
-                )
-            } else {
-                format!("failed to route server message to client {}", $client_id)
+            let context = match e.downcast_ref::<ZellijError>() {
+                Some(ZellijError::ClientTooSlow { .. }) => {
+                    format!(
+                        "client {} is processing server messages too slow",
+                        $client_id
+                    )
+                },
+                _ => {
+                    format!("failed to route server message to client {}", $client_id)
+                },
             };
             // Log it so it isn't lost
             Err::<(), _>(e).context(context).non_fatal();
+            // failed to send to client, remove it
             remove_client!($client_id, $os_input, $session_state);
         }
     };

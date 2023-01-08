@@ -469,6 +469,9 @@ open an issue on GitHub:
 
     #[error("an error occured")]
     GenericError { source: anyhow::Error },
+
+    #[error("Client {client_id} is too slow to handle incoming messages")]
+    ClientTooSlow { client_id: u16 },
 }
 
 #[cfg(not(target_family = "wasm"))]
