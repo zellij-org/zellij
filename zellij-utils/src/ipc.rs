@@ -142,20 +142,20 @@ impl Display for ExitReason {
                 write!(
                     f,
                     "
-    Your zellij client lost connection to the zellij server.
+Your zellij client lost connection to the zellij server.
 
-    As a safety measure, you have been disconnected from the current zellij session.
-    However, the session should still exist and none of your data should be lost.
+As a safety measure, you have been disconnected from the current zellij session.
+However, the session should still exist and none of your data should be lost.
 
-    This usually means that your terminal didn't process server messages quick
-    enough. Maybe your system is currently under high load, or your terminal
-    isn't performant enough.
+This usually means that your terminal didn't process server messages quick
+enough. Maybe your system is currently under high load, or your terminal
+isn't performant enough.
 
-    There are a few things you can try now:
-        - Reattach to your previous session and see if it works out better this
-          time: {session_tip}
-        - Try using a faster terminal. GPU-accelerated terminals such as Kitty
-          or Alacritty are cross-platform and known to work well with zellij.
+There are a few things you can try now:
+    - Reattach to your previous session and see if it works out better this
+      time: {session_tip}
+    - Try using a faster terminal. GPU-accelerated terminals such as Kitty
+      or Alacritty are cross-platform and known to work well with zellij.
     "
                 )
             },
