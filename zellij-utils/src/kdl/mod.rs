@@ -738,7 +738,64 @@ impl TryFrom<&KdlNode> for Action {
             "PaneNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
-            "NewTab" => Ok(Action::NewTab(None, vec![], None)),
+            "NewTab" => {
+                let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+
+                let command_metadata = action_children.iter().next();
+                let layout = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
+                    .map(|layout_string| PathBuf::from(layout_string));
+                let cwd = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
+                    .map(|cwd_string| PathBuf::from(cwd_string))
+                    .map(|cwd| current_dir.join(cwd))
+                    .or_else(|| Some(current_dir));
+                let name = command_metadata
+                    .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
+                    .map(|name_string| name_string.to_string());
+
+                if let Some(layout_path) = layout {
+                    let (path_to_raw_layout, raw_layout) =
+                        Layout::stringified_from_path_or_default(Some(&layout_path), None)
+                            .map_err(|e| {
+                                ConfigError::new_kdl_error(
+                                    format!("Failed to load layout: {}", e),
+                                    kdl_action.span().offset(),
+                                    kdl_action.span().len(),
+                                )
+                            })?;
+
+                    let layout =
+                        Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                            ConfigError::new_kdl_error(
+                                format!("Failed to load layout: {}", e),
+                                kdl_action.span().offset(),
+                                kdl_action.span().len(),
+                            )
+                        })?;
+
+                    let mut tabs = layout.tabs();
+                    if tabs.len() > 1 {
+                        return Err(ConfigError::new_kdl_error(
+                            "Tab layout cannot itself have tabs".to_string(),
+                            kdl_action.span().offset(),
+                            kdl_action.span().len(),
+                        ));
+                    } else if !tabs.is_empty() {
+                        let (tab_name, layout, floating_panes_layout) =
+                            tabs.drain(..).next().unwrap();
+                        let name = tab_name.or(name);
+
+                        Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
+                    } else {
+                        let (layout, floating_panes_layout) = layout.new_tab();
+
+                        Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
+                    }
+                } else {
+                    Ok(Action::NewTab(None, vec![], None))
+                }
+            },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
