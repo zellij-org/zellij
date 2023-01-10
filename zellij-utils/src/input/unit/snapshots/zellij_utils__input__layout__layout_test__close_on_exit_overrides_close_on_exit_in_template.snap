@@ -63,4 +63,6 @@ Layout {
         ),
     ),
     swap_layouts: [],
+    swap_tiled_layouts: [],
+    swap_floating_layouts: [],
 }

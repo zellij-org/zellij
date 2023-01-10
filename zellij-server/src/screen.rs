@@ -12,7 +12,7 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation},
+    input::layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, SwapTiledLayout, SwapFloatingLayout},
     position::Position,
 };
 
@@ -179,7 +179,7 @@ pub enum ScreenInstruction {
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
         Option<String>,
-        Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, // swap layouts
+        (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         ClientId,
     ),
     ApplyLayout(
@@ -889,7 +889,7 @@ impl Screen {
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
-    pub fn new_tab(&mut self, tab_index: usize, swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, client_id: ClientId) -> Result<()> {
+    pub fn new_tab(&mut self, tab_index: usize, swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -1807,12 +1807,12 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(id, false));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(id, false, Some(client_id)));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
-                                tab.close_pane(id, false);
+                                tab.close_pane(id, false, None);
                                 break;
                             }
                         }

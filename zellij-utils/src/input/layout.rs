@@ -23,6 +23,7 @@ use std::str::FromStr;
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
+use std::collections::BTreeMap;
 use std::vec::Vec;
 use std::{
     fmt,
@@ -211,12 +212,23 @@ impl fmt::Display for RunPluginLocation {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum LayoutConstraint {
+    MaxPanes(usize),
+    NoConstraint
+}
+
+pub type SwapTiledLayout = BTreeMap<LayoutConstraint, TiledPaneLayout>;
+pub type SwapFloatingLayout = BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
     pub tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub focused_tab_index: Option<usize>,
     pub template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     pub swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+    pub swap_tiled_layouts: Vec<SwapTiledLayout>,
+    pub swap_floating_layouts: Vec<SwapFloatingLayout>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -337,6 +349,38 @@ impl TiledPaneLayout {
             },
         }
     }
+    pub fn insert_children_nodes(
+        &mut self,
+        children_nodes: &mut Vec<TiledPaneLayout>,
+    ) -> Result<bool, ConfigError> {
+        // returns true if successfully inserted and false otherwise
+        match self.external_children_index {
+            Some(external_children_index) => {
+
+                if self.focus.map(|f| f).unwrap_or(false) {
+                    if let Some(last_child) = children_nodes.iter_mut().next() {
+                        last_child.focus = Some(true);
+                    }
+                }
+
+
+                for child_node in children_nodes.drain(..) {
+                    self.children
+                        .insert(external_children_index, child_node);
+                }
+                self.external_children_index = None;
+                Ok(true)
+            },
+            None => {
+                for pane in self.children.iter_mut() {
+                    if pane.insert_children_nodes(children_nodes)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            },
+        }
+    }
     pub fn children_block_count(&self) -> usize {
         let mut count = 0;
         if self.external_children_index.is_some() {
@@ -366,7 +410,19 @@ impl TiledPaneLayout {
         let layouts = match max_panes {
             Some(max_panes) => {
                 let mut layout_to_split = self.clone();
-                layout_to_split.truncate(max_panes);
+                let pane_count_in_layout = layout_to_split.pane_count();
+                if max_panes > pane_count_in_layout {
+                    // the + 1 here is because this was previously an "actual" pane and will now
+                    // become just a container, so we need to account for it too
+                    // TODO: make sure this works when the `children` node has sibling nodes,
+                    // because we really should support that
+                    let children_count = (max_panes - pane_count_in_layout) + 1;
+                    let mut extra_children = vec![TiledPaneLayout::default(); children_count];
+                    let _ = layout_to_split.insert_children_nodes(&mut extra_children);
+                } else {
+                    layout_to_split.truncate(max_panes);
+                }
+                // layout_to_split.truncate(max_panes);
                 split_space(space, &layout_to_split, space)
             },
             None => {
@@ -432,6 +488,17 @@ impl TiledPaneLayout {
         } else {
             1 // just me
         }
+    }
+    pub fn has_focused_node(&self) -> bool {
+        if self.focus.map(|f| f).unwrap_or(false) {
+            return true
+        };
+        for child in &self.children {
+            if child.has_focused_node() {
+                return true;
+            }
+        }
+        false
     }
 }
 

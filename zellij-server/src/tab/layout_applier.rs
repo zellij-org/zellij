@@ -133,6 +133,7 @@ impl<'a> LayoutApplier<'a> {
                 let currently_focused_pane_id = client_id.and_then(|client_id| self.tiled_panes.focused_pane_id(client_id));
 
                 let mut focused_pane_position_and_size: Option<PaneGeom> = None;
+                let mut has_focused_pane = false;
                 let mut set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
                     if layout.focus.unwrap_or(false) && focused_pane_position_and_size.is_none() {
                         focused_pane_position_and_size = Some(*pane_position_and_size);
@@ -167,6 +168,7 @@ impl<'a> LayoutApplier<'a> {
                         }
                     };
                     if let Some(currently_focused_pane_id) = find_focused_pane_id() {
+                        has_focused_pane = true;
                         return existing_panes.remove(&currently_focused_pane_id);
                     } else if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
                         return existing_panes.remove(&same_position_candidate_id);

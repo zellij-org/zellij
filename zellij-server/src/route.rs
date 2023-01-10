@@ -439,7 +439,7 @@ pub(crate) fn route_action(
                     tab_layout,
                     floating_panes_layout,
                     tab_name,
-                    vec![], // TODO - swap layouts in here
+                    (vec![], vec![]), // TODO - swap layouts in here
                     client_id,
                 ))
                 .with_context(err_context)?;

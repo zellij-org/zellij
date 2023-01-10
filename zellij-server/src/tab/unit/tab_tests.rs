@@ -177,7 +177,7 @@ fn create_new_tab(size: Size) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
-        vec![],
+        (vec![], vec![]), // swap layouts
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -232,7 +232,7 @@ fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
-        vec![],
+        (vec![], vec![]), // swap layouts
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -293,7 +293,7 @@ fn create_new_tab_with_cell_size(
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
-        vec![],
+        (vec![], vec![]), // swap layouts
     );
     tab.apply_layout(
         TiledPaneLayout::default(),
@@ -14386,7 +14386,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
 
     tab.new_pane(PaneId::Terminal(2), None, None, Some(1))
         .unwrap();
-    tab.close_pane(PaneId::Terminal(2), true);
+    tab.close_pane(PaneId::Terminal(2), true, None);
 
     // the size should be the same after adding and then removing a pane
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

@@ -44,7 +44,7 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, Run},
+        layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, Run, LayoutConstraint, SwapTiledLayout, SwapFloatingLayout},
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -133,6 +133,9 @@ pub(crate) struct Tab {
 
 #[derive(Clone, Debug, Default)]
 struct SwapLayouts {
+    // swap_tiled_layouts: Vec<BTreeMap<LayoutConstraint, TiledPaneLayout>>,
+    swap_tiled_layouts: Vec<SwapTiledLayout>,
+    swap_floating_layouts: Vec<SwapFloatingLayout>,
     swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     // current_layout: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     current_floating_layout_position: Option<usize>,
@@ -143,9 +146,10 @@ struct SwapLayouts {
 }
 
 impl SwapLayouts {
-    pub fn new(swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>) -> Self {
+    pub fn new(swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>)) -> Self {
         SwapLayouts {
-            swap_layouts,
+            swap_tiled_layouts: swap_layouts.0,
+            swap_floating_layouts: swap_layouts.1,
             is_floating_damaged: false,
             is_tiled_damaged: false,
             ..Default::default()
@@ -232,197 +236,99 @@ impl SwapLayouts {
         None
     }
     pub fn swap_floating_panes(&mut self, floating_panes: &FloatingPanes) -> Option<Vec<FloatingPaneLayout>> {
-        let current_floating_panes_count = floating_panes.visible_panes_count();
-        let layout_fits_panes_exactly = |floating_panes_layout: &Vec<FloatingPaneLayout>| {
-            floating_panes_layout.len() == current_floating_panes_count
+        if self.swap_floating_layouts.is_empty() {
+            return None;
+        }
+        let initial_position = self.current_floating_layout_position;
+        let swap_floating_layout_position = if self.is_floating_damaged {
+            self.current_floating_layout_position.unwrap_or(0)
+        } else {
+            self.current_floating_layout_position.map(|position| position + 1).unwrap_or(0)
         };
-        let layout_fits_panes = |floating_panes_layout: &Vec<FloatingPaneLayout>| -> bool {
-            floating_panes_layout.len() >= current_floating_panes_count
-        };
-        if let Some(current_layout) = self.current_floating_layout_position
-            .and_then(|position| self.swap_layouts.get(position))
-            .or_else(|| self.current_layout()) {
-                let current_floating_layout = current_layout.1.clone();
-                // if self.is_floating_damaged && layout_fits_panes(&current_floating_layout) {
-                if self.is_floating_damaged && layout_fits_panes_exactly(&current_floating_layout) {
-                    self.is_floating_damaged = false;
-                    return Some(current_floating_layout);
+        self.is_floating_damaged = false;
+        self.current_floating_layout_position = Some(swap_floating_layout_position);
+
+        loop {
+            let swap_layout = self.swap_floating_layouts.iter().nth(swap_floating_layout_position)
+                .or_else(|| {
+                    self.current_floating_layout_position = Some(0);
+                    self.swap_floating_layouts.iter().next()
+                });
+            if let Some(swap_layout) = swap_layout {
+                for (constraint, layout) in swap_layout.iter() {
+                    if self.state_fits_floating_panes_constraint(constraint, floating_panes) {
+                        return Some(layout.clone());
+                    };
                 }
             };
-        self.is_floating_damaged = false;
-        match self.current_floating_layout_position {
-            Some(current_position) => {
-                // first look for layouts that fit exactly
-                // look for candidate after current
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
-                    if layout_fits_panes_exactly(&layout_candidate.1) {
-                        self.current_floating_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.1.clone());
-                    }
-                }
-
-                // look for candidate before current position
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
-                    if layout_fits_panes_exactly(&layout_candidate.1) {
-                        self.current_floating_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.1.clone());
-                    }
-                }
-
-
-                // now look for layouts with at least the desired number of panes
-                // look for candidate after current
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
-                    if layout_fits_panes(&layout_candidate.1) {
-                        self.current_floating_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.1.clone());
-                    }
-                }
-
-                // look for candidate before current position
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
-                    if layout_fits_panes(&layout_candidate.1) {
-                        self.current_floating_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.1.clone());
-                    }
-                }
-                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
-                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
-                    self.current_floating_layout_position = Some(current_position + 1);
-                    self.current_layout_position = Some(current_position + 1);
-                    return Some(layout_candidate.1.clone());
-                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
-                    self.current_floating_layout_position = Some(0);
-                    self.current_layout_position = Some(0);
-                    return Some(layout_candidate.1.clone());
-                }
-            },
-            None => {
-                // floating panes are set to current layout if it exists, look for a candidate in the swap
-                // layouts
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
-                    if layout_fits_panes(&layout_candidate.1) {
-                        self.current_floating_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.1.clone());
-                    }
-                }
-
+            if let Some(position) = self.current_floating_layout_position.as_mut() {
+                *position += 1;
             }
-        };
-        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
-        if let Some(layout_candidate) = self.swap_layouts.get(0) {
-            self.current_floating_layout_position = Some(0);
-            self.current_layout_position = Some(0);
-            return Some(layout_candidate.1.clone());
+            if self.current_floating_layout_position >= Some(self.swap_floating_layouts.len()) {
+                // TODO: same conditional for tiled layouts?
+                if initial_position == None {
+                    // no need to loop again, we started at the beginning
+                    self.current_floating_layout_position = None;
+                    break;
+                }
+                self.current_floating_layout_position = Some(0);
+            }
+            if self.current_floating_layout_position == initial_position {
+                break;
+            }
         }
         None
     }
+    fn state_fits_tiled_panes_constraint(&self, constraint: &LayoutConstraint, tiled_panes: &TiledPanes) -> bool {
+        match constraint {
+            LayoutConstraint::MaxPanes(max_panes) => {
+                tiled_panes.visible_panes_count() <= *max_panes
+            }
+            LayoutConstraint::NoConstraint => true
+        }
+    }
+    fn state_fits_floating_panes_constraint(&self, constraint: &LayoutConstraint, floating_panes: &FloatingPanes) -> bool {
+        match constraint {
+            LayoutConstraint::MaxPanes(max_panes) => {
+                floating_panes.visible_panes_count() <= *max_panes
+            }
+            LayoutConstraint::NoConstraint => true
+        }
+    }
     pub fn swap_tiled_panes(&mut self, tiled_panes: &TiledPanes) -> Option<TiledPaneLayout> {
-        let current_tiled_panes_count = tiled_panes.visible_panes_count();
-        let layout_fits_panes_exactly = |tiled_panes_layout: &TiledPaneLayout| {
-            tiled_panes_layout.pane_count() == current_tiled_panes_count
+        if self.swap_tiled_layouts.is_empty() {
+            return None;
+        }
+        let initial_position = self.current_tiled_layout_position;
+        let swap_tiled_layout_position = if self.is_tiled_damaged {
+            self.current_tiled_layout_position.unwrap_or(0)
+        } else {
+            self.current_tiled_layout_position.map(|position| position + 1).unwrap_or(0)
         };
-        let layout_fits_panes = |tiled_panes_layout: &TiledPaneLayout| {
-            tiled_panes_layout.pane_count() >= current_tiled_panes_count
-        };
-        if let Some(current_layout) = self.current_tiled_layout_position
-            .and_then(|position| self.swap_layouts.get(position))
-            .or_else(|| self.current_layout()) {
-                let current_tiled_layout = current_layout.0.clone();
-                // if self.is_tiled_damaged && layout_fits_panes(&current_tiled_layout) {
-                if self.is_tiled_damaged && layout_fits_panes_exactly(&current_tiled_layout) {
-                    self.is_tiled_damaged = false;
-                    return Some(current_tiled_layout);
+        self.is_tiled_damaged = false;
+        self.current_tiled_layout_position = Some(swap_tiled_layout_position);
+        loop {
+            let swap_layout = self.swap_tiled_layouts.iter().nth(swap_tiled_layout_position)
+                .or_else(|| {
+                    self.current_tiled_layout_position = Some(0);
+                    self.swap_tiled_layouts.iter().next()
+                });
+            if let Some(swap_layout) = swap_layout {
+                for (constraint, layout) in swap_layout.iter() {
+                    if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
+                        return Some(layout.clone());
+                    };
                 }
             };
-        self.is_tiled_damaged = false;
-        match self.current_tiled_layout_position {
-            Some(current_position) => {
-                // look for exact candidates
-
-                // first look after current
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
-                    if layout_fits_panes_exactly(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
-                // then look before current position
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
-                    if layout_fits_panes_exactly(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
-                // look for candidates with explicit room for new panes
-
-                // first look after current
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
-                    if layout_fits_panes(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
-                // then look before current position
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
-                    if layout_fits_panes(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
-
-
-
-                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
-                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
-                    self.current_tiled_layout_position = Some(current_position + 1);
-                    self.current_layout_position = Some(current_position + 1);
-                    return Some(layout_candidate.0.clone());
-                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
-                    self.current_tiled_layout_position = Some(0);
-                    self.current_layout_position = Some(0);
-                    return Some(layout_candidate.0.clone());
-                }
-            },
-            None => {
-                // take the first layout that fits exactly
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
-                    if layout_fits_panes_exactly(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
-                // take the first layout that fits
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
-                    if layout_fits_panes(&layout_candidate.0) {
-                        self.current_tiled_layout_position = Some(i);
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.0.clone());
-                    }
-                }
-
+            if let Some(position) = self.current_tiled_layout_position.as_mut() {
+                *position += 1;
             }
-        };
-        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
-        if let Some(layout_candidate) = self.swap_layouts.get(0) {
-            self.current_tiled_layout_position = Some(0);
-            self.current_layout_position = Some(0);
-            return Some(layout_candidate.0.clone());
+            if self.current_tiled_layout_position >= Some(self.swap_tiled_layouts.len()) {
+                self.current_tiled_layout_position = Some(0);
+            }
+            if self.current_tiled_layout_position == initial_position {
+                break;
+            }
         }
         None
     }
@@ -754,7 +660,7 @@ impl Tab {
         copy_options: CopyOptions,
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
-        swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+        swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
     ) -> Self {
         let name = if name.is_empty() {
             format!("Tab #{}", index + 1)
@@ -916,12 +822,10 @@ impl Tab {
         Ok(())
     }
     fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>) -> Result<()> {
-        log::info!("fn relayout_tiled_panes 1");
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
         if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes) {
-            log::info!("fn relayout_tiled_panes 2");
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -950,11 +854,9 @@ impl Tab {
         Ok(())
     }
     pub fn relayout_focused_layer(&mut self, client_id: Option<ClientId>) -> Result<()> {
-        log::info!("relayout_focused_layer");
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(client_id)
         } else {
-            log::info!("relayout tiled panes");
             self.relayout_tiled_panes(client_id)
         }
     }
@@ -1127,7 +1029,7 @@ impl Tab {
             if let Some(focused_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
                 if self.tiled_panes.has_room_for_new_pane() {
                     let floating_pane_to_embed = self
-                        .close_pane(focused_floating_pane_id, true)
+                        .close_pane(focused_floating_pane_id, true, Some(client_id))
                         .with_context(|| format!(
                         "failed to find floating pane (ID: {focused_floating_pane_id:?}) to embed for client {client_id}",
                     ))
@@ -1146,7 +1048,7 @@ impl Tab {
                     // don't close the only pane on screen...
                     return Ok(());
                 }
-                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true) {
+                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true, Some(client_id)) {
                     if !embedded_pane_to_float.borderless() {
                         // floating panes always have a frame unless they're explicitly borderless
                         embedded_pane_to_float.set_content_offset(Offset::frame(1));
@@ -1741,7 +1643,7 @@ impl Tab {
                             .with_context(err_context)?;
                     },
                     Some(AdjustedInput::CloseThisPane) => {
-                        self.close_pane(PaneId::Terminal(active_terminal_id), false);
+                        self.close_pane(PaneId::Terminal(active_terminal_id), false, None);
                         should_update_ui = true;
                     },
                     None => {},
@@ -2208,7 +2110,7 @@ impl Tab {
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(pid))
                     .context("failed to close down to max terminals")?;
-                self.close_pane(pid, false);
+                self.close_pane(pid, false, None);
             }
         }
         Ok(())
@@ -2255,6 +2157,7 @@ impl Tab {
         &mut self,
         id: PaneId,
         ignore_suppressed_panes: bool,
+        client_id: Option<ClientId>,
     ) -> Option<Box<dyn Pane>> {
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
@@ -2277,7 +2180,7 @@ impl Tab {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.relayout_focused_layer(None);
+                let _ = self.relayout_focused_layer(client_id);
             }
             closed_pane
         } else {
@@ -2287,13 +2190,11 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
-            // TODO: do the below commented out stuff if a config is set (by default should not be
-            // set)... relayout_on_pane_close?
             if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.relayout_focused_layer(None);
+                let _ = self.relayout_focused_layer(client_id);
             }
             closed_pane
         }
@@ -2350,7 +2251,7 @@ impl Tab {
 
         if self.floating_panes.panes_are_visible() {
             if let Some(active_floating_pane_id) = self.floating_panes.active_pane_id(client_id) {
-                self.close_pane(active_floating_pane_id, false);
+                self.close_pane(active_floating_pane_id, false, Some(client_id));
                 self.senders
                     .send_to_pty(PtyInstruction::ClosePane(active_floating_pane_id))
                     .with_context(|| err_context(active_floating_pane_id))?;
@@ -2358,7 +2259,7 @@ impl Tab {
             }
         }
         if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-            self.close_pane(active_pane_id, false);
+            self.close_pane(active_pane_id, false, Some(client_id));
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .with_context(|| err_context(active_pane_id))?;

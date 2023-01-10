@@ -356,7 +356,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
                             tab_name,
-                            layout.swap_layouts.clone(),
+                            (layout.swap_tiled_layouts.clone(), layout.swap_floating_layouts.clone())
                         );
                     }
 
@@ -374,7 +374,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None, layout.swap_layouts.clone());
+                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None, (layout.swap_tiled_layouts.clone(), layout.swap_floating_layouts.clone())); // TODO: floating swap layouts instead of vec![]
                 }
                 session_data
                     .read()

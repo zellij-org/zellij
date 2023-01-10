@@ -3,13 +3,13 @@ use crate::input::{
     config::ConfigError,
     layout::{
         FloatingPaneLayout, Layout, TiledPaneLayout, PercentOrFixed, Run, RunPlugin, RunPluginLocation,
-        SplitDirection, SplitSize,
+        SplitDirection, SplitSize, SwapTiledLayout, SwapFloatingLayout, LayoutConstraint
     },
 };
 
 use kdl::*;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::str::FromStr;
 
 use crate::{
@@ -71,7 +71,8 @@ impl<'a> KdlLayoutParser<'a> {
             || word == "size"
             || word == "cwd"
             || word == "split_direction"
-            || word == "swap_layouts"
+            || word == "swap_tiled_layout"
+            || word == "swap_floating_layout"
     }
     fn is_a_valid_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -111,6 +112,8 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "split_direction"
             || property_name == "cwd"
             || property_name == "floating_panes"
+            || property_name == "children"
+            || property_name == "max_panes"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -481,10 +484,30 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(())
     }
+    fn populate_external_children_index(&self, kdl_node: &KdlNode) -> Result<Option<usize>, ConfigError> {
+        if let Some(pane_child_nodes) = kdl_children_nodes!(kdl_node) {
+            for (i, child) in pane_child_nodes.iter().enumerate() {
+                if kdl_name!(child) == "children" {
+                    let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
+                    let node_has_entries = !child.entries().is_empty();
+                    if node_has_child_nodes || node_has_entries {
+                        return Err(ConfigError::new_layout_kdl_error(
+                            format!("The `children` node must be bare. All properties should be placed on the node consuming this template."),
+                            child.span().offset(),
+                            child.span().len(),
+                        ));
+                    }
+                    return Ok(Some(i));
+                }
+            }
+        }
+        return Ok(None)
+    }
     fn parse_pane_node_with_template(
         &self,
         kdl_node: &KdlNode,
         pane_template: PaneOrFloatingPane,
+        should_mark_external_children_index: bool,
         pane_template_kdl_node: &KdlNode,
     ) -> Result<TiledPaneLayout, ConfigError> {
         match pane_template {
@@ -502,6 +525,14 @@ impl<'a> KdlLayoutParser<'a> {
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "start_suspended");
                 let split_size = self.parse_split_size(kdl_node)?;
                 let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
+
+                // TODO: change should_insert_children to should_keep_pane_external_children_index
+                // or smth
+                let external_children_index = if should_mark_external_children_index {
+                    self.populate_external_children_index(kdl_node)?
+                } else {
+                    None
+                };
                 self.assert_no_bare_attributes_in_pane_node_with_template(
                     &run,
                     &pane_template.run,
@@ -540,7 +571,7 @@ impl<'a> KdlLayoutParser<'a> {
                         .children
                         .insert(index_of_children, TiledPaneLayout::default());
                 }
-                pane_template.external_children_index = None;
+                pane_template.external_children_index = external_children_index;
                 Ok(pane_template)
             },
             PaneOrFloatingPane::FloatingPane(_) => {
@@ -890,7 +921,8 @@ impl<'a> KdlLayoutParser<'a> {
         let mut child_floating_panes = vec![];
         let children = match kdl_children_nodes!(kdl_node) {
             Some(children) => {
-                self.parse_child_pane_nodes_for_tab(children, &mut child_floating_panes)?
+                let should_mark_external_children_index = false;
+                self.parse_child_pane_nodes_for_tab(children, should_mark_external_children_index, &mut child_floating_panes)?
             },
             None => vec![],
         };
@@ -907,6 +939,7 @@ impl<'a> KdlLayoutParser<'a> {
     fn parse_child_pane_nodes_for_tab(
         &self,
         children: &[KdlNode],
+        should_mark_external_children_index: bool,
         child_floating_panes: &mut Vec<FloatingPaneLayout>,
     ) -> Result<Vec<TiledPaneLayout>, ConfigError> {
         let mut nodes = vec![];
@@ -919,6 +952,7 @@ impl<'a> KdlLayoutParser<'a> {
                 nodes.push(self.parse_pane_node_with_template(
                     child,
                     pane_template,
+                    should_mark_external_children_index,
                     &pane_template_kdl_node,
                 )?);
             } else if kdl_name!(child) == "floating_panes" {
@@ -957,7 +991,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let node_has_entries = !child.entries().is_empty();
                 if node_has_child_nodes || node_has_entries {
                     return Err(ConfigError::new_layout_kdl_error(
-                        format!("The `children` node must be bare. All properties should be places on the node consuming this template."),
+                        format!("The `children` node must be bare. All properties should be placed on the node consuming this template."),
                         child.span().offset(),
                         child.span().len(),
                     ));
@@ -966,9 +1000,11 @@ impl<'a> KdlLayoutParser<'a> {
             } else if let Some((pane_template, pane_template_kdl_node)) =
                 self.pane_templates.get(kdl_name!(child)).cloned()
             {
+                let should_mark_external_children_index = false;
                 nodes.push(self.parse_pane_node_with_template(
                     child,
                     pane_template,
+                    should_mark_external_children_index,
                     &pane_template_kdl_node,
                 )?);
             } else if !self.is_a_valid_pane_property(kdl_name!(child)) {
@@ -1194,8 +1230,8 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<(), ConfigError> {
         let has_borderless_prop =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
-        let has_focus_prop =
-            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
+//         let has_focus_prop =
+//             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
         let has_cwd_prop =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
         let has_non_cwd_run_prop = self
@@ -1207,15 +1243,15 @@ impl<'a> KdlLayoutParser<'a> {
             .unwrap_or(false);
         let has_nested_nodes_or_children_block = self.has_child_panes_tabs_or_templates(kdl_node);
         if has_nested_nodes_or_children_block
-            && (has_borderless_prop || has_focus_prop || has_non_cwd_run_prop || has_cwd_prop)
+            && (has_borderless_prop || has_non_cwd_run_prop || has_cwd_prop)
         {
             let mut offending_nodes = vec![];
             if has_borderless_prop {
                 offending_nodes.push("borderless");
             }
-            if has_focus_prop {
-                offending_nodes.push("focus");
-            }
+//             if has_focus_prop {
+//                 offending_nodes.push("focus");
+//            }
             if has_non_cwd_run_prop {
                 offending_nodes.push("command/edit/plugin");
             }
@@ -1256,6 +1292,7 @@ impl<'a> KdlLayoutParser<'a> {
         kdl_node: &KdlNode,
         mut tab_layout: TiledPaneLayout,
         mut tab_template_floating_panes: Vec<FloatingPaneLayout>,
+        should_mark_external_children_index: bool,
         tab_layout_kdl_node: &KdlNode,
     ) -> Result<(bool, Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>), ConfigError> {
         // (is_focused, Option<tab_name>, PaneLayout, Vec<FloatingPaneLayout>)
@@ -1268,7 +1305,7 @@ impl<'a> KdlLayoutParser<'a> {
         match kdl_children_nodes!(kdl_node) {
             Some(children) => {
                 let child_panes = self
-                    .parse_child_pane_nodes_for_tab(children, &mut tab_template_floating_panes)?;
+                    .parse_child_pane_nodes_for_tab(children, should_mark_external_children_index, &mut tab_template_floating_panes)?;
                 let child_panes_layout = TiledPaneLayout {
                     children_split_direction,
                     children: child_panes,
@@ -1334,28 +1371,29 @@ impl<'a> KdlLayoutParser<'a> {
         );
         Ok(())
     }
-    fn populate_one_swap_layout(&mut self, kdl_node: &KdlNode) -> Result<(TiledPaneLayout, Vec<FloatingPaneLayout>), ConfigError> {
-        self.assert_valid_tab_properties(kdl_node)?;
-        let tab_cwd =
-            kdl_get_string_property_or_child_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
-        let children_split_direction = self.parse_split_direction(kdl_node)?;
-        let mut child_floating_panes = vec![];
-        let children = match kdl_children_nodes!(kdl_node) {
-            Some(children) => {
-                self.parse_child_pane_nodes_for_tab(children, &mut child_floating_panes)?
-            },
-            None => vec![],
-        };
-        let mut pane_layout = TiledPaneLayout {
-            children_split_direction,
-            children,
-            ..Default::default()
-        };
-        if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
-            pane_layout.add_cwd_to_layout(&cwd_prefix);
-        }
-        Ok((pane_layout, child_floating_panes))
-    }
+//     fn populate_one_swap_layout(&mut self, kdl_node: &KdlNode) -> Result<(TiledPaneLayout, Vec<FloatingPaneLayout>), ConfigError> {
+//         self.assert_valid_tab_properties(kdl_node)?;
+//         let tab_cwd =
+//             kdl_get_string_property_or_child_value!(kdl_node, "cwd").map(|c| PathBuf::from(c));
+//         let children_split_direction = self.parse_split_direction(kdl_node)?;
+//         let mut child_floating_panes = vec![];
+//         let children = match kdl_children_nodes!(kdl_node) {
+//             Some(children) => {
+//                 let should_mark_external_children_index = false;
+//                 self.parse_child_pane_nodes_for_tab(children, should_mark_external_children_index, &mut child_floating_panes)?
+//             },
+//             None => vec![],
+//         };
+//         let mut pane_layout = TiledPaneLayout {
+//             children_split_direction,
+//             children,
+//             ..Default::default()
+//         };
+//         if let Some(cwd_prefix) = &self.cwd_prefix(tab_cwd.as_ref())? {
+//             pane_layout.add_cwd_to_layout(&cwd_prefix);
+//         }
+//         Ok((pane_layout, child_floating_panes))
+//     }
     fn populate_default_tab_template(&mut self, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         let (tab_template, tab_template_floating_panes) = self.parse_tab_template_node(kdl_node)?;
         self.default_tab_template =
@@ -1391,9 +1429,11 @@ impl<'a> KdlLayoutParser<'a> {
                 } else if let Some((pane_template, pane_template_kdl_node)) =
                     self.pane_templates.get(kdl_name!(child)).cloned()
                 {
+                    let should_mark_external_children_index = false;
                     tab_children.push(self.parse_pane_node_with_template(
                         child,
                         pane_template,
+                        should_mark_external_children_index,
                         &pane_template_kdl_node,
                     )?);
                 } else if kdl_name!(child) == "floating_panes" {
@@ -1568,42 +1608,128 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(())
     }
-    fn populate_swap_layouts(&mut self, layout_children: &[KdlNode], swap_layouts: &mut Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>) -> Result<(), ConfigError> {
-        log::info!("populate_swap_layouts");
+    fn populate_swap_tiled_layouts(&mut self, layout_children: &[KdlNode], swap_tiled_layouts: &mut Vec<SwapTiledLayout>) -> Result<(), ConfigError> {
         for child in layout_children.iter() {
             let child_name = kdl_name!(child);
-            if child_name == "swap_layouts" {
-                log::info!("found swap_layouts node");
-                if let Some(swap_layout_nodes) = kdl_children_nodes!(child) {
-                    for swap_layout_node in swap_layout_nodes {
-                        let swap_layout_name = kdl_name!(swap_layout_node);
-                        log::info!("swap_layout_name: {:?}", swap_layout_name);
-                        if swap_layout_name == "tab" {
-                            log::info!("can has tab");
-                            swap_layouts.push(self.populate_one_swap_layout(swap_layout_node)?);
-                        } else if let Some((tab_template, tab_template_floating_panes, tab_template_kdl_node)) =
-                            self.tab_templates.get(swap_layout_name).cloned()
+            if child_name == "swap_tiled_layout" {
+                if let Some(swap_tiled_layout_group) = kdl_children_nodes!(child) {
+                    let mut swap_tiled_layout = BTreeMap::new();
+                    for layout in swap_tiled_layout_group {
+                        let layout_node_name = kdl_name!(layout);
+                        if layout_node_name == "tab" {
+                            let layout_constraint = self.parse_constraint(layout)?;
+                            let layout = self.populate_one_swap_tiled_layout(layout)?;
+                            swap_tiled_layout.insert(layout_constraint, layout);
+                        } else if let Some((tab_template, _tab_template_floating_panes, tab_template_kdl_node)) =
+                            self.tab_templates.get(layout_node_name).cloned()
                         {
-                            log::info!("can has tab template");
-                            let (_, _, tiled_pane_layout, floating_pane_layout) = self.parse_tab_node_with_template(
-                                swap_layout_node,
-                                tab_template,
-                                tab_template_floating_panes,
-                                &tab_template_kdl_node,
-                            )?;
-                            swap_layouts.push((tiled_pane_layout, floating_pane_layout));
+                            let layout_constraint = self.parse_constraint(layout)?;
+                            let layout = self.populate_one_swap_tiled_layout_with_template(layout, tab_template, tab_template_kdl_node)?;
+                            swap_tiled_layout.insert(layout_constraint, layout);
                         }
                     }
+                    swap_tiled_layouts.push(swap_tiled_layout);
                 }
             }
         }
         Ok(())
     }
+    fn populate_swap_floating_layouts(&mut self, layout_children: &[KdlNode], swap_floating_layouts: &mut Vec<SwapFloatingLayout>) -> Result<(), ConfigError> {
+        for child in layout_children.iter() {
+            let child_name = kdl_name!(child);
+            if child_name == "swap_floating_layout" {
+                if let Some(swap_floating_layout_group) = kdl_children_nodes!(child) {
+                    let mut swap_floating_layout = BTreeMap::new();
+                    for layout in swap_floating_layout_group {
+                        let layout_node_name = kdl_name!(layout);
+                        if layout_node_name == "floating_panes" {
+                            let layout_constraint = self.parse_constraint(layout)?;
+                            let layout = self.populate_one_swap_floating_layout(layout)?;
+                            swap_floating_layout.insert(layout_constraint, layout);
+                        } else if let Some((tab_template, tab_template_floating_panes, tab_template_kdl_node)) =
+                            self.tab_templates.get(layout_node_name).cloned()
+                        {
+                            let layout_constraint = self.parse_constraint(layout)?;
+                            let layout = self.populate_one_swap_floating_layout_with_template(layout, tab_template, tab_template_floating_panes, tab_template_kdl_node)?;
+                            swap_floating_layout.insert(layout_constraint, layout);
+                        }
+                    }
+                    swap_floating_layouts.push(swap_floating_layout);
+                }
+            }
+        }
+        Ok(())
+    }
+    fn parse_constraint(&mut self, layout_node: &KdlNode) -> Result<LayoutConstraint, ConfigError> {
+        if let Some(max_panes) = kdl_get_string_property_or_child_value!(layout_node, "max_panes") {
+            Err(kdl_parsing_error!(
+                format!("max_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")", max_panes),
+                layout_node
+            ))
+        } else if let Some(max_panes) = kdl_get_int_property_or_child_value!(layout_node, "max_panes") {
+            if max_panes == 0 {
+                return Err(kdl_parsing_error!(
+                    format!("max_panes should be greater than 0"),
+                    layout_node
+                ));
+            }
+            Ok(LayoutConstraint::MaxPanes(max_panes as usize))
+        } else {
+            Ok(LayoutConstraint::NoConstraint)
+        }
+    }
+    fn populate_one_swap_tiled_layout(&self, layout_node: &KdlNode) -> Result<TiledPaneLayout, ConfigError> {
+        self.assert_valid_tab_properties(layout_node)?;
+        let children_split_direction = self.parse_split_direction(layout_node)?;
+        let mut child_floating_panes = vec![];
+        let children = match kdl_children_nodes!(layout_node) {
+            Some(children) => {
+                let should_mark_external_children_index = true;
+                self.parse_child_pane_nodes_for_tab(children, should_mark_external_children_index, &mut child_floating_panes)?
+            },
+            None => vec![],
+        };
+        let mut pane_layout = TiledPaneLayout {
+            children_split_direction,
+            children,
+            ..Default::default()
+        };
+        Ok(pane_layout)
+    }
+    fn populate_one_swap_tiled_layout_with_template(&self, layout_node: &KdlNode, tab_template: TiledPaneLayout, tab_template_kdl_node: KdlNode) -> Result<TiledPaneLayout, ConfigError> {
+        let should_mark_external_children_index = true;
+        let layout = self.parse_tab_node_with_template(
+            layout_node,
+            tab_template,
+            vec![], // no floating_panes in swap tiled node
+            should_mark_external_children_index,
+            &tab_template_kdl_node,
+        )?;
+        Ok(layout.2)
+    }
+    fn populate_one_swap_floating_layout(&self, layout_node: &KdlNode) -> Result<Vec<FloatingPaneLayout>, ConfigError> {
+        let mut floating_panes = vec![];
+        self.assert_valid_tab_properties(layout_node)?;
+        self.populate_floating_pane_children(layout_node, &mut floating_panes)?;
+        Ok(floating_panes)
+    }
+    fn populate_one_swap_floating_layout_with_template(&self, layout_node: &KdlNode, tab_template: TiledPaneLayout, tab_template_floating_panes: Vec<FloatingPaneLayout>, tab_template_kdl_node: KdlNode) -> Result<Vec<FloatingPaneLayout>, ConfigError> {
+        let should_mark_external_children_index = false;
+        let layout = self.parse_tab_node_with_template(
+            layout_node,
+            tab_template,
+            tab_template_floating_panes,
+            should_mark_external_children_index,
+            &tab_template_kdl_node,
+        )?;
+        Ok(layout.3)
+    }
     fn layout_with_tabs(
         &self,
         tabs: Vec<(Option<String>, TiledPaneLayout, Vec<FloatingPaneLayout>)>,
         focused_tab_index: Option<usize>,
-        swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+        swap_tiled_layouts: Vec<SwapTiledLayout>,
+        swap_floating_layouts: Vec<SwapFloatingLayout>,
     ) -> Result<Layout, ConfigError> {
         let template = self
             .default_template()?
@@ -1613,7 +1739,8 @@ impl<'a> KdlLayoutParser<'a> {
             tabs: tabs,
             template: Some((template, vec![])),
             focused_tab_index,
-            swap_layouts,
+            swap_tiled_layouts,
+            swap_floating_layouts,
             ..Default::default()
         })
     }
@@ -1621,7 +1748,8 @@ impl<'a> KdlLayoutParser<'a> {
         &self,
         panes: Vec<TiledPaneLayout>,
         floating_panes: Vec<FloatingPaneLayout>,
-        swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+        swap_tiled_layouts: Vec<SwapTiledLayout>,
+        swap_floating_layouts: Vec<SwapFloatingLayout>,
     ) -> Result<Layout, ConfigError> {
         let main_tab_layout = TiledPaneLayout {
             children: panes,
@@ -1640,21 +1768,24 @@ impl<'a> KdlLayoutParser<'a> {
         Ok(Layout {
             tabs,
             template: Some((template, floating_panes)),
-            swap_layouts,
+            swap_tiled_layouts,
+            swap_floating_layouts,
             ..Default::default()
         })
     }
     fn layout_with_one_pane(
         &self,
         child_floating_panes: Vec<FloatingPaneLayout>,
-        swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
+        swap_tiled_layouts: Vec<SwapTiledLayout>,
+        swap_floating_layouts: Vec<SwapFloatingLayout>,
     ) -> Result<Layout, ConfigError> {
         let template = self
             .default_template()?
             .unwrap_or_else(|| TiledPaneLayout::default());
         Ok(Layout {
             template: Some((template, child_floating_panes)),
-            swap_layouts,
+            swap_tiled_layouts,
+            swap_floating_layouts,
             ..Default::default()
         })
     }
@@ -1696,10 +1827,12 @@ impl<'a> KdlLayoutParser<'a> {
                     default_tab_template_kdl_node,
                 )) => {
                     let default_tab_template = default_tab_template.clone();
+                    let should_mark_external_children_index = false;
                     child_tabs.push(self.parse_tab_node_with_template(
                         child,
                         default_tab_template,
                         default_tab_template_floating_panes.clone(),
+                        should_mark_external_children_index,
                         default_tab_template_kdl_node,
                     )?);
                 },
@@ -1717,10 +1850,12 @@ impl<'a> KdlLayoutParser<'a> {
                     child.span().len(),
                 ));
             }
+            let should_mark_external_children_index = false;
             child_tabs.push(self.parse_tab_node_with_template(
                 child,
                 tab_template,
                 tab_template_floating_panes,
+                should_mark_external_children_index,
                 &tab_template_kdl_node,
             )?);
         } else if let Some((pane_template, pane_template_kdl_node)) =
@@ -1733,8 +1868,9 @@ impl<'a> KdlLayoutParser<'a> {
                     child.span().len(),
                 ));
             }
+            let should_mark_external_children_index = false;
             let mut pane_template =
-                self.parse_pane_node_with_template(child, pane_template, &pane_template_kdl_node)?;
+                self.parse_pane_node_with_template(child, pane_template, should_mark_external_children_index, &pane_template_kdl_node)?;
             if let Some(cwd_prefix) = &self.cwd_prefix(None)? {
                 pane_template.add_cwd_to_layout(&cwd_prefix);
             }
@@ -1771,7 +1907,6 @@ impl<'a> KdlLayoutParser<'a> {
                     )?;
                     child_floating_panes.push(pane_node);
                 } else {
-                    // TODO: invalid node name
                     return Err(ConfigError::new_layout_kdl_error(
                         format!(
                             "floating_panes can only contain pane nodes, found: {}",
@@ -1812,12 +1947,14 @@ impl<'a> KdlLayoutParser<'a> {
         let mut child_tabs = vec![];
         let mut child_panes = vec![];
         let mut child_floating_panes = vec![];
-        let mut swap_layouts = vec![];
+        let mut swap_tiled_layouts = vec![];
+        let mut swap_floating_layouts = vec![];
         if let Some(children) = kdl_children_nodes!(layout_node) {
             self.populate_global_cwd(layout_node)?;
             self.populate_pane_templates(children, &kdl_layout)?;
             self.populate_tab_templates(children)?;
-            self.populate_swap_layouts(children, &mut swap_layouts)?;
+            self.populate_swap_tiled_layouts(children, &mut swap_tiled_layouts)?;
+            self.populate_swap_floating_layouts(children, &mut swap_floating_layouts)?;
             for child in children {
                 self.populate_layout_child(
                     child,
@@ -1852,11 +1989,11 @@ impl<'a> KdlLayoutParser<'a> {
                         },
                     )
                     .collect();
-            self.layout_with_tabs(child_tabs, focused_tab_index, swap_layouts)
+            self.layout_with_tabs(child_tabs, focused_tab_index, swap_tiled_layouts, swap_floating_layouts)
         } else if !child_panes.is_empty() {
-            self.layout_with_one_tab(child_panes, child_floating_panes, swap_layouts)
+            self.layout_with_one_tab(child_panes, child_floating_panes, swap_tiled_layouts, swap_floating_layouts)
         } else {
-            self.layout_with_one_pane(child_floating_panes, swap_layouts)
+            self.layout_with_one_pane(child_floating_panes, swap_tiled_layouts, swap_floating_layouts)
         }
     }
 }
