@@ -3218,7 +3218,7 @@ impl Row {
         let mut drained_part: VecDeque<TerminalCharacter> = VecDeque::new();
         let mut drained_part_len = 0;
         while let Some(next_character) = self.columns.remove(0) {
-            if drained_part_len + next_character.width <= x {
+            if drained_part_len + next_character.width <= x || drained_part_len == 0 {
                 drained_part.push_back(next_character);
                 drained_part_len += next_character.width;
             } else {
