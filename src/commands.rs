@@ -324,6 +324,10 @@ pub(crate) fn start_client(opts: CliArgs) {
     };
     let os_input = get_os_input(get_client_os_input);
 
+    let start_client_plan = |session_name: std::string::String| {
+        assert_session_ne(&session_name);
+    };
+
     if let Some(Command::Sessions(Sessions::Attach {
         session_name,
         create,
@@ -339,6 +343,9 @@ pub(crate) fn start_client(opts: CliArgs) {
         let client = if let Some(idx) = index {
             attach_with_session_index(config_options.clone(), idx, create)
         } else {
+            if create {
+                session_name.clone().map(start_client_plan);
+            }
             attach_with_session_name(session_name, config_options.clone(), create)
         };
 
@@ -363,10 +370,6 @@ pub(crate) fn start_client(opts: CliArgs) {
             attach_layout,
         );
     } else {
-        let start_client_plan = |session_name: std::string::String| {
-            assert_session_ne(&session_name);
-        };
-
         if let Some(session_name) = opts.session.clone() {
             start_client_plan(session_name.clone());
             start_client_impl(
