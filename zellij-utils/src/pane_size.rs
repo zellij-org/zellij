@@ -10,6 +10,7 @@ pub struct PaneGeom {
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
+    pub is_stacked: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -112,6 +113,9 @@ impl Dimension {
 
     pub fn is_fixed(&self) -> bool {
         matches!(self.constraint, Constraint::Fixed(_))
+    }
+    pub fn is_percent(&self) -> bool {
+        matches!(self.constraint, Constraint::Percent(_))
     }
 }
 

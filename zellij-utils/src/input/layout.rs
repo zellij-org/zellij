@@ -324,6 +324,7 @@ pub struct TiledPaneLayout {
     pub borderless: bool,
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
+    pub children_are_stacked: bool,
 }
 
 impl TiledPaneLayout {
@@ -683,8 +684,15 @@ fn split_space(
     total_space_to_split: &PaneGeom,
 ) -> Vec<(TiledPaneLayout, PaneGeom)> {
     let mut pane_positions = Vec::new();
-    let sizes: Vec<Option<SplitSize>> =
-        layout.children.iter().map(|part| part.split_size).collect();
+    let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
+        let mut sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|_part| Some(SplitSize::Fixed(1))).collect();
+        if let Some(last_size) = sizes.last_mut() {
+            *last_size = None;
+        }
+        sizes
+    } else {
+        layout.children.iter().map(|part| part.split_size).collect()
+    };
 
     let mut split_geom = Vec::new();
     let (
@@ -729,7 +737,10 @@ fn split_space(
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
-        split_dimension.adjust_inner(total_split_dimension_space.as_usize());
+        // TODO: TEST THIS EXTENSIVELY PLEASE - how did this ever work? How does it work with the default
+        // layout with split panes? did we rely on a rounding error??
+        // split_dimension.adjust_inner(total_split_dimension_space.as_usize());
+        split_dimension.adjust_inner(total_split_dimension_space.as_usize().saturating_sub(total_pane_size));
         total_pane_size += split_dimension.as_usize();
 
         let geom = match layout.children_split_direction {
@@ -738,12 +749,14 @@ fn split_space(
                 y: space_to_split.y,
                 cols: split_dimension,
                 rows: inherited_dimension,
+                is_stacked: layout.children_are_stacked,
             },
             SplitDirection::Horizontal => PaneGeom {
                 x: space_to_split.x,
                 y: current_position,
                 cols: inherited_dimension,
                 rows: split_dimension,
+                is_stacked: layout.children_are_stacked,
             },
         };
         split_geom.push(geom);
@@ -767,11 +780,13 @@ fn split_space(
                 split_space(part_position_and_size, part, total_space_to_split);
             pane_positions.append(&mut part_positions);
         } else {
-            pane_positions.push((part.clone(), *part_position_and_size));
+            let part = part.clone();
+            pane_positions.push((part, *part_position_and_size));
         }
     }
     if pane_positions.is_empty() {
-        pane_positions.push((layout.clone(), space_to_split.clone()));
+        let layout = layout.clone();
+        pane_positions.push((layout, space_to_split.clone()));
     }
     pane_positions
 }

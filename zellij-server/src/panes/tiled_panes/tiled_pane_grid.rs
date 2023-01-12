@@ -878,6 +878,26 @@ impl<'a> TiledPaneGrid<'a> {
             .copied();
         next_index
     }
+    pub fn stacked_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_below(Box::as_ref(current_pane))
+                    && c.vertically_overlaps_with(Box::as_ref(current_pane))
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
     pub fn next_selectable_pane_id_below(&self, current_pane_id: &PaneId) -> Option<PaneId> {
         let panes = self.panes.borrow();
         let current_pane = panes.get(current_pane_id)?;
@@ -892,6 +912,29 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_below(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
+                    // && c.position_and_size().rows.as_usize() > 1 // TODO: no!! use is_stacked!!
+                    && !c.position_and_size().is_stacked
+            })
+            .max_by_key(|(_, (_, c))| c.active_at())
+            .map(|(_, (pid, _))| pid)
+            .copied();
+        next_index
+    }
+    pub fn stacked_pane_id_above(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let current_pane = panes.get(current_pane_id)?;
+        let panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        let next_index = panes
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, c))| {
+                c.is_directly_above(Box::as_ref(current_pane))
+                    && c.vertically_overlaps_with(Box::as_ref(current_pane))
+                    && c.position_and_size().is_stacked
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -912,6 +955,8 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_above(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
+                    // && c.position_and_size().rows.as_usize() > 1 // TODO: no!! use is stacked!!
+                    && !c.position_and_size().is_stacked
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1101,14 +1146,82 @@ impl<'a> TiledPaneGrid<'a> {
     pub fn fill_space_over_pane(&mut self, id: PaneId) -> bool {
         // true => successfully filled space over pane
         // false => didn't succeed, so didn't do anything
-        let (freed_width, freed_height) = {
+        let (freed_width, freed_height, pane_to_close_is_stacked) = {
             let panes = self.panes.borrow_mut();
             let pane_to_close = panes.get(&id).unwrap();
             let freed_space = pane_to_close.position_and_size();
             let freed_width = freed_space.cols.as_percent();
             let freed_height = freed_space.rows.as_percent();
-            (freed_width, freed_height)
+            let pane_to_close_is_stacked = pane_to_close.position_and_size().is_stacked;
+            (freed_width, freed_height, pane_to_close_is_stacked)
         };
+        if pane_to_close_is_stacked {
+            let mut panes = self.panes.borrow_mut();
+            let pane_to_close = panes.get(&id).unwrap();
+            let pane_to_close_is_one_liner = pane_to_close.position_and_size().rows.as_usize() == 1;
+            let mut all_stacked_pane_positions: Vec<(PaneId, PaneGeom)> = panes
+                .iter()
+                .filter(|(_pid, p)| p.position_and_size().is_stacked)
+                .filter(|(_pid, p)| p.position_and_size().x == pane_to_close.position_and_size().x && p.position_and_size().cols == pane_to_close.position_and_size().cols)
+                .map(|(pid, p)| (*pid, p.position_and_size()))
+                .collect();
+            all_stacked_pane_positions.sort_by(|(_a_pid, a), (_b_pid, b)| {
+                a.y.cmp(&b.y)
+            });
+            let position_of_current_pane = all_stacked_pane_positions.iter().position(|(pid, _p)| pid == &pane_to_close.pid()).unwrap(); // TODO: no unwrap
+            if pane_to_close_is_one_liner {
+                let position_of_flexible_pane = all_stacked_pane_positions.iter().position(|(_pid, p)| p.rows.is_percent()).unwrap(); // TODO: no unwrap
+                let id_of_flexible_pane = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).map(|(pid, p)| *pid).unwrap();
+                if position_of_current_pane > position_of_flexible_pane {
+                    let mut flexible_pane = panes.get_mut(&id_of_flexible_pane).unwrap();
+                    let mut flexible_pane_position_and_size = flexible_pane.position_and_size();
+                    let before = flexible_pane_position_and_size.clone();
+                    // flexible_pane_position_and_size.y = flexible_pane_position_and_size.y.saturating_sub(1);
+                    flexible_pane_position_and_size.rows.set_inner(flexible_pane_position_and_size.rows.as_usize() + 1);
+                    flexible_pane.set_geom(flexible_pane_position_and_size);
+                    for (i, (pid, position)) in all_stacked_pane_positions.iter().enumerate() {
+                        if i > position_of_flexible_pane && i < position_of_current_pane {
+                            let pane = panes.get_mut(pid).unwrap(); // TODO: no unwrap
+                            let mut pane_position_and_size = pane.position_and_size();
+                            pane_position_and_size.y += 1;
+                            pane.set_geom(pane_position_and_size);
+                        }
+                    }
+                } else {
+                    let mut flexible_pane = panes.get_mut(&id_of_flexible_pane).unwrap();
+                    let mut flexible_pane_position_and_size = flexible_pane.position_and_size();
+                    flexible_pane_position_and_size.rows.set_inner(flexible_pane_position_and_size.rows.as_usize() + 1);
+                    flexible_pane.set_geom(flexible_pane_position_and_size);
+                    for (pid, position) in all_stacked_pane_positions.iter().skip(position_of_current_pane + 1).take(position_of_flexible_pane) {
+                        let pane = panes.get_mut(pid).unwrap(); // TODO: no unwrap
+                        let mut pane_position_and_size = pane.position_and_size();
+                        pane_position_and_size.y = pane_position_and_size.y.saturating_sub(1);
+                        pane.set_geom(pane_position_and_size);
+                    }
+                }
+                panes.remove(&id);
+                return true;
+            } else {
+                if all_stacked_pane_positions.len() > position_of_current_pane + 1 {
+                    let mut pane_to_close_position_and_size = pane_to_close.position_and_size();
+                    pane_to_close_position_and_size.rows.set_inner(pane_to_close_position_and_size.rows.as_usize() + 1);
+                    let pane_id_below = all_stacked_pane_positions.iter().nth(position_of_current_pane + 1).map(|(pid, _)| *pid).unwrap(); // TODO: no unwrap
+                    let pane_below = panes.get_mut(&pane_id_below).unwrap(); // TODO: no unwrap
+                    pane_below.set_geom(pane_to_close_position_and_size);
+                    panes.remove(&id);
+                    return true;
+                } else if position_of_current_pane > 0 {
+                    let mut pane_to_close_position_and_size = pane_to_close.position_and_size();
+                    pane_to_close_position_and_size.rows.set_inner(pane_to_close_position_and_size.rows.as_usize() + 1);
+                    pane_to_close_position_and_size.y -= 1;
+                    let pane_id_above = all_stacked_pane_positions.iter().nth(position_of_current_pane - 1).map(|(pid, _)| *pid).unwrap(); // TODO: no unwrap
+                    let pane_above = panes.get_mut(&pane_id_above).unwrap(); // TODO: no unwrap
+                    pane_above.set_geom(pane_to_close_position_and_size);
+                    panes.remove(&id);
+                    return true;
+                }
+            }
+        }
         if let (Some(freed_width), Some(freed_height)) = (freed_width, freed_height) {
             if let Some((panes_to_grow, direction)) = self.find_panes_to_grow(id) {
                 self.grow_panes(&panes_to_grow, direction, (freed_width, freed_height));
@@ -1130,7 +1243,7 @@ impl<'a> TiledPaneGrid<'a> {
     ) -> Option<(PaneId, SplitDirection)> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
-            panes.iter().filter(|(_, p)| p.selectable()).collect();
+            panes.iter().filter(|(_, p)| p.selectable() && !p.position_and_size().is_stacked).collect();
         let (_largest_pane_size, pane_id_to_split) = pane_sequence.iter().fold(
             (0, None),
             |(current_largest_pane_size, current_pane_id_to_split), id_and_pane_to_check| {

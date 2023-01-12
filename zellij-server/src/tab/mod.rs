@@ -1305,7 +1305,7 @@ impl Tab {
                 self.senders
                     .send_to_background_jobs(BackgroundJob::DisplayPaneError(
                         vec![active_pane_id],
-                        "TOO SMALL!".into(),
+                        "CAN'T SPLIT!".into(),
                     ))
                     .with_context(err_context)?;
             }
@@ -1361,7 +1361,7 @@ impl Tab {
                 self.senders
                     .send_to_background_jobs(BackgroundJob::DisplayPaneError(
                         vec![active_pane_id],
-                        "TOO SMALL!".into(),
+                        "CAN'T SPLIT!".into(),
                     ))
                     .with_context(err_context)?;
             }
@@ -2190,7 +2190,8 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
-            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+            let closed_pane_is_stacked = closed_pane.as_ref().map(|p| p.position_and_size().is_stacked).unwrap_or(false);
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !closed_pane_is_stacked {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing

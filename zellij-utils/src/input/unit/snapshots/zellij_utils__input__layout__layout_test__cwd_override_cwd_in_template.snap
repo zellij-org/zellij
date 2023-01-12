@@ -33,6 +33,7 @@ Layout {
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -55,6 +56,7 @@ Layout {
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
                 ],
                 split_size: None,
@@ -62,6 +64,7 @@ Layout {
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
             },
             [],
         ),

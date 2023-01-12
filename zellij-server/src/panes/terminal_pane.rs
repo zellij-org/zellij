@@ -167,6 +167,10 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
@@ -285,6 +289,12 @@ impl Pane for TerminalPane {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
+            let rows = self.get_content_rows();
+            let columns = self.get_content_columns();
+            if rows < 1 || columns < 1 {
+                // TODO: same for plugins!!
+                return Ok(None);
+            }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
                     self.set_should_render(false);
@@ -787,6 +797,10 @@ impl TerminalPane {
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         self.grid.cursor_coordinates()
     }
     fn render_first_run_banner(&mut self) {
