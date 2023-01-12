@@ -1192,12 +1192,23 @@ impl<'a> TiledPaneGrid<'a> {
                     let mut flexible_pane_position_and_size = flexible_pane.position_and_size();
                     flexible_pane_position_and_size.rows.set_inner(flexible_pane_position_and_size.rows.as_usize() + 1);
                     flexible_pane.set_geom(flexible_pane_position_and_size);
-                    for (pid, position) in all_stacked_pane_positions.iter().skip(position_of_current_pane + 1).take(position_of_flexible_pane) {
-                        let pane = panes.get_mut(pid).unwrap(); // TODO: no unwrap
-                        let mut pane_position_and_size = pane.position_and_size();
-                        pane_position_and_size.y = pane_position_and_size.y.saturating_sub(1);
-                        pane.set_geom(pane_position_and_size);
+                    for (i, (pid, position)) in all_stacked_pane_positions.iter().enumerate() {
+                        if i > position_of_current_pane && i <= position_of_flexible_pane {
+                            let pane = panes.get_mut(pid).unwrap(); // TODO: no unwrap
+                            let mut pane_position_and_size = pane.position_and_size();
+                            pane_position_and_size.y = pane_position_and_size.y.saturating_sub(1);
+                            pane.set_geom(pane_position_and_size);
+                        }
                     }
+
+
+
+//                     for (pid, position) in all_stacked_pane_positions.iter().skip(position_of_current_pane + 1).take(position_of_flexible_pane) {
+//                         let pane = panes.get_mut(pid).unwrap(); // TODO: no unwrap
+//                         let mut pane_position_and_size = pane.position_and_size();
+//                         pane_position_and_size.y = pane_position_and_size.y.saturating_sub(1);
+//                         pane.set_geom(pane_position_and_size);
+//                     }
                 }
                 panes.remove(&id);
                 return true;
