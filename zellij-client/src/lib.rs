@@ -129,7 +129,6 @@ pub(crate) enum InputInstruction {
     DoneParsing,
 }
 
-// TODO: figure out how to fix odd screen clearing/restoring issues
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
@@ -344,8 +343,14 @@ pub fn start_client(
         std::process::exit(1);
     };
 
+    // for cleanup
+    let mut exit_msg = String::new();
+    let reset_style = "\u{1b}[m";
+    let show_cursor = "\u{1b}[?25h";
+    let restore_snapshot = "\u{1b}[?1049l";
+    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+
     if !open_in_background {
-        let exit_msg: String;
         let mut loading = true;
         let mut pending_instructions = vec![];
 
@@ -426,21 +431,17 @@ pub fn start_client(
 
         router_thread.join().unwrap();
 
-        // cleanup();
-        let reset_style = "\u{1b}[m";
-        let show_cursor = "\u{1b}[?25h";
-        let restore_snapshot = "\u{1b}[?1049l";
-        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-        let goodbye_message = format!(
-            "{}\n{}{}{}{}\n",
-            goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
-        );
-
         info!("{}", exit_msg);
-        let mut stdout = os_input.get_stdout_writer();
-        let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
-        stdout.flush().unwrap();
     }
+
+    // cleanup
+    let goodbye_message = format!(
+        "{}\n{}{}{}{}\n",
+        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
+    );
+    let mut stdout = os_input.get_stdout_writer();
+    let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
+    stdout.flush().unwrap();
 
     os_input.disable_mouse().non_fatal();
     os_input.unset_raw_mode(0).unwrap();
