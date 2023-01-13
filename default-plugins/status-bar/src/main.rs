@@ -238,7 +238,7 @@ impl ZellijPlugin for State {
 
         let first_line = first_line(&self.mode_info, cols, separator);
         let second_line = self.second_line(cols);
-        
+
         let background = match self.mode_info.style.colors.theme_hue {
             ThemeHue::Dark => self.mode_info.style.colors.black,
             ThemeHue::Light => self.mode_info.style.colors.white,
@@ -249,24 +249,24 @@ impl ZellijPlugin for State {
         match background {
             PaletteColor::Rgb((r, g, b)) => {
                 if rows > 1 {
-                  println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+                    println!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
                 } else {
-                  if self.mode_info.mode == InputMode::Normal {
-                    print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
-                  } else {
-                    print!("\u{1b}[m{}\u{1b}[0K", second_line);
-                  }
+                    if self.mode_info.mode == InputMode::Normal {
+                        print!("{}\u{1b}[48;2;{};{};{}m\u{1b}[0K", first_line, r, g, b);
+                    } else {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    }
                 }
             },
             PaletteColor::EightBit(color) => {
                 if rows > 1 {
-                  println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+                    println!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
                 } else {
-                  if self.mode_info.mode == InputMode::Normal {
-                    print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
-                  } else {
-                    print!("\u{1b}[m{}\u{1b}[0K", second_line);
-                  }
+                    if self.mode_info.mode == InputMode::Normal {
+                        print!("{}\u{1b}[48;5;{}m\u{1b}[0K", first_line, color);
+                    } else {
+                        print!("\u{1b}[m{}\u{1b}[0K", second_line);
+                    }
                 }
             },
         }
