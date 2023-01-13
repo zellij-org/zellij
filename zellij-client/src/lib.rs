@@ -129,6 +129,7 @@ pub(crate) enum InputInstruction {
     DoneParsing,
 }
 
+// TODO: figure out how to fix odd screen clearing/restoring issues
 pub fn start_client(
     mut os_input: Box<dyn ClientOsApi>,
     opts: CliArgs,
@@ -137,6 +138,7 @@ pub fn start_client(
     info: ClientInfo,
     layout: Option<Layout>,
 ) {
+    let open_in_background = opts.background;
     info!("Starting Zellij client!");
     let clear_client_terminal_attributes = "\u{1b}[?1l\u{1b}=\u{1b}[r\u{1b}[?1000l\u{1b}[?1002l\u{1b}[?1003l\u{1b}[?1005l\u{1b}[?1006l\u{1b}[?12l";
     let take_snapshot = "\u{1b}[?1049h";
@@ -342,102 +344,106 @@ pub fn start_client(
         std::process::exit(1);
     };
 
-    let exit_msg: String;
-    let mut loading = true;
-    let mut pending_instructions = vec![];
+    if !open_in_background {
+        let exit_msg: String;
+        let mut loading = true;
+        let mut pending_instructions = vec![];
 
-    let mut stdout = os_input.get_stdout_writer();
-    stdout
-        .write_all("\u{1b}[1mLoading Zellij\u{1b}[m".as_bytes())
-        .expect("cannot write to stdout");
-    stdout.flush().expect("could not flush");
+        let mut stdout = os_input.get_stdout_writer();
+        stdout
+            .write_all("\u{1b}[1mLoading Zellij\u{1b}[m".as_bytes())
+            .expect("cannot write to stdout");
+        stdout.flush().expect("could not flush");
 
-    loop {
-        let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty() {
-            // there are buffered instructions, we need to go through them before processing the
-            // new ones
-            pending_instructions.remove(0)
-        } else {
-            receive_client_instructions
-                .recv()
-                .expect("failed to receive app instruction on channel")
-        };
+        loop {
+            let (client_instruction, mut err_ctx) = if !loading && !pending_instructions.is_empty()
+            {
+                // there are buffered instructions, we need to go through them before processing the
+                // new ones
+                pending_instructions.remove(0)
+            } else {
+                receive_client_instructions
+                    .recv()
+                    .expect("failed to receive app instruction on channel")
+            };
 
-        if loading {
-            // when the app is still loading, we buffer instructions and show a loading screen
-            match client_instruction {
-                ClientInstruction::StartedParsingStdinQuery => {
-                    stdout
+            if loading {
+                // when the app is still loading, we buffer instructions and show a loading screen
+                match client_instruction {
+                    ClientInstruction::StartedParsingStdinQuery => {
+                        stdout
                         .write_all("\n\rQuerying terminal emulator for \u{1b}[32;1mdefault colors\u{1b}[m and \u{1b}[32;1mpixel/cell\u{1b}[m ratio...".as_bytes())
                         .expect("cannot write to stdout");
-                    stdout.flush().expect("could not flush");
+                        stdout.flush().expect("could not flush");
+                    },
+                    ClientInstruction::DoneParsingStdinQuery => {
+                        stdout
+                            .write_all("done".as_bytes())
+                            .expect("cannot write to stdout");
+                        stdout.flush().expect("could not flush");
+                        loading = false;
+                    },
+                    instruction => {
+                        pending_instructions.push((instruction, err_ctx));
+                    },
+                }
+                continue;
+            }
+
+            err_ctx.add_call(ContextType::Client((&client_instruction).into()));
+
+            match client_instruction {
+                ClientInstruction::Exit(reason) => {
+                    os_input.send_to_server(ClientToServerMsg::ClientExited);
+
+                    if let ExitReason::Error(_) = reason {
+                        handle_error(reason.to_string());
+                    }
+                    exit_msg = reason.to_string();
+                    break;
                 },
-                ClientInstruction::DoneParsingStdinQuery => {
+                ClientInstruction::Error(backtrace) => {
+                    handle_error(backtrace);
+                },
+                ClientInstruction::Render(output) => {
+                    let mut stdout = os_input.get_stdout_writer();
                     stdout
-                        .write_all("done".as_bytes())
+                        .write_all(output.as_bytes())
                         .expect("cannot write to stdout");
                     stdout.flush().expect("could not flush");
-                    loading = false;
                 },
-                instruction => {
-                    pending_instructions.push((instruction, err_ctx));
+                ClientInstruction::UnblockInputThread => {
+                    command_is_executing.unblock_input_thread();
                 },
+                ClientInstruction::SwitchToMode(input_mode) => {
+                    send_input_instructions
+                        .send(InputInstruction::SwitchToMode(input_mode))
+                        .unwrap();
+                },
+                _ => {},
             }
-            continue;
         }
 
-        err_ctx.add_call(ContextType::Client((&client_instruction).into()));
+        router_thread.join().unwrap();
 
-        match client_instruction {
-            ClientInstruction::Exit(reason) => {
-                os_input.send_to_server(ClientToServerMsg::ClientExited);
+        // cleanup();
+        let reset_style = "\u{1b}[m";
+        let show_cursor = "\u{1b}[?25h";
+        let restore_snapshot = "\u{1b}[?1049l";
+        let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
+        let goodbye_message = format!(
+            "{}\n{}{}{}{}\n",
+            goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
+        );
 
-                if let ExitReason::Error(_) = reason {
-                    handle_error(reason.to_string());
-                }
-                exit_msg = reason.to_string();
-                break;
-            },
-            ClientInstruction::Error(backtrace) => {
-                handle_error(backtrace);
-            },
-            ClientInstruction::Render(output) => {
-                let mut stdout = os_input.get_stdout_writer();
-                stdout
-                    .write_all(output.as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
-            },
-            ClientInstruction::UnblockInputThread => {
-                command_is_executing.unblock_input_thread();
-            },
-            ClientInstruction::SwitchToMode(input_mode) => {
-                send_input_instructions
-                    .send(InputInstruction::SwitchToMode(input_mode))
-                    .unwrap();
-            },
-            _ => {},
-        }
+        info!("{}", exit_msg);
+        let mut stdout = os_input.get_stdout_writer();
+        let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
+        stdout.flush().unwrap();
     }
 
-    router_thread.join().unwrap();
-
-    // cleanup();
-    let reset_style = "\u{1b}[m";
-    let show_cursor = "\u{1b}[?25h";
-    let restore_snapshot = "\u{1b}[?1049l";
-    let goto_start_of_last_line = format!("\u{1b}[{};{}H", full_screen_ws.rows, 1);
-    let goodbye_message = format!(
-        "{}\n{}{}{}{}\n",
-        goto_start_of_last_line, restore_snapshot, reset_style, show_cursor, exit_msg
-    );
-
     os_input.disable_mouse().non_fatal();
-    info!("{}", exit_msg);
     os_input.unset_raw_mode(0).unwrap();
-    let mut stdout = os_input.get_stdout_writer();
-    let _ = stdout.write(goodbye_message.as_bytes()).unwrap();
-    stdout.flush().unwrap();
 }
 
 #[cfg(test)]
