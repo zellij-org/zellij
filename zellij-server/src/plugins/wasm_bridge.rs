@@ -800,7 +800,9 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
 fn host_report_panic(plugin_env: &PluginEnv) {
-    let msg = wasi_read_string(&plugin_env.wasi_env).fatal();
+    let msg = wasi_read_string(&plugin_env.wasi_env)
+        .with_context(|| format!("failed to report panic for plugin '{}'", plugin_env.name()))
+        .fatal();
     panic!("{}", msg);
 }
 
