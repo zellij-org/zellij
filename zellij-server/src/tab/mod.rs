@@ -2159,7 +2159,6 @@ impl Tab {
         ignore_suppressed_panes: bool,
         client_id: Option<ClientId>,
     ) -> Option<Box<dyn Pane>> {
-        println!("tab.close_pane");
         // we need to ignore suppressed panes when we toggle a pane to be floating/embedded(tiled)
         // this is because in that case, while we do use this logic, we're not actually closing the
         // pane, we're moving it

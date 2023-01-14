@@ -1,5 +1,6 @@
 mod pane_resizer;
 mod tiled_pane_grid;
+mod stacked_panes;
 
 use crate::resize_pty;
 use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
@@ -292,10 +293,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
                 let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.is_stacked {
-                    return false
-                }
-                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
+                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 || full_pane_size.is_stacked {
                     return false;
                 } else {
                     return split(SplitDirection::Horizontal, &full_pane_size).is_some();
@@ -308,10 +306,7 @@ impl TiledPanes {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
             if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
                 let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.is_stacked {
-                    return false
-                }
-                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
+                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 || full_pane_size.is_stacked {
                     return false;
                 }
                 return split(SplitDirection::Vertical, &full_pane_size).is_some();
@@ -323,11 +318,8 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if full_pane_size.rows.is_fixed() {
+        if full_pane_size.rows.is_fixed() || full_pane_size.is_stacked {
             return false;
-        }
-        if full_pane_size.is_stacked {
-            return false
         }
         if split(SplitDirection::Horizontal, &full_pane_size).is_some() {
             true
@@ -357,11 +349,8 @@ impl TiledPanes {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if full_pane_size.cols.is_fixed() {
+        if full_pane_size.cols.is_fixed() || full_pane_size.is_stacked {
             return false;
-        }
-        if full_pane_size.is_stacked {
-            return false
         }
         if split(SplitDirection::Vertical, &full_pane_size).is_some() {
             true
@@ -754,13 +743,15 @@ impl TiledPanes {
     pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
-                let pane_grid = TiledPaneGrid::new(
+                let mut pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
                     &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
+                let next_index = pane_grid
+                    .next_selectable_pane_id_below(&active_pane_id)
+                    .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -786,70 +777,23 @@ impl TiledPanes {
 
                         true
                     },
-                    None => {
-                        log::info!("can has none");
-                        match pane_grid.stacked_pane_id_below(&active_pane_id) {
-                            Some(p) => {
-                                log::info!("can has stacked_pane_id_below");
-                                let source_pane = self
-                                    .panes
-                                    .get_mut(self.active_panes.get(&client_id).unwrap())
-                                    .unwrap();
-
-                                // TODO:
-                                // * set the y of the source_pane to be the y + rows of
-                                // itself
-                                // * set its rows size to be fixed 1
-                                // * reduce the y of the current pane by 1
-
-                                let mut source_pane_geom = source_pane.position_and_size();
-                                let mut destination_pane_geom = source_pane_geom.clone();
-                                destination_pane_geom.y = source_pane_geom.y + 1;
-                                source_pane_geom.rows = Dimension::fixed(1);
-                                source_pane.set_geom(source_pane_geom);
-
-                                // render previously active pane so that its frame does not remain actively
-                                // colored
-                                source_pane.set_should_render(true);
-                                // we render the full viewport to remove any ui elements that might have been
-                                // there before (eg. another user's cursor)
-                                source_pane.render_full_viewport();
-
-                                let destination_pane = self.panes.get_mut(&p).unwrap();
-                                destination_pane.set_geom(destination_pane_geom);
-
-                                destination_pane.set_should_render(true);
-                                // we render the full viewport to remove any ui elements that might have been
-                                // there before (eg. another user's cursor)
-                                destination_pane.render_full_viewport();
-
-                                self.focus_pane(p, client_id);
-                                self.set_pane_active_at(p);
-                                self.set_pane_frames(self.draw_pane_frames); // TODO: do we need
-                                                                             // this?
-
-                                true
-                            },
-                            None => false
-                        }
-                    }
-                    // None => false,
+                    None => false,
                 }
             },
             None => false,
         }
     }
     pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
-        log::info!("initial panes: {:#?}", self.panes.iter().map(|(_, p)| p.position_and_size()).collect::<Vec<_>>());
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
-                let pane_grid = TiledPaneGrid::new(
+                let mut pane_grid = TiledPaneGrid::new(
                     &mut self.panes,
                     &self.panes_to_hide,
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
+                let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id)
+                    .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -875,60 +819,7 @@ impl TiledPanes {
 
                         true
                     },
-                    None => {
-                        match pane_grid.stacked_pane_id_above(&active_pane_id) {
-                            Some(p) => {
-                                let source_pane = self
-                                    .panes
-                                    .get_mut(self.active_panes.get(&client_id).unwrap())
-                                    .unwrap();
-
-                                // TODO:
-                                // * set the y of the source_pane to be the y + rows of
-                                // itself
-                                // * set its rows size to be fixed 1
-                                // * reduce the y of the current pane by 1
-
-                                let source_before = source_pane.position_and_size();
-
-                                let mut source_pane_geom = source_pane.position_and_size();
-                                let mut destination_pane_geom = source_pane_geom.clone();
-                                let destination_before = destination_pane_geom.clone();
-                                source_pane_geom.y = (source_pane_geom.y + source_pane_geom.rows.as_usize()) - 1; // -1 because we want to be at the last line of the source pane, not the next line over
-                                source_pane_geom.rows = Dimension::fixed(1);
-                                source_pane.set_geom(source_pane_geom);
-                                destination_pane_geom.y -= 1;
-
-                                log::info!("source after: {:?}", source_pane_geom);
-                                log::info!("destination after: {:?}", destination_pane_geom);
-
-                                // render previously active pane so that its frame does not remain actively
-                                // colored
-                                source_pane.set_should_render(true);
-                                // we render the full viewport to remove any ui elements that might have been
-                                // there before (eg. another user's cursor)
-                                source_pane.render_full_viewport();
-
-                                let destination_pane = self.panes.get_mut(&p).unwrap();
-                                destination_pane.set_geom(destination_pane_geom);
-
-                                destination_pane.set_should_render(true);
-                                // we render the full viewport to remove any ui elements that might have been
-                                // there before (eg. another user's cursor)
-                                destination_pane.render_full_viewport();
-
-                                self.focus_pane(p, client_id);
-                                self.set_pane_active_at(p);
-                                self.set_pane_frames(self.draw_pane_frames); // TODO: do we need
-                                                                             // this?
-
-                                true
-                            },
-                            None => false
-                        }
-
-                    }
-                    // None => false,
+                    None => false,
                 }
             },
             None => false,
@@ -1188,7 +1079,6 @@ impl TiledPanes {
         self.panes.remove(&pane_id)
     }
     pub fn remove_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
-        log::info!("remove pane");
         let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
@@ -1196,7 +1086,6 @@ impl TiledPanes {
             *self.viewport.borrow(),
         );
         if pane_grid.fill_space_over_pane(pane_id) {
-            log::info!("successfully fill_space_over_pane");
             // successfully filled space over pane
             let closed_pane = self.panes.remove(&pane_id);
             self.move_clients_out_of_pane(pane_id);
