@@ -3233,6 +3233,118 @@ fn move_focus_down_with_stacked_panes() {
 }
 
 #[test]
+fn move_focus_right_into_stacked_panes() {
+    // here we make sure that when we focus right into a stack,
+    // we will always focus on the "main" pane of the stack
+    // and not on one of its folds
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane split_direction="vertical" {
+                        pane focus=true
+                        pane { children stacked=true; }
+                    }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), (swap_tiled_layouts, swap_floating_layouts));
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    for i in 0..13 {
+        let new_pane_id = i + 2;
+        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
+            .unwrap();
+    }
+    tab.horizontal_split(PaneId::Terminal(1), None, client_id).unwrap();
+
+    tab.move_focus_up(client_id);
+    tab.move_focus_right(client_id);
+    tab.render(&mut output, None).unwrap();
+
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        cursor_coordinates,
+        Some((61, 12)),
+        "cursor coordinates moved to the main pane of the stack",
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
+fn move_focus_left_into_stacked_panes() {
+    // here we make sure that when we focus left into a stack,
+    // we will always focus on the "main" pane of the stack
+    // and not on one of its folds
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane split_direction="vertical" {
+                        pane { children stacked=true; }
+                        pane focus=true
+                    }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), (swap_tiled_layouts, swap_floating_layouts));
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    for i in 0..13 {
+        let new_pane_id = i + 2;
+        tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
+            .unwrap();
+    }
+    tab.horizontal_split(PaneId::Terminal(1), None, client_id).unwrap();
+
+    tab.move_focus_up(client_id);
+    tab.move_focus_left(client_id);
+    tab.render(&mut output, None).unwrap();
+
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        cursor_coordinates,
+        Some((1, 12)),
+        "cursor coordinates moved to the main pane of the stack",
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn close_main_stacked_pane() {
     let size = Size {
         cols: 121,

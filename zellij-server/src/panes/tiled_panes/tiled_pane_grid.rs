@@ -867,7 +867,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
             .collect();
-        let next_index = panes
+        let next_pane = panes
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
@@ -875,9 +875,14 @@ impl<'a> TiledPaneGrid<'a> {
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
             .max_by_key(|(_, (_, c))| c.active_at())
-            .map(|(_, (pid, _))| pid)
-            .copied();
-        next_index
+            .map(|(_, (_, pane))| pane);
+        let next_pane_is_stacked = next_pane.map(|p| p.position_and_size().is_stacked).unwrap_or(false);
+        if next_pane_is_stacked {
+            if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
+                return StackedPanes::new(self.panes.clone()).flexible_pane_id_in_stack(&next_pane_id);
+            }
+        }
+        next_pane.map(|p| p.pid())
     }
     pub fn progress_stack_up_if_in_stack(&mut self, source_pane_id: &PaneId) -> Option<PaneId> {
         let destination_pane_id_in_stack = {
@@ -991,7 +996,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, p)| p.selectable())
             .map(|(p_id, p)| (*p_id, p))
             .collect();
-        let next_index = panes
+        let next_pane = panes
             .iter()
             .enumerate()
             .filter(|(_, (_, c))| {
@@ -999,9 +1004,15 @@ impl<'a> TiledPaneGrid<'a> {
                     && c.horizontally_overlaps_with(Box::as_ref(current_pane))
             })
             .max_by_key(|(_, (_, c))| c.active_at())
-            .map(|(_, (pid, _))| pid)
+            .map(|(_, (_pid, pane))| pane)
             .copied();
-        next_index
+        let next_pane_is_stacked = next_pane.map(|p| p.position_and_size().is_stacked).unwrap_or(false);
+        if next_pane_is_stacked {
+            if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
+                return StackedPanes::new(self.panes.clone()).flexible_pane_id_in_stack(&next_pane_id);
+            }
+        }
+        next_pane.map(|p| p.pid())
     }
     fn horizontal_borders(&self, pane_ids: &[PaneId]) -> HashSet<usize> {
         pane_ids.iter().fold(HashSet::new(), |mut borders, p| {

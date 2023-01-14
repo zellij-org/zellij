@@ -44,6 +44,10 @@ impl <'a>StackedPanes <'a>{
         destination_pane.set_geom(destination_pane_geom);
         Ok(())
     }
+    pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
+        let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
+        all_stacked_pane_positions.iter().find(|(_pid, p)| p.rows.is_percent()).map(|(pid, _p)| *pid)
+    }
     fn pane_is_one_liner(&self, id: &PaneId) -> Result<bool> {
         let err_context = || format!("Cannot determin if pane is one liner or not");
         let panes = self.panes.borrow();
