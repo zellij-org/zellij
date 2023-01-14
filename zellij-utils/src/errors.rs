@@ -16,9 +16,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Error, Formatter};
 use std::path::PathBuf;
 
-use miette::Diagnostic;
-use thiserror::Error as ThisError;
-
 /// Re-exports of common error-handling code.
 pub mod prelude {
     pub use super::FatalError;
@@ -35,39 +32,6 @@ pub mod prelude {
 
 pub trait ErrorInstruction {
     fn error(err: String) -> Self;
-}
-
-#[derive(Debug, ThisError, Diagnostic)]
-#[error("{0}{}", self.show_backtrace())]
-#[diagnostic(help("{}", self.show_help()))]
-struct Panic(String);
-
-impl Panic {
-    // We already capture a backtrace with `anyhow` using the `backtrace` crate in the background.
-    // The advantage is that this is the backtrace of the real errors source (i.e. where we first
-    // encountered the error and turned it into an `anyhow::Error`), whereas the backtrace recorded
-    // here is the backtrace leading to the call to any `panic`ing function. Since now we propagate
-    // errors up before `unwrap`ing them (e.g. in `zellij_server::screen::screen_thread_main`), the
-    // former is what we really want to diagnose.
-    // We still keep the second one around just in case the first backtrace isn't meaningful or
-    // non-existent in the first place (Which really shouldn't happen, but you never know).
-    fn show_backtrace(&self) -> String {
-        if let Ok(var) = std::env::var("RUST_BACKTRACE") {
-            if !var.is_empty() && var != "0" {
-                return format!("\n\nPanic backtrace:\n{:?}", backtrace::Backtrace::new());
-            }
-        }
-        "".into()
-    }
-
-    fn show_help(&self) -> String {
-        r#"If you are seeing this message, it means that something went wrong.
-Please report this error to the github issue.
-(https://github.com/zellij-org/zellij/issues)
-
-Also, if you want to see the backtrace, you can set the `RUST_BACKTRACE` environment variable to `1`.
-"#.into()
-    }
 }
 
 /// Helper trait to easily log error types.
@@ -514,12 +478,50 @@ pub use not_wasm::*;
 mod not_wasm {
     use super::*;
     use crate::channels::{SenderWithContext, ASYNCOPENCALLS, OPENCALLS};
-    use miette::{GraphicalReportHandler, GraphicalTheme, Report};
+    use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, Report};
     use std::panic::PanicInfo;
+    use thiserror::Error as ThisError;
 
     /// The maximum amount of calls an [`ErrorContext`] will keep track
     /// of in its stack representation. This is a per-thread maximum.
     const MAX_THREAD_CALL_STACK: usize = 6;
+
+    #[derive(Debug, ThisError, Diagnostic)]
+    #[error("{0}{}", self.show_backtrace())]
+    #[diagnostic(help("{}", self.show_help()))]
+    struct Panic(String);
+
+    impl Panic {
+        // We already capture a backtrace with `anyhow` using the `backtrace` crate in the background.
+        // The advantage is that this is the backtrace of the real errors source (i.e. where we first
+        // encountered the error and turned it into an `anyhow::Error`), whereas the backtrace recorded
+        // here is the backtrace leading to the call to any `panic`ing function. Since now we propagate
+        // errors up before `unwrap`ing them (e.g. in `zellij_server::screen::screen_thread_main`), the
+        // former is what we really want to diagnose.
+        // We still keep the second one around just in case the first backtrace isn't meaningful or
+        // non-existent in the first place (Which really shouldn't happen, but you never know).
+        fn show_backtrace(&self) -> String {
+            if let Ok(var) = std::env::var("RUST_BACKTRACE") {
+                if !var.is_empty() && var != "0" {
+                    return format!("\n\nPanic backtrace:\n{:?}", backtrace::Backtrace::new());
+                }
+            }
+            "".into()
+        }
+
+        fn show_help(&self) -> String {
+            format!(
+                "If you are seeing this message, it means that something went wrong.
+
+-> To get additional information, check the log at: {}
+-> To see a backtrace next time, reproduce the error with: RUST_BACKTRACE=1 zellij [...]
+-> To help us fix this, please open an issue: https://github.com/zellij-org/zellij/issues
+
+",
+                crate::consts::ZELLIJ_TMP_LOG_FILE.display().to_string()
+            )
+        }
+    }
 
     /// Custom panic handler/hook. Prints the [`ErrorContext`].
     pub fn handle_panic<T>(info: &PanicInfo<'_>, sender: &SenderWithContext<T>)
