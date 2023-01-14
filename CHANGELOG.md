@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: copy_on_select = false sticky selection (https://github.com/zellij-org/zellij/pull/2086)
 * fix: do not drop wide chars when resizing to width of 1 column (https://github.com/zellij-org/zellij/pull/2082)
 * fix: disallow path-like names for sessions (https://github.com/zellij-org/zellij/pull/2082)
+* errors: Remove more `unwrwap`s from server code (https://github.com/zellij-org/zellij/pull/2069)
 
 ## [0.34.4] - 2022-12-13
 

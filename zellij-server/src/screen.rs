@@ -738,13 +738,15 @@ impl Screen {
     }
 
     pub fn resize_to_screen(&mut self, new_screen_size: Size) -> Result<()> {
+        let err_context = || format!("failed to resize to screen size: {new_screen_size:#?}");
+
         self.size = new_screen_size;
         for tab in self.tabs.values_mut() {
-            tab.resize_whole_tab(new_screen_size);
+            tab.resize_whole_tab(new_screen_size)
+                .with_context(err_context)?;
             tab.set_force_render();
         }
-        self.render()
-            .with_context(|| format!("failed to resize to screen size: {new_screen_size:#?}"))
+        self.render().with_context(err_context)
     }
 
     pub fn update_pixel_dimensions(&mut self, pixel_dimensions: PixelDimensions) {
@@ -970,29 +972,35 @@ impl Screen {
         };
 
         // apply the layout to the new tab
-        let tab = self.tabs.get_mut(&tab_index).unwrap(); // TODO: no unwrap
-        tab.apply_layout(
-            layout,
-            floating_panes_layout,
-            new_terminal_ids,
-            new_floating_terminal_ids,
-            new_plugin_ids,
-            client_id,
-        )
-        .with_context(err_context)?;
-        tab.update_input_modes().with_context(err_context)?;
-        tab.visible(true).with_context(err_context)?;
-        if let Some(drained_clients) = drained_clients {
-            tab.add_multiple_clients(drained_clients)
-                .with_context(err_context)?;
-        }
+        self.tabs
+            .get_mut(&tab_index)
+            .context("couldn't find tab with index {tab_index}")
+            .and_then(|tab| {
+                tab.apply_layout(
+                    layout,
+                    floating_panes_layout,
+                    new_terminal_ids,
+                    new_floating_terminal_ids,
+                    new_plugin_ids,
+                    client_id,
+                )?;
+                tab.update_input_modes()?;
+                tab.visible(true)?;
+                if let Some(drained_clients) = drained_clients {
+                    tab.add_multiple_clients(drained_clients)?;
+                }
+                Ok(())
+            })
+            .with_context(err_context)?;
+
         if !self.active_tab_indices.contains_key(&client_id) {
             // this means this is a new client and we need to add it to our state properly
             self.add_client(client_id).with_context(err_context)?;
         }
-        self.update_tabs().with_context(err_context)?;
 
-        self.render().with_context(err_context)
+        self.update_tabs()
+            .and_then(|_| self.render())
+            .with_context(err_context)
     }
 
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -1243,10 +1251,17 @@ impl Screen {
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
-                    if !active_tab.move_focus_left(client_id) {
-                        self.switch_tab_prev(client_id)
-                            .context("failed to move focus left")?;
-                    }
+                    active_tab
+                        .move_focus_left(client_id)
+                        .and_then(|success| {
+                            if !success {
+                                self.switch_tab_prev(client_id)
+                                    .context("failed to move focus to previous tab")
+                            } else {
+                                Ok(())
+                            }
+                        })
+                        .with_context(err_context)?;
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
@@ -1270,10 +1285,17 @@ impl Screen {
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
-                    if !active_tab.move_focus_right(client_id) {
-                        self.switch_tab_next(client_id)
-                            .context("failed to move focus right")?;
-                    }
+                    active_tab
+                        .move_focus_right(client_id)
+                        .and_then(|success| {
+                            if !success {
+                                self.switch_tab_next(client_id)
+                                    .context("failed to move focus to next tab")
+                            } else {
+                                Ok(())
+                            }
+                        })
+                        .with_context(err_context)?;
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             };
@@ -1560,7 +1582,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
+                    ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
@@ -1574,7 +1597,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
+                    ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
@@ -1583,7 +1607,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
+                    ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
@@ -1597,7 +1622,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id)
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
+                    ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;
