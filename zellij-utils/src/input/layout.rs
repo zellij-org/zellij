@@ -424,10 +424,10 @@ impl TiledPaneLayout {
                     layout_to_split.truncate(max_panes);
                 }
                 // layout_to_split.truncate(max_panes);
-                split_space(space, &layout_to_split, space)
+                split_space(space, &layout_to_split, space)?
             },
             None => {
-                split_space(space, self, space)
+                split_space(space, self, space)?
             }
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
@@ -682,7 +682,7 @@ fn split_space(
     space_to_split: &PaneGeom,
     layout: &TiledPaneLayout,
     total_space_to_split: &PaneGeom,
-) -> Vec<(TiledPaneLayout, PaneGeom)> {
+) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
         let mut sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|_part| Some(SplitSize::Fixed(1))).collect();
@@ -715,6 +715,14 @@ fn split_space(
         ),
     };
 
+    let min_size_for_panes = sizes.iter().fold(0, |acc, size| match size {
+        Some(SplitSize::Percent(_)) | None => acc + 1, // TODO: minimum height/width as relevant here
+        Some(SplitSize::Fixed(fixed)) => acc + fixed
+    });
+    if min_size_for_panes > split_dimension_space.as_usize() {
+        return Err("Not enough room for panes"); // TODO: use error infra
+    }
+
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
 
     let mut total_pane_size = 0;
@@ -739,8 +747,7 @@ fn split_space(
         };
         // TODO: TEST THIS EXTENSIVELY PLEASE - how did this ever work? How does it work with the default
         // layout with split panes? did we rely on a rounding error??
-        // split_dimension.adjust_inner(total_split_dimension_space.as_usize());
-        split_dimension.adjust_inner(total_split_dimension_space.as_usize().saturating_sub(total_pane_size));
+        split_dimension.adjust_inner(split_dimension_space.as_usize().saturating_sub(total_pane_size));
         total_pane_size += split_dimension.as_usize();
 
         let geom = match layout.children_split_direction {
@@ -777,7 +784,7 @@ fn split_space(
         let part_position_and_size = split_geom.get(i).unwrap();
         if !part.children.is_empty() {
             let mut part_positions =
-                split_space(part_position_and_size, part, total_space_to_split);
+                split_space(part_position_and_size, part, total_space_to_split)?;
             pane_positions.append(&mut part_positions);
         } else {
             let part = part.clone();
@@ -788,7 +795,7 @@ fn split_space(
         let layout = layout.clone();
         pane_positions.push((layout, space_to_split.clone()));
     }
-    pane_positions
+    Ok(pane_positions)
 }
 
 impl TryFrom<Url> for RunPluginLocation {

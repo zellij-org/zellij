@@ -133,25 +133,26 @@ pub(crate) struct Tab {
 
 #[derive(Clone, Debug, Default)]
 struct SwapLayouts {
-    // swap_tiled_layouts: Vec<BTreeMap<LayoutConstraint, TiledPaneLayout>>,
     swap_tiled_layouts: Vec<SwapTiledLayout>,
     swap_floating_layouts: Vec<SwapFloatingLayout>,
     swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
-    // current_layout: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     current_floating_layout_position: Option<usize>,
     current_tiled_layout_position: Option<usize>,
     current_layout_position: Option<usize>,
     is_floating_damaged: bool,
     is_tiled_damaged: bool,
+    display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
 }
 
 impl SwapLayouts {
-    pub fn new(swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>)) -> Self {
+    pub fn new(swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), display_area: Rc<RefCell<Size>>) -> Self {
+        let display_area = display_area.clone();
         SwapLayouts {
             swap_tiled_layouts: swap_layouts.0,
             swap_floating_layouts: swap_layouts.1,
             is_floating_damaged: false,
             is_tiled_damaged: false,
+            display_area,
             ..Default::default()
         }
     }
@@ -316,7 +317,13 @@ impl SwapLayouts {
             if let Some(swap_layout) = swap_layout {
                 for (constraint, layout) in swap_layout.iter() {
                     if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
-                        return Some(layout.clone());
+                        let display_area = self.display_area.borrow();
+                        // TODO: reuse the assets from position_panes_in_space here?
+                        let pane_count = tiled_panes.visible_panes_count();
+                        let display_area = PaneGeom::from(&*display_area);
+                        if layout.position_panes_in_space(&display_area, Some(pane_count)).is_ok() {
+                            return Some(layout.clone());
+                        }
                     };
                 }
             };
@@ -331,9 +338,6 @@ impl SwapLayouts {
             }
         }
         None
-    }
-    fn current_layout(&self) -> Option<&(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
-        self.current_layout_position.and_then(|position| self.swap_layouts.get(position))
     }
     fn reset_positions_and_damage(&mut self) {
         self.current_floating_layout_position = None;
@@ -707,6 +711,7 @@ impl Tab {
             Some(command) => ClipboardProvider::Command(CopyCommand::new(command)),
             None => ClipboardProvider::Osc52(copy_options.clipboard),
         };
+        let swap_layouts = SwapLayouts::new(swap_layouts, display_area.clone());
 
         Tab {
             index,
@@ -744,7 +749,7 @@ impl Tab {
             cursor_positions_and_shape: HashMap::new(),
             is_pending: true, // will be switched to false once the layout is applied
             pending_instructions: vec![],
-            swap_layouts: SwapLayouts::new(swap_layouts),
+            swap_layouts,
         }
     }
 

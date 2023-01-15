@@ -193,3 +193,17 @@ impl From<&PaneGeom> for Size {
         }
     }
 }
+
+impl From<&Size> for PaneGeom {
+    fn from(size: &Size) -> Self {
+        let mut rows = Dimension::percent(100.0);
+        let mut cols = Dimension::percent(100.0);
+        rows.set_inner(size.rows);
+        cols.set_inner(size.cols);
+        Self {
+            rows,
+            cols,
+            ..Default::default()
+        }
+    }
+}

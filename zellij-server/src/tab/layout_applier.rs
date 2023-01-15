@@ -134,7 +134,7 @@ impl<'a> LayoutApplier<'a> {
 
                 let mut focused_pane_position_and_size: Option<PaneGeom> = None;
                 let mut has_focused_pane = false;
-                let mut set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
+                let set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
                     if layout.focus.unwrap_or(false) && focused_pane_position_and_size.is_none() {
                         focused_pane_position_and_size = Some(*pane_position_and_size);
                     }

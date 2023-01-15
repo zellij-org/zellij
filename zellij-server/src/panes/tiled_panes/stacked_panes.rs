@@ -171,5 +171,4 @@ impl <'a>StackedPanes <'a>{
         }
         Ok(true)
     }
-
 }

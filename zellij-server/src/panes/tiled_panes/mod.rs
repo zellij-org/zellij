@@ -761,12 +761,14 @@ impl TiledPanes {
                             .get_mut(self.active_panes.get(&client_id).unwrap())
                             .unwrap();
 
+                        let previously_active_pane_is_stacked = previously_active_pane.position_and_size().is_stacked;
                         previously_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        let next_active_pane_is_stacked = next_active_pane.position_and_size().is_stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
@@ -774,6 +776,12 @@ impl TiledPanes {
 
                         self.focus_pane(p, client_id);
                         self.set_pane_active_at(p);
+                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                            // we do this because a stack pane focus change also changes its
+                            // geometry and we need to let the pty know about this (like in a
+                            // normal size change)
+                            self.reapply_pane_frames();
+                        }
 
                         true
                     },
@@ -803,12 +811,14 @@ impl TiledPanes {
                             .get_mut(self.active_panes.get(&client_id).unwrap())
                             .unwrap();
 
+                        let previously_active_pane_is_stacked = previously_active_pane.position_and_size().is_stacked;
                         previously_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
                         previously_active_pane.render_full_viewport();
 
                         let next_active_pane = self.panes.get_mut(&p).unwrap();
+                        let next_active_pane_is_stacked = next_active_pane.position_and_size().is_stacked;
                         next_active_pane.set_should_render(true);
                         // we render the full viewport to remove any ui elements that might have been
                         // there before (eg. another user's cursor)
@@ -816,6 +826,12 @@ impl TiledPanes {
 
                         self.focus_pane(p, client_id);
                         self.set_pane_active_at(p);
+                        if previously_active_pane_is_stacked || next_active_pane_is_stacked {
+                            // we do this because a stack pane focus change also changes its
+                            // geometry and we need to let the pty know about this (like in a
+                            // normal size change)
+                            self.reapply_pane_frames();
+                        }
 
                         true
                     },
