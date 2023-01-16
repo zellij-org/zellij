@@ -793,7 +793,7 @@ impl TryFrom<&KdlNode> for Action {
                         Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
                     }
                 } else {
-                    Ok(Action::NewTab(None, vec![], None))
+                    Ok(Action::NewTab(None, vec![], name))
                 }
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
