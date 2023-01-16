@@ -19,29 +19,45 @@ impl <'a>StackedPanes <'a>{
     }
     pub fn move_down(&mut self, source_pane_id: &PaneId, destination_pane_id: &PaneId) -> Result<()> {
         let err_context = || format!("Failed to move stacked pane focus down");
-        let mut panes = self.panes.borrow_mut();
-        let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
-        let mut source_pane_geom = source_pane.position_and_size();
-        let mut destination_pane_geom = source_pane_geom.clone();
-        destination_pane_geom.y = source_pane_geom.y + 1;
-        source_pane_geom.rows = Dimension::fixed(1);
-        source_pane.set_geom(source_pane_geom);
-        let destination_pane = panes.get_mut(&destination_pane_id).with_context(err_context)?;
-        destination_pane.set_geom(destination_pane_geom);
+        let source_pane_is_stacked = self.panes.borrow().get(source_pane_id).with_context(err_context)?.position_and_size().is_stacked;
+        let destination_pane_is_stacked = self.panes.borrow().get(destination_pane_id).with_context(err_context)?.position_and_size().is_stacked;
+        if source_pane_is_stacked && destination_pane_is_stacked {
+            let mut panes = self.panes.borrow_mut();
+            let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
+            let mut source_pane_geom = source_pane.position_and_size();
+            let mut destination_pane_geom = source_pane_geom.clone();
+            destination_pane_geom.y = source_pane_geom.y + 1;
+            source_pane_geom.rows = Dimension::fixed(1);
+            source_pane.set_geom(source_pane_geom);
+            let destination_pane = panes.get_mut(&destination_pane_id).with_context(err_context)?;
+            destination_pane.set_geom(destination_pane_geom);
+        } else if destination_pane_is_stacked {
+            // we're moving down to the highest pane in the stack, we need to expand it and shrink the
+            // expanded stack pane
+            self.make_highest_pane_in_stack_flexible(destination_pane_id)?;
+        }
         Ok(())
     }
     pub fn move_up(&mut self, source_pane_id: &PaneId, destination_pane_id: &PaneId) -> Result<()> {
         let err_context = || format!("Failed to move stacked pane focus up");
-        let mut panes = self.panes.borrow_mut();
-        let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
-        let mut source_pane_geom = source_pane.position_and_size();
-        let mut destination_pane_geom = source_pane_geom.clone();
-        source_pane_geom.y = (source_pane_geom.y + source_pane_geom.rows.as_usize()) - 1; // -1 because we want to be at the last line of the source pane, not the next line over
-        source_pane_geom.rows = Dimension::fixed(1);
-        source_pane.set_geom(source_pane_geom);
-        destination_pane_geom.y -= 1;
-        let destination_pane = panes.get_mut(&destination_pane_id).with_context(err_context)?;
-        destination_pane.set_geom(destination_pane_geom);
+        let source_pane_is_stacked = self.panes.borrow().get(source_pane_id).with_context(err_context)?.position_and_size().is_stacked;
+        let destination_pane_is_stacked = self.panes.borrow().get(destination_pane_id).with_context(err_context)?.position_and_size().is_stacked;
+        if source_pane_is_stacked && destination_pane_is_stacked {
+            let mut panes = self.panes.borrow_mut();
+            let source_pane = panes.get_mut(source_pane_id).with_context(err_context)?;
+            let mut source_pane_geom = source_pane.position_and_size();
+            let mut destination_pane_geom = source_pane_geom.clone();
+            source_pane_geom.y = (source_pane_geom.y + source_pane_geom.rows.as_usize()) - 1; // -1 because we want to be at the last line of the source pane, not the next line over
+            source_pane_geom.rows = Dimension::fixed(1);
+            source_pane.set_geom(source_pane_geom);
+            destination_pane_geom.y -= 1;
+            let destination_pane = panes.get_mut(&destination_pane_id).with_context(err_context)?;
+            destination_pane.set_geom(destination_pane_geom);
+        } else if destination_pane_is_stacked {
+            // we're moving up to the lowest pane in the stack, we need to expand it and shrink the
+            // expanded stack pane
+            self.make_lowest_pane_in_stack_flexible(destination_pane_id)?;
+        }
         Ok(())
     }
     pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
@@ -170,5 +186,54 @@ impl <'a>StackedPanes <'a>{
             }
         }
         Ok(true)
+    }
+    fn make_lowest_pane_in_stack_flexible(&mut self, destination_pane_id: &PaneId) -> Result<()> {
+        let err_context = || format!("Failed to make_lowest_pane_flexible");
+        let mut all_stacked_pane_positions = self.positions_in_stack(destination_pane_id)?;
+        let position_of_flexible_pane = self.position_of_flexible_pane(&all_stacked_pane_positions)?;
+        if position_of_flexible_pane != all_stacked_pane_positions.len().saturating_sub(1) {
+            let mut panes = self.panes.borrow_mut();
+            let height_of_flexible_pane = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).map(|(_pid, p)| p.rows).with_context(err_context)?;
+            let (lowest_pane_id, mut lowest_pane_geom) = all_stacked_pane_positions.last_mut().with_context(err_context)?;
+            lowest_pane_geom.rows = height_of_flexible_pane;
+            panes.get_mut(lowest_pane_id).with_context(err_context)?.set_geom(lowest_pane_geom);
+            let (flexible_pane_id, mut flexible_pane_geom) = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).with_context(err_context)?;
+            flexible_pane_geom.rows = Dimension::fixed(1);
+            panes.get_mut(flexible_pane_id).with_context(err_context)?.set_geom(flexible_pane_geom);
+            for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
+                if i > position_of_flexible_pane {
+                    let pane = panes.get_mut(pid).with_context(err_context)?;
+                    let mut pane_position_and_size = pane.position_and_size();
+                    pane_position_and_size.y = pane_position_and_size.y.saturating_sub(height_of_flexible_pane.as_usize() - 1);
+                    pane.set_geom(pane_position_and_size);
+                }
+            }
+        }
+        Ok(())
+    }
+    fn make_highest_pane_in_stack_flexible(&mut self, destination_pane_id: &PaneId) -> Result<()> {
+        let err_context = || format!("Failed to make_lowest_pane_flexible");
+        let mut all_stacked_pane_positions = self.positions_in_stack(destination_pane_id)?;
+        let position_of_flexible_pane = self.position_of_flexible_pane(&all_stacked_pane_positions)?;
+        if position_of_flexible_pane != 0 {
+            let mut panes = self.panes.borrow_mut();
+            let height_of_flexible_pane = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).map(|(_pid, p)| p.rows).with_context(err_context)?;
+            let (highest_pane_id, mut highest_pane_geom) = all_stacked_pane_positions.first_mut().with_context(err_context)?;
+            let y_of_whole_stack = highest_pane_geom.y;
+            highest_pane_geom.rows = height_of_flexible_pane;
+            panes.get_mut(highest_pane_id).with_context(err_context)?.set_geom(highest_pane_geom);
+            let (flexible_pane_id, mut flexible_pane_geom) = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).with_context(err_context)?;
+            flexible_pane_geom.rows = Dimension::fixed(1);
+            panes.get_mut(flexible_pane_id).with_context(err_context)?.set_geom(flexible_pane_geom);
+            for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
+                if i > 0 {
+                    let pane = panes.get_mut(pid).with_context(err_context)?;
+                    let mut pane_position_and_size = pane.position_and_size();
+                    pane_position_and_size.y = y_of_whole_stack + height_of_flexible_pane.as_usize() + (i - 1);
+                    pane.set_geom(pane_position_and_size);
+                }
+            }
+        }
+        Ok(())
     }
 }
