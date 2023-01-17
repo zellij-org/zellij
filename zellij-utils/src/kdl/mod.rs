@@ -300,10 +300,10 @@ macro_rules! keys_from_kdl {
 
 #[macro_export]
 macro_rules! actions_from_kdl {
-    ( $kdl_node:expr ) => {
+    ( $kdl_node:expr, $config_options:expr ) => {
         kdl_children_nodes_or_error!($kdl_node, "no actions found for key_block")
             .iter()
-            .map(|kdl_action| Action::try_from(kdl_action))
+            .map(|kdl_action| Action::try_from((kdl_action, $config_options)))
             .collect::<Result<_, _>>()?
     };
 }
@@ -613,9 +613,9 @@ impl TryFrom<(&str, &KdlDocument)> for PaletteColor {
     }
 }
 
-impl TryFrom<&KdlNode> for Action {
+impl TryFrom<(&KdlNode, &Options)> for Action {
     type Error = ConfigError;
-    fn try_from(kdl_action: &KdlNode) -> Result<Self, Self::Error> {
+    fn try_from((kdl_action, config_options): (&KdlNode, &Options)) -> Result<Self, Self::Error> {
         let action_name = kdl_name!(kdl_action);
         let action_arguments: Vec<&KdlEntry> = kdl_argument_values!(kdl_action);
         let action_children: Vec<&KdlDocument> = kdl_children!(kdl_action);
@@ -744,7 +744,8 @@ impl TryFrom<&KdlNode> for Action {
                 let command_metadata = action_children.iter().next();
                 let layout = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
-                    .map(|layout_string| PathBuf::from(layout_string));
+                    .map(|layout_string| PathBuf::from(layout_string))
+                    .or_else(|| config_options.default_layout.clone());
                 let cwd = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
                     .map(|cwd_string| PathBuf::from(cwd_string))
@@ -754,46 +755,42 @@ impl TryFrom<&KdlNode> for Action {
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
 
-                if let Some(layout_path) = layout {
-                    let (path_to_raw_layout, raw_layout) =
-                        Layout::stringified_from_path_or_default(Some(&layout_path), None)
-                            .map_err(|e| {
-                                ConfigError::new_kdl_error(
-                                    format!("Failed to load layout: {}", e),
-                                    kdl_action.span().offset(),
-                                    kdl_action.span().len(),
-                                )
-                            })?;
-
-                    let layout =
-                        Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                let (path_to_raw_layout, raw_layout) =
+                    Layout::stringified_from_path_or_default(layout.as_ref(), None).map_err(
+                        |e| {
                             ConfigError::new_kdl_error(
                                 format!("Failed to load layout: {}", e),
                                 kdl_action.span().offset(),
                                 kdl_action.span().len(),
                             )
-                        })?;
+                        },
+                    )?;
 
-                    let mut tabs = layout.tabs();
-                    if tabs.len() > 1 {
-                        return Err(ConfigError::new_kdl_error(
-                            "Tab layout cannot itself have tabs".to_string(),
+                let layout =
+                    Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                        ConfigError::new_kdl_error(
+                            format!("Failed to load layout: {}", e),
                             kdl_action.span().offset(),
                             kdl_action.span().len(),
-                        ));
-                    } else if !tabs.is_empty() {
-                        let (tab_name, layout, floating_panes_layout) =
-                            tabs.drain(..).next().unwrap();
-                        let name = tab_name.or(name);
+                        )
+                    })?;
 
-                        Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
-                    } else {
-                        let (layout, floating_panes_layout) = layout.new_tab();
+                let mut tabs = layout.tabs();
+                if tabs.len() > 1 {
+                    return Err(ConfigError::new_kdl_error(
+                        "Tab layout cannot itself have tabs".to_string(),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    ));
+                } else if !tabs.is_empty() {
+                    let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
+                    let name = tab_name.or(name);
 
-                        Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
-                    }
+                    Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
                 } else {
-                    Ok(Action::NewTab(None, vec![], name))
+                    let (layout, floating_panes_layout) = layout.new_tab();
+
+                    Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
                 }
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -1423,12 +1420,13 @@ impl Keybinds {
     fn bind_keys_in_block(
         block: &KdlNode,
         input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        config_options: &Options,
     ) -> Result<(), ConfigError> {
         let all_nodes = kdl_children_nodes_or_error!(block, "no keybinding block for mode");
         let bind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "bind");
         let unbind_nodes = all_nodes.iter().filter(|n| kdl_name!(n) == "unbind");
         for key_block in bind_nodes {
-            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds)?;
+            Keybinds::bind_actions_for_each_key(key_block, input_mode_keybinds, config_options)?;
         }
         // we loop a second time so that the unbinds always happen after the binds
         for key_block in unbind_nodes {
@@ -1445,7 +1443,11 @@ impl Keybinds {
         }
         Ok(())
     }
-    pub fn from_kdl(kdl_keybinds: &KdlNode, base_keybinds: Keybinds) -> Result<Self, ConfigError> {
+    pub fn from_kdl(
+        kdl_keybinds: &KdlNode,
+        base_keybinds: Keybinds,
+        config_options: &Options,
+    ) -> Result<Self, ConfigError> {
         let clear_defaults = kdl_arg_is_truthy!(kdl_keybinds, "clear-defaults");
         let mut keybinds_from_config = if clear_defaults {
             Keybinds::default()
@@ -1469,7 +1471,7 @@ impl Keybinds {
                         continue;
                     }
                     let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
                 }
             }
             if kdl_name!(block) == "shared_among" {
@@ -1482,7 +1484,7 @@ impl Keybinds {
                         continue;
                     }
                     let mut input_mode_keybinds = keybinds_from_config.get_input_mode_mut(&mode);
-                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds)?;
+                    Keybinds::bind_keys_in_block(block, &mut input_mode_keybinds, config_options)?;
                 }
             }
         }
@@ -1496,7 +1498,7 @@ impl Keybinds {
             }
             let mut input_mode_keybinds =
                 Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
-            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds)?;
+            Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
         }
         if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
             Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
@@ -1506,9 +1508,10 @@ impl Keybinds {
     fn bind_actions_for_each_key(
         key_block: &KdlNode,
         input_mode_keybinds: &mut HashMap<Key, Vec<Action>>,
+        config_options: &Options,
     ) -> Result<(), ConfigError> {
         let keys: Vec<Key> = keys_from_kdl!(key_block);
-        let actions: Vec<Action> = actions_from_kdl!(key_block);
+        let actions: Vec<Action> = actions_from_kdl!(key_block, config_options);
         for key in keys {
             input_mode_keybinds.insert(key, actions.clone());
         }
@@ -1561,13 +1564,15 @@ impl Config {
     pub fn from_kdl(kdl_config: &str, base_config: Option<Config>) -> Result<Config, ConfigError> {
         let mut config = base_config.unwrap_or_else(|| Config::default());
         let kdl_config: KdlDocument = kdl_config.parse()?;
+
+        let config_options = Options::from_kdl(&kdl_config)?;
+        config.options = config.options.merge(config_options);
+
         // TODO: handle cases where we have more than one of these blocks (eg. two "keybinds")
         // this should give an informative parsing error
         if let Some(kdl_keybinds) = kdl_config.get("keybinds") {
-            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds)?;
+            config.keybinds = Keybinds::from_kdl(&kdl_keybinds, config.keybinds, &config.options)?;
         }
-        let config_options = Options::from_kdl(&kdl_config)?;
-        config.options = config.options.merge(config_options);
         if let Some(kdl_themes) = kdl_config.get("themes") {
             let config_themes = Themes::from_kdl(kdl_themes)?;
             config.themes = config.themes.merge(config_themes);
