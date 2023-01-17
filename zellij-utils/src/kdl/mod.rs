@@ -749,8 +749,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 let cwd = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "cwd"))
                     .map(|cwd_string| PathBuf::from(cwd_string))
-                    .map(|cwd| current_dir.join(cwd))
-                    .or_else(|| Some(current_dir));
+                    .map(|cwd| current_dir.join(cwd));
                 let name = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
