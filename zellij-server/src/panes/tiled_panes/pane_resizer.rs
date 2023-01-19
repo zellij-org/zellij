@@ -1,3 +1,4 @@
+use super::stacked_panes::StackedPanes;
 use crate::{panes::PaneId, tab::Pane};
 use cassowary::{
     strength::{REQUIRED, STRONG},
@@ -35,8 +36,8 @@ type Grid = Vec<Vec<Span>>;
 impl<'a> PaneResizer<'a> {
     pub fn new(panes: Rc<RefCell<HashMap<PaneId, &'a mut Box<dyn Pane>>>>) -> Self {
         let mut vars = HashMap::new();
-        for &k in panes.borrow().keys() {
-            vars.insert(k, Variable::new());
+        for &pane_id in panes.borrow().keys() {
+            vars.insert(pane_id, Variable::new());
         }
         PaneResizer {
             panes,
@@ -129,32 +130,56 @@ impl<'a> PaneResizer<'a> {
 
     fn apply_spans(&mut self, spans: Vec<Span>) -> Result<()> {
         let err_context = || format!("Failed to apply spans");
-        let mut panes = self.panes.borrow_mut();
         let mut geoms_changed = false;
         for span in spans {
-            let pane = panes.get_mut(&span.pid).unwrap();
-            let current_geom = pane.position_and_size();
-            let new_geom = match span.direction {
-                SplitDirection::Horizontal => PaneGeom {
-                    x: span.pos,
-                    cols: span.size,
-                    ..pane.current_geom()
-                },
-                SplitDirection::Vertical => PaneGeom {
-                    y: span.pos,
-                    rows: span.size,
-                    ..pane.current_geom()
-                },
-            };
-            if new_geom.rows.as_usize() != current_geom.rows.as_usize()
-                || new_geom.cols.as_usize() != current_geom.cols.as_usize()
-            {
-                geoms_changed = true;
-            }
-            if pane.geom_override().is_some() {
-                pane.set_geom_override(new_geom);
+            let pane_is_stacked = self.panes.borrow().get(&span.pid).unwrap().position_and_size().is_stacked;
+            if pane_is_stacked {
+                let current_geom = StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&span.pid).unwrap();
+                let new_geom = match span.direction {
+                    SplitDirection::Horizontal => PaneGeom {
+                        x: span.pos,
+                        cols: span.size,
+                        ..current_geom
+                    },
+                    SplitDirection::Vertical => PaneGeom {
+                        y: span.pos,
+                        rows: span.size,
+                        ..current_geom
+                    },
+                };
+                StackedPanes::new(self.panes.clone()).resize_panes_in_stack(&span.pid, new_geom)?;
+                // TODO: test with geom_override (fullscreen)
+                if new_geom.rows.as_usize() != current_geom.rows.as_usize()
+                    || new_geom.cols.as_usize() != current_geom.cols.as_usize()
+                {
+                    geoms_changed = true;
+                }
             } else {
-                pane.set_geom(new_geom);
+                let mut panes = self.panes.borrow_mut();
+                let pane = panes.get_mut(&span.pid).unwrap();
+                let current_geom = pane.position_and_size();
+                let new_geom = match span.direction {
+                    SplitDirection::Horizontal => PaneGeom {
+                        x: span.pos,
+                        cols: span.size,
+                        ..pane.current_geom()
+                    },
+                    SplitDirection::Vertical => PaneGeom {
+                        y: span.pos,
+                        rows: span.size,
+                        ..pane.current_geom()
+                    },
+                };
+                if new_geom.rows.as_usize() != current_geom.rows.as_usize()
+                    || new_geom.cols.as_usize() != current_geom.cols.as_usize()
+                {
+                    geoms_changed = true;
+                }
+                if pane.geom_override().is_some() {
+                    pane.set_geom_override(new_geom);
+                } else {
+                    pane.set_geom(new_geom);
+                }
             }
         }
         if geoms_changed {
@@ -175,7 +200,7 @@ impl<'a> PaneResizer<'a> {
             .panes
             .borrow()
             .values()
-            .map(|p| self.get_span(!direction, p.as_ref()))
+            .filter_map(|p| self.get_span(!direction, p.as_ref()))
             .collect();
 
         let mut last_edge = 0;
@@ -198,37 +223,53 @@ impl<'a> PaneResizer<'a> {
             .borrow()
             .values()
             .filter(|p| {
-                let s = self.get_span(!direction, p.as_ref());
-                let span_bounds = (s.pos, s.pos + s.size.as_usize());
-                bwn(span_bounds.0, boundary)
-                    || (bwn(boundary.0, span_bounds)
-                        && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
+                match self.get_span(!direction, p.as_ref()) {
+                    Some(s) => {
+                        let span_bounds = (s.pos, s.pos + s.size.as_usize());
+                        bwn(span_bounds.0, boundary)
+                            || (bwn(boundary.0, span_bounds)
+                                && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
+                    },
+                    None => false
+                }
             })
-            .map(|p| self.get_span(direction, p.as_ref()))
+            .filter_map(|p| self.get_span(direction, p.as_ref()))
             .collect();
         spans.sort_unstable_by_key(|s| s.pos);
         spans
     }
 
-    fn get_span(&self, direction: SplitDirection, pane: &dyn Pane) -> Span {
-        let pas = pane.current_geom();
-        // let size_var = self.vars[&pane.pid()];
+    fn get_span(&self, direction: SplitDirection, pane: &dyn Pane) -> Option<Span> {
+        let position_and_size = {
+            let pas = pane.current_geom();
+            if pas.is_stacked && pas.rows.is_percent() {
+                // this is the main pane of the stack
+                StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane.pid())
+            } else if pas.is_stacked {
+                // this is a one-liner stacked pane and should be handled as the same rect with
+                // the rest of the stack, represented by the main pane in the if branch above
+                None
+            } else {
+                // non-stacked pane, treat normally
+                Some(pas)
+            }
+        }?;
         let size_var = *self.vars.get(&pane.pid()).unwrap();
         match direction {
-            SplitDirection::Horizontal => Span {
+            SplitDirection::Horizontal => Some(Span {
                 pid: pane.pid(),
                 direction,
-                pos: pas.x,
-                size: pas.cols,
+                pos: position_and_size.x,
+                size: position_and_size.cols,
                 size_var,
-            },
-            SplitDirection::Vertical => Span {
+            }),
+            SplitDirection::Vertical => Some(Span {
                 pid: pane.pid(),
                 direction,
-                pos: pas.y,
-                size: pas.rows,
+                pos: position_and_size.y,
+                size: position_and_size.rows,
                 size_var,
-            },
+            }),
         }
     }
 }
@@ -249,14 +290,13 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     let full_size = spans
         .iter()
         .fold(Expression::from_constant(0.0), |acc, s| acc + s.size_var);
-    constraints.insert(full_size | EQ(REQUIRED) | space as f64);
+    constraints.insert(full_size.clone() | EQ(REQUIRED) | space as f64);
 
     // Try to maintain ratios and lock non-flexible sizes
     for span in spans {
         match span.size.constraint {
             Constraint::Fixed(s) => constraints.insert(span.size_var | EQ(REQUIRED) | s as f64),
-            Constraint::Percent(p) => constraints
-                .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
+            Constraint::Percent(p) => constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
         };
     }
 

@@ -423,7 +423,6 @@ impl TiledPaneLayout {
                 } else {
                     layout_to_split.truncate(max_panes);
                 }
-                // layout_to_split.truncate(max_panes);
                 split_space(space, &layout_to_split, space)?
             },
             None => {
@@ -653,11 +652,6 @@ impl Layout {
 
     pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
         self.template.clone().unwrap_or_default()
-//         let template = match &self.template {
-//             Some(template) => template.clone(),
-//             None => TiledPaneLayout::default(),
-//         };
-//         (template, self.floating_panes_template.clone())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -724,6 +718,13 @@ fn split_space(
     }
 
     let flex_parts = sizes.iter().filter(|s| s.is_none()).count();
+    let total_fixed_size = sizes.iter().fold(0, |acc, s| {
+        if let Some(SplitSize::Fixed(fixed)) = s {
+            acc + fixed
+        } else {
+            acc
+        }
+    });
 
     let mut total_pane_size = 0;
     for (&size, _part) in sizes.iter().zip(&*layout.children) {
@@ -745,9 +746,7 @@ fn split_space(
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
-        // TODO: TEST THIS EXTENSIVELY PLEASE - how did this ever work? How does it work with the default
-        // layout with split panes? did we rely on a rounding error??
-        split_dimension.adjust_inner(split_dimension_space.as_usize().saturating_sub(total_pane_size));
+        split_dimension.adjust_inner(total_split_dimension_space.as_usize().saturating_sub(total_fixed_size));
         total_pane_size += split_dimension.as_usize();
 
         let geom = match layout.children_split_direction {
@@ -777,6 +776,24 @@ fn split_space(
             match layout.children_split_direction {
                 SplitDirection::Vertical => last_geom.cols.increase_inner(increase_by),
                 SplitDirection::Horizontal => last_geom.rows.increase_inner(increase_by),
+            }
+        }
+    } else if total_pane_size > split_dimension_space.as_usize() {
+        let decrease_by = total_pane_size - split_dimension_space.as_usize();
+        for geom in split_geom.iter_mut() {
+            match layout.children_split_direction {
+                SplitDirection::Vertical => {
+                    if !geom.cols.is_fixed() && geom.cols.as_usize() > decrease_by {
+                        geom.cols.decrease_inner(decrease_by);
+                        break;
+                    }
+                }
+                SplitDirection::Horizontal => {
+                    if !geom.rows.is_fixed() && geom.rows.as_usize() > decrease_by {
+                        geom.rows.decrease_inner(decrease_by);
+                        break;
+                    }
+                }
             }
         }
     }
