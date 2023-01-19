@@ -17,6 +17,20 @@ impl <'a>StackedPanes <'a>{
             panes
         }
     }
+    pub fn new_from_btreemap(
+        panes: impl IntoIterator<Item = (&'a PaneId, &'a mut Box<dyn Pane>)>,
+        panes_to_hide: &HashSet<PaneId>,
+    ) -> Self {
+        let panes: HashMap<_, _> = panes
+            .into_iter()
+            .filter(|(p_id, _)| !panes_to_hide.contains(p_id))
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        let panes = Rc::new(RefCell::new(panes));
+        StackedPanes {
+            panes
+        }
+    }
     pub fn move_down(&mut self, source_pane_id: &PaneId, destination_pane_id: &PaneId) -> Result<()> {
         let err_context = || format!("Failed to move stacked pane focus down");
         let source_pane_is_stacked = self.panes.borrow().get(source_pane_id).with_context(err_context)?.position_and_size().is_stacked;
@@ -60,26 +74,47 @@ impl <'a>StackedPanes <'a>{
         }
         Ok(())
     }
+    pub fn focus_pane(&mut self, pane_id: &PaneId) -> Result<()> {
+        // this function doesn't actually change the focus (since it is controlled elsewhere)
+        // but rather makes sure pane_id is flexible if it were a one-liner before
+        let err_context = || format!("Failed to focus stacked pane");
+        let all_stacked_pane_positions = self.positions_in_stack(pane_id).with_context(err_context)?;
+
+        let position_of_flexible_pane = self.position_of_flexible_pane(&all_stacked_pane_positions).with_context(err_context)?;
+        let (flexible_pane_id, mut flexible_pane) = *all_stacked_pane_positions.iter().nth(position_of_flexible_pane).with_context(err_context)?;
+        if flexible_pane_id != *pane_id {
+            let mut panes = self.panes.borrow_mut();
+            let height_of_flexible_pane = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).map(|(_pid, p)| p.rows).with_context(err_context)?;
+            let position_of_pane_to_focus = all_stacked_pane_positions.iter().position(|(pid, _p)| pid == pane_id).with_context(err_context)?;
+            let (_, mut pane_to_focus) = *all_stacked_pane_positions.iter().nth(position_of_pane_to_focus).with_context(err_context)?;
+            pane_to_focus.rows = height_of_flexible_pane;
+            panes.get_mut(pane_id).with_context(err_context)?.set_geom(pane_to_focus);
+            flexible_pane.rows = Dimension::fixed(1);
+            panes.get_mut(&flexible_pane_id).with_context(err_context)?.set_geom(flexible_pane);
+
+            for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
+                // if (i < position_of_pane_to_focus && i < position_of_flexible_pane) || (i > position_of_pane_to_focus && i > position_of_flexible_pane) {
+                    // continue;
+                if i > position_of_pane_to_focus && i <= position_of_flexible_pane {
+                    // the flexible pane has moved up the stack, we need to push this pane down
+                    let pane = panes.get_mut(pid).with_context(err_context)?;
+                    let mut pane_position_and_size = pane.position_and_size();
+                    pane_position_and_size.y += height_of_flexible_pane.as_usize() - 1;
+                    pane.set_geom(pane_position_and_size);
+                } else if i > position_of_flexible_pane && i <= position_of_pane_to_focus {
+                    // the flexible pane has moved down the stack, we need to pull this pane up
+                    let pane = panes.get_mut(pid).with_context(err_context)?;
+                    let mut pane_position_and_size = pane.position_and_size();
+                    pane_position_and_size.y -= height_of_flexible_pane.as_usize() - 1;
+                    pane.set_geom(pane_position_and_size);
+                }
+            }
+        }
+        Ok(())
+    }
     pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
         let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
         all_stacked_pane_positions.iter().find(|(_pid, p)| p.rows.is_percent()).map(|(pid, _p)| *pid)
-    }
-    pub fn add_all_panes_in_stacks(&self, pane_ids: &mut Vec<PaneId>) {
-        let mut all_pane_ids: HashSet<PaneId> = HashSet::new();
-        for pane_id in pane_ids.iter() {
-            if let Some(pane) = self.panes.borrow().get(pane_id) {
-                if pane.position_and_size().is_stacked {
-                    if let Ok(panes_in_stack) = self.positions_in_stack(pane_id) {
-                        for (pane_id, _) in panes_in_stack {
-                            all_pane_ids.insert(pane_id);
-                        }
-                        continue;
-                    }
-                }
-            }
-            all_pane_ids.insert(*pane_id);
-        }
-        *pane_ids = all_pane_ids.iter().copied().collect();
     }
     pub fn min_stack_y(&self, pane_id_in_stack: &PaneId) -> Option<usize> {
         if let Ok(panes_in_stack) = self.positions_in_stack(pane_id_in_stack) {

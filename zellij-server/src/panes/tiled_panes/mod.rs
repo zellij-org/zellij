@@ -16,6 +16,7 @@ use crate::{
     ui::pane_contents_and_ui::PaneContentsAndUi,
     ClientId,
 };
+use stacked_panes::StackedPanes;
 use zellij_utils::{
     input::layout::Run,
     data::{ModeInfo, ResizeStrategy, Style},
@@ -377,6 +378,11 @@ impl TiledPanes {
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
+        if self.panes.get(&pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&pane_id);
+            self.reapply_pane_frames();
+        }
+
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);
         if self.session_is_mirrored {
@@ -1078,12 +1084,17 @@ impl TiledPanes {
             .last()
             .map(|(pane_id, _pane)| **pane_id);
 
+
         match next_active_pane_id {
-            Some(next_active_pane) => {
+            Some(next_active_pane_id) => {
+                if self.panes.get(&next_active_pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+                    let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&next_active_pane_id);
+                    self.reapply_pane_frames();
+                }
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {
                         self.active_panes
-                            .insert(client_id, next_active_pane, &mut self.panes);
+                            .insert(client_id, next_active_pane_id, &mut self.panes);
                     }
                 }
             },
