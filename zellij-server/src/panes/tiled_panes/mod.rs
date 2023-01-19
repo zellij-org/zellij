@@ -662,13 +662,20 @@ impl TiledPanes {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let pane_grid = TiledPaneGrid::new(
-            &mut self.panes,
-            &self.panes_to_hide,
-            *self.display_area.borrow(),
-            *self.viewport.borrow(),
-        );
-        let next_active_pane_id = pane_grid.next_selectable_pane_id(&active_pane_id);
+        let next_active_pane_id = {
+            let pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            pane_grid.next_selectable_pane_id(&active_pane_id)
+        };
+        if self.panes.get(&next_active_pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&next_active_pane_id);
+            self.reapply_pane_frames();
+        }
+
         for client_id in connected_clients {
             self.active_panes
                 .insert(client_id, next_active_pane_id, &mut self.panes);
@@ -680,13 +687,20 @@ impl TiledPanes {
         let connected_clients: Vec<ClientId> =
             { self.connected_clients.borrow().iter().copied().collect() };
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let pane_grid = TiledPaneGrid::new(
-            &mut self.panes,
-            &self.panes_to_hide,
-            *self.display_area.borrow(),
-            *self.viewport.borrow(),
-        );
-        let next_active_pane_id = pane_grid.previous_selectable_pane_id(&active_pane_id);
+        let next_active_pane_id = {
+            let pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            pane_grid.previous_selectable_pane_id(&active_pane_id)
+        };
+
+        if self.panes.get(&next_active_pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&next_active_pane_id);
+            self.reapply_pane_frames();
+        }
         for client_id in connected_clients {
             self.active_panes
                 .insert(client_id, next_active_pane_id, &mut self.panes);
