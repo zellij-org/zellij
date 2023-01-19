@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: disallow path-like names for sessions (https://github.com/zellij-org/zellij/pull/2082)
 * errors: Remove more `unwrwap`s from server code (https://github.com/zellij-org/zellij/pull/2069)
 * fix: support UTF-8 character in tab name and pane name (https://github.com/zellij-org/zellij/pull/2102)
+* fix: handle missing/inaccessible cache directory (https://github.com/zellij-org/zellij/pull/2093)
 
 ## [0.34.4] - 2022-12-13
 
