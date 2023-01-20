@@ -357,14 +357,7 @@ impl TiledPaneLayout {
         // returns true if successfully inserted and false otherwise
         match self.external_children_index {
             Some(external_children_index) => {
-
-                if self.focus.map(|f| f).unwrap_or(false) {
-                    if let Some(last_child) = children_nodes.iter_mut().next() {
-                        last_child.focus = Some(true);
-                    }
-                }
-
-
+                children_nodes.reverse();
                 for child_node in children_nodes.drain(..) {
                     self.children
                         .insert(external_children_index, child_node);
@@ -419,10 +412,19 @@ impl TiledPaneLayout {
                     // because we really should support that
                     let children_count = (max_panes - pane_count_in_layout) + 1;
                     let mut extra_children = vec![TiledPaneLayout::default(); children_count];
+                    if !layout_to_split.has_focused_node() {
+                        if let Some(last_child) = extra_children.last_mut() {
+                            last_child.focus = Some(true);
+                        }
+                    }
                     let _ = layout_to_split.insert_children_nodes(&mut extra_children);
                 } else {
                     layout_to_split.truncate(max_panes);
                 }
+                if !layout_to_split.has_focused_node() {
+                    layout_to_split.focus_deepest_pane();
+                }
+
                 split_space(space, &layout_to_split, space)?
             },
             None => {
@@ -463,6 +465,37 @@ impl TiledPaneLayout {
         }
         for child in self.children.iter_mut() {
             child.add_cwd_to_layout(cwd);
+        }
+    }
+    pub fn deepest_depth(&self) -> usize {
+        let mut deepest_child_depth = 0;
+        for child in self.children.iter() {
+            let child_deepest_depth = child.deepest_depth();
+            if child_deepest_depth > deepest_child_depth {
+                deepest_child_depth = child_deepest_depth;
+            }
+        }
+        deepest_child_depth + 1
+    }
+    pub fn focus_deepest_pane(&mut self) {
+        let mut deepest_child_index = None;
+        let mut deepest_path = 0;
+        for (i, child) in self.children.iter().enumerate() {
+            let child_deepest_path = child.deepest_depth();
+            if child_deepest_path >= deepest_path {
+                deepest_path = child_deepest_path;
+                deepest_child_index = Some(i)
+            }
+        }
+        match deepest_child_index {
+            Some(deepest_child_index) => {
+                if let Some(child) = self.children.get_mut(deepest_child_index) {
+                    child.focus_deepest_pane();
+                }
+            },
+            None => {
+                self.focus = Some(true);
+            }
         }
     }
     pub fn truncate(&mut self, max_panes: usize) -> usize { // returns remaining children length

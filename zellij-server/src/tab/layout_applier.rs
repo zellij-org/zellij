@@ -133,9 +133,8 @@ impl<'a> LayoutApplier<'a> {
                 let currently_focused_pane_id = client_id.and_then(|client_id| self.tiled_panes.focused_pane_id(client_id));
 
                 let mut focused_pane_position_and_size: Option<PaneGeom> = None;
-                let mut has_focused_pane = false;
-                let set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
-                    if layout.focus.unwrap_or(false) && focused_pane_position_and_size.is_none() {
+                let mut set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
+                    if layout.focus.unwrap_or(false) {
                         focused_pane_position_and_size = Some(*pane_position_and_size);
                     }
                 };
@@ -162,13 +161,12 @@ impl<'a> LayoutApplier<'a> {
                     });
                     let find_focused_pane_id = || {
                         if is_focused {
-                            candidates.iter().find(|(pid, p)| Some(**pid) == currently_focused_pane_id).map(|(pid, _p)| *pid).copied()
+                            candidates.iter().find(|(pid, _p)| Some(**pid) == currently_focused_pane_id).map(|(pid, _p)| *pid).copied()
                         } else {
                             None
                         }
                     };
                     if let Some(currently_focused_pane_id) = find_focused_pane_id() {
-                        has_focused_pane = true;
                         return existing_panes.remove(&currently_focused_pane_id);
                     } else if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
                         return existing_panes.remove(&same_position_candidate_id);
@@ -188,7 +186,7 @@ impl<'a> LayoutApplier<'a> {
                         self.tiled_panes
                             .add_pane_with_existing_geom(pane_pid, pane);
                     }
-                    // set_focused_pane_position_and_size(layout, position_and_size);
+                    set_focused_pane_position_and_size(layout, position_and_size);
                 }
                 let remaining_pane_ids: Vec<PaneId> = existing_panes.keys().copied().collect();
                 for pane_id in remaining_pane_ids {
@@ -203,13 +201,13 @@ impl<'a> LayoutApplier<'a> {
 
                 // TODO: what if existing_panes is not empty at this point?
                 // self.adjust_viewport(); // TODO: ???
-//                 if let Some(pane_position_and_size) = focused_pane_position_and_size {
-//                     if let Some(client_id) = client_id {
-//                         self.tiled_panes.focus_pane_at_position(pane_position_and_size, client_id);
-//                     } else {
-//                         // TODO: ??? this can happen eg. when closing panes
-//                     }
-//                 }
+                if let Some(pane_position_and_size) = focused_pane_position_and_size {
+                    if let Some(client_id) = client_id {
+                        self.tiled_panes.focus_pane_at_position(pane_position_and_size, client_id);
+                    } else {
+                        // TODO: ??? this can happen eg. when closing panes
+                    }
+                }
             },
             Err(e) => {
                 Err::<(), _>(anyError::msg(e))
