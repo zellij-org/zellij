@@ -2046,6 +2046,16 @@ impl Tab {
         Ok(())
     }
 
+    pub fn scroll_active_terminal_to_top(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_scroll();
+            if let Some(size) = active_pane.get_line_number() {
+                active_pane.scroll_up(size, client_id);
+            }
+        }
+        Ok(())
+    }
+
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
         // TODO: is this a thing?
         let err_context =

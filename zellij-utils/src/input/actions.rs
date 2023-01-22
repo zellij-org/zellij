@@ -128,6 +128,8 @@ pub enum Action {
     ScrollDownAt(Position),
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
+    /// Scroll up to top in focus pane.
+    ScrollToTop,
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -226,6 +228,7 @@ impl Action {
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),
             CliAction::ScrollToBottom => Ok(vec![Action::ScrollToBottom]),
+            CliAction::ScrollToTop => Ok(vec![Action::ScrollToTop]),
             CliAction::PageScrollUp => Ok(vec![Action::PageScrollUp]),
             CliAction::PageScrollDown => Ok(vec![Action::PageScrollDown]),
             CliAction::HalfPageScrollUp => Ok(vec![Action::HalfPageScrollUp]),
