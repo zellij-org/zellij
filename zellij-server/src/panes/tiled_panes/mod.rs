@@ -481,8 +481,14 @@ impl TiledPanes {
                 .map(|(client_id, pane_id)| (*client_id, *pane_id))
                 .collect()
         };
+        let (stacked_pane_ids_under_flexible_pane, stacked_pane_ids_over_flexible_pane) = {
+            // TODO: do not recalculate this every time on render
+            StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).stacked_pane_ids_under_and_over_flexible_panes().unwrap() // TODO: no unwrap
+        };
         for (kind, pane) in self.panes.iter_mut() {
             if !self.panes_to_hide.contains(&pane.pid()) {
+                let pane_is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&pane.pid());
+                let pane_is_stacked_over = stacked_pane_ids_over_flexible_pane.contains(&pane.pid());
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -490,6 +496,8 @@ impl TiledPanes {
                     &active_panes,
                     multiple_users_exist_in_session,
                     None,
+                    pane_is_stacked_under,
+                    pane_is_stacked_over,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self

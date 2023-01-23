@@ -286,6 +286,33 @@ impl <'a>StackedPanes <'a>{
             self.fill_space_over_visible_stacked_pane(id)
         }
     }
+    pub fn stacked_pane_ids_under_and_over_flexible_panes(&self) -> Result<(HashSet<PaneId>, HashSet<PaneId>)> {
+        let mut stacked_pane_ids_under_flexible_panes = HashSet::new();
+        let mut stacked_pane_ids_over_flexible_panes = HashSet::new();
+        let mut seen = HashSet::new();
+        let pane_ids_in_stacks: Vec<PaneId> = { self.panes.borrow().iter().filter(|(_p_id, p)| p.position_and_size().is_stacked).map(|(p_id, _p)| *p_id).collect() };
+        for pane_id in pane_ids_in_stacks {
+            if !seen.contains(&pane_id) {
+                let mut current_pane_is_above_stack = true;
+                let positions_in_stack = self.positions_in_stack(&pane_id)?;
+                for (pane_id, pane_geom) in positions_in_stack {
+                    seen.insert(pane_id);
+                    if pane_geom.rows.is_percent() {
+                        // this is the flexible pane
+                        current_pane_is_above_stack = false;
+                        continue
+                    }
+                    if current_pane_is_above_stack {
+                        stacked_pane_ids_over_flexible_panes.insert(pane_id);
+                    } else {
+                        stacked_pane_ids_under_flexible_panes.insert(pane_id);
+                    }
+                }
+                seen.insert(pane_id);
+            }
+        }
+        Ok((stacked_pane_ids_under_flexible_panes, stacked_pane_ids_over_flexible_panes))
+    }
     fn fill_space_over_one_liner_pane(&mut self, id: &PaneId) -> Result<bool> {
         let (position_of_current_pane, position_of_flexible_pane) = self.position_of_current_and_flexible_pane(id)?;
         if position_of_current_pane > position_of_flexible_pane {

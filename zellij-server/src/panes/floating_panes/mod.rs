@@ -351,6 +351,8 @@ impl FloatingPanes {
                 &active_panes,
                 multiple_users_exist_in_session,
                 Some(z_index + 1), // +1 because 0 is reserved for non-floating panes
+                false,
+                false
             );
             for client_id in &connected_clients {
                 let client_mode = self
