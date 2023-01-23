@@ -119,13 +119,15 @@ impl<'a> LayoutApplier<'a> {
     }
     pub fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: &TiledPaneLayout, client_id: Option<ClientId>) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
-        let (viewport_cols, viewport_rows) = {
-            let viewport = self.viewport.borrow();
-            (viewport.cols, viewport.rows)
+        // for tiled panes we need to take the display area rather than the viewport because the
+        // viewport can potentially also be changed
+        let (display_area_cols, display_area_rows) = {
+            let display_area = self.display_area.borrow();
+            (display_area.cols, display_area.rows)
         };
         let mut free_space = PaneGeom::default();
-        free_space.cols.set_inner(viewport_cols);
-        free_space.rows.set_inner(viewport_rows);
+        free_space.cols.set_inner(display_area_cols);
+        free_space.rows.set_inner(display_area_rows);
         let tiled_panes_count = self.tiled_panes.visible_panes_count();
         match layout.position_panes_in_space(&free_space, Some(tiled_panes_count)) {
             Ok(positions_in_layout) => {
