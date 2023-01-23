@@ -1032,8 +1032,14 @@ impl<'a> TiledPaneGrid<'a> {
         pane_ids.iter().fold(HashSet::new(), |mut borders, p| {
             let panes = self.panes.borrow();
             let pane = panes.get(p).unwrap();
-            borders.insert(pane.y());
-            borders.insert(pane.y() + pane.rows());
+            if pane.position_and_size().is_stacked {
+                let pane_geom = StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane.pid()).unwrap();
+                borders.insert(pane_geom.y);
+                borders.insert(pane_geom.y + pane_geom.rows.as_usize());
+            } else {
+                borders.insert(pane.y());
+                borders.insert(pane.y() + pane.rows());
+            }
             borders
         })
     }

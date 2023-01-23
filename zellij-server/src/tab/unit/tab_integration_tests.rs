@@ -4480,6 +4480,63 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
 }
 
 #[test]
+fn close_pane_near_stacked_panes() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane split_direction="vertical" {
+                        pane focus=true
+                        pane { children stacked=true; }
+                    }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(size, ModeInfo::default(), (swap_tiled_layouts, swap_floating_layouts));
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+    let new_pane_id_4 = PaneId::Terminal(5);
+    let new_pane_id_5 = PaneId::Terminal(6);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
+        .unwrap();
+    tab.close_pane(PaneId::Terminal(6), false, None);
+    tab.render(&mut output, None).unwrap();
+    let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_eq!(
+        cursor_coordinates,
+        Some((61, 4)),
+        "cursor coordinates moved to the main pane of the stack",
+    );
+
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn focus_next_pane_expands_stacked_panes() {
     let size = Size {
         cols: 121,
