@@ -912,13 +912,21 @@ impl TiledPanes {
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
-        let pane_grid = TiledPaneGrid::new(
-            &mut self.panes,
-            &self.panes_to_hide,
-            *self.display_area.borrow(),
-            *self.viewport.borrow(),
-        );
-        let new_position_id = pane_grid.next_selectable_pane_id(&active_pane_id);
+
+        let new_position_id = {
+            let pane_grid = TiledPaneGrid::new(
+                &mut self.panes,
+                &self.panes_to_hide,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            pane_grid.next_selectable_pane_id(&active_pane_id)
+        };
+        if self.panes.get(&new_position_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&new_position_id);
+            self.reapply_pane_frames();
+        }
+
         let current_position = self.panes.get(&active_pane_id).unwrap();
         let prev_geom = current_position.position_and_size();
         let prev_geom_override = current_position.geom_override();
@@ -944,13 +952,15 @@ impl TiledPanes {
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let pane_grid = TiledPaneGrid::new(
+            let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
                 &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            let next_index = pane_grid.next_selectable_pane_id_below(&active_pane_id);
+            let next_index = pane_grid
+                .next_selectable_pane_id_below(&active_pane_id)
+                .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
             if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
@@ -1052,13 +1062,15 @@ impl TiledPanes {
     }
     pub fn move_active_pane_up(&mut self, client_id: ClientId) {
         if let Some(active_pane_id) = self.get_active_pane_id(client_id) {
-            let pane_grid = TiledPaneGrid::new(
+            let mut pane_grid = TiledPaneGrid::new(
                 &mut self.panes,
                 &self.panes_to_hide,
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            let next_index = pane_grid.next_selectable_pane_id_above(&active_pane_id);
+            let next_index = pane_grid
+                .next_selectable_pane_id_above(&active_pane_id)
+                .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
             if let Some(p) = next_index {
                 let active_pane_id = self.active_panes.get(&client_id).unwrap();
                 let current_position = self.panes.get(active_pane_id).unwrap();
