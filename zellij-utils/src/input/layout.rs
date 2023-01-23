@@ -802,8 +802,8 @@ fn split_space(
         current_position += split_dimension.as_usize();
     }
 
-    // add extra space from rounding errors to the last pane
     if total_pane_size < split_dimension_space.as_usize() {
+        // add extra space from rounding errors to the last pane
         let increase_by = split_dimension_space.as_usize() - total_pane_size;
         if let Some(last_geom) = split_geom.last_mut() {
             match layout.children_split_direction {
@@ -812,21 +812,12 @@ fn split_space(
             }
         }
     } else if total_pane_size > split_dimension_space.as_usize() {
+        // remove extra space from rounding errors to the last pane
         let decrease_by = total_pane_size - split_dimension_space.as_usize();
-        for geom in split_geom.iter_mut() {
+        if let Some(last_geom) = split_geom.last_mut() {
             match layout.children_split_direction {
-                SplitDirection::Vertical => {
-                    if !geom.cols.is_fixed() && geom.cols.as_usize() > decrease_by {
-                        geom.cols.decrease_inner(decrease_by);
-                        break;
-                    }
-                }
-                SplitDirection::Horizontal => {
-                    if !geom.rows.is_fixed() && geom.rows.as_usize() > decrease_by {
-                        geom.rows.decrease_inner(decrease_by);
-                        break;
-                    }
-                }
+                SplitDirection::Vertical => last_geom.cols.decrease_inner(decrease_by),
+                SplitDirection::Horizontal => last_geom.rows.decrease_inner(decrease_by),
             }
         }
     }
