@@ -216,6 +216,8 @@ pub enum CliAction {
     ScrollDown,
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
+    /// Scroll up to top in focus pane.
+    ScrollToTop,
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.

@@ -161,6 +161,7 @@ pub enum ScreenInstruction {
     ScrollDown(ClientId),
     ScrollDownAt(Position, ClientId),
     ScrollToBottom(ClientId),
+    ScrollToTop(ClientId),
     PageScrollUp(ClientId),
     PageScrollDown(ClientId),
     HalfPageScrollUp(ClientId),
@@ -294,6 +295,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
             ScreenInstruction::ScrollToBottom(..) => ScreenContext::ScrollToBottom,
+            ScreenInstruction::ScrollToTop(..) => ScreenContext::ScrollToTop,
             ScreenInstruction::PageScrollUp(..) => ScreenContext::PageScrollUp,
             ScreenInstruction::PageScrollDown(..) => ScreenContext::PageScrollDown,
             ScreenInstruction::HalfPageScrollUp(..) => ScreenContext::HalfPageScrollUp,
@@ -1740,6 +1742,16 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab
                         .scroll_active_terminal_to_bottom(client_id), ?
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::ScrollToTop(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab
+                        .scroll_active_terminal_to_top(client_id), ?
                 );
                 screen.render()?;
                 screen.unblock_input()?;

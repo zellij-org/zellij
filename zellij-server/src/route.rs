@@ -207,6 +207,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::ScrollToBottom(client_id))
                 .with_context(err_context)?;
         },
+        Action::ScrollToTop => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollToTop(client_id))
+                .with_context(err_context)?;
+        },
         Action::PageScrollUp => {
             session
                 .senders
