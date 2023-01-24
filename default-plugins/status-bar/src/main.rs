@@ -335,7 +335,18 @@ pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> 
     keymap
         .iter()
         .filter_map(|(key, acvec)| {
-            if acvec.as_slice() == action {
+            if acvec.len() == action.len() {
+                // TODO: is there be a better way?
+                for (a, b) in acvec.iter().zip(action) {
+                    match (a, b) {
+                        (Action::NewTab(_, _, _), Action::NewTab(_, _, _)) => continue,
+                        _ => {
+                            if a != b {
+                                return None;
+                            }
+                        },
+                    }
+                }
                 Some(*key)
             } else {
                 None
