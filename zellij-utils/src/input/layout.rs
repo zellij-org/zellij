@@ -215,6 +215,7 @@ impl fmt::Display for RunPluginLocation {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum LayoutConstraint {
     MaxPanes(usize),
+    MinPanes(usize),
     NoConstraint
 }
 

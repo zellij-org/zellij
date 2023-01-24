@@ -114,6 +114,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "floating_panes"
             || property_name == "children"
             || property_name == "max_panes"
+            || property_name == "min_panes"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -1662,20 +1663,27 @@ impl<'a> KdlLayoutParser<'a> {
     }
     fn parse_constraint(&mut self, layout_node: &KdlNode) -> Result<LayoutConstraint, ConfigError> {
         if let Some(max_panes) = kdl_get_string_property_or_child_value!(layout_node, "max_panes") {
-            Err(kdl_parsing_error!(
+            return Err(kdl_parsing_error!(
                 format!("max_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")", max_panes),
                 layout_node
-            ))
-        } else if let Some(max_panes) = kdl_get_int_property_or_child_value!(layout_node, "max_panes") {
-            if max_panes == 0 {
-                return Err(kdl_parsing_error!(
-                    format!("max_panes should be greater than 0"),
-                    layout_node
-                ));
-            }
-            Ok(LayoutConstraint::MaxPanes(max_panes as usize))
-        } else {
-            Ok(LayoutConstraint::NoConstraint)
+            ));
+        };
+        if let Some(min_panes) = kdl_get_string_property_or_child_value!(layout_node, "min_panes") {
+            return Err(kdl_parsing_error!(
+                format!("min_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")", min_panes),
+                layout_node
+            ));
+        };
+        let max_panes = kdl_get_int_property_or_child_value!(layout_node, "max_panes");
+        let min_panes = kdl_get_int_property_or_child_value!(layout_node, "min_panes");
+        match (min_panes, max_panes) {
+            (Some(_min_panes), Some(_max_panes)) => Err(kdl_parsing_error!(
+                format!("cannot have more than one constraint (eg. max_panes + min_panes)'"),
+                layout_node
+            )),
+            (Some(min_panes), None) => Ok(LayoutConstraint::MinPanes(min_panes as usize)),
+            (None, Some(max_panes)) => Ok(LayoutConstraint::MaxPanes(max_panes as usize)),
+            _ => Ok(LayoutConstraint::NoConstraint),
         }
     }
     fn populate_one_swap_tiled_layout(&self, layout_node: &KdlNode) -> Result<TiledPaneLayout, ConfigError> {

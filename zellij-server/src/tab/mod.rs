@@ -135,8 +135,8 @@ struct SwapLayouts {
     swap_tiled_layouts: Vec<SwapTiledLayout>,
     swap_floating_layouts: Vec<SwapFloatingLayout>,
     swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
-    current_floating_layout_position: Option<usize>,
-    current_tiled_layout_position: Option<usize>,
+    current_floating_layout_position: usize,
+    current_tiled_layout_position: usize,
     current_layout_position: Option<usize>,
     is_floating_damaged: bool,
     is_tiled_damaged: bool,
@@ -240,39 +240,24 @@ impl SwapLayouts {
             return None;
         }
         let initial_position = self.current_floating_layout_position;
-        let swap_floating_layout_position = if self.is_floating_damaged {
-            self.current_floating_layout_position.unwrap_or(0)
-        } else {
-            self.current_floating_layout_position.map(|position| position + 1).unwrap_or(0)
-        };
+        if !self.is_floating_damaged && self.swap_floating_layouts.iter().nth(self.current_floating_layout_position).is_some() {
+            self.current_floating_layout_position += 1;
+        }
         self.is_floating_damaged = false;
-        self.current_floating_layout_position = Some(swap_floating_layout_position);
-
         loop {
-            let swap_layout = self.swap_floating_layouts.iter().nth(swap_floating_layout_position)
-                .or_else(|| {
-                    self.current_floating_layout_position = Some(0);
-                    self.swap_floating_layouts.iter().next()
-                });
-            if let Some(swap_layout) = swap_layout {
-                for (constraint, layout) in swap_layout.iter() {
-                    if self.state_fits_floating_panes_constraint(constraint, floating_panes) {
-                        return Some(layout.clone());
-                    };
+            match self.swap_floating_layouts.iter().nth(self.current_floating_layout_position) {
+                Some(swap_layout) => {
+                    for (constraint, layout) in swap_layout.iter() {
+                        if self.state_fits_floating_panes_constraint(constraint, floating_panes) {
+                            return Some(layout.clone());
+                        };
+                    }
+                    self.current_floating_layout_position += 1;
+                },
+                None => {
+                    self.current_floating_layout_position = 0;
                 }
             };
-            if let Some(position) = self.current_floating_layout_position.as_mut() {
-                *position += 1;
-            }
-            if self.current_floating_layout_position >= Some(self.swap_floating_layouts.len()) {
-                // TODO: same conditional for tiled layouts?
-                if initial_position == None {
-                    // no need to loop again, we started at the beginning
-                    self.current_floating_layout_position = None;
-                    break;
-                }
-                self.current_floating_layout_position = Some(0);
-            }
             if self.current_floating_layout_position == initial_position {
                 break;
             }
@@ -284,6 +269,9 @@ impl SwapLayouts {
             LayoutConstraint::MaxPanes(max_panes) => {
                 tiled_panes.visible_panes_count() <= *max_panes
             }
+            LayoutConstraint::MinPanes(min_panes) => {
+                tiled_panes.visible_panes_count() >= *min_panes
+            }
             LayoutConstraint::NoConstraint => true
         }
     }
@@ -291,6 +279,9 @@ impl SwapLayouts {
         match constraint {
             LayoutConstraint::MaxPanes(max_panes) => {
                 floating_panes.visible_panes_count() <= *max_panes
+            }
+            LayoutConstraint::MinPanes(min_panes) => {
+                floating_panes.visible_panes_count() >= *min_panes
             }
             LayoutConstraint::NoConstraint => true
         }
@@ -300,38 +291,30 @@ impl SwapLayouts {
             return None;
         }
         let initial_position = self.current_tiled_layout_position;
-        let swap_tiled_layout_position = if self.is_tiled_damaged {
-            self.current_tiled_layout_position.unwrap_or(0)
-        } else {
-            self.current_tiled_layout_position.map(|position| position + 1).unwrap_or(0)
-        };
+        if !self.is_tiled_damaged && self.swap_tiled_layouts.iter().nth(self.current_tiled_layout_position).is_some() {
+            self.current_tiled_layout_position += 1;
+        }
         self.is_tiled_damaged = false;
-        self.current_tiled_layout_position = Some(swap_tiled_layout_position);
         loop {
-            let swap_layout = self.swap_tiled_layouts.iter().nth(swap_tiled_layout_position)
-                .or_else(|| {
-                    self.current_tiled_layout_position = Some(0);
-                    self.swap_tiled_layouts.iter().next()
-                });
-            if let Some(swap_layout) = swap_layout {
-                for (constraint, layout) in swap_layout.iter() {
-                    if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
-                        let display_area = self.display_area.borrow();
-                        // TODO: reuse the assets from position_panes_in_space here?
-                        let pane_count = tiled_panes.visible_panes_count();
-                        let display_area = PaneGeom::from(&*display_area);
-                        if layout.position_panes_in_space(&display_area, Some(pane_count)).is_ok() {
-                            return Some(layout.clone());
-                        }
-                    };
+            match self.swap_tiled_layouts.iter().nth(self.current_tiled_layout_position) {
+                Some(swap_layout) => {
+                    for (constraint, layout) in swap_layout.iter() {
+                        if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
+                            let display_area = self.display_area.borrow();
+                            // TODO: reuse the assets from position_panes_in_space here?
+                            let pane_count = tiled_panes.visible_panes_count();
+                            let display_area = PaneGeom::from(&*display_area);
+                            if layout.position_panes_in_space(&display_area, Some(pane_count)).is_ok() {
+                                return Some(layout.clone());
+                            }
+                        };
+                    }
+                    self.current_tiled_layout_position += 1;
+                },
+                None => {
+                    self.current_tiled_layout_position = 0;
                 }
             };
-            if let Some(position) = self.current_tiled_layout_position.as_mut() {
-                *position += 1;
-            }
-            if self.current_tiled_layout_position >= Some(self.swap_tiled_layouts.len()) {
-                self.current_tiled_layout_position = Some(0);
-            }
             if self.current_tiled_layout_position == initial_position {
                 break;
             }
@@ -339,8 +322,8 @@ impl SwapLayouts {
         None
     }
     fn reset_positions_and_damage(&mut self) {
-        self.current_floating_layout_position = None;
-        self.current_tiled_layout_position = None;
+        self.current_floating_layout_position = 0;
+        self.current_tiled_layout_position = 0;
         self.is_floating_damaged = false;
         self.is_tiled_damaged = false;
     }

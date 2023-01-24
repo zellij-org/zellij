@@ -223,6 +223,7 @@ impl FloatingPanes {
         self.panes.contains_key(pane_id)
     }
     pub fn add_next_geom(&mut self, next_geom: PaneGeom) {
+        // TODO: removeme
         if true { // TODO: config flag to cancel this behaviour - classic_pane_algorithm?
             self.next_geoms.push_back(next_geom);
         }

@@ -442,19 +442,6 @@ impl<'a> LayoutApplier<'a> {
         let currently_focused_pane_id = self.floating_panes.active_pane_id_or_focused_pane_id(client_id);
 
         let mut existing_panes = self.floating_panes.drain();
-//         let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom| -> Option<Box<dyn Pane>> {
-//             let candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
-//             if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
-//                 return existing_panes.remove(&same_position_candidate_id);
-//             } else if let Some(non_focused_candidate) = candidates.iter().filter(|(pid, _)| Some(**pid) != currently_focused_pane).next().map(|(pid, _p)| *pid).copied() {
-//                 // prefer a non-focused pane over the focused one so that the panes are arranged
-//                 // nicer visually
-//                 return existing_panes.remove(&non_focused_candidate);
-//             } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
-//                 return existing_panes.remove(&first_candidate);
-//             }
-//             None
-//         };
         let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom, is_focused: bool| -> Option<Box<dyn Pane>> {
             let mut candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
             candidates.sort_by(|(a_id, a), (b_id, b)| {
