@@ -1118,7 +1118,7 @@ impl Screen {
                             },
                             c => {
                                 // It only allows printable unicode
-                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E)) {
+                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF)) {
                                     active_tab.name.push_str(c);
                                 }
                             },

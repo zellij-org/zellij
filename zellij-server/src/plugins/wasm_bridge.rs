@@ -247,6 +247,15 @@ impl WasmBridge {
         let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
         let cache_hit = self.plugin_cache.contains_key(&plugin.path);
 
+        // Create filesystem entries mounted into WASM.
+        // We create them here to get expressive error messages in case they fail.
+        fs::create_dir_all(&plugin_own_data_dir)
+            .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
+            .with_context(err_context)?;
+        fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
+            .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
+            .with_context(err_context)?;
+
         // We remove the entry here and repopulate it at the very bottom, if everything went well.
         // We must do that because a `get` will only give us a borrow of the Module. This suffices for
         // the purpose of setting everything up, but we cannot return a &Module from the "None" match
@@ -277,19 +286,6 @@ impl WasmBridge {
                     .with_context(err_context)
                     .fatal();
 
-                fs::create_dir_all(&plugin_own_data_dir)
-                    .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
-                    .with_context(err_context)
-                    .non_fatal();
-
-                // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
-                fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
-                    .with_context(|| {
-                        format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path())
-                    })
-                    .with_context(err_context)
-                    .non_fatal();
-
                 let hash: String = PortableHash::default()
                     .hash256(&wasm_bytes)
                     .iter()
@@ -310,16 +306,17 @@ impl WasmBridge {
                         Err(e) => {
                             let inner_context = || format!("failed to recover from {e:?}");
 
-                            let m = Module::new(&self.store, &wasm_bytes)
-                                .with_context(inner_context)
-                                .with_context(err_context)?;
                             fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+                                .map_err(anyError::new)
+                                .and_then(|_| {
+                                    Module::new(&self.store, &wasm_bytes).map_err(anyError::new)
+                                })
+                                .and_then(|m| {
+                                    m.serialize_to_file(&cached_path).map_err(anyError::new)?;
+                                    Ok(m)
+                                })
                                 .with_context(inner_context)
-                                .with_context(err_context)?;
-                            m.serialize_to_file(&cached_path)
-                                .with_context(inner_context)
-                                .with_context(err_context)?;
-                            m
+                                .with_context(err_context)?
                         },
                     }
                 }
