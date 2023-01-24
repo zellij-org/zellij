@@ -104,6 +104,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
+                    .args(&flags.args)
                     .run()
                     .map_err(anyhow::Error::new)
             })

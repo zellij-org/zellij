@@ -14,6 +14,7 @@ use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
+    channels::TrySendError,
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
@@ -343,15 +344,14 @@ struct ClientSender {
 
 impl ClientSender {
     pub fn new(client_id: ClientId, mut sender: IpcSenderWithContext<ServerToClientMsg>) -> Self {
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(50);
+        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                let _ = sender.send(msg).with_context(err_context);
+                sender.send(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(
-                "Buffer full".to_string(),
-            )));
+            // If we're here, the message buffer is broken for some reason
+            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
         });
         ClientSender {
             client_id,
@@ -359,9 +359,24 @@ impl ClientSender {
         }
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
-        let err_context = || format!("Client {} send buffer full", self.client_id);
+        let err_context = || {
+            format!(
+                "failed to send or buffer message for client {}",
+                self.client_id
+            )
+        };
+
         self.client_buffer_sender
             .try_send(msg)
+            .or_else(|err| {
+                if let TrySendError::Full(_) = err {
+                    log::warn!(
+                        "client {} is processing server messages too slow",
+                        self.client_id
+                    );
+                }
+                Err(err)
+            })
             .with_context(err_context)
     }
 }

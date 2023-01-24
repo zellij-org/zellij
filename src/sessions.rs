@@ -202,6 +202,14 @@ pub(crate) fn assert_session_ne(name: &str) {
         eprintln!("Session name cannot be empty. Please provide a specific session name.");
         process::exit(1);
     }
+    if name == "." || name == ".." {
+        eprintln!("Invalid session name: \"{}\".", name);
+        process::exit(1);
+    }
+    if name.contains('/') {
+        eprintln!("Session name cannot contains '/'.");
+        process::exit(1);
+    }
 
     match session_exists(name) {
         Ok(result) if !result => return,
