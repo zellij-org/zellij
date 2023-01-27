@@ -185,10 +185,13 @@ impl<'a> LayoutApplier<'a> {
                         let pane_pid = pane.pid();
                         pane.set_borderless(layout.borderless);
                         resize_pty!(pane, self.os_api, self.senders)?;
+                        let pane_is_selectable = pane.selectable();
                         self.tiled_panes
                             .add_pane_with_existing_geom(pane_pid, pane);
+                        if pane_is_selectable {
+                            set_focused_pane_position_and_size(layout, position_and_size);
+                        }
                     }
-                    set_focused_pane_position_and_size(layout, position_and_size);
                 }
                 let remaining_pane_ids: Vec<PaneId> = existing_panes.keys().copied().collect();
                 for pane_id in remaining_pane_ids {

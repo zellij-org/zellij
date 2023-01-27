@@ -230,8 +230,8 @@ pub enum ScreenInstruction {
     SearchToggleWrap(ClientId),
     AddRedPaneFrameColorOverride(Vec<PaneId>, Option<String>), // Option<String> => optional error text
     ClearPaneFrameColorOverride(Vec<PaneId>),
-    RelayoutFocusedTab(ClientId),
-    RelayoutFocusedTabLayer(ClientId),
+    PreviousSwapLayout(ClientId),
+    NextSwapLayout(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -369,8 +369,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::ClearPaneFrameColorOverride(..) => {
                 ScreenContext::ClearPaneFrameColorOverride
             },
-            ScreenInstruction::RelayoutFocusedTab(..) => ScreenContext::RelayoutFocusedTab,
-            ScreenInstruction::RelayoutFocusedTabLayer(..) => ScreenContext::RelayoutFocusedTabLayer,
+            ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
+            ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
         }
     }
 }
@@ -1073,6 +1073,7 @@ impl Screen {
                         .copied()
                         .collect()
                 };
+                let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
                 tab_data.push(TabInfo {
                     position: tab.position,
                     name: tab.name.clone(),
@@ -1082,6 +1083,8 @@ impl Screen {
                     is_sync_panes_active: tab.is_sync_panes_active(),
                     are_floating_panes_visible: tab.are_floating_panes_visible(),
                     other_focused_clients,
+                    active_swap_layout_name,
+                    is_swap_layout_dirty,
                 });
             }
             plugin_updates.push((None, Some(*client_id), Event::TabUpdate(tab_data)));
@@ -1540,6 +1543,7 @@ pub(crate) fn screen_thread_main(
                 );
                 screen.unblock_input()?;
                 screen.render()?;
+                screen.update_tabs()?; // TODO: no every time
             },
             ScreenInstruction::SwitchFocus(client_id) => {
                 active_tab_and_connected_client_id!(
@@ -2181,22 +2185,24 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render()?;
             },
-            ScreenInstruction::RelayoutFocusedTab(client_id) => {
+            ScreenInstruction::PreviousSwapLayout(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.relayout(Some(client_id))
+                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(Some(client_id))
                 );
                 screen.render()?;
+                screen.update_tabs()?;
                 screen.unblock_input()?;
             }
-            ScreenInstruction::RelayoutFocusedTabLayer(client_id) => {
+            ScreenInstruction::NextSwapLayout(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.relayout_focused_layer(Some(client_id))
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id))
                 );
                 screen.render()?;
+                screen.update_tabs()?;
                 screen.unblock_input()?;
             }
         }

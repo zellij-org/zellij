@@ -1,9 +1,12 @@
-use ansi_term::ANSIStrings;
+use ansi_term::{
+    unstyled_len,
+    ANSIStrings,
+};
 use zellij_tile::prelude::actions::Action;
 use zellij_tile::prelude::*;
 
 use crate::color_elements;
-use crate::{action_key, get_common_modifier, TO_NORMAL};
+use crate::{action_key, action_key_group, get_common_modifier, style_key_with_modifier, TO_NORMAL};
 use crate::{ColoredElements, LinePart};
 
 struct KeyShortcut {
@@ -232,6 +235,74 @@ fn key_indicators(
     line_part
 }
 
+fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
+    let mode_keybinds = mode_info.get_mode_keybinds();
+    let prev_next_keys = action_key_group(&mode_keybinds, &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]]);
+    let prev_next_keys_indicator = style_key_with_modifier(&prev_next_keys, palette);
+    let keycode = ANSIStrings(&prev_next_keys_indicator);
+    let len = unstyled_len(&keycode);
+    let part = keycode.to_string();
+    LinePart {
+        part,
+        len
+    }
+}
+
+fn swap_layout_status(max_len: usize, swap_layout_name: &Option<String>, is_swap_layout_damaged: bool, mode_info: &ModeInfo, colored_elements: ColoredElements, palette: &Palette, separator: &str) -> Option<LinePart> {
+    match swap_layout_name {
+        Some(swap_layout_name) => {
+            let mut swap_layout_name = format!(" {} ", swap_layout_name);
+            swap_layout_name.make_ascii_uppercase();
+            let keycode = swap_layout_keycode(mode_info, palette);
+            let swap_layout_name_len = swap_layout_name.len() + 3; // 2 for the arrow separators, one for the screen end buffer
+                                                                   //
+            macro_rules! style_swap_layout_indicator {
+                ($style_name:ident) => {{
+                    (
+                        colored_elements.$style_name.prefix_separator.paint(separator),
+                        colored_elements.$style_name.styled_text.paint(&swap_layout_name),
+                        colored_elements.$style_name.suffix_separator.paint(separator)
+                    )
+                }};
+            }
+            let (prefix_separator, swap_layout_name, suffix_separator) = if mode_info.mode == InputMode::Locked {
+                style_swap_layout_indicator!(disabled)
+            } else if is_swap_layout_damaged {
+                style_swap_layout_indicator!(unselected)
+            } else {
+                style_swap_layout_indicator!(selected)
+            };
+            let swap_layout_indicator  = format!("{}{}{} ", prefix_separator, swap_layout_name, suffix_separator);
+            let (part, full_len) = if mode_info.mode == InputMode::Locked {
+                (
+                    format!("{}", swap_layout_indicator),
+                    swap_layout_name_len, // 1 is the space between
+                )
+            } else {
+                (
+                    format!("{} {}", keycode, swap_layout_indicator),
+                    keycode.len + swap_layout_name_len + 1, // 1 is the space between
+                )
+            };
+            let short_len = swap_layout_name_len + 1; // 1 is the space between
+            if full_len <= max_len {
+                Some(LinePart {
+                    part,
+                    len: full_len,
+                })
+            } else if short_len <= max_len && mode_info.mode != InputMode::Locked {
+                Some(LinePart {
+                    part: swap_layout_indicator,
+                    len: short_len,
+                })
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
+}
+
 /// Get the keybindings for switching `InputMode`s and `Quit` visible in status bar.
 ///
 /// Return a Vector of `Key`s where each `Key` is a shortcut to switch to some `InputMode` or Quit
@@ -351,7 +422,7 @@ fn get_key_shortcut_for_mode<'a>(
     None
 }
 
-pub fn first_line(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart {
+pub fn first_line(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, separator: &str) -> LinePart {
     let supports_arrow_fonts = !help.capabilities.arrow_fonts;
     let colored_elements = color_elements(help.style.colors, !supports_arrow_fonts);
     let binds = &help.get_mode_keybinds();
@@ -432,7 +503,21 @@ pub fn first_line(help: &ModeInfo, max_len: usize, separator: &str) -> LinePart 
         ));
     }
 
-    key_indicators(max_len, &default_keys, colored_elements, separator, help)
+    let mut key_indicators = key_indicators(max_len, &default_keys, colored_elements, separator, help);
+    if key_indicators.len < max_len {
+        if let Some(tab_info) = tab_info {
+            let mut remaining_space = max_len - key_indicators.len;
+            if let Some(swap_layout_status) = swap_layout_status(remaining_space, &tab_info.active_swap_layout_name, tab_info.is_swap_layout_dirty, help, colored_elements, &help.style.colors, separator) {
+                remaining_space -= swap_layout_status.len;
+                for _ in 0..remaining_space {
+                    key_indicators.part.push(' ');
+                    key_indicators.len += 1;
+                }
+                key_indicators.append(&swap_layout_status);
+            }
+        }
+    }
+    key_indicators
 }
 
 #[cfg(test)]
@@ -735,7 +820,7 @@ mod tests {
             ..ModeInfo::default()
         };
 
-        let ret = first_line(&mode_info, 500, ">");
+        let ret = first_line(&mode_info, None, 500, ">");
         let ret = unstyle(ret);
 
         assert_eq!(
@@ -759,7 +844,7 @@ mod tests {
             ..ModeInfo::default()
         };
 
-        let ret = first_line(&mode_info, 500, ">");
+        let ret = first_line(&mode_info, None, 500, ">");
         let ret = unstyle(ret);
 
         assert_eq!(
@@ -785,7 +870,7 @@ mod tests {
             ..ModeInfo::default()
         };
 
-        let ret = first_line(&mode_info, 500, ">");
+        let ret = first_line(&mode_info, None, 500, ">");
         let ret = unstyle(ret);
 
         assert_eq!(
@@ -812,7 +897,7 @@ mod tests {
             ..ModeInfo::default()
         };
 
-        let ret = first_line(&mode_info, 50, ">");
+        let ret = first_line(&mode_info, None, 50, ">");
         let ret = unstyle(ret);
 
         assert_eq!(ret, " Ctrl + >> a >> b >> c >> d >> e >".to_string());
@@ -833,7 +918,7 @@ mod tests {
             ..ModeInfo::default()
         };
 
-        let ret = first_line(&mode_info, 30, "");
+        let ret = first_line(&mode_info, None, 30, "");
         let ret = unstyle(ret);
 
         assert_eq!(ret, " Ctrl +  a  b  c ".to_string());

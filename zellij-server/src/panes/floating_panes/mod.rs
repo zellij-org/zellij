@@ -258,32 +258,32 @@ impl FloatingPanes {
         );
         let mut position = floating_pane_grid.find_room_for_new_pane().unwrap(); // TODO: no unwrap
         if let Some(x) = &floating_pane_layout.x {
-            position.x = x.to_position(display_area.cols);
+            position.x = x.to_position(viewport.cols);
         }
         if let Some(y) = &floating_pane_layout.y {
-            position.y = y.to_position(display_area.rows);
+            position.y = y.to_position(viewport.rows);
         }
         if let Some(width) = &floating_pane_layout.width {
-            position.cols = Dimension::fixed(width.to_position(display_area.cols));
+            position.cols = Dimension::fixed(width.to_position(viewport.cols));
         }
         if let Some(height) = &floating_pane_layout.height {
-            position.rows = Dimension::fixed(height.to_position(display_area.rows));
+            position.rows = Dimension::fixed(height.to_position(viewport.rows));
         }
-        if position.cols.as_usize() > display_area.cols {
-            position.cols = Dimension::fixed(display_area.cols);
+        if position.cols.as_usize() > viewport.cols {
+            position.cols = Dimension::fixed(viewport.cols);
         }
-        if position.rows.as_usize() > display_area.rows {
-            position.rows = Dimension::fixed(display_area.rows);
+        if position.rows.as_usize() > viewport.rows {
+            position.rows = Dimension::fixed(viewport.rows);
         }
-        if position.x + position.cols.as_usize() > display_area.cols {
+        if position.x + position.cols.as_usize() > viewport.cols {
             position.x = position
                 .x
-                .saturating_sub((position.x + position.cols.as_usize()) - display_area.cols);
+                .saturating_sub((position.x + position.cols.as_usize()) - viewport.cols);
         }
-        if position.y + position.rows.as_usize() > display_area.rows {
+        if position.y + position.rows.as_usize() > viewport.rows {
             position.y = position
                 .y
-                .saturating_sub((position.y + position.rows.as_usize()) - display_area.rows);
+                .saturating_sub((position.y + position.rows.as_usize()) - viewport.rows);
         }
         position
     }

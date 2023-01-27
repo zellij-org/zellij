@@ -331,6 +331,6 @@ pub enum CliAction {
         #[clap(short, long, value_parser, requires("layout"))]
         cwd: Option<PathBuf>,
     },
-    RelayoutFocusedTab,
-    RelayoutFocusedTabLayer,
+    PreviousSwapLayout,
+    NextSwapLayout,
 }

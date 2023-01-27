@@ -171,6 +171,22 @@ impl SwapLayouts {
     pub fn is_tiled_damaged(&self) -> bool {
         self.is_tiled_damaged
     }
+    pub fn tiled_layout_info(&self) -> (Option<String>, bool) { // (swap_layout_name, is_swap_layout_dirty)
+        match self.swap_tiled_layouts.iter().nth(self.current_tiled_layout_position) {
+            Some(current_tiled_layout) => {
+                (current_tiled_layout.1.clone().or_else(|| Some(format!("Layout #{}", self.current_tiled_layout_position + 1))), self.is_tiled_damaged)
+            }
+            None => (None, self.is_tiled_damaged)
+        }
+    }
+    pub fn floating_layout_info(&self) -> (Option<String>, bool) { // (swap_layout_name, is_swap_layout_dirty)
+        match self.swap_floating_layouts.iter().nth(self.current_floating_layout_position) {
+            Some(current_floating_layout) => {
+                (current_floating_layout.1.clone().or_else(|| Some(format!("Layout #{}", self.current_floating_layout_position + 1))), self.is_floating_damaged)
+            }
+            None => (None, self.is_floating_damaged)
+        }
+    }
     pub fn swap(&mut self, tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
         let current_tiled_panes_count = tiled_panes.visible_panes_count();
         let current_floating_panes_count = floating_panes.visible_panes_count();
@@ -235,24 +251,40 @@ impl SwapLayouts {
         }
         None
     }
-    pub fn swap_floating_panes(&mut self, floating_panes: &FloatingPanes) -> Option<Vec<FloatingPaneLayout>> {
+    pub fn swap_floating_panes(&mut self, floating_panes: &FloatingPanes, search_backwards: bool) -> Option<Vec<FloatingPaneLayout>> {
         if self.swap_floating_layouts.is_empty() {
             return None;
         }
         let initial_position = self.current_floating_layout_position;
+
+        macro_rules! progress_layout {
+            () => {{
+                if search_backwards {
+                    if self.current_floating_layout_position == 0 {
+                        self.current_floating_layout_position = self.swap_floating_layouts.len().saturating_sub(1);
+                    } else {
+                        self.current_floating_layout_position -= 1;
+                    }
+                } else {
+                    self.current_floating_layout_position += 1;
+                }
+            }}
+        }
+
+
         if !self.is_floating_damaged && self.swap_floating_layouts.iter().nth(self.current_floating_layout_position).is_some() {
-            self.current_floating_layout_position += 1;
+            progress_layout!();
         }
         self.is_floating_damaged = false;
         loop {
             match self.swap_floating_layouts.iter().nth(self.current_floating_layout_position) {
                 Some(swap_layout) => {
-                    for (constraint, layout) in swap_layout.iter() {
+                    for (constraint, layout) in swap_layout.0.iter() {
                         if self.state_fits_floating_panes_constraint(constraint, floating_panes) {
                             return Some(layout.clone());
                         };
                     }
-                    self.current_floating_layout_position += 1;
+                    progress_layout!();
                 },
                 None => {
                     self.current_floating_layout_position = 0;
@@ -286,19 +318,34 @@ impl SwapLayouts {
             LayoutConstraint::NoConstraint => true
         }
     }
-    pub fn swap_tiled_panes(&mut self, tiled_panes: &TiledPanes) -> Option<TiledPaneLayout> {
+    pub fn swap_tiled_panes(&mut self, tiled_panes: &TiledPanes, search_backwards: bool) -> Option<TiledPaneLayout> {
         if self.swap_tiled_layouts.is_empty() {
             return None;
         }
+
+        macro_rules! progress_layout {
+            () => {{
+                if search_backwards {
+                    if self.current_tiled_layout_position == 0 {
+                        self.current_tiled_layout_position = self.swap_tiled_layouts.len().saturating_sub(1);
+                    } else {
+                        self.current_tiled_layout_position -= 1;
+                    }
+                } else {
+                    self.current_tiled_layout_position += 1;
+                }
+            }}
+        }
+
         let initial_position = self.current_tiled_layout_position;
         if !self.is_tiled_damaged && self.swap_tiled_layouts.iter().nth(self.current_tiled_layout_position).is_some() {
-            self.current_tiled_layout_position += 1;
+            progress_layout!();
         }
         self.is_tiled_damaged = false;
         loop {
             match self.swap_tiled_layouts.iter().nth(self.current_tiled_layout_position) {
                 Some(swap_layout) => {
-                    for (constraint, layout) in swap_layout.iter() {
+                    for (constraint, layout) in swap_layout.0.iter() {
                         if self.state_fits_tiled_panes_constraint(constraint, tiled_panes) {
                             let display_area = self.display_area.borrow();
                             // TODO: reuse the assets from position_panes_in_space here?
@@ -309,7 +356,7 @@ impl SwapLayouts {
                             }
                         };
                     }
-                    self.current_tiled_layout_position += 1;
+                    progress_layout!();
                 },
                 None => {
                     self.current_tiled_layout_position = 0;
@@ -779,8 +826,21 @@ impl Tab {
         self.apply_buffered_instructions()?;
         Ok(())
     }
-    fn relayout_floating_panes(&mut self, client_id: Option<ClientId>) -> Result<()> {
-        if let Some(layout_candidate) = self.swap_layouts.swap_floating_panes(&self.floating_panes) {
+    pub fn swap_layout_info(&self) -> (Option<String>, bool) {
+        if self.floating_panes.panes_are_visible() {
+            self.swap_layouts.floating_layout_info()
+        } else {
+            let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
+            if selectable_tiled_panes.count() > 1 {
+                self.swap_layouts.tiled_layout_info()
+            } else {
+                // no layout for single pane
+                (None, false)
+            }
+        }
+    }
+    fn relayout_floating_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool) -> Result<()> {
+        if let Some(layout_candidate) = self.swap_layouts.swap_floating_panes(&self.floating_panes, search_backwards) {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -808,11 +868,11 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
-    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>) -> Result<()> {
+    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes) {
+        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes, search_backwards) {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -837,14 +897,22 @@ impl Tab {
         self.tiled_panes.reapply_pane_frames();
         self.is_pending = false;
         self.apply_buffered_instructions()?;
-        // self.set_force_render();
         Ok(())
     }
-    pub fn relayout_focused_layer(&mut self, client_id: Option<ClientId>) -> Result<()> {
+    pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
-            self.relayout_floating_panes(client_id)
+            self.relayout_floating_panes(client_id, search_backwards)
         } else {
-            self.relayout_tiled_panes(client_id)
+            self.relayout_tiled_panes(client_id, search_backwards)
+        }
+    }
+    pub fn next_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        let search_backwards = false;
+        if self.floating_panes.panes_are_visible() {
+            self.relayout_floating_panes(client_id, search_backwards)
+        } else {
+            self.relayout_tiled_panes(client_id, search_backwards)
         }
     }
     pub fn relayout(&mut self, client_id: Option<ClientId>) -> Result<()> {
@@ -1145,7 +1213,7 @@ impl Tab {
                     // confusing and not what the user intends
                     self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
                                                         // next layout
-                    self.relayout_focused_layer(client_id)?;
+                    self.next_swap_layout(client_id)?;
                 }
             }
         } else {
@@ -1182,7 +1250,7 @@ impl Tab {
                 // confusing and not what the user intends
                 self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
                                                     // next layout
-                self.relayout_focused_layer(client_id)?;
+                self.next_swap_layout(client_id)?;
             }
         }
         Ok(())
@@ -1876,7 +1944,7 @@ impl Tab {
             // we do this only for floating panes, because the constraint system takes care of the
             // tiled panes
             self.swap_layouts.set_is_floating_damaged();
-            let _ = self.relayout_floating_panes(None);
+            let _ = self.relayout_floating_panes(None, false);
         }
         self.should_clear_display_before_rendering = true;
     }
@@ -2163,11 +2231,11 @@ impl Tab {
             }
             self.set_force_render();
             self.floating_panes.set_force_render();
-            if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+            if self.auto_layout && !self.swap_layouts.is_floating_damaged() && self.floating_panes.visible_panes_count() > 0 {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.relayout_focused_layer(client_id);
+                let _ = self.next_swap_layout(client_id);
             }
             closed_pane
         } else {
@@ -2182,7 +2250,7 @@ impl Tab {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
-                let _ = self.relayout_focused_layer(client_id);
+                let _ = self.next_swap_layout(client_id);
             }
             closed_pane
         }

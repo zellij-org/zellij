@@ -2986,7 +2986,7 @@ fn can_swap_tiled_layout_at_runtime() {
 
     tab.new_pane(new_pane_id_1, None, None, Some(client_id))
         .unwrap();
-    tab.relayout_tiled_panes(Some(client_id)).unwrap();
+    tab.next_swap_layout(Some(client_id)).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3037,7 +3037,7 @@ fn can_swap_floating_layout_at_runtime() {
         .unwrap();
     tab.new_pane(new_pane_id_2, None, None, Some(client_id))
         .unwrap();
-    tab.relayout_floating_panes(Some(client_id)).unwrap();
+    tab.next_swap_layout(Some(client_id)).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),

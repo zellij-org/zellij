@@ -44,6 +44,13 @@ pub struct LinePart {
     len: usize,
 }
 
+impl LinePart {
+    pub fn append(&mut self, to_append: &LinePart) {
+        self.part.push_str(&to_append.part);
+        self.len += to_append.len;
+    }
+}
+
 impl Display for LinePart {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.part)
@@ -236,7 +243,8 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let first_line = first_line(&self.mode_info, cols, separator);
+        let active_tab = self.tabs.iter().find(|t| t.active);
+        let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
@@ -429,6 +437,7 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
         "←↓↑→" => "",
         "←→" => "",
         "↓↑" => "",
+        "[]" => "",
         _ => "|",
     };
 

@@ -1613,6 +1613,7 @@ impl<'a> KdlLayoutParser<'a> {
         for child in layout_children.iter() {
             let child_name = kdl_name!(child);
             if child_name == "swap_tiled_layout" {
+                let swap_layout_name = kdl_get_string_property_or_child_value!(child, "name").map(|n| String::from(n));
                 if let Some(swap_tiled_layout_group) = kdl_children_nodes!(child) {
                     let mut swap_tiled_layout = BTreeMap::new();
                     for layout in swap_tiled_layout_group {
@@ -1629,7 +1630,7 @@ impl<'a> KdlLayoutParser<'a> {
                             swap_tiled_layout.insert(layout_constraint, layout);
                         }
                     }
-                    swap_tiled_layouts.push(swap_tiled_layout);
+                    swap_tiled_layouts.push((swap_tiled_layout, swap_layout_name));
                 }
             }
         }
@@ -1639,6 +1640,7 @@ impl<'a> KdlLayoutParser<'a> {
         for child in layout_children.iter() {
             let child_name = kdl_name!(child);
             if child_name == "swap_floating_layout" {
+                let swap_layout_name = kdl_get_string_property_or_child_value!(child, "name").map(|n| String::from(n));
                 if let Some(swap_floating_layout_group) = kdl_children_nodes!(child) {
                     let mut swap_floating_layout = BTreeMap::new();
                     for layout in swap_floating_layout_group {
@@ -1655,7 +1657,7 @@ impl<'a> KdlLayoutParser<'a> {
                             swap_floating_layout.insert(layout_constraint, layout);
                         }
                     }
-                    swap_floating_layouts.push(swap_floating_layout);
+                    swap_floating_layouts.push((swap_floating_layout, swap_layout_name));
                 }
             }
         }

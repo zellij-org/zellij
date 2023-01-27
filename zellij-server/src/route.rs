@@ -611,16 +611,16 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
-        Action::RelayoutFocusedTab => {
+        Action::PreviousSwapLayout => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::RelayoutFocusedTab(client_id))
+                .send_to_screen(ScreenInstruction::PreviousSwapLayout(client_id))
                 .with_context(err_context)?;
         }
-        Action::RelayoutFocusedTabLayer => {
+        Action::NextSwapLayout => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::RelayoutFocusedTabLayer(client_id))
+                .send_to_screen(ScreenInstruction::NextSwapLayout(client_id))
                 .with_context(err_context)?;
         }
     }

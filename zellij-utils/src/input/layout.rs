@@ -219,8 +219,8 @@ pub enum LayoutConstraint {
     NoConstraint
 }
 
-pub type SwapTiledLayout = BTreeMap<LayoutConstraint, TiledPaneLayout>;
-pub type SwapFloatingLayout = BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>;
+pub type SwapTiledLayout = (BTreeMap<LayoutConstraint, TiledPaneLayout>, Option<String>); // Option<String> is the swap layout name
+pub type SwapFloatingLayout = (BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>, Option<String>); // Option<String> is the swap layout name
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
