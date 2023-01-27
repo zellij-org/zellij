@@ -1181,6 +1181,30 @@ impl TiledPanes {
         }
     }
 
+    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.move_focus_left(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
+    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.move_focus_right(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.move_focus_up(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+        self.unset_fullscreen();
+        self.move_focus_down(client_id);
+        self.toggle_active_pane_fullscreen(client_id);
+    }
+
     pub fn switch_next_pane_fullscreen(&mut self, client_id: ClientId) {
         self.unset_fullscreen();
         self.focus_next_pane(client_id);
