@@ -103,20 +103,6 @@ impl<'a> LayoutApplier<'a> {
         )?;
         return Ok(layout_has_floating_panes);
     }
-    pub fn apply_layout_to_existing_panes(
-        &mut self,
-        layout: &TiledPaneLayout,
-        floating_panes_layout: &Vec<FloatingPaneLayout>,
-        client_id: Option<ClientId>,
-    ) -> Result<bool> {
-        // true => layout has floating panes
-        // let active_tiled_panes = self.tiled_panes.active_panes();
-        let layout_name = layout.name.clone();
-        self.apply_tiled_panes_layout_to_existing_panes(layout, client_id)?;
-        // self.tiled_panes.set_active_panes(active_tiled_panes);
-        let layout_has_floating_panes = self.apply_floating_panes_layout_to_existing_panes(floating_panes_layout, layout_name, client_id)?;
-        return Ok(layout_has_floating_panes);
-    }
     pub fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: &TiledPaneLayout, client_id: Option<ClientId>) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
         // for tiled panes we need to take the display area rather than the viewport because the
