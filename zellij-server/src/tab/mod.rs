@@ -37,7 +37,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, BTreeMap},
     str,
 };
 use zellij_utils::{
@@ -134,10 +134,8 @@ pub(crate) struct Tab {
 struct SwapLayouts {
     swap_tiled_layouts: Vec<SwapTiledLayout>,
     swap_floating_layouts: Vec<SwapFloatingLayout>,
-    swap_layouts: Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>,
     current_floating_layout_position: usize,
     current_tiled_layout_position: usize,
-    current_layout_position: Option<usize>,
     is_floating_damaged: bool,
     is_tiled_damaged: bool,
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
@@ -155,9 +153,20 @@ impl SwapLayouts {
             ..Default::default()
         }
     }
-    pub fn set_current_layout(&mut self, layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
-        self.swap_layouts.push(layout);
-        self.current_layout_position = Some(self.swap_layouts.len() - 1);
+    pub fn set_base_layout(&mut self, layout: (TiledPaneLayout, Vec<FloatingPaneLayout>)) {
+        let mut base_swap_tiled_layout = BTreeMap::new();
+        let mut base_swap_floating_layout = BTreeMap::new();
+        let tiled_panes_count = layout.0.pane_count();
+        let floating_panes_count = layout.1.len();
+        // we set MaxPanes to the current panes in the layout, because the base layout is not
+        // intended to be progressive - i.e. to have additional panes added to it
+        // we still want to keep it around in case we'd like to swap layouts without adding panes
+        base_swap_tiled_layout.insert(LayoutConstraint::MaxPanes(tiled_panes_count), layout.0);
+        base_swap_floating_layout.insert(LayoutConstraint::MaxPanes(floating_panes_count), layout.1);
+        self.swap_tiled_layouts.insert(0, (base_swap_tiled_layout, Some("BASE".into())));
+        self.swap_floating_layouts.insert(0, (base_swap_floating_layout, Some("BASE".into())));
+        self.current_tiled_layout_position = 0;
+        self.current_floating_layout_position = 0;
     }
     pub fn set_is_floating_damaged(&mut self) {
         self.is_floating_damaged = true;
@@ -186,70 +195,6 @@ impl SwapLayouts {
             }
             None => (None, self.is_floating_damaged)
         }
-    }
-    pub fn swap(&mut self, tiled_panes: &TiledPanes, floating_panes: &FloatingPanes) -> Option<(TiledPaneLayout, Vec<FloatingPaneLayout>)> {
-        let current_tiled_panes_count = tiled_panes.visible_panes_count();
-        let current_floating_panes_count = floating_panes.visible_panes_count();
-        let layout_fits_panes = |(tiled_panes_layout, floating_panes_layout): &(TiledPaneLayout, Vec<FloatingPaneLayout>)| {
-            tiled_panes_layout.pane_count() >= current_tiled_panes_count && floating_panes_layout.len() >= current_floating_panes_count
-        };
-        if let Some(current_layout) = self.current_layout_position
-            .and_then(|position| self.swap_layouts.get(position)) {
-                let current_layout = current_layout.clone();
-                if (self.is_tiled_damaged || self.is_floating_damaged) && layout_fits_panes(&current_layout) {
-                    self.reset_positions_and_damage();
-                    return Some(current_layout);
-                }
-            };
-        // self.reset_positions_and_damage();
-        match self.current_layout_position {
-            Some(current_position) => {
-                // look for candidate after current
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().skip(current_position + 1) {
-                    if layout_fits_panes(&layout_candidate) {
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.clone());
-                    }
-                }
-
-                // look for candidate before current position
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate().take(current_position) {
-                    if layout_fits_panes(&layout_candidate) {
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.clone());
-                    }
-                }
-
-                // take the next or first layout even if it doesn't fit, the extra panes will be added on top of it
-                if let Some(layout_candidate) = self.swap_layouts.get(current_position + 1) {
-                    self.current_layout_position = Some(current_position + 1);
-                    return Some(layout_candidate.clone());
-                } else if let Some(layout_candidate) = self.swap_layouts.iter().next() {
-                    self.current_layout_position = Some(0);
-                    return Some(layout_candidate.clone());
-                }
-
-            },
-            None => {
-                // tiled panes are set to current layout if it exists, look for a candidate in the swap
-                // layouts
-                for (i, layout_candidate) in self.swap_layouts.iter().enumerate() {
-                    if layout_fits_panes(&layout_candidate) {
-                        self.current_layout_position = Some(i);
-                        return Some(layout_candidate.clone());
-                    }
-                }
-
-            }
-        };
-        // take the first layout even if it doesn't fit, the extra panes will be added on top of it
-        if let Some(layout_candidate) = self.swap_layouts.get(0) {
-            let layout_candidate = layout_candidate.clone();
-            self.current_layout_position = Some(0);
-            self.reset_positions_and_damage();
-            return Some(layout_candidate);
-        }
-        None
     }
     pub fn swap_floating_panes(&mut self, floating_panes: &FloatingPanes, search_backwards: bool) -> Option<Vec<FloatingPaneLayout>> {
         if self.swap_floating_layouts.is_empty() {
@@ -367,12 +312,6 @@ impl SwapLayouts {
             }
         }
         None
-    }
-    fn reset_positions_and_damage(&mut self) {
-        self.current_floating_layout_position = 0;
-        self.current_tiled_layout_position = 0;
-        self.is_floating_damaged = false;
-        self.is_tiled_damaged = false;
     }
 }
 
@@ -791,7 +730,7 @@ impl Tab {
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
-        self.swap_layouts.set_current_layout((layout.clone(), floating_panes_layout.clone()));
+        self.swap_layouts.set_base_layout((layout.clone(), floating_panes_layout.clone()));
         let layout_has_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -914,44 +853,6 @@ impl Tab {
         } else {
             self.relayout_tiled_panes(client_id, search_backwards)
         }
-    }
-    pub fn relayout(&mut self, client_id: Option<ClientId>) -> Result<()> {
-        if let Some(layout_candidate) = self.swap_layouts.swap(&self.tiled_panes, &self.floating_panes) {
-            if self.tiled_panes.fullscreen_is_active() {
-                self.tiled_panes.unset_fullscreen();
-            }
-            let layout_has_floating_panes = LayoutApplier::new(
-                &self.viewport,
-                &self.senders,
-                &self.sixel_image_store,
-                &self.link_handler,
-                &self.terminal_emulator_colors,
-                &self.terminal_emulator_color_codes,
-                &self.character_cell_size,
-                &self.style,
-                &self.display_area,
-                &mut self.tiled_panes,
-                &mut self.floating_panes,
-                self.draw_pane_frames,
-                &mut self.focus_pane_id,
-                &self.os_api,
-            )
-            .apply_layout_to_existing_panes(
-                &layout_candidate.0,
-                &layout_candidate.1,
-                client_id,
-            )?;
-            if layout_has_floating_panes {
-                if !self.floating_panes.panes_are_visible() {
-                    self.toggle_floating_panes(client_id, None)?;
-                }
-            }
-            self.tiled_panes.reapply_pane_frames();
-        }
-        self.is_pending = false;
-        self.apply_buffered_instructions()?;
-        // self.set_force_render();
-        Ok(())
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =

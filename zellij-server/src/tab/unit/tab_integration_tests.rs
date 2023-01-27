@@ -3082,9 +3082,9 @@ fn swapping_layouts_after_resize_snaps_to_current_layout() {
 
     tab.new_pane(new_pane_id_1, None, None, Some(client_id))
         .unwrap();
-    tab.relayout(Some(client_id)).unwrap();
+    tab.next_swap_layout(Some(client_id)).unwrap();
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None)).unwrap();
-    tab.relayout(Some(client_id)).unwrap();
+    tab.next_swap_layout(Some(client_id)).unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),

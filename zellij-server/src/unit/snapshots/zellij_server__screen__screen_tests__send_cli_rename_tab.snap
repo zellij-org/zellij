@@ -170,7 +170,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                     ],
@@ -325,7 +327,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                         TabInfo {
@@ -337,7 +341,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                     ],
@@ -363,7 +369,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                         TabInfo {
@@ -375,7 +383,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                     ],
@@ -401,7 +411,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                         TabInfo {
@@ -413,7 +425,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
-                            active_swap_layout_name: None,
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
                             is_swap_layout_dirty: false,
                         },
                     ],
