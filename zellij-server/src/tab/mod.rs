@@ -1377,7 +1377,7 @@ impl Tab {
         if !self.is_fullscreen_active() {
             return;
         }
-        self.tiled_panes.switch_next_pane_fullscreen(client_id);
+        self.tiled_panes.switch_prev_pane_fullscreen(client_id);
     }
     pub fn set_force_render(&mut self) {
         self.tiled_panes.set_force_render();
