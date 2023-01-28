@@ -625,13 +625,15 @@ impl Screen {
         Ok(())
     }
 
-    /// A helper function to switch to a new tab at specified position.
+    /// A helper function to switch to a new tab with specified name. Return true if tab [name] has
+    /// been created, else false.
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
-        if let Some(new_tab) = self.tabs.values().find(|t| t.name == name) {
-            self.switch_active_tab(new_tab.position, client_id)?;
-            Ok(true)
-        } else {
-            Ok(false)
+        match self.tabs.values().find(|t| t.name == name) {
+            Some(new_tab) => {
+                self.switch_active_tab(new_tab.position, client_id)?;
+                Ok(true)
+            },
+            None => Ok(false),
         }
     }
 
@@ -2009,10 +2011,10 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
-                    if let Ok(success) = screen.go_to_tab_name(tab_name.clone(), client_id) {
+                    if let Ok(is_exist) = screen.go_to_tab_name(tab_name.clone(), client_id) {
                         screen.unblock_input()?;
                         screen.render()?;
-                        if create && !success {
+                        if create && !is_exist {
                             let tab_index = screen.get_new_tab_index();
                             screen.new_tab(tab_index, client_id)?;
                             screen
