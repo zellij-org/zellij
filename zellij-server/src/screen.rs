@@ -196,7 +196,7 @@ pub enum ScreenInstruction {
     ToggleActiveSyncTab(ClientId),
     CloseTab(ClientId),
     GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy this behaviour
-    GoToTabName(String, Option<ClientId>),
+    GoToTabName(String, bool, Option<ClientId>),
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
@@ -626,11 +626,13 @@ impl Screen {
     }
 
     /// A helper function to switch to a new tab at specified position.
-    fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<()> {
+    fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         if let Some(new_tab) = self.tabs.values().find(|t| t.name == name) {
             self.switch_active_tab(new_tab.position, client_id)?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
@@ -688,7 +690,7 @@ impl Screen {
         self.switch_active_tab(tab_index.saturating_sub(1), client_id)
     }
 
-    pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<()> {
+    pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         self.switch_active_tab_name(name, client_id)
     }
 
@@ -1995,7 +1997,7 @@ pub(crate) fn screen_thread_main(
                     screen.render()?;
                 }
             },
-            ScreenInstruction::GoToTabName(tab_name, client_id) => {
+            ScreenInstruction::GoToTabName(tab_name, create, client_id) => {
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -2007,9 +2009,25 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
-                    screen.go_to_tab_name(tab_name, client_id)?;
-                    screen.unblock_input()?;
-                    screen.render()?;
+                    if let Ok(success) = screen.go_to_tab_name(tab_name.clone(), client_id) {
+                        screen.unblock_input()?;
+                        screen.render()?;
+                        if create && !success {
+                            let tab_index = screen.get_new_tab_index();
+                            screen.new_tab(tab_index, client_id)?;
+                            screen
+                                .bus
+                                .senders
+                                .send_to_plugin(PluginInstruction::NewTab(
+                                    None,
+                                    None,
+                                    vec![],
+                                    Some(tab_name),
+                                    tab_index,
+                                    client_id,
+                                ))?;
+                        }
+                    }
                 }
             },
             ScreenInstruction::UpdateTabName(c, client_id) => {

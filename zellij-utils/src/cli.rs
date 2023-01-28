@@ -316,7 +316,12 @@ pub enum CliAction {
     /// Go to tab with index [index]
     GoToTab { index: u32 },
     /// Go to tab with name [name]
-    GoToTabName { name: String },
+    GoToTabName {
+        name: String,
+        /// Create a tab if one does not exist.
+        #[clap(short, long, value_parser)]
+        create: bool,
+    },
     /// Renames the focused pane
     RenameTab { name: String },
     /// Remove a previously set tab name
