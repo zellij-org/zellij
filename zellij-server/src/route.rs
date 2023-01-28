@@ -479,6 +479,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
                 .with_context(err_context)?;
         },
+        Action::GoToTabName(name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::GoToTabName(name, Some(client_id)))
+                .with_context(err_context)?;
+        },
         Action::TabNameInput(c) => {
             session
                 .senders

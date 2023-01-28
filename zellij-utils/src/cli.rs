@@ -315,6 +315,8 @@ pub enum CliAction {
     CloseTab,
     /// Go to tab with index [index]
     GoToTab { index: u32 },
+    /// Go to tab with name [name]
+    GoToTabName { name: String },
     /// Renames the focused pane
     RenameTab { name: String },
     /// Remove a previously set tab name

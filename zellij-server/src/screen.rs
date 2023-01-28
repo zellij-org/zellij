@@ -196,6 +196,7 @@ pub enum ScreenInstruction {
     ToggleActiveSyncTab(ClientId),
     CloseTab(ClientId),
     GoToTab(u32, Option<ClientId>), // this Option is a hacky workaround, please do not copy this behaviour
+    GoToTabName(String, Option<ClientId>),
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
     UndoRenameTab(ClientId),
@@ -317,6 +318,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::SwitchTabPrev(..) => ScreenContext::SwitchTabPrev,
             ScreenInstruction::CloseTab(..) => ScreenContext::CloseTab,
             ScreenInstruction::GoToTab(..) => ScreenContext::GoToTab,
+            ScreenInstruction::GoToTabName(..) => ScreenContext::GoToTabName,
             ScreenInstruction::UpdateTabName(..) => ScreenContext::UpdateTabName,
             ScreenInstruction::UndoRenameTab(..) => ScreenContext::UndoRenameTab,
             ScreenInstruction::TerminalResize(..) => ScreenContext::TerminalResize,
@@ -623,6 +625,14 @@ impl Screen {
         Ok(())
     }
 
+    /// A helper function to switch to a new tab at specified position.
+    fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<()> {
+        if let Some(new_tab) = self.tabs.values().find(|t| t.name == name) {
+            self.switch_active_tab(new_tab.position, client_id)?;
+        }
+        Ok(())
+    }
+
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
     pub fn switch_tab_next(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
@@ -676,6 +686,10 @@ impl Screen {
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
         self.switch_active_tab(tab_index.saturating_sub(1), client_id)
+    }
+
+    pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<()> {
+        self.switch_active_tab_name(name, client_id)
     }
 
     fn close_tab_at_index(&mut self, tab_index: usize) -> Result<()> {
@@ -1977,6 +1991,23 @@ pub(crate) fn screen_thread_main(
                 };
                 if let Some(client_id) = client_id {
                     screen.go_to_tab(tab_index as usize, client_id)?;
+                    screen.unblock_input()?;
+                    screen.render()?;
+                }
+            },
+            ScreenInstruction::GoToTabName(tab_name, client_id) => {
+                let client_id = if client_id.is_none() {
+                    None
+                } else if screen
+                    .active_tab_indices
+                    .contains_key(&client_id.expect("This is checked above"))
+                {
+                    client_id
+                } else {
+                    screen.active_tab_indices.keys().next().copied()
+                };
+                if let Some(client_id) = client_id {
+                    screen.go_to_tab_name(tab_name, client_id)?;
                     screen.unblock_input()?;
                     screen.render()?;
                 }
