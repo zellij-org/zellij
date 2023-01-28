@@ -2692,7 +2692,7 @@ impl Tab {
             // It only allows printable unicode, delete and backspace keys.
             let is_updatable = buf
                 .iter()
-                .all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF | 0x08 | 0x7F));
+                .all(|u| matches!(u, 0x20..=0x7E | 0x80..=0xFF | 0x08 | 0x7F));
             if is_updatable {
                 let s = str::from_utf8(&buf).with_context(err_context)?;
                 active_terminal.update_name(s);
