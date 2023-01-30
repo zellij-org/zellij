@@ -137,7 +137,6 @@ fn tab_resize_right(tab: &mut Tab, id: ClientId) {
 }
 
 fn create_new_tab(size: Size) -> Tab {
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
@@ -157,7 +156,6 @@ fn create_new_tab(size: Size) -> Tab {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -189,7 +187,6 @@ fn create_new_tab(size: Size) -> Tab {
 }
 
 fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
@@ -209,7 +206,6 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -248,7 +244,6 @@ fn create_new_tab_with_cell_size(
     size: Size,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
 ) -> Tab {
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput {});
@@ -267,7 +262,6 @@ fn create_new_tab_with_cell_size(
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,

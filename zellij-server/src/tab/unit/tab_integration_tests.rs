@@ -188,7 +188,6 @@ impl MockPtyInstructionBus {
 // TODO: move to shared thingy with other test file
 fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     set_session_name("test".into());
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
@@ -208,7 +207,6 @@ fn create_new_tab(size: Size, default_mode: ModeInfo) -> Tab {
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -245,7 +243,6 @@ fn create_new_tab_with_os_api(
     os_api: &Box<FakeInputOutput>,
 ) -> Tab {
     set_session_name("test".into());
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = os_api.clone();
@@ -265,7 +262,6 @@ fn create_new_tab_with_os_api(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -298,7 +294,6 @@ fn create_new_tab_with_os_api(
 
 fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) -> Tab {
     set_session_name("test".into());
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
@@ -320,7 +315,6 @@ fn create_new_tab_with_layout(size: Size, default_mode: ModeInfo, layout: &str) 
     let layout = Layout::from_str(layout, "layout_file_name".into(), None).unwrap();
     let (tab_layout, floating_panes_layout) = layout.new_tab();
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -368,7 +362,6 @@ fn create_new_tab_with_mock_pty_writer(
     mock_pty_writer: SenderWithContext<PtyWriteInstruction>,
 ) -> Tab {
     set_session_name("test".into());
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
@@ -389,7 +382,6 @@ fn create_new_tab_with_mock_pty_writer(
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let sixel_image_store = Rc::new(RefCell::new(SixelImageStore::default()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
@@ -427,7 +419,6 @@ fn create_new_tab_with_sixel_support(
     // this is like the create_new_tab function but includes stuff needed for sixel,
     // eg. character_cell_size
     set_session_name("test".into());
-    let index = 0;
     let position = 0;
     let name = String::new();
     let os_api = Box::new(FakeInputOutput::default());
@@ -449,7 +440,6 @@ fn create_new_tab_with_sixel_support(
     let copy_options = CopyOptions::default();
     let terminal_emulator_color_codes = Rc::new(RefCell::new(HashMap::new()));
     let mut tab = Tab::new(
-        index,
         position,
         name,
         size,
