@@ -558,12 +558,16 @@ pub fn switch_to_tab_name() {
     new_tab(&mut screen, 2, 2);
 
     assert_eq!(
-        screen.switch_active_tab_name("Tab #1".to_string(), 1).expect("TEST"),
+        screen
+            .switch_active_tab_name("Tab #1".to_string(), 1)
+            .expect("TEST"),
         false,
         "Active tab switched to tab by name"
     );
     assert_eq!(
-        screen.switch_active_tab_name("Tab #2".to_string(), 1).expect("TEST"),
+        screen
+            .switch_active_tab_name("Tab #2".to_string(), 1)
+            .expect("TEST"),
         true,
         "Active tab switched to tab by name"
     );
