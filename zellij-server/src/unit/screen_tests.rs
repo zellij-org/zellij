@@ -571,6 +571,13 @@ pub fn switch_to_tab_name() {
         true,
         "Active tab switched to tab by name"
     );
+    assert_eq!(
+        screen
+            .switch_active_tab_name("Tab #3".to_string(), 1)
+            .expect("TEST"),
+        true,
+        "Active tab switched to tab by name"
+    );
 }
 
 #[test]
