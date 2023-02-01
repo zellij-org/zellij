@@ -34,27 +34,34 @@ macro_rules! register_plugin {
         fn main() {
             // Register custom panic handler
             std::panic::set_hook(Box::new(|info| {
-                report_panic(info);
+                $crate::shim::report_panic(info);
             }));
 
             STATE.with(|state| {
+                use $crate::ZellijPlugin;
                 state.borrow_mut().load();
             });
         }
 
         #[no_mangle]
         pub fn update() -> bool {
+            use $crate::prelude::Context;
+            use $crate::prelude::LoggableError;
             let object = $crate::shim::object_from_stdin()
                 .context($crate::PLUGIN_MISMATCH)
                 .to_stdout()
                 .unwrap();
 
-            STATE.with(|state| state.borrow_mut().update(object))
+            STATE.with(|state| {
+                use $crate::ZellijPlugin;
+                state.borrow_mut().update(object)
+            })
         }
 
         #[no_mangle]
         pub fn render(rows: i32, cols: i32) {
             STATE.with(|state| {
+                use $crate::ZellijPlugin;
                 state.borrow_mut().render(rows as usize, cols as usize);
             });
         }
