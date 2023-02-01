@@ -739,9 +739,13 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
             "NewTab" => {
+                let command_metadata = action_children.iter().next();
+                if command_metadata.is_none() {
+                    return Ok(Action::NewTab(None, vec![], None));
+                }
+
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
 
-                let command_metadata = action_children.iter().next();
                 let layout = command_metadata
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "layout"))
                     .map(|layout_string| PathBuf::from(layout_string))
