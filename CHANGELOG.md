@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: support UTF-8 character in tab name and pane name (https://github.com/zellij-org/zellij/pull/2102)
 * fix: handle missing/inaccessible cache directory (https://github.com/zellij-org/zellij/pull/2093)
 * errors: Improve client disconnect handling (https://github.com/zellij-org/zellij/pull/2068)
+* feat: add ScrollToTop action (https://github.com/zellij-org/zellij/pull/2110)
+* fix: the status-bar now does the right thing when set to one line (https://github.com/zellij-org/zellij/pull/2091)
 
 ## [0.34.4] - 2022-12-13
 
