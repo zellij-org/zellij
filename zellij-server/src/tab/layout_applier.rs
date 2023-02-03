@@ -14,7 +14,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
@@ -103,102 +103,33 @@ impl<'a> LayoutApplier<'a> {
         )?;
         return Ok(layout_has_floating_panes);
     }
-    pub fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: &TiledPaneLayout, client_id: Option<ClientId>) -> Result<()> {
+    pub fn apply_tiled_panes_layout_to_existing_panes(&mut self, layout: &TiledPaneLayout, refocus_pane: bool, client_id: Option<ClientId>) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
-        // for tiled panes we need to take the display area rather than the viewport because the
-        // viewport can potentially also be changed
-        let (display_area_cols, display_area_rows) = {
-            let display_area = self.display_area.borrow();
-            (display_area.cols, display_area.rows)
-        };
-        let mut free_space = PaneGeom::default();
-        free_space.cols.set_inner(display_area_cols);
-        free_space.rows.set_inner(display_area_rows);
+        let free_space = self.total_space_for_tiled_panes();
         let tiled_panes_count = self.tiled_panes.visible_panes_count();
         match layout.position_panes_in_space(&free_space, Some(tiled_panes_count)) {
             Ok(positions_in_layout) => {
-                let positions_and_size = positions_in_layout.iter();
                 let currently_focused_pane_id = client_id.and_then(|client_id| self.tiled_panes.focused_pane_id(client_id));
-
-                let mut focused_pane_position_and_size: Option<PaneGeom> = None;
-                let mut set_focused_pane_position_and_size = |layout: &TiledPaneLayout, pane_position_and_size: &PaneGeom| {
-                    if layout.focus.unwrap_or(false) {
-                        focused_pane_position_and_size = Some(*pane_position_and_size);
-                    }
-                };
-
-                let mut existing_panes = self.tiled_panes.drain();
-                let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom, is_focused: bool| -> Option<Box<dyn Pane>> {
-                    let mut candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
-                    candidates.sort_by(|(a_id, a), (b_id, b)| {
-                        // be sure the focused pane is last so that if we have to use it explicitly
-                        // in the layout, it's still available
-                        if Some(**a_id) == currently_focused_pane_id {
-                            std::cmp::Ordering::Greater
-                        } else if Some(**b_id) == currently_focused_pane_id {
-                            std::cmp::Ordering::Less
-                        } else {
-                            // if none of the panes are focused, try to find the closest pane
-                            let abs = |a, b| (a as isize - b as isize).abs();
-                            let a_x_distance = abs(a.position_and_size().x, position_and_size.x);
-                            let a_y_distance = abs(a.position_and_size().y, position_and_size.y);
-                            let b_x_distance = abs(b.position_and_size().x, position_and_size.x);
-                            let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
-                            (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
-                        }
-                    });
-                    let find_focused_pane_id = || {
-                        if is_focused {
-                            candidates.iter().find(|(pid, _p)| Some(**pid) == currently_focused_pane_id).map(|(pid, _p)| *pid).copied()
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some(currently_focused_pane_id) = find_focused_pane_id() {
-                        return existing_panes.remove(&currently_focused_pane_id);
-                    } else if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
-                        return existing_panes.remove(&same_position_candidate_id);
-                    } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
-                        return existing_panes.remove(&first_candidate);
-                    }
-                    None
-                };
-                for (layout, position_and_size) in positions_and_size {
-                    let is_focused = layout.focus.unwrap_or(false);
-                    if let Some(mut pane) = find_and_extract_pane(&layout.run, &position_and_size, is_focused) {
-                        // TODO: pane title and other layout attributes
-                        pane.set_geom(*position_and_size);
-                        let pane_pid = pane.pid();
-                        pane.set_borderless(layout.borderless);
+                let mut existing_tab_state = ExistingTabState::new(self.tiled_panes.drain(), currently_focused_pane_id);
+                let mut pane_focuser = PaneFocuser::new(refocus_pane);
+                for (layout, position_and_size) in positions_in_layout {
+                    if let Some(mut pane) = existing_tab_state.find_and_extract_pane(&layout.run, &position_and_size, layout.focus.unwrap_or(false), true) {
+                        self.apply_layout_properties_to_pane(&mut pane, &layout, Some(position_and_size));
+                        pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
                         resize_pty!(pane, self.os_api, self.senders)?;
-                        let pane_is_selectable = pane.selectable();
                         self.tiled_panes
-                            .add_pane_with_existing_geom(pane_pid, pane);
-                        if pane_is_selectable {
-                            set_focused_pane_position_and_size(layout, position_and_size);
-                        }
+                            .add_pane_with_existing_geom(pane.pid(), pane);
                     }
                 }
-                let remaining_pane_ids: Vec<PaneId> = existing_panes.keys().copied().collect();
+                let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
                 for pane_id in remaining_pane_ids {
-                    if let Some(mut pane) = existing_panes.remove(&pane_id) {
-                        // TODO: pane title and other layout attributes
-                        let pane_pid = pane.pid();
-                        pane.set_borderless(layout.borderless);
+                    if let Some(mut pane) = existing_tab_state.remove_pane(&pane_id) {
+                        self.apply_layout_properties_to_pane(&mut pane, &layout, None);
                         self.tiled_panes
-                            .insert_pane(pane_pid, pane);
+                            .insert_pane(pane.pid(), pane);
                     }
                 }
-
-                // TODO: what if existing_panes is not empty at this point?
-                // self.adjust_viewport(); // TODO: ???
-                if let Some(pane_position_and_size) = focused_pane_position_and_size {
-                    if let Some(client_id) = client_id {
-                        self.tiled_panes.focus_pane_at_position(pane_position_and_size, client_id);
-                    } else {
-                        // TODO: ??? this can happen eg. when closing panes
-                    }
-                }
+                pane_focuser.focus_tiled_pane(&mut self.tiled_panes);
             },
             Err(e) => {
                 Err::<(), _>(anyError::msg(e))
@@ -216,13 +147,7 @@ impl<'a> LayoutApplier<'a> {
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to apply tiled panes layout");
-        let (viewport_cols, viewport_rows) = {
-            let viewport = self.viewport.borrow();
-            (viewport.cols, viewport.rows)
-        };
-        let mut free_space = PaneGeom::default();
-        free_space.cols.set_inner(viewport_cols);
-        free_space.rows.set_inner(viewport_rows);
+        let free_space = self.total_space_for_tiled_panes();
         match layout.position_panes_in_space(&free_space, None) {
             Ok(positions_in_layout) => {
                 let positions_and_size = positions_in_layout.iter();
@@ -421,88 +346,42 @@ impl<'a> LayoutApplier<'a> {
     pub fn apply_floating_panes_layout_to_existing_panes(
         &mut self,
         floating_panes_layout: &Vec<FloatingPaneLayout>,
-        layout_name: Option<String>,
+        refocus_pane: bool,
         client_id: Option<ClientId>,
     ) -> Result<bool> {
         // true => has floating panes
-        let err_context = || format!("Failed to apply_floating_panes_layout");
         let mut layout_has_floating_panes = false;
+        let layout_has_focused_pane = floating_panes_layout.iter().find(|f| f.focus.map(|f| f).unwrap_or(false)).is_some();
         let floating_panes_layout = floating_panes_layout.iter();
         let currently_focused_pane_id = self.floating_panes.active_pane_id_or_focused_pane_id(client_id);
-
-        let mut existing_panes = self.floating_panes.drain();
-        let mut find_and_extract_pane = |run: &Option<Run>, position_and_size: &PaneGeom, is_focused: bool| -> Option<Box<dyn Pane>> {
-            let mut candidates: Vec<_> = existing_panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
-            candidates.sort_by(|(a_id, a), (b_id, b)| {
-                // be sure the focused pane is last so that if we have to use it explicitly
-                // in the layout, it's still available
-                if Some(**a_id) == currently_focused_pane_id {
-                    std::cmp::Ordering::Greater
-                } else if Some(**b_id) == currently_focused_pane_id {
-                    std::cmp::Ordering::Less
-                } else {
-                    // if none of the panes are focused, try to find the closest pane
-                    let abs = |a, b| (a as isize - b as isize).abs();
-                    let a_x_distance = abs(a.position_and_size().x, position_and_size.x);
-                    let a_y_distance = abs(a.position_and_size().y, position_and_size.y);
-                    let b_x_distance = abs(b.position_and_size().x, position_and_size.x);
-                    let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
-                    (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
-                }
-            });
-            let find_focused_pane_id = || {
-                if is_focused {
-                    candidates.iter().find(|(pid, p)| Some(**pid) == currently_focused_pane_id).map(|(pid, _p)| *pid).copied()
-                } else {
-                    None
-                }
-            };
-            if let Some(currently_focused_pane_id) = find_focused_pane_id() {
-                return existing_panes.remove(&currently_focused_pane_id);
-            } else if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
-                return existing_panes.remove(&same_position_candidate_id);
-            } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
-                return existing_panes.remove(&first_candidate);
-            }
-            None
-        };
-
+        let mut existing_tab_state = ExistingTabState::new(self.floating_panes.drain(), currently_focused_pane_id);
+        let mut pane_focuser = PaneFocuser::new(refocus_pane);
         for floating_pane_layout in floating_panes_layout {
             let position_and_size = self
                 .floating_panes
                 .position_floating_pane_layout(&floating_pane_layout);
             let is_focused = floating_pane_layout.focus.unwrap_or(false);
-            match find_and_extract_pane(&floating_pane_layout.run, &position_and_size, is_focused) {
-                Some(mut pane) => {
-                    layout_has_floating_panes = true;
-                    // TODO: pane title and other layout attributes
-                    pane.set_geom(position_and_size);
-                    let pane_pid = pane.pid();
-                    pane.set_borderless(false);
-                    pane.set_content_offset(Offset::frame(1));
-                    resize_pty!(pane, self.os_api, self.senders)?;
-                    self.floating_panes
-                        .add_pane(pane_pid, pane);
-                },
-                None => {
-                    // self.floating_panes.add_next_geom(position_and_size);
-                }
+            if let Some(mut pane) = existing_tab_state.find_and_extract_pane(&floating_pane_layout.run, &position_and_size, is_focused, false) {
+                layout_has_floating_panes = true;
+                self.apply_floating_pane_layout_properties_to_pane(&mut pane, Some(&floating_pane_layout), position_and_size);
+                let pane_is_focused = floating_pane_layout.focus.or(Some(!layout_has_focused_pane));
+                pane_focuser.set_pane_id_in_focused_location(pane_is_focused, &pane);
+                resize_pty!(pane, self.os_api, self.senders)?;
+                self.floating_panes
+                    .add_pane(pane.pid(), pane);
             }
         }
-        let remaining_pane_ids: Vec<PaneId> = existing_panes.keys().copied().collect();
+        let remaining_pane_ids: Vec<PaneId> = existing_tab_state.pane_ids();
         for pane_id in remaining_pane_ids {
             match self.floating_panes.find_room_for_new_pane() {
                 Some(position_and_size) => {
-                    if let Some(mut pane) = existing_panes.remove(&pane_id) {
+                    if let Some(mut pane) = existing_tab_state.remove_pane(&pane_id) {
                         layout_has_floating_panes = true;
-                        // TODO: pane title and other layout attributes
-                        pane.set_geom(position_and_size);
-                        let pane_pid = pane.pid();
-                        pane.set_borderless(false);
-                        pane.set_content_offset(Offset::frame(1));
+                        self.apply_floating_pane_layout_properties_to_pane(&mut pane, None, position_and_size);
+                        pane_focuser.set_pane_id_in_focused_location(Some(!layout_has_focused_pane), &pane);
                         resize_pty!(pane, self.os_api, self.senders)?;
                         self.floating_panes
-                            .add_pane(pane_pid, pane);
+                            .add_pane(pane.pid(), pane);
                     }
 
                 },
@@ -511,15 +390,9 @@ impl<'a> LayoutApplier<'a> {
                 }
             }
         }
+
         if layout_has_floating_panes {
-            if let Some(currently_focused_pane_id) = currently_focused_pane_id {
-                // we have to do this explicitly to make sure the z-indices still do what we want
-                // them to
-                match client_id {
-                    Some(client_id) => self.floating_panes.focus_pane(currently_focused_pane_id, client_id),
-                    None => self.floating_panes.focus_pane_for_all_clients(currently_focused_pane_id),
-                };
-            }
+            pane_focuser.focus_floating_pane(&mut self.floating_panes, &mut self.os_api);
             Ok(true)
         } else {
             Ok(false)
@@ -586,6 +459,156 @@ impl<'a> LayoutApplier<'a> {
                 None => {
                     self.tiled_panes.clear_active_panes();
                 },
+            }
+        }
+    }
+    fn apply_layout_properties_to_pane(&self, pane: &mut Box<dyn Pane>, layout: &TiledPaneLayout, position_and_size: Option<PaneGeom>) {
+        if let Some(position_and_size) = position_and_size {
+            pane.set_geom(position_and_size);
+        }
+        pane.set_borderless(layout.borderless);
+        if let Some(pane_title) = layout.name.as_ref() {
+            pane.set_title(pane_title.into());
+        }
+    }
+    fn apply_floating_pane_layout_properties_to_pane(&self, pane: &mut Box<dyn Pane>, floating_pane_layout: Option<&FloatingPaneLayout>, position_and_size: PaneGeom) {
+        pane.set_geom(position_and_size);
+        pane.set_borderless(false);
+        if let Some(pane_title) = floating_pane_layout.and_then(|f| f.name.clone()) {
+            pane.set_title(pane_title);
+        }
+        pane.set_content_offset(Offset::frame(1));
+    }
+    fn total_space_for_tiled_panes(&self) -> PaneGeom {
+        // for tiled panes we need to take the display area rather than the viewport because the
+        // viewport can potentially also be changed
+        let (display_area_cols, display_area_rows) = {
+            let display_area = self.display_area.borrow();
+            (display_area.cols, display_area.rows)
+        };
+
+        let mut free_space = PaneGeom::default();
+        free_space.cols.set_inner(display_area_cols);
+        free_space.rows.set_inner(display_area_rows);
+        free_space
+    }
+}
+
+struct ExistingTabState {
+    existing_panes: BTreeMap<PaneId, Box<dyn Pane>>,
+    currently_focused_pane_id: Option<PaneId>,
+}
+
+impl ExistingTabState {
+    pub fn new(existing_panes: BTreeMap<PaneId, Box<dyn Pane>>, currently_focused_pane_id: Option<PaneId>) -> Self {
+        ExistingTabState {
+            existing_panes,
+            currently_focused_pane_id,
+        }
+    }
+    pub fn find_and_extract_pane(&mut self, run: &Option<Run>, position_and_size: &PaneGeom, is_focused: bool, default_to_closest_position: bool) -> Option<Box<dyn Pane>> {
+        let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
+        if let Some(current_pane_id_with_same_contents) = self.find_pane_id_with_same_contents(&candidates, run) {
+            return self.existing_panes.remove(&current_pane_id_with_same_contents);
+        } else if let Some(currently_focused_pane_id) = self.find_focused_pane_id(is_focused, &candidates) {
+            return self.existing_panes.remove(&currently_focused_pane_id);
+        } else if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
+            return self.existing_panes.remove(&same_position_candidate_id);
+        } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
+            return self.existing_panes.remove(&first_candidate);
+        }
+        None
+    }
+    pub fn pane_ids(&self) -> Vec<PaneId> {
+        self.existing_panes.keys().copied().collect()
+    }
+    pub fn remove_pane(&mut self, pane_id: &PaneId) -> Option<Box<dyn Pane>> {
+        self.existing_panes.remove(pane_id)
+    }
+    fn pane_candidates(&self, run: &Option<Run>, position_and_size: &PaneGeom, default_to_closest_position: bool) -> Vec<(&PaneId, &Box<dyn Pane>)> {
+        let mut candidates: Vec<_> = self.existing_panes.iter().collect();
+        candidates.sort_by(|(_a_id, a), (_b_id, b)| {
+            let a_invoked_with = a.invoked_with();
+            let b_invoked_with = b.invoked_with();
+            if Run::is_same_category(run, a_invoked_with) && !Run::is_same_category(run, b_invoked_with) {
+                std::cmp::Ordering::Less
+            } else if Run::is_same_category(run, b_invoked_with) && !Run::is_same_category(run, a_invoked_with) {
+                std::cmp::Ordering::Greater
+            } else if Run::is_terminal(a_invoked_with) && !Run::is_terminal(b_invoked_with) {
+                // we place terminals before everything else because when we can't find
+                // an exact match, we need to prefer terminals are more often than not
+                // we'd be doing the right thing here
+                std::cmp::Ordering::Less
+            } else if Run::is_terminal(b_invoked_with) && !Run::is_terminal(a_invoked_with) {
+                std::cmp::Ordering::Greater
+            } else {
+                // try to find the closest pane
+                if default_to_closest_position {
+                    let abs = |a, b| (a as isize - b as isize).abs();
+                    let a_x_distance = abs(a.position_and_size().x, position_and_size.x);
+                    let a_y_distance = abs(a.position_and_size().y, position_and_size.y);
+                    let b_x_distance = abs(b.position_and_size().x, position_and_size.x);
+                    let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
+                    (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
+                } else {
+                    std::cmp::Ordering::Equal
+                }
+            }
+        });
+        candidates
+    }
+    fn find_focused_pane_id(&self, is_focused: bool, candidates: &Vec<(&PaneId, &Box<dyn Pane>)>) -> Option<PaneId> {
+        if is_focused {
+            candidates.iter().find(|(pid, _p)| Some(**pid) == self.currently_focused_pane_id).map(|(pid, _p)| *pid).copied()
+        } else {
+            None
+        }
+    }
+    fn find_pane_id_with_same_contents(&self, candidates: &Vec<(&PaneId, &Box<dyn Pane>)>, run: &Option<Run>) -> Option<PaneId> {
+        candidates.iter().find(|(_pid, p)| p.invoked_with() == run).map(|(pid, _p)| *pid).copied()
+    }
+}
+
+#[derive(Default, Debug)]
+struct PaneFocuser {
+    refocus_pane: bool,
+    pane_id_in_focused_location: Option<PaneId>,
+}
+
+impl PaneFocuser {
+    pub fn new(refocus_pane: bool) -> Self {
+        PaneFocuser {
+            refocus_pane,
+            ..Default::default()
+        }
+    }
+    pub fn set_pane_id_in_focused_location(&mut self, is_focused: Option<bool>, pane: &Box<dyn Pane>) {
+        if is_focused.unwrap_or(false) && pane.selectable() {
+            // TODO: do not do this for plugin panes
+            self.pane_id_in_focused_location = Some(pane.pid());
+        }
+
+    }
+    pub fn focus_tiled_pane(&self, tiled_panes: &mut TiledPanes) {
+        match self.pane_id_in_focused_location {
+            Some(pane_id_in_focused_location) => {
+                if self.refocus_pane {
+                    tiled_panes.reapply_pane_focus();
+                    tiled_panes.switch_active_pane_with(pane_id_in_focused_location);
+                } else {
+                    tiled_panes.reapply_pane_focus();
+                }
+            },
+            None => {
+                tiled_panes.reapply_pane_focus();
+            }
+        }
+    }
+    pub fn focus_floating_pane(&self, floating_panes: &mut FloatingPanes, os_api: &mut Box<dyn ServerOsApi>) {
+        floating_panes.reapply_pane_focus();
+        if let Some(pane_id_in_focused_location) = self.pane_id_in_focused_location {
+            if self.refocus_pane {
+                floating_panes.switch_active_pane_with(os_api, pane_id_in_focused_location);
             }
         }
     }

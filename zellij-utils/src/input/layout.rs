@@ -170,6 +170,21 @@ impl Run {
             }
         }
     }
+    pub fn is_same_category(first: &Option<Run>, second: &Option<Run>) -> bool {
+        match (first, second) {
+            (Some(Run::Plugin(..)), Some(Run::Plugin(..))) => true,
+            (Some(Run::Command(..)), Some(Run::Command(..))) => true,
+            (Some(Run::EditFile(..)), Some(Run::EditFile(..))) => true,
+            (Some(Run::Cwd(..)), Some(Run::Cwd(..))) => true,
+            _ => false
+        }
+    }
+    pub fn is_terminal(run: &Option<Run>) -> bool {
+        match run {
+            Some(Run::Command(..)) | Some(Run::EditFile(..)) | Some(Run::Cwd(..)) | None => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]

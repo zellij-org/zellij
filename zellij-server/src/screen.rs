@@ -1908,7 +1908,6 @@ pub(crate) fn screen_thread_main(
                 swap_layouts,
                 client_id,
             ) => {
-        // Vec<(TiledPaneLayout, Vec<FloatingPaneLayout>)>, // swap layouts
                 let tab_index = screen.get_new_tab_index();
                 screen.new_tab(tab_index, swap_layouts, client_id)?;
                 screen
@@ -2199,7 +2198,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id))
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id), true)
                 );
                 screen.render()?;
                 screen.update_tabs()?;

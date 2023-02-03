@@ -498,6 +498,9 @@ impl Pane for PluginPane {
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
     }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
+    }
 }
 
 impl PluginPane {

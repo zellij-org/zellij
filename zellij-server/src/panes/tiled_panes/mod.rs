@@ -22,7 +22,7 @@ use zellij_utils::{
     data::{ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{command::RunCommand, layout::SplitDirection},
-    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport, Dimension},
+    pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 use std::{
@@ -376,6 +376,50 @@ impl TiledPanes {
             self.panes.insert(pid, new_pane);
             self.relayout(SplitDirection::Horizontal);
         }
+    }
+    pub fn focus_pane_for_all_clients(&mut self, pane_id: PaneId) {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        for client_id in connected_clients {
+            if self.panes.get(&pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+                let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&pane_id);
+            }
+            self.active_panes
+                .insert(client_id, pane_id, &mut self.panes);
+            self.set_pane_active_at(pane_id);
+        }
+        self.set_force_render();
+        self.reapply_pane_frames();
+    }
+    pub fn reapply_pane_focus(&mut self) {
+        let connected_clients: Vec<ClientId> =
+            self.connected_clients.borrow().iter().copied().collect();
+        for client_id in connected_clients {
+            match &self.active_panes.get(&client_id).copied() {
+                Some(pane_id) => {
+                    if self.panes.get(&pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+                        let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&pane_id);
+                    }
+                    self.active_panes
+                        .insert(client_id, *pane_id, &mut self.panes);
+                    self.set_pane_active_at(*pane_id);
+                },
+                None => {
+                    if let Some(first_pane_id) = self.first_selectable_pane_id() {
+                        let pane_id = first_pane_id; // TODO: combine with above
+                        if self.panes.get(&pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
+                            let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&pane_id);
+                        }
+                        self.active_panes
+                            .insert(client_id, pane_id, &mut self.panes);
+                        self.set_pane_active_at(pane_id);
+                    }
+
+                }
+            }
+        }
+        self.set_force_render();
+        self.reapply_pane_frames();
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         if self.panes.get(&pane_id).map(|p| p.position_and_size().is_stacked).unwrap_or(false) {
@@ -908,6 +952,33 @@ impl TiledPanes {
                 }
             },
             None => false,
+        }
+    }
+    pub fn switch_active_pane_with(&mut self, pane_id: PaneId) {
+        if let Some(active_pane_id) = self.first_active_pane_id() {
+            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let prev_geom = current_position.position_and_size();
+            let prev_geom_override = current_position.geom_override();
+
+            let new_position = self.panes.get_mut(&pane_id).unwrap();
+            let next_geom = new_position.position_and_size();
+            let next_geom_override = new_position.geom_override();
+            new_position.set_geom(prev_geom);
+            if let Some(geom) = prev_geom_override {
+                new_position.set_geom_override(geom);
+            }
+            resize_pty!(new_position, self.os_api, self.senders).unwrap();
+            new_position.set_should_render(true);
+
+            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            current_position.set_geom(next_geom);
+            if let Some(geom) = next_geom_override {
+                current_position.set_geom_override(geom);
+            }
+            resize_pty!(current_position, self.os_api, self.senders).unwrap();
+            current_position.set_should_render(true);
+            self.focus_pane_for_all_clients(active_pane_id);
+            self.set_pane_frames(self.draw_pane_frames);
         }
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {

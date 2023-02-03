@@ -780,4 +780,35 @@ impl FloatingPanes {
                 .insert(client_id, to_pane_id, &mut self.panes);
         }
     }
+    pub fn reapply_pane_focus(&mut self) {
+        if let Some(focused_pane) = self.first_active_floating_pane_id() { // floating pane focus is the same for all clients
+            self.focus_pane_for_all_clients(focused_pane);
+        }
+    }
+    pub fn switch_active_pane_with(&mut self, os_api: &mut Box<dyn ServerOsApi>, pane_id: PaneId) {
+        if let Some(active_pane_id) = self.first_active_floating_pane_id() {
+            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let prev_geom = current_position.position_and_size();
+            let prev_geom_override = current_position.geom_override();
+
+            let new_position = self.panes.get_mut(&pane_id).unwrap();
+            let next_geom = new_position.position_and_size();
+            let next_geom_override = new_position.geom_override();
+            new_position.set_geom(prev_geom);
+            if let Some(geom) = prev_geom_override {
+                new_position.set_geom_override(geom);
+            }
+            resize_pty!(new_position, os_api, self.senders).unwrap();
+            new_position.set_should_render(true);
+
+            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            current_position.set_geom(next_geom);
+            if let Some(geom) = next_geom_override {
+                current_position.set_geom_override(geom);
+            }
+            resize_pty!(current_position, os_api, self.senders).unwrap();
+            current_position.set_should_render(true);
+            self.focus_pane_for_all_clients(active_pane_id);
+        }
+    }
 }

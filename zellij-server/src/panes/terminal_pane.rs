@@ -705,6 +705,9 @@ impl Pane for TerminalPane {
     fn invoked_with(&self) -> &Option<Run> {
         &self.invoked_with
     }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
+    }
 }
 
 impl TerminalPane {
