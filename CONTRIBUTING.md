@@ -86,7 +86,7 @@ Note that the output is truncated at 100KB. This can be adjusted for the purpose
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
 
 ## Testing plugins
-Zellij by default uses a fast, non-optimized, compiler for WASM when running in debug mode. This behavior can be overriden by using the `force_cranelit` feature flag, if you wish to reproduce the behavior in release mode.
+Zellij by default uses a fast, non-optimized, compiler for WASM when running in debug mode. This can be overriden by using the `force_cranelift` feature flag, if you wish to reproduce the behavior of release mode.
 
 To enable the flag, run:
 ```sh
