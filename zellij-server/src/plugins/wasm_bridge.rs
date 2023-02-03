@@ -252,12 +252,6 @@ impl WasmBridge {
             .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
             .with_context(err_context)?;
 
-        // We remove the entry here and repopulate it at the very bottom, if everything went well.
-        // We must do that because a `get` will only give us a borrow of the Module. This suffices for
-        // the purpose of setting everything up, but we cannot return a &Module from the "None" match
-        // arm, because we create the Module from scratch there. Any reference passed outside would
-        // outlive the Module we create there. Hence, we remove the plugin here and reinsert it
-        // below...
         let module = match self.plugin_cache.get(&plugin.path) {
             Some(module) => {
                 log::debug!(
@@ -358,9 +352,9 @@ impl WasmBridge {
         let instance =
             Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
 
-        // Only do an insert when everything went well!
         if let Cow::Owned(module) = module {
             assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+            // Only do an insert when everything went well!
             self.plugin_cache.insert(plugin.path.clone(), module);
         }
 
