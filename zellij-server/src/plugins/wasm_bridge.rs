@@ -4,6 +4,7 @@ use log::{debug, info, warn};
 use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt, fs,
     path::PathBuf,
@@ -30,7 +31,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
     input::{
@@ -125,11 +126,7 @@ pub struct PluginEnv {
 impl PluginEnv {
     // Get the name (path) of the containing plugin
     pub fn name(&self) -> String {
-        format!(
-            "{} (ID {})",
-            self.plugin.path.display().to_string(),
-            self.plugin_id
-        )
+        format!("{} (ID {})", self.plugin.path.display(), self.plugin_id)
     }
 }
 
@@ -245,7 +242,6 @@ impl WasmBridge {
         let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
 
         let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-        let cache_hit = self.plugin_cache.contains_key(&plugin.path);
 
         // Create filesystem entries mounted into WASM.
         // We create them here to get expressive error messages in case they fail.
@@ -262,13 +258,13 @@ impl WasmBridge {
         // arm, because we create the Module from scratch there. Any reference passed outside would
         // outlive the Module we create there. Hence, we remove the plugin here and reinsert it
         // below...
-        let module = match self.plugin_cache.remove(&plugin.path) {
+        let module = match self.plugin_cache.get(&plugin.path) {
             Some(module) => {
                 log::debug!(
                     "Loaded plugin '{}' from plugin cache",
                     plugin.path.display()
                 );
-                module
+                Cow::Borrowed(module)
             },
             None => {
                 // Populate plugin module cache for this plugin!
@@ -293,32 +289,37 @@ impl WasmBridge {
                     .collect();
                 let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
 
-                unsafe {
-                    match Module::deserialize_from_file(&self.store, &cached_path) {
-                        Ok(m) => {
-                            log::debug!(
-                                "Loaded plugin '{}' from cache folder at '{}'",
-                                plugin.path.display(),
-                                ZELLIJ_CACHE_DIR.display(),
-                            );
-                            m
-                        },
-                        Err(e) => {
-                            let inner_context = || format!("failed to recover from {e:?}");
+                let timer = std::time::Instant::now();
+                match unsafe { Module::deserialize_from_file(&self.store, &cached_path) } {
+                    Ok(m) => {
+                        log::debug!(
+                            "Loaded plugin '{}' from cache folder at '{}' in {:?}",
+                            plugin.path.display(),
+                            ZELLIJ_CACHE_DIR.display(),
+                            timer.elapsed(),
+                        );
+                        Cow::Owned(m)
+                    },
+                    Err(e) => {
+                        let inner_context = || format!("failed to recover from {e:?}");
 
-                            fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
-                                .map_err(anyError::new)
-                                .and_then(|_| {
-                                    Module::new(&self.store, &wasm_bytes).map_err(anyError::new)
-                                })
-                                .and_then(|m| {
-                                    m.serialize_to_file(&cached_path).map_err(anyError::new)?;
-                                    Ok(m)
-                                })
-                                .with_context(inner_context)
-                                .with_context(err_context)?
-                        },
-                    }
+                        fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+                            .map_err(anyError::new)
+                            .and_then(|_| {
+                                Module::new(&self.store, &wasm_bytes).map_err(anyError::new)
+                            })
+                            .and_then(|m| {
+                                m.serialize_to_file(&cached_path).map_err(anyError::new)?;
+                                log::debug!(
+                                    "Compiled plugin '{}' in {:?}",
+                                    plugin.path.display(),
+                                    timer.elapsed()
+                                );
+                                Ok(Cow::Owned(m))
+                            })
+                            .with_context(inner_context)
+                            .with_context(err_context)?
+                    },
                 }
             },
         };
@@ -357,14 +358,11 @@ impl WasmBridge {
         let instance =
             Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
 
-        if !cache_hit {
-            // Check plugin version
-            assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
-        }
-
         // Only do an insert when everything went well!
-        let cloned_plugin = plugin.clone();
-        self.plugin_cache.insert(cloned_plugin.path, module);
+        if let Cow::Owned(module) = module {
+            assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+            self.plugin_cache.insert(plugin.path.clone(), module);
+        }
 
         Ok((instance, plugin_env))
     }
@@ -442,13 +440,7 @@ impl WasmBridge {
         &mut self,
         mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>,
     ) -> Result<()> {
-        let err_context = || {
-            if *DEBUG_MODE.get().unwrap_or(&true) {
-                format!("failed to update plugin state")
-            } else {
-                "failed to update plugin state".to_string()
-            }
-        };
+        let err_context = || "failed to update plugin state".to_string();
 
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
@@ -743,7 +735,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
 
         send_plugin_instructions
-            .ok_or(anyhow!("found no sender to send plugin instruction to"))
+            .ok_or_else(|| anyhow!("found no sender to send plugin instruction to"))
             .and_then(|sender| {
                 sender
                     .send(PluginInstruction::Update(vec![(
@@ -817,12 +809,12 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
         .and_then(|stdout| {
             stdout
                 .as_mut()
-                .ok_or(anyhow!("failed to get mutable reference to stdout"))
+                .ok_or_else(|| anyhow!("failed to get mutable reference to stdout"))
         })
         .and_then(|wasi_file| wasi_file.read_to_string(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-    Ok(buf.replace("\n", "\n\r"))
+    Ok(buf.replace('\n', "\n\r"))
 }
 
 pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
@@ -834,7 +826,7 @@ pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
         .and_then(|stdin| {
             stdin
                 .as_mut()
-                .ok_or(anyhow!("failed to get mutable reference to stdin"))
+                .ok_or_else(|| anyhow!("failed to get mutable reference to stdin"))
         })
         .and_then(|stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
         .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
