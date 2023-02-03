@@ -97,12 +97,15 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
 
+        let cranelift = flags.cranelift.then_some("force_cranelift");
+
         crate::cargo()
             .and_then(|cargo| {
                 cmd!(sh, "{cargo} run")
                     .args(["--package", "zellij"])
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
+                    .args(cranelift)
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
                     .run()
@@ -110,6 +113,8 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
             })
             .with_context(err_context)
     } else {
+        let cranelift = flags.cranelift.then_some(["--features", "force_cranelift"]);
+
         build::build(
             sh,
             flags::Build {
@@ -120,7 +125,9 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
         )
         .and_then(|_| crate::cargo())
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} run --")
+            cmd!(sh, "{cargo} run")
+                .args(cranelift.iter().flatten())
+                .args(["--"])
                 .args(&flags.args)
                 .run()
                 .map_err(anyhow::Error::new)
@@ -134,7 +141,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
 /// This includes the optimized zellij executable from the [`install`] pipeline, the man page, the
 /// `.desktop` file and the application logo.
 pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
-    let err_context = || format!("failed to run pipeline 'dist'");
+    let err_context = || "failed to run pipeline 'dist'";
 
     sh.change_dir(crate::project_root());
     if sh.path_exists("target/dist") {
