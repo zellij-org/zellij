@@ -1,5 +1,8 @@
 parallel-compiler = true
 
+[build]
+target-dir = "target"
+
 [alias]
 xtask = "run --package xtask --"
 x = "xtask"
