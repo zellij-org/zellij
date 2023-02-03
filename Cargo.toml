@@ -23,6 +23,7 @@ zellij-utils = { path = "zellij-utils/", version = "0.36.0" }
 log = "0.4.17"
 dialoguer = "0.10.1"
 suggest = "0.4"
+tikv-jemallocator = "0.5.0"
 
 [dev-dependencies]
 insta = { version = "1.6.0", features = ["backtrace"] }
