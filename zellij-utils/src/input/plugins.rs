@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 /// Used in the config struct for plugin metadata
-#[derive(Default, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct PluginsConfig(pub HashMap<PluginTag, PluginConfig>);
 
 impl fmt::Debug for PluginsConfig {
@@ -66,6 +66,12 @@ impl PluginsConfig {
         let mut plugin_config = self.0.clone();
         plugin_config.extend(other.0);
         Self(plugin_config)
+    }
+}
+
+impl Default for PluginsConfig {
+    fn default() -> Self {
+        PluginsConfig(HashMap::new())
     }
 }
 
@@ -148,7 +154,7 @@ impl PluginConfig {
                     return Ok(val);
                 },
                 Err(err) => {
-                    last_err = last_err.with_context(|| err_context(err, path));
+                    last_err = last_err.with_context(|| err_context(err, &path));
                 },
             }
         }
@@ -177,7 +183,7 @@ impl PluginConfig {
             }
         }
 
-        last_err
+        return last_err;
     }
 
     /// Sets the tab index inside of the plugin type of the run field.
@@ -215,7 +221,7 @@ impl Default for PluginType {
     }
 }
 
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq)]
 pub enum PluginsConfigError {
     #[error("Duplication in plugin tag names is not allowed: '{}'", String::from(.0.clone()))]
     DuplicatePlugins(PluginTag),
