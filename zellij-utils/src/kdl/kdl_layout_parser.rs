@@ -36,15 +36,17 @@ pub enum PaneOrFloatingPane {
 pub struct KdlLayoutParser<'a> {
     global_cwd: Option<PathBuf>,
     raw_layout: &'a str,
+    raw_swap_layouts: Option<&'a str>,
     tab_templates: HashMap<String, (TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     pane_templates: HashMap<String, (PaneOrFloatingPane, KdlNode)>,
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
+    pub fn new(raw_layout: &'a str, raw_swap_layouts: Option<&'a str>, global_cwd: Option<PathBuf>) -> Self {
         KdlLayoutParser {
             raw_layout,
+            raw_swap_layouts,
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,

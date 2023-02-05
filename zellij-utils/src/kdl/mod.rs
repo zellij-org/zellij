@@ -1316,9 +1316,10 @@ impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
         file_name: String,
+        raw_swap_layouts: Option<(&str, String)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
+        KdlLayoutParser::new(raw_layout, raw_swap_layouts.map(|(raw_swap_layouts, _filename)| raw_swap_layouts), cwd).parse().map_err(|e| {
             match e {
                 ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
                 ConfigError::KdlDeserializationError(kdl_error) => {

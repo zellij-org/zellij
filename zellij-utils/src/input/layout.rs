@@ -589,8 +589,8 @@ impl Layout {
     pub fn stringified_from_path_or_default(
         layout_path: Option<&PathBuf>,
         layout_dir: Option<PathBuf>,
-    ) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         match layout_path {
             Some(layout_path) => {
                 // The way we determine where to look for the layout is similar to
@@ -615,9 +615,9 @@ impl Layout {
         layout_dir: Option<PathBuf>,
         config: Config,
     ) -> Result<(Layout, Config), ConfigError> {
-        let (path_to_raw_layout, raw_layout) =
+        let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, None)?;
+        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, raw_swap_layouts.map(|(r, f)| (r.as_str(), f)), None)?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
@@ -626,13 +626,13 @@ impl Layout {
         path_to_raw_layout: String,
         cwd: Option<PathBuf>,
     ) -> Result<Layout, ConfigError> {
-        Layout::from_kdl(raw, path_to_raw_layout, cwd)
+        Layout::from_kdl(raw, path_to_raw_layout, None, cwd)
     }
     pub fn stringified_from_dir(
         layout: &PathBuf,
         layout_dir: Option<&PathBuf>,
-    ) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         match layout_dir {
             Some(dir) => {
                 let layout_path = &dir.join(layout);
@@ -645,18 +645,20 @@ impl Layout {
             None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
             .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
 
+        let swap_layout_and_path = Layout::swap_layout_and_path(&layout_path);
+
         let mut kdl_layout = String::new();
         layout_file.read_to_string(&mut kdl_layout)?;
-        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout))
+        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout, swap_layout_and_path))
     }
-    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String), ConfigError> {
-        // (path_to_layout as String, stringified_layout)
+    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+        // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
         // and load them from a hashmap or some such
@@ -664,18 +666,34 @@ impl Layout {
             Some("default") => Ok((
                 "Default layout".into(),
                 Self::stringified_default_from_assets()?,
+                Some((
+                    "Default swap layout".into(),
+                    Self::stringified_default_swap_from_assets()?,
+                ))
             )),
             Some("strider") => Ok((
                 "Strider layout".into(),
                 Self::stringified_strider_from_assets()?,
+                Some((
+                    "Strider swap layout".into(),
+                    Self::stringified_strider_swap_from_assets()?,
+                ))
             )),
             Some("disable-status-bar") => Ok((
                 "Disable Status Bar layout".into(),
                 Self::stringified_disable_status_from_assets()?,
+                Some((
+                    "Disable Status Bar swap".into(),
+                    Self::stringified_disable_status_swap_from_assets()?,
+                ))
             )),
             Some("compact") => Ok((
                 "Compact layout".into(),
                 Self::stringified_compact_from_assets()?,
+                Some((
+                    "Compact layout swap".into(),
+                    Self::stringified_compact_swap_from_assets()?,
+                ))
             )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
@@ -686,17 +704,30 @@ impl Layout {
     pub fn stringified_default_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::DEFAULT_LAYOUT.to_vec())?)
     }
-
+    pub fn stringified_default_swap_from_assets() -> Result<String, ConfigError> {
+        unimplemented!()
+    }
     pub fn stringified_strider_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::STRIDER_LAYOUT.to_vec())?)
+    }
+    pub fn stringified_strider_swap_from_assets() -> Result<String, ConfigError> {
+        unimplemented!()
     }
 
     pub fn stringified_disable_status_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::NO_STATUS_LAYOUT.to_vec())?)
     }
 
+    pub fn stringified_disable_status_swap_from_assets() -> Result<String, ConfigError> {
+        unimplemented!()
+    }
+
     pub fn stringified_compact_from_assets() -> Result<String, ConfigError> {
         Ok(String::from_utf8(setup::COMPACT_BAR_LAYOUT.to_vec())?)
+    }
+
+    pub fn stringified_compact_swap_from_assets() -> Result<String, ConfigError> {
+        unimplemented!()
     }
 
     pub fn new_tab(&self) -> (TiledPaneLayout, Vec<FloatingPaneLayout>) {
@@ -718,6 +749,10 @@ impl Layout {
 
     pub fn focused_tab_index(&self) -> Option<usize> {
         self.focused_tab_index
+    }
+
+    fn swap_layout_and_path(path: &Path) -> Option<(String, String)> {
+        unimplemented!()
     }
 }
 
