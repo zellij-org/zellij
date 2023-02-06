@@ -2011,10 +2011,10 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 if let Some(client_id) = client_id {
-                    if let Ok(is_exist) = screen.go_to_tab_name(tab_name.clone(), client_id) {
+                    if let Ok(tab_exists) = screen.go_to_tab_name(tab_name.clone(), client_id) {
                         screen.unblock_input()?;
                         screen.render()?;
-                        if create && !is_exist {
+                        if create && !tab_exists {
                             let tab_index = screen.get_new_tab_index();
                             screen.new_tab(tab_index, client_id)?;
                             screen
