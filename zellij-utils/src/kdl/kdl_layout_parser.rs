@@ -36,17 +36,15 @@ pub enum PaneOrFloatingPane {
 pub struct KdlLayoutParser<'a> {
     global_cwd: Option<PathBuf>,
     raw_layout: &'a str,
-    raw_swap_layouts: Option<&'a str>,
     tab_templates: HashMap<String, (TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
     pane_templates: HashMap<String, (PaneOrFloatingPane, KdlNode)>,
     default_tab_template: Option<(TiledPaneLayout, Vec<FloatingPaneLayout>, KdlNode)>,
 }
 
 impl<'a> KdlLayoutParser<'a> {
-    pub fn new(raw_layout: &'a str, raw_swap_layouts: Option<&'a str>, global_cwd: Option<PathBuf>) -> Self {
+    pub fn new(raw_layout: &'a str, global_cwd: Option<PathBuf>) -> Self {
         KdlLayoutParser {
             raw_layout,
-            raw_swap_layouts,
             tab_templates: HashMap::new(),
             pane_templates: HashMap::new(),
             default_tab_template: None,
@@ -495,19 +493,16 @@ impl<'a> KdlLayoutParser<'a> {
                 if kdl_name!(child) == "children" {
                     let stacked =
                         kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
-
-
-
-                    // TODO: BRING ME BACK!! need to adjust this to ignore "stacked"
-//                     let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
-//                     let node_has_entries = !child.entries().is_empty();
-//                     if node_has_child_nodes || node_has_entries {
-//                         return Err(ConfigError::new_layout_kdl_error(
-//                             format!("The `children` node must be bare. All properties should be placed on the node consuming this template."),
-//                             child.span().offset(),
-//                             child.span().len(),
-//                         ));
-//                     }
+                    if let Some(grand_children) = kdl_children_nodes!(child) {
+                        let grand_children: Vec<&str> = grand_children.iter().map(|g| kdl_name!(g)).filter(|g| g != &"stacked").collect();
+                        if !grand_children.is_empty() {
+                            return Err(ConfigError::new_layout_kdl_error(
+                                format!("Invalid `children` properties: {}", grand_children.join(", ")),
+                                child.span().offset(),
+                                child.span().len(),
+                            ));
+                        }
+                    }
                     return Ok(Some((i, stacked)));
                 }
             }
@@ -1001,26 +996,18 @@ impl<'a> KdlLayoutParser<'a> {
             if kdl_name!(child) == "pane" {
                 nodes.push(self.parse_pane_node(child)?);
             } else if kdl_name!(child) == "children" {
-
-                    let stacked =
-                        kdl_get_bool_property_or_child_value_with_error!(child, "stacked").unwrap_or(false);
-
-
-
-                    // TODO: BRING ME BACK!! need to adjust this to ignore "stacked"
-//                     let node_has_child_nodes = child.children().map(|c| !c.is_empty()).unwrap_or(false);
-//                     let node_has_entries = !child.entries().is_empty();
-//                     if node_has_child_nodes || node_has_entries {
-//                         return Err(ConfigError::new_layout_kdl_error(
-//                             format!("The `children` node must be bare. All properties should be placed on the node consuming this template."),
-//                             child.span().offset(),
-//                             child.span().len(),
-//                         ));
-//                     }
-//                     return Ok(Some((i, stacked)));
-
-
-
+                let stacked =
+                    kdl_get_bool_property_or_child_value_with_error!(child, "stacked").unwrap_or(false);
+                if let Some(grand_children) = kdl_children_nodes!(child) {
+                    let grand_children: Vec<&str> = grand_children.iter().map(|g| kdl_name!(g)).filter(|g| g != &"stacked").collect();
+                    if !grand_children.is_empty() {
+                        return Err(ConfigError::new_layout_kdl_error(
+                            format!("Invalid `children` properties: {}", grand_children.join(", ")),
+                            child.span().offset(),
+                            child.span().len(),
+                        ));
+                    }
+                }
                 external_children_index = Some(i);
                 children_are_stacked = stacked;
             } else if let Some((pane_template, pane_template_kdl_node)) =
@@ -1622,8 +1609,24 @@ impl<'a> KdlLayoutParser<'a> {
                         let layout_node_name = kdl_name!(layout);
                         if layout_node_name == "tab" {
                             let layout_constraint = self.parse_constraint(layout)?;
-                            let layout = self.populate_one_swap_tiled_layout(layout)?;
-                            swap_tiled_layout.insert(layout_constraint, layout);
+
+                            match &self.default_tab_template {
+                                Some((
+                                    default_tab_template,
+                                    _default_tab_template_floating_panes,
+                                    default_tab_template_kdl_node,
+                                )) => {
+
+                                    let default_tab_template = default_tab_template.clone();
+                                    let layout = self.populate_one_swap_tiled_layout_with_template(layout, default_tab_template, default_tab_template_kdl_node.clone())?;
+                                    swap_tiled_layout.insert(layout_constraint, layout);
+                                },
+                                None => {
+                                    let layout = self.populate_one_swap_tiled_layout(layout)?;
+                                    swap_tiled_layout.insert(layout_constraint, layout);
+                                },
+                            }
+
                         } else if let Some((tab_template, _tab_template_floating_panes, tab_template_kdl_node)) =
                             self.tab_templates.get(layout_node_name).cloned()
                         {
@@ -1931,6 +1934,39 @@ impl<'a> KdlLayoutParser<'a> {
             }
         };
         Ok(())
+    }
+    pub fn parse_external_swap_layouts(&mut self, raw_swap_layouts: &str, mut existing_layout: Layout) -> Result<Layout, ConfigError> {
+        let kdl_swap_layout: KdlDocument = raw_swap_layouts.parse()?;
+        let mut swap_tiled_layouts = vec![];
+        let mut swap_floating_layouts = vec![];
+
+        for node in kdl_swap_layout.nodes() {
+            let node_name = kdl_name!(node);
+            if node_name == "swap_floating_layout" || node_name == "swap_tiled_layout" || node_name == "tab_template" || node_name == "pane_template" {
+                continue;
+            } else if node_name == "layout" {
+                return Err(ConfigError::new_layout_kdl_error(
+                    "Swap layouts should not have their own layout node".into(),
+                    node.span().offset(),
+                    node.span().len(),
+                ))?;
+            } else if self.is_a_reserved_word(node_name) {
+                return Err(ConfigError::new_layout_kdl_error(
+                    format!("Swap layouts should not contain bare nodes of type: {}", node_name),
+                    node.span().offset(),
+                    node.span().len(),
+                ))?;
+            }
+        }
+
+        self.populate_pane_templates(kdl_swap_layout.nodes(), &kdl_swap_layout)?;
+        self.populate_tab_templates(kdl_swap_layout.nodes())?;
+        self.populate_swap_tiled_layouts(kdl_swap_layout.nodes(), &mut swap_tiled_layouts)?;
+        self.populate_swap_floating_layouts(kdl_swap_layout.nodes(), &mut swap_floating_layouts)?;
+
+        existing_layout.swap_tiled_layouts.append(&mut swap_tiled_layouts);
+        existing_layout.swap_floating_layouts.append(&mut swap_floating_layouts);
+        Ok(existing_layout)
     }
     pub fn parse(&mut self) -> Result<Layout, ConfigError> {
         let kdl_layout: KdlDocument = self.raw_layout.parse()?;

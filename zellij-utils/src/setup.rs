@@ -104,10 +104,22 @@ pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/default.kdl"
 ));
 
+pub const DEFAULT_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.swap.kdl"
+));
+
 pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/strider.kdl"
+));
+
+pub const STRIDER_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/strider.swap.kdl"
 ));
 
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
@@ -120,6 +132,12 @@ pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/compact.kdl"
+));
+
+pub const COMPACT_BAR_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.swap.kdl"
 ));
 
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(

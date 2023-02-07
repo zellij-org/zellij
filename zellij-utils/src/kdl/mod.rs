@@ -1316,37 +1316,57 @@ impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
         file_name: String,
-        raw_swap_layouts: Option<(&str, String)>, // raw_swap_layouts swap_layouts_file_name
+        raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, raw_swap_layouts.map(|(raw_swap_layouts, _filename)| raw_swap_layouts), cwd).parse().map_err(|e| {
+        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd);
+        let layout = kdl_layout_parser.parse().map_err(|e| {
             match e {
                 ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
-                ConfigError::KdlDeserializationError(kdl_error) => {
-                    let error_message = match kdl_error.kind {
-                        kdl::KdlErrorKind::Context("valid node terminator") => {
-                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                            "- Missing `;` after a node name, eg. { node; another_node; }",
-                            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
-                        },
-                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
-                    };
-                    let kdl_error = KdlError {
-                        error_message,
-                        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
-                        offset: Some(kdl_error.span.offset()),
-                        len: Some(kdl_error.span.len()),
-                        help_message: None,
-                    };
-                    ConfigError::KdlError(kdl_error)
-                },
+                ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(kdl_error, file_name, raw_layout),
                 e => e
             }
-        })
+        })?;
+        match raw_swap_layouts {
+            Some((raw_swap_layout_filename, raw_swap_layout)) => {
+                // here we use the same parser to parse the swap layout so that we can reuse assets
+                // (eg. pane and tab templates)
+                kdl_layout_parser.parse_external_swap_layouts(raw_swap_layout, layout).map_err(|e| {
+                    match e {
+                        ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(String::from(raw_swap_layout_filename), String::from(raw_swap_layout))),
+                        ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(kdl_error, raw_swap_layout_filename.into(), raw_swap_layout),
+                        e => e
+                    }
+                })
+            },
+            None => {
+                Ok(layout)
+            }
+        }
     }
 }
+
+fn kdl_layout_error(kdl_error: kdl::KdlError, file_name: String, raw_layout: &str) -> ConfigError {
+    let error_message = match kdl_error.kind {
+        kdl::KdlErrorKind::Context("valid node terminator") => {
+            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+            "- Missing `;` after a node name, eg. { node; another_node; }",
+            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+        },
+        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+    };
+    let kdl_error = KdlError {
+        error_message,
+        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
+        offset: Some(kdl_error.span.offset()),
+        len: Some(kdl_error.span.len()),
+        help_message: None,
+    };
+    ConfigError::KdlError(kdl_error)
+}
+
 impl EnvironmentVariables {
     pub fn from_kdl(kdl_env_variables: &KdlNode) -> Result<Self, ConfigError> {
         let mut env: HashMap<String, String> = HashMap::new();

@@ -956,6 +956,12 @@ impl TiledPanes {
     }
     pub fn switch_active_pane_with(&mut self, pane_id: PaneId) {
         if let Some(active_pane_id) = self.first_active_pane_id() {
+            if let PaneId::Plugin(_) = active_pane_id {
+                // we do not implicitly change the location of plugin panes
+                // TODO: we might want to make this configurable through a layout property or a
+                // plugin API
+                return;
+            }
             let current_position = self.panes.get(&active_pane_id).unwrap();
             let prev_geom = current_position.position_and_size();
             let prev_geom_override = current_position.geom_override();

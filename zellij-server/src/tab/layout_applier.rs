@@ -584,7 +584,6 @@ impl PaneFocuser {
     }
     pub fn set_pane_id_in_focused_location(&mut self, is_focused: Option<bool>, pane: &Box<dyn Pane>) {
         if is_focused.unwrap_or(false) && pane.selectable() {
-            // TODO: do not do this for plugin panes
             self.pane_id_in_focused_location = Some(pane.pid());
         }
 
