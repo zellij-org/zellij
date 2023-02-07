@@ -547,6 +547,40 @@ pub fn switch_to_next_tab() {
 }
 
 #[test]
+pub fn switch_to_tab_name() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let mut screen = create_new_screen(size);
+
+    new_tab(&mut screen, 1, 1);
+    new_tab(&mut screen, 2, 2);
+
+    assert_eq!(
+        screen
+            .switch_active_tab_name("Tab #1".to_string(), 1)
+            .expect("TEST"),
+        false,
+        "Active tab switched to tab by name"
+    );
+    assert_eq!(
+        screen
+            .switch_active_tab_name("Tab #2".to_string(), 1)
+            .expect("TEST"),
+        true,
+        "Active tab switched to tab by name"
+    );
+    assert_eq!(
+        screen
+            .switch_active_tab_name("Tab #3".to_string(), 1)
+            .expect("TEST"),
+        true,
+        "Active tab switched to tab by name"
+    );
+}
+
+#[test]
 pub fn close_tab() {
     let size = Size {
         cols: 121,

@@ -174,6 +174,7 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
+    GoToTabName(String, bool),
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
@@ -321,6 +322,7 @@ impl Action {
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
+            CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName(name, create)]),
             CliAction::RenameTab { name } => Ok(vec![
                 Action::TabNameInput(vec![0]),
                 Action::TabNameInput(name.as_bytes().to_vec()),
