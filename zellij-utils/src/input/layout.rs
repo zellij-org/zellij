@@ -519,7 +519,7 @@ impl TiledPaneLayout {
         // if max_panes is 0, this is probably the root layout being called with 0 max panes
         if max_panes <= 1 {
             self.children.clear();
-        } else if max_panes < self.children.len() {
+        } else if max_panes <= self.children.len() {
             self.children.truncate(max_panes);
             self.children.iter_mut().for_each(|l| l.children.clear());
         } else {
