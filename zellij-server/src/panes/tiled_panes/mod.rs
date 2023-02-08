@@ -314,24 +314,7 @@ impl TiledPanes {
             false
         }
     }
-    pub fn split_pane_horizontally(
-        &mut self,
-        pid: PaneId,
-        mut new_pane: Box<dyn Pane>,
-        client_id: ClientId,
-    ) {
-        let active_pane_id = &self.active_panes.get(&client_id).unwrap();
-        let active_pane = self.panes.get_mut(active_pane_id).unwrap();
-        let full_pane_size = active_pane.position_and_size();
-        if let Some((top_winsize, bottom_winsize)) =
-            split(SplitDirection::Horizontal, &full_pane_size)
-        {
-            active_pane.set_geom(top_winsize);
-            new_pane.set_geom(bottom_winsize);
-            self.panes.insert(pid, new_pane);
-            self.relayout(SplitDirection::Vertical);
-        }
-    }
+
     pub fn can_split_active_pane_vertically(&self, client_id: ClientId) -> bool {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get(active_pane_id).unwrap();
@@ -345,24 +328,29 @@ impl TiledPanes {
             false
         }
     }
-    pub fn split_pane_vertically(
+
+    pub fn split_pane(
         &mut self,
         pid: PaneId,
         mut new_pane: Box<dyn Pane>,
         client_id: ClientId,
+        direction: SplitDirection,
     ) {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get_mut(active_pane_id).unwrap();
         let full_pane_size = active_pane.position_and_size();
-        if let Some((left_winsize, right_winsize)) =
-            split(SplitDirection::Vertical, &full_pane_size)
-        {
-            active_pane.set_geom(left_winsize);
-            new_pane.set_geom(right_winsize);
+        if let Some((one_winsize, other_winsize)) = split(direction, &full_pane_size) {
+            active_pane.set_geom(one_winsize);
+            new_pane.set_geom(other_winsize);
             self.panes.insert(pid, new_pane);
-            self.relayout(SplitDirection::Horizontal);
+            let relayout_dir = match direction {
+                SplitDirection::Vertical => SplitDirection::Horizontal,
+                SplitDirection::Horizontal => SplitDirection::Vertical,
+            };
+            self.relayout(relayout_dir);
         }
     }
+
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         self.active_panes
             .insert(client_id, pane_id, &mut self.panes);

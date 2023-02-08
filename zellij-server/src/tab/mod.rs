@@ -938,8 +938,12 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                 );
-                self.tiled_panes
-                    .split_pane_horizontally(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    SplitDirection::Horizontal,
+                );
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
@@ -995,8 +999,12 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                 );
-                self.tiled_panes
-                    .split_pane_vertically(pid, Box::new(new_terminal), client_id);
+                self.tiled_panes.split_pane(
+                    pid,
+                    Box::new(new_terminal),
+                    client_id,
+                    SplitDirection::Vertical,
+                );
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
