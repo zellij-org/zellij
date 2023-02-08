@@ -63,8 +63,8 @@ xflags::xflags! {
         cmd run {
             /// Take plugins from here, skip building plugins. Passed to zellij verbatim
             optional --data-dir path: PathBuf
-            /// Force the use of Cranelift for compiling WASM modules
-            optional --cranelift
+            /// Enable the singlepass compiler for WASM plugins
+            optional --singlepass
             /// Arguments to pass after `cargo run --`
             repeated args: OsString
         }
@@ -176,7 +176,7 @@ pub struct Run {
 
     pub data_dir: Option<PathBuf>,
 
-    pub cranelift: bool,
+    pub singlepass: bool,
 }
 
 #[derive(Debug)]

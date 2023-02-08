@@ -94,7 +94,7 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
 pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
     let err_context = || format!("failed to run pipeline 'run' with args {flags:?}");
 
-    let cranelift = flags.cranelift.then_some(["--features", "force_cranelift"]);
+    let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
 
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
@@ -105,7 +105,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .args(["--package", "zellij"])
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
-                    .args(cranelift.iter().flatten())
+                    .args(singlepass.iter().flatten())
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
                     .run()
@@ -124,7 +124,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
         .and_then(|_| crate::cargo())
         .and_then(|cargo| {
             cmd!(sh, "{cargo} run")
-                .args(cranelift.iter().flatten())
+                .args(singlepass.iter().flatten())
                 .args(["--"])
                 .args(&flags.args)
                 .run()
