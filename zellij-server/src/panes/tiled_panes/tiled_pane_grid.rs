@@ -552,7 +552,7 @@ impl<'a> TiledPaneGrid<'a> {
 
     fn reduce_pane_height(&mut self, id: &PaneId, percent: f64) {
         if self.can_reduce_pane_height(id, percent).unwrap() {
-            let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().position_and_size().is_stacked;
+            let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().current_geom().is_stacked;
             if current_pane_is_stacked {
                 let _ = StackedPanes::new(self.panes.clone()).reduce_stack_height(&id, percent);
             } else {
@@ -563,7 +563,7 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
     fn increase_pane_height(&mut self, id: &PaneId, percent: f64) {
-        let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().position_and_size().is_stacked;
+        let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().current_geom().is_stacked;
         if current_pane_is_stacked {
             let _ = StackedPanes::new(self.panes.clone()).increase_stack_height(&id, percent);
         } else {
@@ -573,20 +573,18 @@ impl<'a> TiledPaneGrid<'a> {
         }
     }
     fn increase_pane_width(&mut self, id: &PaneId, percent: f64) {
-        let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().position_and_size().is_stacked;
+        let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().current_geom().is_stacked;
         if current_pane_is_stacked {
             let _ = StackedPanes::new(self.panes.clone()).increase_stack_width(&id, percent);
         } else {
             let mut panes = self.panes.borrow_mut();
             let pane = panes.get_mut(id).unwrap();
-            // TODO: if is a stacked pane, defer to StackedPanes (there do nothing if its a one-liner
-            // and increase everyone's width otherwise), otherwise do this
             pane.increase_width(percent);
         }
     }
     fn reduce_pane_width(&mut self, id: &PaneId, percent: f64) {
         if self.can_reduce_pane_width(id, percent).unwrap() {
-            let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().position_and_size().is_stacked;
+            let current_pane_is_stacked = self.panes.borrow().get(id).unwrap().current_geom().is_stacked;
             if current_pane_is_stacked {
                 let _ = StackedPanes::new(self.panes.clone()).reduce_stack_width(&id, percent);
             } else {
@@ -890,7 +888,7 @@ impl<'a> TiledPaneGrid<'a> {
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (_, pane))| pane);
-        let next_pane_is_stacked = next_pane.map(|p| p.position_and_size().is_stacked).unwrap_or(false);
+        let next_pane_is_stacked = next_pane.map(|p| p.current_geom().is_stacked).unwrap_or(false);
         if next_pane_is_stacked {
             if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
                 return StackedPanes::new(self.panes.clone()).flexible_pane_id_in_stack(&next_pane_id);
@@ -913,7 +911,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .filter(|(_, (_, c))| {
                     c.is_directly_above(Box::as_ref(source_pane))
                         && c.vertically_overlaps_with(Box::as_ref(source_pane))
-                        && c.position_and_size().is_stacked
+                        && c.current_geom().is_stacked
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid)
@@ -944,7 +942,7 @@ impl<'a> TiledPaneGrid<'a> {
                 .filter(|(_, (_, c))| {
                     c.is_directly_below(Box::as_ref(source_pane))
                         && c.vertically_overlaps_with(Box::as_ref(source_pane))
-                        && c.position_and_size().is_stacked
+                        && c.current_geom().is_stacked
                 })
                 .max_by_key(|(_, (_, c))| c.active_at())
                 .map(|(_, (pid, _))| pid)
@@ -974,7 +972,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_below(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
-                    && !c.position_and_size().is_stacked
+                    && !c.current_geom().is_stacked
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -995,7 +993,7 @@ impl<'a> TiledPaneGrid<'a> {
             .filter(|(_, (_, c))| {
                 c.is_directly_above(Box::as_ref(current_pane))
                     && c.vertically_overlaps_with(Box::as_ref(current_pane))
-                    && !c.position_and_size().is_stacked
+                    && !c.current_geom().is_stacked
             })
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (pid, _))| pid)
@@ -1020,7 +1018,7 @@ impl<'a> TiledPaneGrid<'a> {
             .max_by_key(|(_, (_, c))| c.active_at())
             .map(|(_, (_pid, pane))| pane)
             .copied();
-        let next_pane_is_stacked = next_pane.map(|p| p.position_and_size().is_stacked).unwrap_or(false);
+        let next_pane_is_stacked = next_pane.map(|p| p.current_geom().is_stacked).unwrap_or(false);
         if next_pane_is_stacked {
             if let Some(next_pane_id) = next_pane.map(|p| p.pid()) {
                 return StackedPanes::new(self.panes.clone()).flexible_pane_id_in_stack(&next_pane_id);
@@ -1032,7 +1030,7 @@ impl<'a> TiledPaneGrid<'a> {
         pane_ids.iter().fold(HashSet::new(), |mut borders, p| {
             let panes = self.panes.borrow();
             let pane = panes.get(p).unwrap();
-            if pane.position_and_size().is_stacked {
+            if pane.current_geom().is_stacked {
                 let pane_geom = StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&pane.pid()).unwrap();
                 borders.insert(pane_geom.y);
                 borders.insert(pane_geom.y + pane_geom.rows.as_usize());
@@ -1203,7 +1201,7 @@ impl<'a> TiledPaneGrid<'a> {
             let freed_space = pane_to_close.position_and_size();
             let freed_width = freed_space.cols.as_percent();
             let freed_height = freed_space.rows.as_percent();
-            let pane_to_close_is_stacked = pane_to_close.position_and_size().is_stacked;
+            let pane_to_close_is_stacked = pane_to_close.current_geom().is_stacked;
             (freed_width, freed_height, pane_to_close_is_stacked)
         };
         if pane_to_close_is_stacked {
@@ -1233,7 +1231,7 @@ impl<'a> TiledPaneGrid<'a> {
     ) -> Option<(PaneId, SplitDirection)> {
         let panes = self.panes.borrow();
         let pane_sequence: Vec<(&PaneId, &&mut Box<dyn Pane>)> =
-            panes.iter().filter(|(_, p)| p.selectable() && !p.position_and_size().is_stacked).collect();
+            panes.iter().filter(|(_, p)| p.selectable() && !p.current_geom().is_stacked).collect();
         let (_largest_pane_size, pane_id_to_split) = pane_sequence.iter().fold(
             (0, None),
             |(current_largest_pane_size, current_pane_id_to_split), id_and_pane_to_check| {

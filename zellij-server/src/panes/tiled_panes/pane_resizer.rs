@@ -132,7 +132,7 @@ impl<'a> PaneResizer<'a> {
         let err_context = || format!("Failed to apply spans");
         let mut geoms_changed = false;
         for span in spans {
-            let pane_is_stacked = self.panes.borrow().get(&span.pid).unwrap().position_and_size().is_stacked;
+            let pane_is_stacked = self.panes.borrow().get(&span.pid).unwrap().current_geom().is_stacked;
             if pane_is_stacked {
                 let current_geom = StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&span.pid).unwrap();
                 let new_geom = match span.direction {
