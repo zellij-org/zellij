@@ -852,6 +852,7 @@ impl TiledPanes {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
+                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
                             self.reapply_pane_frames();
                         }
 
@@ -902,6 +903,7 @@ impl TiledPanes {
                             // we do this because a stack pane focus change also changes its
                             // geometry and we need to let the pty know about this (like in a
                             // normal size change)
+                            self.focus_pane_for_all_clients(p); // TODO: for all client *in stack*
                             self.reapply_pane_frames();
                         }
 
