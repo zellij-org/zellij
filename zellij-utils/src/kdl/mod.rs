@@ -740,7 +740,7 @@ impl TryFrom<&KdlNode> for Action {
             "PaneNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)
             },
-            "NewTab" => Ok(Action::NewTab(None, vec![], None)),
+            "NewTab" => Ok(Action::NewTab(None, vec![], None, None, None)),
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
             "TabNameInput" => {
                 parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action)

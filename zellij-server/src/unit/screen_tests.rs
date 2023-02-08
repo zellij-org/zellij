@@ -14,7 +14,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{TiledPaneLayout, SplitDirection};
+use zellij_utils::input::layout::{TiledPaneLayout, SplitDirection, Layout};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -357,6 +357,7 @@ impl MockScreen {
     }
     pub fn clone_session_metadata(&self) -> SessionMetaData {
         // hack that only clones the clonable parts of SessionMetaData
+        let layout = Box::new(Layout::default()); // this is not actually correct!!
         SessionMetaData {
             senders: self.session_metadata.senders.clone(),
             capabilities: self.session_metadata.capabilities.clone(),
@@ -367,6 +368,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            layout,
         }
     }
 }
@@ -403,6 +405,7 @@ impl MockScreen {
             arrow_fonts: Default::default(),
         };
 
+        let layout = Box::new(Layout::default()); // this is not actually correct!!
         let session_metadata = SessionMetaData {
             senders: ThreadSenders {
                 to_screen: Some(to_screen.clone()),
@@ -421,6 +424,7 @@ impl MockScreen {
             plugin_thread: None,
             pty_writer_thread: None,
             background_jobs_thread: None,
+            layout,
         };
 
         let os_input = FakeInputOutput::default();

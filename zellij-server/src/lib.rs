@@ -108,6 +108,7 @@ pub(crate) struct SessionMetaData {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
+    pub layout: Box<Layout>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -374,7 +375,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None, (layout.swap_tiled_layouts.clone(), layout.swap_floating_layouts.clone())); // TODO: floating swap layouts instead of vec![]
+                    spawn_tabs(None, layout.template.map(|t| t.1).clone().unwrap_or_default(), None, (layout.swap_tiled_layouts.clone(), layout.swap_floating_layouts.clone()));
                 }
                 session_data
                     .read()
@@ -736,6 +737,7 @@ fn init_session(
             );
             let store = Store::default();
 
+            let layout = layout.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -796,6 +798,7 @@ fn init_session(
         capabilities,
         default_shell,
         client_attributes,
+        layout,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
