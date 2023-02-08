@@ -283,31 +283,24 @@ impl TiledPanes {
         }
         self.reset_boundaries();
     }
-    pub fn can_split_pane_horizontally(&mut self, client_id: ClientId) -> bool {
+
+    pub fn can_split_pane(&self, direction: SplitDirection, client_id: ClientId) -> bool {
         if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
-            if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
+            if let Some(active_pane) = self.panes.get(active_pane_id) {
                 let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.rows.as_usize() < MIN_TERMINAL_HEIGHT * 2 {
-                    return false;
-                } else {
-                    return split(SplitDirection::Horizontal, &full_pane_size).is_some();
-                }
+                return match direction {
+                    SplitDirection::Horizontal => {
+                        full_pane_size.rows.as_usize() >= MIN_TERMINAL_HEIGHT * 2
+                    },
+                    SplitDirection::Vertical => {
+                        full_pane_size.cols.as_usize() >= MIN_TERMINAL_WIDTH * 2
+                    },
+                } && split(direction, &full_pane_size).is_some();
             }
         }
         false
     }
-    pub fn can_split_pane_vertically(&mut self, client_id: ClientId) -> bool {
-        if let Some(active_pane_id) = &self.active_panes.get(&client_id) {
-            if let Some(active_pane) = self.panes.get_mut(active_pane_id) {
-                let full_pane_size = active_pane.position_and_size();
-                if full_pane_size.cols.as_usize() < MIN_TERMINAL_WIDTH * 2 {
-                    return false;
-                }
-                return split(SplitDirection::Vertical, &full_pane_size).is_some();
-            }
-        }
-        false
-    }
+
     pub fn can_split_active_pane_horizontally(&self, client_id: ClientId) -> bool {
         let active_pane_id = &self.active_panes.get(&client_id).unwrap();
         let active_pane = self.panes.get(active_pane_id).unwrap();
