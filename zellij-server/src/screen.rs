@@ -2337,7 +2337,6 @@ pub(crate) fn screen_thread_main(
                     .values()
                     .map(|tab| tab.name.clone())
                     .collect::<Vec<String>>();
-                log::info!("tab name is {tab_names:?}");
                 screen
                     .bus
                     .senders

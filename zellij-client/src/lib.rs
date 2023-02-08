@@ -409,14 +409,6 @@ pub fn start_client(
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
             },
-            ClientInstruction::TabNameList(tab_names) => {
-                log::info!("tab name is {tab_names:?}");
-                let mut stdout = os_input.get_stdout_writer();
-                stdout
-                    .write_all(tab_names.join("\n").as_bytes())
-                    .expect("cannot write to stdout");
-                stdout.flush().expect("could not flush");
-            },
             _ => {},
         }
     }

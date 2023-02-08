@@ -626,7 +626,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 );
             },
             ServerInstruction::TabNameList(tab_names, client_id) => {
-                log::info!("tab name is {tab_names:?} client id {client_id}");
                 send_to_client!(
                     client_id,
                     os_input,
