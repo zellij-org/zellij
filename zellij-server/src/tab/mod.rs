@@ -2027,6 +2027,7 @@ impl Tab {
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_active_pane_down(client_id);
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
         } else {
             if !self.has_selectable_panes() {
@@ -2041,6 +2042,7 @@ impl Tab {
     pub fn move_active_pane_up(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_active_pane_up(client_id);
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
         } else {
             if !self.has_selectable_panes() {
@@ -2055,6 +2057,7 @@ impl Tab {
     pub fn move_active_pane_right(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_active_pane_right(client_id);
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
         } else {
             if !self.has_selectable_panes() {
@@ -2069,6 +2072,7 @@ impl Tab {
     pub fn move_active_pane_left(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.move_active_pane_left(client_id);
+            self.swap_layouts.set_is_floating_damaged();
             self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" behind
         } else {
             if !self.has_selectable_panes() {

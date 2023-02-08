@@ -1656,6 +1656,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane(client_id)
                 );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
             },
@@ -1665,6 +1666,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_down(client_id)
                 );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
             },
@@ -1674,6 +1676,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_up(client_id)
                 );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
             },
@@ -1683,6 +1686,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_right(client_id)
                 );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
             },
@@ -1692,6 +1696,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_left(client_id)
                 );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;
                 screen.unblock_input()?;
             },
