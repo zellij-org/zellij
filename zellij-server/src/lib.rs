@@ -77,6 +77,7 @@ pub enum ServerInstruction {
     AttachClient(ClientAttributes, Options, ClientId),
     ConnStatus(ClientId),
     ActiveClients(ClientId),
+    TabNameList(Vec<String>, ClientId),
 }
 
 impl From<&ServerInstruction> for ServerContext {
@@ -93,6 +94,7 @@ impl From<&ServerInstruction> for ServerContext {
             ServerInstruction::AttachClient(..) => ServerContext::AttachClient,
             ServerInstruction::ConnStatus(..) => ServerContext::ConnStatus,
             ServerInstruction::ActiveClients(_) => ServerContext::ActiveClients,
+            ServerInstruction::TabNameList(..) => ServerContext::TabNameList,
         }
     }
 }
@@ -620,6 +622,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     client_id,
                     os_input,
                     ServerToClientMsg::ActiveClients(client_ids),
+                    session_state
+                );
+            },
+            ServerInstruction::TabNameList(tab_names, client_id) => {
+                log::info!("tab name is {tab_names:?} client id {client_id}");
+                send_to_client!(
+                    client_id,
+                    os_input,
+                    ServerToClientMsg::TabNameList(tab_names),
                     session_state
                 );
             },

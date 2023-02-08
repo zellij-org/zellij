@@ -45,6 +45,7 @@ pub(crate) enum ClientInstruction {
     ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    TabNameList(Vec<String>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -58,6 +59,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
+            ServerToClientMsg::TabNameList(tab_names) => ClientInstruction::TabNameList(tab_names),
         }
     }
 }
@@ -72,6 +74,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
+            ClientInstruction::TabNameList(_) => ClientContext::TabNameList,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
         }
@@ -405,6 +408,14 @@ pub fn start_client(
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
+            },
+            ClientInstruction::TabNameList(tab_names) => {
+                log::info!("tab name is {tab_names:?}");
+                let mut stdout = os_input.get_stdout_writer();
+                stdout
+                    .write_all(tab_names.join("\n").as_bytes())
+                    .expect("cannot write to stdout");
+                stdout.flush().expect("could not flush");
             },
             _ => {},
         }

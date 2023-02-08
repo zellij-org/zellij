@@ -242,6 +242,7 @@ pub enum ScreenInstruction {
     ClearPaneFrameColorOverride(Vec<PaneId>),
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
+    QueryTabNames(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -384,6 +385,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
         }
     }
 }
@@ -2328,6 +2330,18 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.update_tabs()?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::QueryTabNames(client_id) => {
+                let tab_names = screen
+                    .get_tabs_mut()
+                    .values()
+                    .map(|tab| tab.name.clone())
+                    .collect::<Vec<String>>();
+                log::info!("tab name is {tab_names:?}");
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::TabNameList(tab_names, client_id))?;
             },
         }
     }

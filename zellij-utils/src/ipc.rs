@@ -109,6 +109,7 @@ pub enum ServerToClientMsg {
     SwitchToMode(InputMode),
     Connected,
     ActiveClients(Vec<ClientId>),
+    TabNameList(Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

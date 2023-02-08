@@ -323,6 +323,7 @@ pub enum ScreenContext {
     ClearPaneFrameColorOverride,
     PreviousSwapLayout,
     NextSwapLayout,
+    QueryTabNames,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -366,6 +367,7 @@ pub enum ClientContext {
     SwitchToMode,
     Connected,
     ActiveClients,
+    TabNameList,
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
@@ -385,6 +387,7 @@ pub enum ServerContext {
     AttachClient,
     ConnStatus,
     ActiveClients,
+    TabNameList,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
