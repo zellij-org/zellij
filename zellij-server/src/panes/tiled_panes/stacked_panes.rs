@@ -244,7 +244,7 @@ impl <'a>StackedPanes <'a>{
         let err_context = || format!("Cannot determin if pane is one liner or not");
         let panes = self.panes.borrow();
         let pane_to_close = panes.get(id).with_context(err_context)?;
-        Ok(pane_to_close.position_and_size().rows.as_usize() == 1)
+        Ok(pane_to_close.position_and_size().rows.is_fixed())
     }
     fn positions_in_stack(&self, id: &PaneId) -> Result<Vec<(PaneId, PaneGeom)>> {
         // find the full stack of panes around the given id, sorted by pane location top to bottom
