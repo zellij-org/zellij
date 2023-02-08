@@ -1003,6 +1003,13 @@ impl Tab {
                     self.tiled_panes
                         .focus_pane(focused_floating_pane_id, client_id);
                     self.hide_floating_panes();
+                    if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+                        // only do this if we're already in this layout, otherwise it might be
+                        // confusing and not what the user intends
+                        self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                            // next layout
+                        self.next_swap_layout(Some(client_id), true)?;
+                    }
                 }
             }
         } else if let Some(focused_pane_id) = self.tiled_panes.focused_pane_id(client_id) {
@@ -1024,6 +1031,13 @@ impl Tab {
                         .add_pane(focused_pane_id, embedded_pane_to_float);
                     self.floating_panes.focus_pane(focused_pane_id, client_id);
                     self.show_floating_panes();
+                    if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                        // only do this if we're already in this layout, otherwise it might be
+                        // confusing and not what the user intends
+                        self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                            // next layout
+                        self.next_swap_layout(Some(client_id), true)?;
+                    }
                 }
             }
         }
