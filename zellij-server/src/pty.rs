@@ -224,27 +224,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                            None,
-                                        ))
-                                        .with_context(err_context)?;
+                                    send_command_not_found_to_screen(
+                                        pty.bus.senders.clone(),
+                                        *terminal_id,
+                                        run_command.clone(),
+                                    )
+                                    .with_context(err_context)?;
                                 }
                             }
                         },
@@ -294,27 +279,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::PtyBytes(
-                                            *terminal_id,
-                                            format!(
-                                                "Command not found: {}",
-                                                run_command.command.display()
-                                            )
-                                            .as_bytes()
-                                            .to_vec(),
-                                        ))
-                                        .with_context(err_context)?;
-                                    pty.bus
-                                        .senders
-                                        .send_to_screen(ScreenInstruction::HoldPane(
-                                            PaneId::Terminal(*terminal_id),
-                                            Some(2), // exit status
-                                            run_command,
-                                            None,
-                                        ))
-                                        .with_context(err_context)?;
+                                    send_command_not_found_to_screen(
+                                        pty.bus.senders.clone(),
+                                        *terminal_id,
+                                        run_command.clone(),
+                                    )
+                                    .with_context(err_context)?;
                                 }
                             }
                         },
@@ -403,27 +373,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     Err(err) => match err.downcast_ref::<ZellijError>() {
                         Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
                             if run_command.hold_on_close {
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::PtyBytes(
-                                        *terminal_id,
-                                        format!(
-                                            "Command not found: {}",
-                                            run_command.command.display()
-                                        )
-                                        .as_bytes()
-                                        .to_vec(),
-                                    ))
-                                    .with_context(err_context)?;
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::HoldPane(
-                                        PaneId::Terminal(*terminal_id),
-                                        Some(2), // exit status
-                                        run_command,
-                                        None,
-                                    ))
-                                    .with_context(err_context)?;
+                                send_command_not_found_to_screen(
+                                    pty.bus.senders.clone(),
+                                    *terminal_id,
+                                    run_command.clone(),
+                                )
+                                .with_context(err_context)?;
                             }
                         },
                         _ => Err::<(), _>(err).non_fatal(),
