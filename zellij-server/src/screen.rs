@@ -135,8 +135,13 @@ pub enum ScreenInstruction {
     OpenInPlaceEditor(PaneId, ClientId),
     TogglePaneEmbedOrFloating(ClientId),
     ToggleFloatingPanes(ClientId, Option<TerminalAction>),
-    HorizontalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
-    VerticalSplit(PaneId, Option<InitialTitle>, HoldForCommand, ClientId),
+    Split(
+        PaneId,
+        Option<InitialTitle>,
+        HoldForCommand,
+        ClientId,
+        SplitDirection,
+    ),
     WriteCharacter(Vec<u8>, ClientId),
     Resize(ClientId, ResizeStrategy),
     SwitchFocus(ClientId),
@@ -245,8 +250,10 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::TogglePaneEmbedOrFloating
             },
             ScreenInstruction::ToggleFloatingPanes(..) => ScreenContext::ToggleFloatingPanes,
-            ScreenInstruction::HorizontalSplit(..) => ScreenContext::HorizontalSplit,
-            ScreenInstruction::VerticalSplit(..) => ScreenContext::VerticalSplit,
+            ScreenInstruction::Split(.., direction) => match direction {
+                SplitDirection::Horizontal => ScreenContext::HorizontalSplit,
+                SplitDirection::Vertical => ScreenContext::VerticalSplit,
+            },
             ScreenInstruction::WriteCharacter(..) => ScreenContext::WriteCharacter,
             ScreenInstruction::Resize(.., strategy) => match strategy {
                 ResizeStrategy {
@@ -1482,45 +1489,17 @@ pub(crate) fn screen_thread_main(
 
                 screen.render()?;
             },
-            ScreenInstruction::HorizontalSplit(
+            ScreenInstruction::Split(
                 pid,
                 initial_pane_title,
                 hold_for_command,
                 client_id,
+                direction,
             ) => {
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.split(pid, initial_pane_title, client_id, SplitDirection::Horizontal),
-                    ?
-                );
-                if let Some(hold_for_command) = hold_for_command {
-                    let is_first_run = true;
-                    active_tab_and_connected_client_id!(
-                        screen,
-                        client_id,
-                        |tab: &mut Tab, _client_id: ClientId| tab.hold_pane(
-                            pid,
-                            None,
-                            is_first_run,
-                            hold_for_command
-                        )
-                    );
-                }
-                screen.unblock_input()?;
-                screen.update_tabs()?;
-                screen.render()?;
-            },
-            ScreenInstruction::VerticalSplit(
-                pid,
-                initial_pane_title,
-                hold_for_command,
-                client_id,
-            ) => {
-                active_tab_and_connected_client_id!(
-                    screen,
-                    client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.split(pid, initial_pane_title, client_id, SplitDirection::Vertical),
+                    |tab: &mut Tab, client_id: ClientId| tab.split(pid, initial_pane_title, client_id, direction),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {

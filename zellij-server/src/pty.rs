@@ -8,6 +8,7 @@ use crate::{
 };
 use async_std::task::{self, JoinHandle};
 use std::{collections::HashMap, env, os::unix::io::RawFd, path::PathBuf};
+use zellij_utils::input::layout::SplitDirection;
 use zellij_utils::nix::unistd::Pid;
 use zellij_utils::{
     async_std,
@@ -202,11 +203,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         let hold_for_command = if starts_held { run_command } else { None };
                         pty.bus
                             .senders
-                            .send_to_screen(ScreenInstruction::VerticalSplit(
+                            .send_to_screen(ScreenInstruction::Split(
                                 PaneId::Terminal(pid),
                                 pane_title,
                                 hold_for_command,
                                 client_id,
+                                SplitDirection::Vertical,
                             ))
                             .with_context(err_context)?;
                     },
@@ -216,11 +218,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             if hold_on_close {
                                 pty.bus
                                     .senders
-                                    .send_to_screen(ScreenInstruction::VerticalSplit(
+                                    .send_to_screen(ScreenInstruction::Split(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
                                         hold_for_command,
                                         client_id,
+                                        SplitDirection::Vertical,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
@@ -257,11 +260,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                         let hold_for_command = if starts_held { run_command } else { None };
                         pty.bus
                             .senders
-                            .send_to_screen(ScreenInstruction::HorizontalSplit(
+                            .send_to_screen(ScreenInstruction::Split(
                                 PaneId::Terminal(pid),
                                 pane_title,
                                 hold_for_command,
                                 client_id,
+                                SplitDirection::Horizontal,
                             ))
                             .with_context(err_context)?;
                     },
@@ -271,11 +275,12 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 let hold_for_command = None; // we do not hold an "error" pane
                                 pty.bus
                                     .senders
-                                    .send_to_screen(ScreenInstruction::HorizontalSplit(
+                                    .send_to_screen(ScreenInstruction::Split(
                                         PaneId::Terminal(*terminal_id),
                                         pane_title,
                                         hold_for_command,
                                         client_id,
+                                        SplitDirection::Horizontal,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
