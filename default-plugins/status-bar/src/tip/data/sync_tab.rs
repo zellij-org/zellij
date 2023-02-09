@@ -61,8 +61,8 @@ fn add_keybinds(help: &ModeInfo) -> Vec<ANSIString> {
     }
 
     let mut bits = vec![];
-    bits.extend(style_key_with_modifier(&to_tab, &help.style.colors));
+    bits.extend(style_key_with_modifier(&to_tab, &help.style.colors, None));
     bits.push(Style::new().paint(", "));
-    bits.extend(style_key_with_modifier(&sync_tabs, &help.style.colors));
+    bits.extend(style_key_with_modifier(&sync_tabs, &help.style.colors, None));
     bits
 }

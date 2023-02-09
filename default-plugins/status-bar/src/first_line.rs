@@ -238,7 +238,7 @@ fn key_indicators(
 fn swap_layout_keycode(mode_info: &ModeInfo, palette: &Palette) -> LinePart {
     let mode_keybinds = mode_info.get_mode_keybinds();
     let prev_next_keys = action_key_group(&mode_keybinds, &[&[Action::PreviousSwapLayout], &[Action::NextSwapLayout]]);
-    let prev_next_keys_indicator = style_key_with_modifier(&prev_next_keys, palette);
+    let prev_next_keys_indicator = style_key_with_modifier(&prev_next_keys, palette, Some(palette.black));
     let keycode = ANSIStrings(&prev_next_keys_indicator);
     let len = unstyled_len(&keycode);
     let part = keycode.to_string();
@@ -272,7 +272,7 @@ fn swap_layout_status(max_len: usize, swap_layout_name: &Option<String>, is_swap
             } else {
                 style_swap_layout_indicator!(selected)
             };
-            let swap_layout_indicator  = format!("{}{}{} ", prefix_separator, swap_layout_name, suffix_separator);
+            let swap_layout_indicator  = format!("{}{}{}", prefix_separator, swap_layout_name, suffix_separator);
             let (part, full_len) = if mode_info.mode == InputMode::Locked {
                 (
                     format!("{}", swap_layout_indicator),
@@ -280,7 +280,7 @@ fn swap_layout_status(max_len: usize, swap_layout_name: &Option<String>, is_swap
                 )
             } else {
                 (
-                    format!("{} {}", keycode, swap_layout_indicator),
+                    format!("{}{}{}{}", keycode, colored_elements.superkey_prefix.paint(" "), swap_layout_indicator, colored_elements.superkey_prefix.paint(" ")),
                     keycode.len + swap_layout_name_len + 1, // 1 is the space between
                 )
             };
@@ -510,7 +510,7 @@ pub fn first_line(help: &ModeInfo, tab_info: Option<&TabInfo>, max_len: usize, s
             if let Some(swap_layout_status) = swap_layout_status(remaining_space, &tab_info.active_swap_layout_name, tab_info.is_swap_layout_dirty, help, colored_elements, &help.style.colors, separator) {
                 remaining_space -= swap_layout_status.len;
                 for _ in 0..remaining_space {
-                    key_indicators.part.push(' ');
+                    key_indicators.part.push_str(&ANSIStrings(&[colored_elements.superkey_prefix.paint(" ")]).to_string());
                     key_indicators.len += 1;
                 }
                 key_indicators.append(&swap_layout_status);

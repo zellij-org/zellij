@@ -30,7 +30,7 @@ fn full_length_shortcut(
 
     let separator = if is_first_shortcut { " " } else { " / " };
     let mut bits: Vec<ANSIString> = vec![Style::new().fg(text_color).paint(separator)];
-    bits.extend(style_key_with_modifier(&key, &palette));
+    bits.extend(style_key_with_modifier(&key, &palette, None));
     bits.push(
         Style::new()
             .fg(text_color)
