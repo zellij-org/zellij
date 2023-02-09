@@ -313,6 +313,21 @@ impl SwapLayouts {
         }
         None
     }
+    pub fn best_effort_tiled_layout(&mut self, tiled_panes: &TiledPanes) -> Option<TiledPaneLayout> {
+        for swap_layout in self.swap_tiled_layouts.iter() {
+            for (_constraint, layout) in swap_layout.0.iter() {
+                let display_area = self.display_area.borrow();
+                // TODO: reuse the assets from position_panes_in_space here?
+                let pane_count = tiled_panes.visible_panes_count();
+                let display_area = PaneGeom::from(&*display_area);
+                if layout.position_panes_in_space(&display_area, Some(pane_count)).is_ok() {
+                    return Some(layout.clone());
+                }
+            };
+        }
+        log::error!("Could not find layout that would fit on screen!");
+        None
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -808,12 +823,18 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
-    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool, refocus_pane: bool) -> Result<()> {
+    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool, refocus_pane: bool, best_effort: bool) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
         let refocus_pane = if self.swap_layouts.is_tiled_damaged() { false } else { refocus_pane };
-        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes, search_backwards) {
+        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes, search_backwards).or_else(|| {
+            if best_effort {
+                self.swap_layouts.best_effort_tiled_layout(&self.tiled_panes)
+            } else {
+                None
+            }
+        }) {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -840,9 +861,9 @@ impl Tab {
         self.is_pending = false;
         self.apply_buffered_instructions()?;
         let display_area = *self.display_area.borrow();
-        // we do this so that the new swap layout has a chance to pass through the constraint
-        // system
-        self.resize_whole_tab(display_area);
+        // we do this so that the new swap layout has a chance to pass through the constraint system
+        self.tiled_panes.resize(display_area);
+        self.should_clear_display_before_rendering = true;
         Ok(())
     }
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
@@ -850,7 +871,7 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(client_id, search_backwards, true)
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, true)
+            self.relayout_tiled_panes(client_id, search_backwards, true, false)
         }
     }
     pub fn next_swap_layout(&mut self, client_id: Option<ClientId>, refocus_pane: bool) -> Result<()> {
@@ -858,7 +879,7 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.relayout_floating_panes(client_id, search_backwards, refocus_pane)
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, refocus_pane)
+            self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)
         }
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
@@ -1867,6 +1888,10 @@ impl Tab {
             // tiled panes
             self.swap_layouts.set_is_floating_damaged();
             let _ = self.relayout_floating_panes(None, false, false);
+        }
+        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+            self.swap_layouts.set_is_tiled_damaged();
+            let _ = self.relayout_tiled_panes(None, false, false, true);
         }
         self.should_clear_display_before_rendering = true;
     }

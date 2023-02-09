@@ -627,6 +627,8 @@ impl TiledPanes {
                 Err(e) => match e.downcast_ref::<ZellijError>() {
                     Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
                     _ => {
+                        // display area still changed, even if we had an error
+                        display_area.cols = cols;
                         Err::<(), _>(anyError::msg(e))
                             .context("failed to resize tab horizontally")
                             .non_fatal();
@@ -642,6 +644,8 @@ impl TiledPanes {
                 Err(e) => match e.downcast_ref::<ZellijError>() {
                     Some(ZellijError::PaneSizeUnchanged) => {}, // ignore unchanged layout
                     _ => {
+                        // display area still changed, even if we had an error
+                        display_area.rows = rows;
                         Err::<(), _>(anyError::msg(e))
                             .context("failed to resize tab vertically")
                             .non_fatal();
