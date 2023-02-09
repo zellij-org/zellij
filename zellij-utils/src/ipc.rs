@@ -154,8 +154,7 @@ isn't performant enough.
 There are a few things you can try now:
     - Reattach to your previous session and see if it works out better this
       time: {session_tip}
-    - Try using a faster terminal. GPU-accelerated terminals such as Kitty
-      or Alacritty are cross-platform and known to work well with zellij.
+    - Try using a faster (maybe GPU-accelerated) terminal emulator
     "
                 )
             },
