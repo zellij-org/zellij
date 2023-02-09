@@ -12,7 +12,7 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation},
+    input::layout::{FloatingPanesLayout, PaneLayout, RunPluginLocation, SplitDirection},
     position::Position,
 };
 
@@ -1491,7 +1491,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.horizontal_split(pid, initial_pane_title, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.split(pid, initial_pane_title, client_id, SplitDirection::Horizontal),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {
@@ -1520,7 +1520,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.vertical_split(pid, initial_pane_title, client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.split(pid, initial_pane_title, client_id, SplitDirection::Vertical),
                     ?
                 );
                 if let Some(hold_for_command) = hold_for_command {

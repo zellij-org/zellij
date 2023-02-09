@@ -49,6 +49,15 @@ impl Not for SplitDirection {
     }
 }
 
+impl fmt::Display for SplitDirection {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SplitDirection::Vertical => write!(formatter, "Vertical"),
+            SplitDirection::Horizontal => write!(formatter, "Horizontal"),
+        }
+    }
+}
+
 impl From<Direction> for SplitDirection {
     fn from(direction: Direction) -> Self {
         match direction {

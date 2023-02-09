@@ -903,14 +903,17 @@ impl Tab {
         }
         Ok(())
     }
-    pub fn horizontal_split(
+
+    pub fn split(
         &mut self,
         pid: PaneId,
         initial_pane_title: Option<String>,
         client_id: ClientId,
+        direction: SplitDirection,
     ) -> Result<()> {
+        let direction_name = direction.to_string().to_lowercase();
         let err_context =
-            || format!("failed to split pane {pid:?} horizontally for client {client_id}");
+            || format!("failed to split pane {pid:?} {direction_name}ly for client {client_id}");
         if self.floating_panes.panes_are_visible() {
             return Ok(());
         }
@@ -919,10 +922,7 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             self.toggle_active_pane_fullscreen(client_id);
         }
-        if self
-            .tiled_panes
-            .can_split_pane(SplitDirection::Horizontal, client_id)
-        {
+        if self.tiled_panes.can_split_pane(direction, client_id) {
             if let PaneId::Terminal(term_pid) = pid {
                 let next_terminal_position = self.get_next_terminal_position();
                 let new_terminal = TerminalPane::new(
@@ -938,78 +938,13 @@ impl Tab {
                     self.terminal_emulator_color_codes.clone(),
                     initial_pane_title,
                 );
-                self.tiled_panes.split_pane(
-                    pid,
-                    Box::new(new_terminal),
-                    client_id,
-                    SplitDirection::Horizontal,
-                );
+                self.tiled_panes
+                    .split_pane(pid, Box::new(new_terminal), client_id, direction);
                 self.should_clear_display_before_rendering = true;
                 self.tiled_panes.focus_pane(pid, client_id);
             }
         } else {
-            log::error!("No room to split pane horizontally");
-            if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
-                self.senders
-                    .send_to_background_jobs(BackgroundJob::DisplayPaneError(
-                        vec![active_pane_id],
-                        "TOO SMALL!".into(),
-                    ))
-                    .with_context(err_context)?;
-            }
-            self.senders
-                .send_to_pty(PtyInstruction::ClosePane(pid))
-                .with_context(err_context)?;
-            return Ok(());
-        }
-        Ok(())
-    }
-    pub fn vertical_split(
-        &mut self,
-        pid: PaneId,
-        initial_pane_title: Option<String>,
-        client_id: ClientId,
-    ) -> Result<()> {
-        let err_context =
-            || format!("failed to split pane {pid:?} vertically for client {client_id}");
-        if self.floating_panes.panes_are_visible() {
-            return Ok(());
-        }
-        self.close_down_to_max_terminals()
-            .with_context(err_context)?;
-        if self.tiled_panes.fullscreen_is_active() {
-            self.toggle_active_pane_fullscreen(client_id);
-        }
-        if self
-            .tiled_panes
-            .can_split_pane(SplitDirection::Vertical, client_id)
-        {
-            if let PaneId::Terminal(term_pid) = pid {
-                let next_terminal_position = self.get_next_terminal_position();
-                let new_terminal = TerminalPane::new(
-                    term_pid,
-                    PaneGeom::default(), // the initial size will be set later
-                    self.style,
-                    next_terminal_position,
-                    String::new(),
-                    self.link_handler.clone(),
-                    self.character_cell_size.clone(),
-                    self.sixel_image_store.clone(),
-                    self.terminal_emulator_colors.clone(),
-                    self.terminal_emulator_color_codes.clone(),
-                    initial_pane_title,
-                );
-                self.tiled_panes.split_pane(
-                    pid,
-                    Box::new(new_terminal),
-                    client_id,
-                    SplitDirection::Vertical,
-                );
-                self.should_clear_display_before_rendering = true;
-                self.tiled_panes.focus_pane(pid, client_id);
-            }
-        } else {
-            log::error!("No room to split pane vertically");
+            log::error!("No room to split pane {direction_name}ly");
             if let Some(active_pane_id) = self.tiled_panes.get_active_pane_id(client_id) {
                 self.senders
                     .send_to_background_jobs(BackgroundJob::DisplayPaneError(
