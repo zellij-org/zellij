@@ -3177,6 +3177,11 @@ Config {
                 ),
             ],
             Char(
+                ' ',
+            ): [
+                NextSwapLayout,
+            ],
+            Char(
                 '"',
             ): [
                 NewPane(
