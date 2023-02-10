@@ -28,7 +28,7 @@ swap_tiled_layout name="vertical" {
 }
 
 swap_tiled_layout name="horizontal" {
-    ui max_panes=4 {
+    ui max_panes=3 {
         pane
         pane
     }
