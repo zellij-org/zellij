@@ -15,6 +15,7 @@ use zellij_utils::{
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
+        layout::SplitDirection,
     },
     ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
@@ -252,18 +253,30 @@ pub(crate) fn route_action(
         Action::NewPane(direction, name) => {
             let shell = session.default_shell.clone();
             let pty_instr = match direction {
-                Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
-                },
-                Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(shell, name, client_id)
-                },
-                Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
-                },
-                Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(shell, name, client_id)
-                },
+                Some(Direction::Left) => PtyInstruction::SpawnSplitTerminal(
+                    shell,
+                    name,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Right) => PtyInstruction::SpawnSplitTerminal(
+                    shell,
+                    name,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Up) => PtyInstruction::SpawnSplitTerminal(
+                    shell,
+                    name,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
+                Some(Direction::Down) => PtyInstruction::SpawnSplitTerminal(
+                    shell,
+                    name,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     shell,
@@ -281,21 +294,29 @@ pub(crate) fn route_action(
             let title = format!("Editing: {}", path_to_file.display());
             let open_file = TerminalAction::OpenFile(path_to_file, line_number);
             let pty_instr = match (split_direction, should_float) {
-                (Some(Direction::Left), false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
-                },
-                (Some(Direction::Right), false) => {
-                    PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
-                },
-                (Some(Direction::Up), false) => PtyInstruction::SpawnTerminalHorizontally(
+                (Some(Direction::Left), false) => PtyInstruction::SpawnSplitTerminal(
                     Some(open_file),
                     Some(title),
                     client_id,
+                    SplitDirection::Vertical,
                 ),
-                (Some(Direction::Down), false) => PtyInstruction::SpawnTerminalHorizontally(
+                (Some(Direction::Right), false) => PtyInstruction::SpawnSplitTerminal(
                     Some(open_file),
                     Some(title),
                     client_id,
+                    SplitDirection::Vertical,
+                ),
+                (Some(Direction::Up), false) => PtyInstruction::SpawnSplitTerminal(
+                    Some(open_file),
+                    Some(title),
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
+                (Some(Direction::Down), false) => PtyInstruction::SpawnSplitTerminal(
+                    Some(open_file),
+                    Some(title),
+                    client_id,
+                    SplitDirection::Horizontal,
                 ),
                 // No direction specified or should float - defer placement to screen
                 (None, _) | (_, true) => PtyInstruction::SpawnTerminal(
@@ -350,18 +371,30 @@ pub(crate) fn route_action(
                 .map(|cmd| TerminalAction::RunCommand(cmd.into()))
                 .or_else(|| session.default_shell.clone());
             let pty_instr = match direction {
-                Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id)
-                },
-                Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, name, client_id)
-                },
-                Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id)
-                },
-                Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, name, client_id)
-                },
+                Some(Direction::Left) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    name,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Right) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    name,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Up) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    name,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
+                Some(Direction::Down) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    name,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,
@@ -405,18 +438,30 @@ pub(crate) fn route_action(
         Action::Run(command) => {
             let run_cmd = Some(TerminalAction::RunCommand(command.clone().into()));
             let pty_instr = match command.direction {
-                Some(Direction::Left) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id)
-                },
-                Some(Direction::Right) => {
-                    PtyInstruction::SpawnTerminalVertically(run_cmd, None, client_id)
-                },
-                Some(Direction::Up) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id)
-                },
-                Some(Direction::Down) => {
-                    PtyInstruction::SpawnTerminalHorizontally(run_cmd, None, client_id)
-                },
+                Some(Direction::Left) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    None,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Right) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    None,
+                    client_id,
+                    SplitDirection::Vertical,
+                ),
+                Some(Direction::Up) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    None,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
+                Some(Direction::Down) => PtyInstruction::SpawnSplitTerminal(
+                    run_cmd,
+                    None,
+                    client_id,
+                    SplitDirection::Horizontal,
+                ),
                 // No direction specified - try to put it in the biggest available spot
                 None => PtyInstruction::SpawnTerminal(
                     run_cmd,

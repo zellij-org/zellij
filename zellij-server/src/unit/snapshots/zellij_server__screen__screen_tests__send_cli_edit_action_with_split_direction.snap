@@ -3,4 +3,4 @@ source: zellij-server/src/./unit/screen_tests.rs
 assertion_line: 2018
 expression: "format!(\"{:?}\", * received_pty_instructions.lock().unwrap())"
 ---
-[SpawnTerminalHorizontally(Some(OpenFile("/file/to/edit", None)), Some("Editing: /file/to/edit"), 10), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]
+[SpawnSplitTerminal(Some(OpenFile("/file/to/edit", None)), Some("Editing: /file/to/edit"), 10, Horizontal), UpdateActivePane(Some(Terminal(0)), 1), UpdateActivePane(Some(Terminal(0)), 1), Exit]

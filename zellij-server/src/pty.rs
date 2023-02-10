@@ -40,12 +40,12 @@ pub enum PtyInstruction {
     ), // bool (if Some) is
     // should_float, String is an optional pane name
     OpenInPlaceEditor(PathBuf, Option<usize>, ClientId), // Option<usize> is the optional line number
-    SpawnTerminalVertically(Option<TerminalAction>, Option<String>, ClientId), // String is an
-    // optional pane
-    // name
-    SpawnTerminalHorizontally(Option<TerminalAction>, Option<String>, ClientId), // String is an
-    // optional pane
-    // name
+    SpawnSplitTerminal(
+        Option<TerminalAction>,
+        Option<String>, // String is an optional pane name
+        ClientId,
+        SplitDirection,
+    ),
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
@@ -68,8 +68,10 @@ impl From<&PtyInstruction> for PtyContext {
         match *pty_instruction {
             PtyInstruction::SpawnTerminal(..) => PtyContext::SpawnTerminal,
             PtyInstruction::OpenInPlaceEditor(..) => PtyContext::OpenInPlaceEditor,
-            PtyInstruction::SpawnTerminalVertically(..) => PtyContext::SpawnTerminalVertically,
-            PtyInstruction::SpawnTerminalHorizontally(..) => PtyContext::SpawnTerminalHorizontally,
+            PtyInstruction::SpawnSplitTerminal(.., direction) => match direction {
+                SplitDirection::Vertical => PtyContext::SpawnTerminalVertically,
+                SplitDirection::Horizontal => PtyContext::SpawnTerminalHorizontally,
+            },
             PtyInstruction::UpdateActivePane(..) => PtyContext::UpdateActivePane,
             PtyInstruction::GoToTab(..) => PtyContext::GoToTab,
             PtyInstruction::ClosePane(_) => PtyContext::ClosePane,
@@ -183,9 +185,11 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     },
                 }
             },
-            PtyInstruction::SpawnTerminalVertically(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal vertically for client {client_id}");
+            PtyInstruction::SpawnSplitTerminal(terminal_action, name, client_id, direction) => {
+                let direction_name = direction.to_string().to_lowercase();
+                let err_context = || {
+                    format!("failed to spawn terminal {direction_name}ly for client {client_id}")
+                };
 
                 let (hold_on_close, run_command, pane_title) = match &terminal_action {
                     Some(TerminalAction::RunCommand(run_command)) => (
@@ -208,7 +212,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                 pane_title,
                                 hold_for_command,
                                 client_id,
-                                SplitDirection::Vertical,
+                                direction,
                             ))
                             .with_context(err_context)?;
                     },
@@ -223,64 +227,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                                         pane_title,
                                         hold_for_command,
                                         client_id,
-                                        SplitDirection::Vertical,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    send_command_not_found_to_screen(
-                                        pty.bus.senders.clone(),
-                                        *terminal_id,
-                                        run_command.clone(),
-                                    )
-                                    .with_context(err_context)?;
-                                }
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
-                    },
-                }
-            },
-            PtyInstruction::SpawnTerminalHorizontally(terminal_action, name, client_id) => {
-                let err_context =
-                    || format!("failed to spawn terminal horizontally for client {client_id}");
-
-                let (hold_on_close, run_command, pane_title) = match &terminal_action {
-                    Some(TerminalAction::RunCommand(run_command)) => (
-                        run_command.hold_on_close,
-                        Some(run_command.clone()),
-                        Some(name.unwrap_or_else(|| run_command.to_string())),
-                    ),
-                    _ => (false, None, name),
-                };
-                match pty
-                    .spawn_terminal(terminal_action, ClientOrTabIndex::ClientId(client_id))
-                    .with_context(err_context)
-                {
-                    Ok((pid, starts_held)) => {
-                        let hold_for_command = if starts_held { run_command } else { None };
-                        pty.bus
-                            .senders
-                            .send_to_screen(ScreenInstruction::Split(
-                                PaneId::Terminal(pid),
-                                pane_title,
-                                hold_for_command,
-                                client_id,
-                                SplitDirection::Horizontal,
-                            ))
-                            .with_context(err_context)?;
-                    },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            if hold_on_close {
-                                let hold_for_command = None; // we do not hold an "error" pane
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::Split(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        hold_for_command,
-                                        client_id,
-                                        SplitDirection::Horizontal,
+                                        direction,
                                     ))
                                     .with_context(err_context)?;
                                 if let Some(run_command) = run_command {
