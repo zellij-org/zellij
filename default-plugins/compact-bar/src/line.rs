@@ -256,6 +256,8 @@ pub fn tab_line(
     palette: Palette,
     capabilities: PluginCapabilities,
     mode: InputMode,
+    active_swap_layout_name: &Option<String>,
+    is_swap_layout_dirty: bool,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -283,5 +285,76 @@ pub fn tab_line(
         capabilities,
     );
     prefix.append(&mut tabs_to_render);
+
+    let current_title_len = get_current_title_len(&prefix);
+    if current_title_len < cols {
+        let mut remaining_space = cols - current_title_len;
+        if let Some(swap_layout_status) = swap_layout_status(remaining_space, active_swap_layout_name, is_swap_layout_dirty, mode, &palette, tab_separator(capabilities)) {
+            remaining_space -= swap_layout_status.len;
+            let mut buffer = String::new();
+            for _ in 0..remaining_space {
+                buffer.push_str(&style!(palette.black, palette.black).paint(" ").to_string());
+            }
+            prefix.push(LinePart {
+                part: buffer,
+                len: remaining_space,
+                tab_index: None,
+            });
+            prefix.push(swap_layout_status);
+        }
+    }
+
     prefix
+}
+
+fn swap_layout_status(max_len: usize, swap_layout_name: &Option<String>, is_swap_layout_damaged: bool, input_mode: InputMode, palette: &Palette, separator: &str) -> Option<LinePart> {
+    match swap_layout_name {
+        Some(swap_layout_name) => {
+            let mut swap_layout_name = format!(" {} ", swap_layout_name);
+            swap_layout_name.make_ascii_uppercase();
+            let swap_layout_name_len = swap_layout_name.len() + 3;
+
+            let (prefix_separator, swap_layout_name, suffix_separator) = if input_mode == InputMode::Locked {
+                (
+                    style!(palette.black, palette.fg).paint(separator),
+                    style!(palette.black, palette.fg).italic().paint(&swap_layout_name),
+                    style!(palette.fg, palette.black).paint(separator),
+                )
+            } else if is_swap_layout_damaged {
+                (
+                    style!(palette.black, palette.fg).paint(separator),
+                    style!(palette.black, palette.fg).bold().paint(&swap_layout_name),
+                    style!(palette.fg, palette.black).paint(separator),
+                )
+            } else {
+                (
+                    style!(palette.black, palette.green).paint(separator),
+                    style!(palette.black, palette.green).bold().paint(&swap_layout_name),
+                    style!(palette.green, palette.black).paint(separator),
+                )
+            };
+            let swap_layout_indicator  = format!("{}{}{}", prefix_separator, swap_layout_name, suffix_separator);
+            let (part, full_len) = (
+                format!("{}", swap_layout_indicator),
+                swap_layout_name_len,
+            );
+            let short_len = swap_layout_name_len + 1; // 1 is the space between
+            if full_len <= max_len {
+                Some(LinePart {
+                    part,
+                    len: full_len,
+                    tab_index: None,
+                })
+            } else if short_len <= max_len && input_mode != InputMode::Locked {
+                Some(LinePart {
+                    part: swap_layout_indicator,
+                    len: short_len,
+                    tab_index: None,
+                })
+            } else {
+                None
+            }
+        },
+        None => None,
+    }
 }
