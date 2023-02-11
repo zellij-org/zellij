@@ -285,6 +285,7 @@ pub enum ScreenContext {
     SwitchTabPrev,
     CloseTab,
     GoToTab,
+    GoToTabName,
     UpdateTabName,
     UndoRenameTab,
     TerminalResize,

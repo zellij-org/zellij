@@ -30,7 +30,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
     input::{
@@ -293,13 +293,15 @@ impl WasmBridge {
                     .collect();
                 let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
 
+                let timer = std::time::Instant::now();
                 unsafe {
                     match Module::deserialize_from_file(&self.store, &cached_path) {
                         Ok(m) => {
-                            log::debug!(
-                                "Loaded plugin '{}' from cache folder at '{}'",
+                            log::info!(
+                                "Loaded plugin '{}' from cache folder at '{}' in {:?}",
                                 plugin.path.display(),
                                 ZELLIJ_CACHE_DIR.display(),
+                                timer.elapsed(),
                             );
                             m
                         },
@@ -313,6 +315,11 @@ impl WasmBridge {
                                 })
                                 .and_then(|m| {
                                     m.serialize_to_file(&cached_path).map_err(anyError::new)?;
+                                    log::info!(
+                                        "Compiled plugin '{}' in {:?}",
+                                        plugin.path.display(),
+                                        timer.elapsed()
+                                    );
                                     Ok(m)
                                 })
                                 .with_context(inner_context)
@@ -442,13 +449,7 @@ impl WasmBridge {
         &mut self,
         mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>,
     ) -> Result<()> {
-        let err_context = || {
-            if *DEBUG_MODE.get().unwrap_or(&true) {
-                format!("failed to update plugin state")
-            } else {
-                "failed to update plugin state".to_string()
-            }
-        };
+        let err_context = || "failed to update plugin state".to_string();
 
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
