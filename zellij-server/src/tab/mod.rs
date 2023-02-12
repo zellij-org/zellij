@@ -867,20 +867,30 @@ impl Tab {
         Ok(())
     }
     pub fn previous_swap_layout(&mut self, client_id: Option<ClientId>) -> Result<()> {
+        // warning, here we cache resizes rather than sending them to the pty, we do that in
+        // apply_cached_resizes below - beware when bailing on this function early!
+        self.os_api.cache_resizes();
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
-            self.relayout_floating_panes(client_id, search_backwards, true)
+            self.relayout_floating_panes(client_id, search_backwards, true)?;
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, true, false)
+            self.relayout_tiled_panes(client_id, search_backwards, true, false)?;
         }
+        self.os_api.apply_cached_resizes();
+        Ok(())
     }
     pub fn next_swap_layout(&mut self, client_id: Option<ClientId>, refocus_pane: bool) -> Result<()> {
+        // warning, here we cache resizes rather than sending them to the pty, we do that in
+        // apply_cached_resizes below - beware when bailing on this function early!
+        self.os_api.cache_resizes();
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
-            self.relayout_floating_panes(client_id, search_backwards, refocus_pane)
+            self.relayout_floating_panes(client_id, search_backwards, refocus_pane)?;
         } else {
-            self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)
+            self.relayout_tiled_panes(client_id, search_backwards, refocus_pane, false)?;
         }
+        self.os_api.apply_cached_resizes();
+        Ok(())
     }
     pub fn apply_buffered_instructions(&mut self) -> Result<()> {
         let buffered_instructions: Vec<BufferedTabInstruction> =
@@ -1878,6 +1888,9 @@ impl Tab {
         selectable_tiled_panes.count() > 0
     }
     pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
+        // warning, here we cache resizes rather than sending them to the pty, we do that in
+        // apply_cached_resizes below - beware when bailing on this function early!
+        self.os_api.cache_resizes();
         self.floating_panes.resize(new_screen_size);
         self.floating_panes
             .resize_pty_all_panes(&mut self.os_api)
@@ -1889,11 +1902,12 @@ impl Tab {
             self.swap_layouts.set_is_floating_damaged();
             let _ = self.relayout_floating_panes(None, false, false);
         }
-        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active() {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(None, false, false, true);
         }
         self.should_clear_display_before_rendering = true;
+        let _ = self.os_api.apply_cached_resizes();
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         let err_context = || format!("unable to resize pane");
