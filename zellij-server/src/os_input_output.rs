@@ -300,6 +300,7 @@ fn spawn_terminal(
                     || command.ends_with("emacs")
                     || command.ends_with("nano")
                     || command.ends_with("kak")
+                    || command.ends_with("hx")
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
