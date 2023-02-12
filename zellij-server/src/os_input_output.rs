@@ -301,6 +301,7 @@ fn spawn_terminal(
                     || command.ends_with("nano")
                     || command.ends_with("kak")
                     || command.ends_with("hx")
+                    || command.ends_with("helix")
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
