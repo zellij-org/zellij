@@ -410,7 +410,7 @@ pub fn start_client(
                     .unwrap();
             },
             ClientInstruction::Log(tab_names) => {
-                log::info!("Tab names are {tab_names}");
+                log::info!("Tab names are {tab_names:?}");
             },
             _ => {},
         }
