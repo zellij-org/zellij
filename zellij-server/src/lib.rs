@@ -819,13 +819,13 @@ fn init_session(
     }
 }
 
-#[cfg(any(feature = "force_cranelift", not(debug_assertions)))]
+#[cfg(not(feature = "singlepass"))]
 fn get_store() -> Store {
     log::info!("Compiling plugins using Cranelift");
     Store::new(&wasmer::Universal::new(wasmer::Cranelift::default()).engine())
 }
 
-#[cfg(not(any(feature = "force_cranelift", not(debug_assertions))))]
+#[cfg(feature = "singlepass")]
 fn get_store() -> Store {
     log::info!("Compiling plugins using Singlepass");
     Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine())
