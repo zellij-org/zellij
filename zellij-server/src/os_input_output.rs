@@ -300,14 +300,18 @@ fn spawn_terminal(
                     || command.ends_with("emacs")
                     || command.ends_with("nano")
                     || command.ends_with("kak")
-                    || command.ends_with("hx")
-                    || command.ends_with("helix")
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
+                    args.push(file_to_open);
+                } else if command.ends_with("hx") || command.ends_with("helix") {
+                    args.push(format!("{}:{}", file_to_open, line_number));
+                } else {
+                    args.push(file_to_open);
                 }
+            } else {
+                args.push(file_to_open);
             }
-            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
