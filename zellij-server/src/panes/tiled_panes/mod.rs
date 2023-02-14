@@ -283,7 +283,12 @@ impl TiledPanes {
                 let position_and_size = pane.current_geom();
                 let (pane_columns_offset, pane_rows_offset) =
                     pane_content_offset(&position_and_size, &viewport);
-                pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
+                if !draw_pane_frames && pane.current_geom().is_stacked {
+                    // stacked panes should always leave 1 top row for a title
+                    pane.set_content_offset(Offset::shift_right_and_top(pane_columns_offset, 1));
+                } else {
+                    pane.set_content_offset(Offset::shift(pane_rows_offset, pane_columns_offset));
+                }
             }
 
             resize_pty!(pane, self.os_api, self.senders).unwrap();
@@ -533,6 +538,8 @@ impl TiledPanes {
             if !self.panes_to_hide.contains(&pane.pid()) {
                 let pane_is_stacked_under = stacked_pane_ids_under_flexible_pane.contains(&pane.pid());
                 let pane_is_stacked_over = stacked_pane_ids_over_flexible_pane.contains(&pane.pid());
+                let should_draw_pane_frames = self.draw_pane_frames;
+                let pane_is_stacked = pane.current_geom().is_stacked;
                 let mut pane_contents_and_ui = PaneContentsAndUi::new(
                     pane,
                     output,
@@ -542,6 +549,7 @@ impl TiledPanes {
                     None,
                     pane_is_stacked_under,
                     pane_is_stacked_over,
+                    should_draw_pane_frames,
                 );
                 for client_id in &connected_clients {
                     let client_mode = self
@@ -561,6 +569,22 @@ impl TiledPanes {
                         pane_contents_and_ui
                             .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
                             .with_context(err_context)?;
+                    } else if pane_is_stacked {
+                        // if we have no pane frames but the pane is stacked, we need to render its
+                        // frame which will amount to only rendering the title line
+                        pane_contents_and_ui
+                            .render_pane_frame(*client_id, client_mode, self.session_is_mirrored)
+                            .with_context(err_context)?;
+                        // we also need to render its boundaries as normal
+                        let boundaries = client_id_to_boundaries
+                            .entry(*client_id)
+                            .or_insert_with(|| Boundaries::new(*self.viewport.borrow()));
+                        pane_contents_and_ui.render_pane_boundaries(
+                            *client_id,
+                            client_mode,
+                            boundaries,
+                            self.session_is_mirrored,
+                        );
                     } else {
                         let boundaries = client_id_to_boundaries
                             .entry(*client_id)

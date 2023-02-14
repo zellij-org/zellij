@@ -359,8 +359,13 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
+        let mut frame_geom = self.current_geom();
+        if !frame_params.should_draw_pane_frames {
+            // in this case the width of the frame needs not include the pane corners
+            frame_geom.cols.set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+        }
         let mut frame = PaneFrame::new(
-            self.current_geom().into(),
+            frame_geom.into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,

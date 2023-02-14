@@ -18,6 +18,7 @@ pub struct PaneContentsAndUi<'a> {
     z_index: Option<usize>,
     pane_is_stacked_under: bool,
     pane_is_stacked_over: bool,
+    should_draw_pane_frames: bool,
 }
 
 impl<'a> PaneContentsAndUi<'a> {
@@ -30,6 +31,7 @@ impl<'a> PaneContentsAndUi<'a> {
         z_index: Option<usize>,
         pane_is_stacked_under: bool,
         pane_is_stacked_over: bool,
+        should_draw_pane_frames: bool,
     ) -> Self {
         let mut focused_clients: Vec<ClientId> = active_panes
             .iter()
@@ -46,6 +48,7 @@ impl<'a> PaneContentsAndUi<'a> {
             z_index,
             pane_is_stacked_under,
             pane_is_stacked_over,
+            should_draw_pane_frames,
         }
     }
     pub fn render_pane_contents_to_multiple_clients(
@@ -202,6 +205,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: false,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
+                should_draw_pane_frames: self.should_draw_pane_frames,
             }
         } else {
             FrameParams {
@@ -213,6 +217,7 @@ impl<'a> PaneContentsAndUi<'a> {
                 other_cursors_exist_in_session: self.multiple_users_exist_in_session,
                 pane_is_stacked_over: self.pane_is_stacked_over,
                 pane_is_stacked_under: self.pane_is_stacked_under,
+                should_draw_pane_frames: self.should_draw_pane_frames,
             }
         };
 

@@ -226,6 +226,11 @@ impl Pane for PluginPane {
             if self.should_render.get(&client_id).copied().unwrap_or(false) {
                 let content_x = self.get_content_x();
                 let content_y = self.get_content_y();
+                let rows = self.get_content_rows();
+                let columns = self.get_content_columns();
+                if rows < 1 || columns < 1 {
+                    return Ok(None);
+                }
                 if let Some(grid) = self.grids.get_mut(&client_id) {
                     match grid.render(content_x, content_y, &self.style) {
                         Ok(rendered_assets) => {
@@ -269,8 +274,13 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
+            let mut frame_geom = self.current_geom();
+            if !frame_params.should_draw_pane_frames {
+                // in this case the width of the frame needs not include the pane corners
+                frame_geom.cols.set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+            }
             let mut frame = PaneFrame::new(
-                self.current_geom().into(),
+                frame_geom.into(),
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,

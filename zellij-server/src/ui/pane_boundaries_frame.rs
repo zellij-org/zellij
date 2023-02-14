@@ -77,6 +77,7 @@ pub struct FrameParams {
     pub other_cursors_exist_in_session: bool,
     pub pane_is_stacked_under: bool,
     pub pane_is_stacked_over: bool,
+    pub should_draw_pane_frames: bool,
 }
 
 #[derive(Default, PartialEq)]
@@ -94,6 +95,7 @@ pub struct PaneFrame {
     is_first_run: bool,
     pane_is_stacked_over: bool,
     pane_is_stacked_under: bool,
+    should_draw_pane_frames: bool,
 }
 
 impl PaneFrame {
@@ -117,6 +119,7 @@ impl PaneFrame {
             is_first_run: false,
             pane_is_stacked_over: frame_params.pane_is_stacked_over,
             pane_is_stacked_under: frame_params.pane_is_stacked_under,
+            should_draw_pane_frames: frame_params.should_draw_pane_frames,
         }
     }
     pub fn add_exit_status(&mut self, exit_status: Option<i32>) {
@@ -136,7 +139,9 @@ impl PaneFrame {
         background_color(" ", color.map(|c| c.0))
     }
     fn get_corner(&self, corner: &'static str) -> &'static str {
-        let corner = if self.pane_is_stacked_under && corner == boundary_type::TOP_RIGHT {
+        let corner = if !self.should_draw_pane_frames && (corner == boundary_type::TOP_LEFT || corner == boundary_type::TOP_RIGHT) {
+            boundary_type::HORIZONTAL
+        } else if self.pane_is_stacked_under && corner == boundary_type::TOP_RIGHT {
             boundary_type::BOTTOM_RIGHT
         } else if self.pane_is_stacked_under && corner == boundary_type::TOP_LEFT {
             boundary_type::BOTTOM_LEFT
@@ -706,7 +711,11 @@ impl PaneFrame {
     pub fn render(&self) -> Result<(Vec<CharacterChunk>, Option<String>)> {
         let err_context = || "failed to render pane frame";
         let mut character_chunks = vec![];
-        if self.geom.rows == 1 {
+        if self.geom.rows == 1 || !self.should_draw_pane_frames {
+            // we do this explicitly when not drawing pane frames because this should only happen
+            // if this is a stacked pane with pane frames off (and it doesn't necessarily have only
+            // 1 row because it could also be a flexible stacked pane)
+            // in this case we should always draw the pane title line, and only the title line
             let one_line_title = self.render_one_line_title().with_context(err_context)?;
             character_chunks.push(CharacterChunk::new(one_line_title, self.geom.x, self.geom.y));
         } else {

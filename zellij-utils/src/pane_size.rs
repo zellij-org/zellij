@@ -166,6 +166,14 @@ impl Offset {
         }
     }
 
+    pub fn shift_right_and_top(right: usize, top: usize) -> Self {
+        Self {
+            right,
+            top,
+            ..Default::default()
+        }
+    }
+
     // FIXME: This should be top and left, not bottom and right, but `boundaries.rs` would need
     // some changing
     pub fn shift(bottom: usize, right: usize) -> Self {
