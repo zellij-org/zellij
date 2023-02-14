@@ -749,7 +749,7 @@ fn init_session(
                 Some(&to_background_jobs),
                 None,
             );
-            let store = Store::default();
+            let store = get_store();
 
             move || {
                 plugin_thread_main(
@@ -817,4 +817,16 @@ fn init_session(
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
     }
+}
+
+#[cfg(not(feature = "singlepass"))]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Cranelift");
+    Store::new(&wasmer::Universal::new(wasmer::Cranelift::default()).engine())
+}
+
+#[cfg(feature = "singlepass")]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Singlepass");
+    Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine())
 }

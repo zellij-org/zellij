@@ -350,6 +350,16 @@ struct ClientSender {
 
 impl ClientSender {
     pub fn new(client_id: ClientId, mut sender: IpcSenderWithContext<ServerToClientMsg>) -> Self {
+        // FIXME(hartan): This queue is responsible for buffering messages between server and
+        // client. If it fills up, the client is disconnected with a "Buffer full" sort of error
+        // message. It was previously found to be too small (with depth 50), so it was increased to
+        // 5000 instead. This decision was made because it was found that a queue of depth 5000
+        // doesn't cause noticable increase in RAM usage, but there's no reason beyond that. If in
+        // the future this is found to fill up too quickly again, it may be worthwhile to increase
+        // the size even further (or better yet, implement a redraw-on-backpressure mechanism).
+        // We, the zellij maintainers, have decided against an unbounded
+        // queue for the time being because we want to prevent e.g. the whole session being killed
+        // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
         let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");

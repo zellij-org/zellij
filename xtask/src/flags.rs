@@ -63,6 +63,8 @@ xflags::xflags! {
         cmd run {
             /// Take plugins from here, skip building plugins. Passed to zellij verbatim
             optional --data-dir path: PathBuf
+            /// Enable the singlepass compiler for WASM plugins
+            optional --singlepass
             /// Arguments to pass after `cargo run --`
             repeated args: OsString
         }
@@ -173,6 +175,8 @@ pub struct Run {
     pub args: Vec<OsString>,
 
     pub data_dir: Option<PathBuf>,
+
+    pub singlepass: bool,
 }
 
 #[derive(Debug)]
