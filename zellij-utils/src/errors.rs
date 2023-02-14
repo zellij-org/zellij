@@ -367,7 +367,7 @@ pub enum ClientContext {
     SwitchToMode,
     Connected,
     ActiveClients,
-    TabNameList,
+    Log,
     OwnClientId,
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
@@ -387,7 +387,7 @@ pub enum ServerContext {
     AttachClient,
     ConnStatus,
     ActiveClients,
-    TabNameList,
+    Log,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

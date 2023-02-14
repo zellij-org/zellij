@@ -28,7 +28,7 @@ pub fn start_cli_client(os_input: Box<dyn ClientOsApi>, session_name: &str, acti
                 os_input.send_to_server(ClientToServerMsg::ClientExited);
                 process::exit(0);
             },
-            Some((ServerToClientMsg::TabNameList(tab_names), _)) => {
+            Some((ServerToClientMsg::Log(tab_names), _)) => {
                 tab_names.iter().for_each(|name| println!("{name}"));
                 process::exit(0);
             },

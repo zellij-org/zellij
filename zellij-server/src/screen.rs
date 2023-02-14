@@ -2340,7 +2340,7 @@ pub(crate) fn screen_thread_main(
                 screen
                     .bus
                     .senders
-                    .send_to_server(ServerInstruction::TabNameList(tab_names, client_id))?;
+                    .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
         }
     }
