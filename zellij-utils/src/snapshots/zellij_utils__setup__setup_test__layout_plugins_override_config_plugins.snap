@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 686
+assertion_line: 707
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -2736,6 +2736,11 @@ Config {
                 MovePane(
                     None,
                 ),
+            ],
+            Char(
+                'p',
+            ): [
+                MovePaneBackwards,
             ],
             Alt(
                 Char(

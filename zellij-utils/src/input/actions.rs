@@ -115,6 +115,7 @@ pub enum Action {
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
+    MovePaneBackwards,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Scroll up in focus pane.
@@ -219,7 +220,8 @@ impl Action {
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
-            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(Some(direction))]),
+            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
+            CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,

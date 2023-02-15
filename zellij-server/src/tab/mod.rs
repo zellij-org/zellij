@@ -2061,7 +2061,26 @@ impl Tab {
         if self.tiled_panes.fullscreen_is_active() {
             return;
         }
-        self.tiled_panes.move_active_pane(client_id);
+        let search_backwards = false;
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes.move_active_pane(search_backwards, &mut self.os_api, client_id);
+        } else {
+            self.tiled_panes.move_active_pane(search_backwards, client_id);
+        }
+    }
+    pub fn move_active_pane_backwards(&mut self, client_id: ClientId) {
+        if !self.has_selectable_panes() {
+            return;
+        }
+        if self.tiled_panes.fullscreen_is_active() {
+            return;
+        }
+        let search_backwards = true;
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes.move_active_pane(search_backwards, &mut self.os_api, client_id);
+        } else {
+            self.tiled_panes.move_active_pane(search_backwards, client_id);
+        }
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         if self.floating_panes.panes_are_visible() {

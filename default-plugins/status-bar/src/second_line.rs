@@ -210,6 +210,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
             &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
         (s("Next pane"), s("Next"), action_key(&km, &[Action::MovePane(None)])),
+        (s("Previous pane"), s("Previous"), action_key(&km, &[Action::MovePaneBackwards])),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),

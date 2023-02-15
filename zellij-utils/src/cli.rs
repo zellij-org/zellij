@@ -197,9 +197,11 @@ pub enum CliAction {
     /// Move focus to the pane or tab (if on screen edge) in the specified direction
     /// [right|left|up|down]
     MoveFocusOrTab { direction: Direction },
-    /// Change the location of the focused pane in the specified direction
+    /// Change the location of the focused pane in the specified direction or rotate forwrads
     /// [right|left|up|down]
-    MovePane { direction: Direction },
+    MovePane { direction: Option<Direction> },
+    /// Rotate the location of the previous pane backwards
+    MovePaneBackwards,
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,

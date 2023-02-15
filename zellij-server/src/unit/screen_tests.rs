@@ -1222,7 +1222,7 @@ pub fn send_cli_move_pane_action() {
         server_receiver
     );
     let cli_action = CliAction::MovePane {
-        direction: Direction::Right,
+        direction: Some(Direction::Right),
     };
     send_cli_action_to_server(&session_metadata, cli_action, &mut mock_screen, client_id);
     std::thread::sleep(std::time::Duration::from_millis(100));

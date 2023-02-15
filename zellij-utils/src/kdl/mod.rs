@@ -453,6 +453,7 @@ impl Action {
                     Ok(Action::MovePane(Some(direction)))
                 }
             },
+            "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
@@ -723,6 +724,11 @@ impl TryFrom<&KdlNode> for Action {
                 kdl_action
             ),
             "MovePane" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
+            "MovePaneBackwards" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
                 kdl_action

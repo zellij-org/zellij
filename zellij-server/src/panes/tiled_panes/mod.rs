@@ -1017,7 +1017,7 @@ impl TiledPanes {
             self.set_pane_frames(self.draw_pane_frames);
         }
     }
-    pub fn move_active_pane(&mut self, client_id: ClientId) {
+    pub fn move_active_pane(&mut self, search_backwards: bool, client_id: ClientId) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
 
         let new_position_id = {
@@ -1027,7 +1027,11 @@ impl TiledPanes {
                 *self.display_area.borrow(),
                 *self.viewport.borrow(),
             );
-            pane_grid.next_selectable_pane_id(&active_pane_id)
+            if search_backwards {
+                pane_grid.previous_selectable_pane_id(&active_pane_id)
+            } else {
+                pane_grid.next_selectable_pane_id(&active_pane_id)
+            }
         };
         if self.panes.get(&new_position_id).map(|p| p.current_geom().is_stacked).unwrap_or(false) {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).focus_pane(&new_position_id);

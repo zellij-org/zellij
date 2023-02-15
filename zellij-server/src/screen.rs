@@ -149,6 +149,7 @@ pub enum ScreenInstruction {
     MoveFocusRight(ClientId),
     MoveFocusRightOrNextTab(ClientId),
     MovePane(ClientId),
+    MovePaneBackwards(ClientId),
     MovePaneUp(ClientId),
     MovePaneDown(ClientId),
     MovePaneRight(ClientId),
@@ -287,6 +288,7 @@ impl From<&ScreenInstruction> for ScreenContext {
                 ScreenContext::MoveFocusRightOrNextTab
             },
             ScreenInstruction::MovePane(..) => ScreenContext::MovePane,
+            ScreenInstruction::MovePaneBackwards(..) => ScreenContext::MovePaneBackwards,
             ScreenInstruction::MovePaneDown(..) => ScreenContext::MovePaneDown,
             ScreenInstruction::MovePaneUp(..) => ScreenContext::MovePaneUp,
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
@@ -1655,6 +1657,16 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_active_pane(client_id)
+                );
+                screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
+                screen.render()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::MovePaneBackwards(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.move_active_pane_backwards(client_id)
                 );
                 screen.update_tabs()?; // update tabs so that the ui indication will be send to the plugins
                 screen.render()?;

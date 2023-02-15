@@ -93,8 +93,6 @@ impl <'a>StackedPanes <'a>{
             panes.get_mut(&flexible_pane_id).with_context(err_context)?.set_geom(flexible_pane);
 
             for (i, (pid, _position)) in all_stacked_pane_positions.iter().enumerate() {
-                // if (i < position_of_pane_to_focus && i < position_of_flexible_pane) || (i > position_of_pane_to_focus && i > position_of_flexible_pane) {
-                    // continue;
                 if i > position_of_pane_to_focus && i <= position_of_flexible_pane {
                     // the flexible pane has moved up the stack, we need to push this pane down
                     let pane = panes.get_mut(pid).with_context(err_context)?;

@@ -592,6 +592,45 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
+    pub fn move_active_pane(&mut self, search_backwards: bool, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
+        let active_pane_id = self.get_active_pane_id(client_id).unwrap();
+
+        let new_position_id = {
+            let pane_grid = FloatingPaneGrid::new(
+                &mut self.panes,
+                &mut self.desired_pane_positions,
+                *self.display_area.borrow(),
+                *self.viewport.borrow(),
+            );
+            if search_backwards {
+                pane_grid.previous_selectable_pane_id(&active_pane_id)
+            } else {
+                pane_grid.next_selectable_pane_id(&active_pane_id)
+            }
+        };
+        if let Some(new_position_id) = new_position_id {
+            let current_position = self.panes.get(&active_pane_id).unwrap();
+            let prev_geom = current_position.position_and_size();
+            let prev_geom_override = current_position.geom_override();
+
+            let new_position = self.panes.get_mut(&new_position_id).unwrap();
+            let next_geom = new_position.position_and_size();
+            let next_geom_override = new_position.geom_override();
+            new_position.set_geom(prev_geom);
+            if let Some(geom) = prev_geom_override {
+                new_position.set_geom_override(geom);
+            }
+            new_position.set_should_render(true);
+
+            let current_position = self.panes.get_mut(&active_pane_id).unwrap();
+            current_position.set_geom(next_geom);
+            if let Some(geom) = next_geom_override {
+                current_position.set_geom_override(geom);
+            }
+            current_position.set_should_render(true);
+            self.set_pane_frames(os_api);
+        }
+    }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {
         let active_panes: Vec<(ClientId, PaneId)> = self
             .active_panes

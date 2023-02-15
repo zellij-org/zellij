@@ -703,6 +703,58 @@ impl<'a> FloatingPaneGrid<'a> {
             .copied();
         next_index
     }
+    pub fn next_selectable_pane_id(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let mut panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| id == current_pane_id)
+            .unwrap();
+
+        let next_active_pane_id = panes
+            .get(active_pane_position + 1)
+            .or_else(|| panes.get(0))
+            .map(|p| p.0)
+            .unwrap();
+        Some(next_active_pane_id)
+    }
+    pub fn previous_selectable_pane_id(&self, current_pane_id: &PaneId) -> Option<PaneId> {
+        let panes = self.panes.borrow();
+        let mut panes: Vec<(PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| p.selectable())
+            .map(|(p_id, p)| (*p_id, p))
+            .collect();
+        panes.sort_by(|(_a_id, a_pane), (_b_id, b_pane)| {
+            if a_pane.y() == b_pane.y() {
+                a_pane.x().cmp(&b_pane.x())
+            } else {
+                a_pane.y().cmp(&b_pane.y())
+            }
+        });
+        let active_pane_position = panes
+            .iter()
+            .position(|(id, _)| id == current_pane_id)?;
+
+        let last_pane = panes.last()?;
+        let previous_active_pane_id = if active_pane_position == 0 {
+            last_pane.0
+        } else {
+            panes.get(active_pane_position - 1)?.0
+        };
+        Some(previous_active_pane_id)
+    }
     pub fn find_room_for_new_pane(&self) -> Option<PaneGeom> {
         let panes = self.panes.borrow();
         let pane_geoms: Vec<PaneGeom> = panes.values().map(|p| p.position_and_size()).collect();
