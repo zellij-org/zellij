@@ -132,9 +132,17 @@ impl<'a> PaneResizer<'a> {
         let err_context = || format!("Failed to apply spans");
         let mut geoms_changed = false;
         for span in spans {
-            let pane_is_stacked = self.panes.borrow().get(&span.pid).unwrap().current_geom().is_stacked;
+            let pane_is_stacked = self
+                .panes
+                .borrow()
+                .get(&span.pid)
+                .unwrap()
+                .current_geom()
+                .is_stacked;
             if pane_is_stacked {
-                let current_geom = StackedPanes::new(self.panes.clone()).position_and_size_of_stack(&span.pid).unwrap();
+                let current_geom = StackedPanes::new(self.panes.clone())
+                    .position_and_size_of_stack(&span.pid)
+                    .unwrap();
                 let new_geom = match span.direction {
                     SplitDirection::Horizontal => PaneGeom {
                         x: span.pos,
@@ -222,16 +230,14 @@ impl<'a> PaneResizer<'a> {
             .panes
             .borrow()
             .values()
-            .filter(|p| {
-                match self.get_span(!direction, p.as_ref()) {
-                    Some(s) => {
-                        let span_bounds = (s.pos, s.pos + s.size.as_usize());
-                        bwn(span_bounds.0, boundary)
-                            || (bwn(boundary.0, span_bounds)
-                                && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
-                    },
-                    None => false
-                }
+            .filter(|p| match self.get_span(!direction, p.as_ref()) {
+                Some(s) => {
+                    let span_bounds = (s.pos, s.pos + s.size.as_usize());
+                    bwn(span_bounds.0, boundary)
+                        || (bwn(boundary.0, span_bounds)
+                            && (bwn(boundary.1, span_bounds) || boundary.1 == span_bounds.1))
+                },
+                None => false,
             })
             .filter_map(|p| self.get_span(direction, p.as_ref()))
             .collect();
@@ -296,7 +302,8 @@ fn constrain_spans(space: usize, spans: &[Span]) -> HashSet<cassowary::Constrain
     for span in spans {
         match span.size.constraint {
             Constraint::Fixed(s) => constraints.insert(span.size_var | EQ(REQUIRED) | s as f64),
-            Constraint::Percent(p) => constraints.insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
+            Constraint::Percent(p) => constraints
+                .insert((span.size_var / new_flex_space as f64) | EQ(STRONG) | (p / 100.0)),
         };
     }
 

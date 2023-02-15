@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{FloatingPaneLayout, Layout, TiledPaneLayout, Run, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
     },
 };
 

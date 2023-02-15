@@ -743,9 +743,7 @@ impl<'a> FloatingPaneGrid<'a> {
                 a_pane.y().cmp(&b_pane.y())
             }
         });
-        let active_pane_position = panes
-            .iter()
-            .position(|(id, _)| id == current_pane_id)?;
+        let active_pane_position = panes.iter().position(|(id, _)| id == current_pane_id)?;
 
         let last_pane = panes.last()?;
         let previous_active_pane_id = if active_pane_position == 0 {

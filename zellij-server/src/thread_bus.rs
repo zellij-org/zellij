@@ -145,10 +145,7 @@ impl ThreadSenders {
     }
 
     #[allow(unused)]
-    pub fn replace_to_plugin(
-        &mut self,
-        new_to_plugin: SenderWithContext<PluginInstruction>,
-    ) {
+    pub fn replace_to_plugin(&mut self, new_to_plugin: SenderWithContext<PluginInstruction>) {
         // this is mostly used for the tests, see struct
         self.to_plugin.replace(new_to_plugin);
     }

@@ -46,7 +46,10 @@ use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, Style},
     input::{
         command::TerminalAction,
-        layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, Run, SwapTiledLayout, SwapFloatingLayout},
+        layout::{
+            FloatingPaneLayout, Run, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+            TiledPaneLayout,
+        },
         parse_keys,
     },
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -128,7 +131,7 @@ pub(crate) struct Tab {
     // cursor_shape_csi)
     is_pending: bool, // a pending tab is one that is still being loaded or otherwise waiting
     pending_instructions: Vec<BufferedTabInstruction>, // instructions that came while the tab was
-                      // pending and need to be re-applied
+    // pending and need to be re-applied
     swap_layouts: SwapLayouts,
 }
 
@@ -548,7 +551,8 @@ impl Tab {
         new_plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         client_id: ClientId,
     ) -> Result<()> {
-        self.swap_layouts.set_base_layout((layout.clone(), floating_panes_layout.clone()));
+        self.swap_layouts
+            .set_base_layout((layout.clone(), floating_panes_layout.clone()));
         let layout_has_floating_panes = LayoutApplier::new(
             &self.viewport,
             &self.senders,
@@ -587,7 +591,8 @@ impl Tab {
         if self.floating_panes.panes_are_visible() {
             self.swap_layouts.floating_layout_info()
         } else {
-            let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
+            let selectable_tiled_panes =
+                self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
             if selectable_tiled_panes.count() > 1 {
                 self.swap_layouts.tiled_layout_info()
             } else {
@@ -596,8 +601,16 @@ impl Tab {
             }
         }
     }
-    fn relayout_floating_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool, refocus_pane: bool) -> Result<()> {
-        if let Some(layout_candidate) = self.swap_layouts.swap_floating_panes(&self.floating_panes, search_backwards) {
+    fn relayout_floating_panes(
+        &mut self,
+        client_id: Option<ClientId>,
+        search_backwards: bool,
+        refocus_pane: bool,
+    ) -> Result<()> {
+        if let Some(layout_candidate) = self
+            .swap_layouts
+            .swap_floating_panes(&self.floating_panes, search_backwards)
+        {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -625,18 +638,33 @@ impl Tab {
         self.set_force_render();
         Ok(())
     }
-    fn relayout_tiled_panes(&mut self, client_id: Option<ClientId>, search_backwards: bool, refocus_pane: bool, best_effort: bool) -> Result<()> {
+    fn relayout_tiled_panes(
+        &mut self,
+        client_id: Option<ClientId>,
+        search_backwards: bool,
+        refocus_pane: bool,
+        best_effort: bool,
+    ) -> Result<()> {
         if self.tiled_panes.fullscreen_is_active() {
             self.tiled_panes.unset_fullscreen();
         }
-        let refocus_pane = if self.swap_layouts.is_tiled_damaged() { false } else { refocus_pane };
-        if let Some(layout_candidate) = self.swap_layouts.swap_tiled_panes(&self.tiled_panes, search_backwards).or_else(|| {
-            if best_effort {
-                self.swap_layouts.best_effort_tiled_layout(&self.tiled_panes)
-            } else {
-                None
-            }
-        }) {
+        let refocus_pane = if self.swap_layouts.is_tiled_damaged() {
+            false
+        } else {
+            refocus_pane
+        };
+        if let Some(layout_candidate) = self
+            .swap_layouts
+            .swap_tiled_panes(&self.tiled_panes, search_backwards)
+            .or_else(|| {
+                if best_effort {
+                    self.swap_layouts
+                        .best_effort_tiled_layout(&self.tiled_panes)
+                } else {
+                    None
+                }
+            })
+        {
             LayoutApplier::new(
                 &self.viewport,
                 &self.senders,
@@ -681,7 +709,11 @@ impl Tab {
         self.os_api.apply_cached_resizes();
         Ok(())
     }
-    pub fn next_swap_layout(&mut self, client_id: Option<ClientId>, refocus_pane: bool) -> Result<()> {
+    pub fn next_swap_layout(
+        &mut self,
+        client_id: Option<ClientId>,
+        refocus_pane: bool,
+    ) -> Result<()> {
         // warning, here we cache resizes rather than sending them to the pty, we do that in
         // apply_cached_resizes below - beware when bailing on this function early!
         self.os_api.cache_resizes();
@@ -840,7 +872,7 @@ impl Tab {
                         // only do this if we're already in this layout, otherwise it might be
                         // confusing and not what the user intends
                         self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                            // next layout
+                                                                  // next layout
                         self.next_swap_layout(Some(client_id), true)?;
                     }
                 }
@@ -851,7 +883,9 @@ impl Tab {
                     // don't close the only pane on screen...
                     return Ok(());
                 }
-                if let Some(mut embedded_pane_to_float) = self.close_pane(focused_pane_id, true, Some(client_id)) {
+                if let Some(mut embedded_pane_to_float) =
+                    self.close_pane(focused_pane_id, true, Some(client_id))
+                {
                     if !embedded_pane_to_float.borderless() {
                         // floating panes always have a frame unless they're explicitly borderless
                         embedded_pane_to_float.set_content_offset(Offset::frame(1));
@@ -868,7 +902,7 @@ impl Tab {
                         // only do this if we're already in this layout, otherwise it might be
                         // confusing and not what the user intends
                         self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                            // next layout
+                                                                     // next layout
                         self.next_swap_layout(Some(client_id), true)?;
                     }
                 }
@@ -887,18 +921,17 @@ impl Tab {
         } else {
             self.show_floating_panes();
             match self.floating_panes.last_floating_pane_id() {
-                Some(first_floating_pane_id) => {
-                    match client_id {
-                        Some(client_id) => {
-                            if !self.floating_panes.active_panes_contain(&client_id) {
-                                self.floating_panes
-                                    .focus_pane(first_floating_pane_id, client_id);
-                            }
-                        },
-                        None => {
-                            self.floating_panes.focus_pane_for_all_clients(first_floating_pane_id);
+                Some(first_floating_pane_id) => match client_id {
+                    Some(client_id) => {
+                        if !self.floating_panes.active_panes_contain(&client_id) {
+                            self.floating_panes
+                                .focus_pane(first_floating_pane_id, client_id);
                         }
-                    }
+                    },
+                    None => {
+                        self.floating_panes
+                            .focus_pane_for_all_clients(first_floating_pane_id);
+                    },
                 },
                 None => {
                     let name = None;
@@ -913,9 +946,9 @@ impl Tab {
                         name,
                         client_id_or_tab_index,
                     );
-                    self.senders.send_to_pty(instruction).with_context(|| {
-                        format!("failed to open a floating pane for client")
-                    })?;
+                    self.senders
+                        .send_to_pty(instruction)
+                        .with_context(|| format!("failed to open a floating pane for client"))?;
                 },
             }
             self.floating_panes.set_force_render();
@@ -967,7 +1000,7 @@ impl Tab {
                     // only do this if we're already in this layout, otherwise it might be
                     // confusing and not what the user intends
                     self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
-                                                        // next layout
+                                                                 // next layout
                     self.next_swap_layout(client_id, true)?;
                 }
             }
@@ -1004,7 +1037,7 @@ impl Tab {
                 // only do this if we're already in this layout, otherwise it might be
                 // confusing and not what the user intends
                 self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
-                                                    // next layout
+                                                          // next layout
                 self.next_swap_layout(client_id, true)?;
             }
         }
@@ -1704,7 +1737,8 @@ impl Tab {
             self.swap_layouts.set_is_floating_damaged();
             let _ = self.relayout_floating_panes(None, false, false);
         }
-        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active() {
+        if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !self.is_fullscreen_active()
+        {
             self.swap_layouts.set_is_tiled_damaged();
             let _ = self.relayout_tiled_panes(None, false, false, true);
         }
@@ -1865,9 +1899,11 @@ impl Tab {
         }
         let search_backwards = false;
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane(search_backwards, &mut self.os_api, client_id);
+            self.floating_panes
+                .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
-            self.tiled_panes.move_active_pane(search_backwards, client_id);
+            self.tiled_panes
+                .move_active_pane(search_backwards, client_id);
         }
     }
     pub fn move_active_pane_backwards(&mut self, client_id: ClientId) {
@@ -1879,9 +1915,11 @@ impl Tab {
         }
         let search_backwards = true;
         if self.floating_panes.panes_are_visible() {
-            self.floating_panes.move_active_pane(search_backwards, &mut self.os_api, client_id);
+            self.floating_panes
+                .move_active_pane(search_backwards, &mut self.os_api, client_id);
         } else {
-            self.tiled_panes.move_active_pane(search_backwards, client_id);
+            self.tiled_panes
+                .move_active_pane(search_backwards, client_id);
         }
     }
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
@@ -2017,7 +2055,10 @@ impl Tab {
             }
             self.set_force_render();
             self.floating_panes.set_force_render();
-            if self.auto_layout && !self.swap_layouts.is_floating_damaged() && self.floating_panes.visible_panes_count() > 0 {
+            if self.auto_layout
+                && !self.swap_layouts.is_floating_damaged()
+                && self.floating_panes.visible_panes_count() > 0
+            {
                 self.swap_layouts.set_is_floating_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
@@ -2031,8 +2072,12 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
-            let closed_pane_is_stacked = closed_pane.as_ref().map(|p| p.position_and_size().is_stacked).unwrap_or(false);
-            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !closed_pane_is_stacked {
+            let closed_pane_is_stacked = closed_pane
+                .as_ref()
+                .map(|p| p.position_and_size().is_stacked)
+                .unwrap_or(false);
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !closed_pane_is_stacked
+            {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
@@ -3001,7 +3046,6 @@ impl Tab {
             pane.clear_pane_frame_color_override();
         }
     }
-
 
     fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)

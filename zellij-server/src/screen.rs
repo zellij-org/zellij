@@ -12,7 +12,9 @@ use zellij_utils::input::options::Clipboard;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
-    input::layout::{FloatingPaneLayout, TiledPaneLayout, RunPluginLocation, SwapTiledLayout, SwapFloatingLayout},
+    input::layout::{
+        FloatingPaneLayout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    },
     position::Position,
 };
 
@@ -891,7 +893,12 @@ impl Screen {
     }
 
     /// Creates a new [`Tab`] in this [`Screen`]
-    pub fn new_tab(&mut self, tab_index: usize, swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), client_id: ClientId) -> Result<()> {
+    pub fn new_tab(
+        &mut self,
+        tab_index: usize,
+        swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -1828,7 +1835,11 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::ClosePane(id, client_id) => {
                 match client_id {
                     Some(client_id) => {
-                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(id, false, Some(client_id)));
+                        active_tab!(screen, client_id, |tab: &mut Tab| tab.close_pane(
+                            id,
+                            false,
+                            Some(client_id)
+                        ));
                     },
                     None => {
                         for tab in screen.tabs.values_mut() {
@@ -2212,7 +2223,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.update_tabs()?;
                 screen.unblock_input()?;
-            }
+            },
             ScreenInstruction::NextSwapLayout(client_id) => {
                 active_tab_and_connected_client_id!(
                     screen,
@@ -2223,7 +2234,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.update_tabs()?;
                 screen.unblock_input()?;
-            }
+            },
         }
     }
     Ok(())

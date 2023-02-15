@@ -14,7 +14,7 @@ use zellij_utils::data::Resize;
 use zellij_utils::errors::{prelude::*, ErrorContext};
 use zellij_utils::input::actions::Action;
 use zellij_utils::input::command::{RunCommand, TerminalAction};
-use zellij_utils::input::layout::{TiledPaneLayout, SplitDirection, Layout};
+use zellij_utils::input::layout::{Layout, SplitDirection, TiledPaneLayout};
 use zellij_utils::input::options::Options;
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
@@ -482,7 +482,9 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let client_id = 1;
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
-    screen.new_tab(tab_index, (vec![], vec![]), client_id).expect("TEST");
+    screen
+        .new_tab(tab_index, (vec![], vec![]), client_id)
+        .expect("TEST");
     screen
         .apply_layout(
             TiledPaneLayout::default(),

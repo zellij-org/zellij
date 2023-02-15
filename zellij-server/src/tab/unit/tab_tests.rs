@@ -10,7 +10,7 @@ use crate::{
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::layout::{TiledPaneLayout, SplitDirection, SplitSize};
+use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 

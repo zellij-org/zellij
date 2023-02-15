@@ -1,7 +1,9 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{FloatingPaneLayout, Layout, TiledPaneLayout, SwapTiledLayout, SwapFloatingLayout};
+use super::layout::{
+    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
@@ -163,7 +165,13 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<TiledPaneLayout>, Vec<FloatingPaneLayout>, Option<Vec<SwapTiledLayout>>, Option<Vec<SwapFloatingLayout>>, Option<String>), // the String is the tab name
+    NewTab(
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        Option<String>,
+    ), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -372,8 +380,16 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() { None } else { Some(layout.swap_tiled_layouts.clone()) };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() { None } else { Some(layout.swap_floating_layouts.clone()) };
+                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_tiled_layouts.clone())
+                        };
+                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_floating_layouts.clone())
+                        };
                         let (tab_name, layout, floating_panes_layout) =
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
@@ -385,8 +401,16 @@ impl Action {
                             name,
                         )])
                     } else {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() { None } else { Some(layout.swap_tiled_layouts.clone()) };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() { None } else { Some(layout.swap_floating_layouts.clone()) };
+                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_tiled_layouts.clone())
+                        };
+                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_floating_layouts.clone())
+                        };
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
                             Some(layout),

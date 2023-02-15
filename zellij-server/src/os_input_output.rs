@@ -371,10 +371,10 @@ pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
-                                                                     // terminal_id exists but is
-                                                                     // not connected to an fd (eg.
-                                                                     // a command pane with a
-                                                                     // non-existing command)
+    // terminal_id exists but is
+    // not connected to an fd (eg.
+    // a command pane with a
+    // non-existing command)
     cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>, // <terminal_id, (cols, rows)>
 }
 

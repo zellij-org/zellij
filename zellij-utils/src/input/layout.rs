@@ -22,8 +22,8 @@ use std::str::FromStr;
 
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
-use std::convert::TryFrom;
 use std::collections::BTreeMap;
+use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{
     fmt,
@@ -176,13 +176,13 @@ impl Run {
             (Some(Run::Command(..)), Some(Run::Command(..))) => true,
             (Some(Run::EditFile(..)), Some(Run::EditFile(..))) => true,
             (Some(Run::Cwd(..)), Some(Run::Cwd(..))) => true,
-            _ => false
+            _ => false,
         }
     }
     pub fn is_terminal(run: &Option<Run>) -> bool {
         match run {
             Some(Run::Command(..)) | Some(Run::EditFile(..)) | Some(Run::Cwd(..)) | None => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -231,11 +231,14 @@ impl fmt::Display for RunPluginLocation {
 pub enum LayoutConstraint {
     MaxPanes(usize),
     MinPanes(usize),
-    NoConstraint
+    NoConstraint,
 }
 
 pub type SwapTiledLayout = (BTreeMap<LayoutConstraint, TiledPaneLayout>, Option<String>); // Option<String> is the swap layout name
-pub type SwapFloatingLayout = (BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>, Option<String>); // Option<String> is the swap layout name
+pub type SwapFloatingLayout = (
+    BTreeMap<LayoutConstraint, Vec<FloatingPaneLayout>>,
+    Option<String>,
+); // Option<String> is the swap layout name
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 pub struct Layout {
@@ -375,8 +378,7 @@ impl TiledPaneLayout {
             Some(external_children_index) => {
                 children_nodes.reverse();
                 for child_node in children_nodes.drain(..) {
-                    self.children
-                        .insert(external_children_index, child_node);
+                    self.children.insert(external_children_index, child_node);
                 }
                 self.external_children_index = None;
                 Ok(true)
@@ -443,9 +445,7 @@ impl TiledPaneLayout {
 
                 split_space(space, &layout_to_split, space)?
             },
-            None => {
-                split_space(space, self, space)?
-            }
+            None => split_space(space, self, space)?,
         };
         for (_pane_layout, pane_geom) in layouts.iter() {
             if !pane_geom.is_at_least_minimum_size() {
@@ -511,10 +511,11 @@ impl TiledPaneLayout {
             },
             None => {
                 self.focus = Some(true);
-            }
+            },
         }
     }
-    pub fn truncate(&mut self, max_panes: usize) -> usize { // returns remaining children length
+    pub fn truncate(&mut self, max_panes: usize) -> usize {
+        // returns remaining children length
         // if max_panes is 1, it means there's only enough panes for this node,
         // if max_panes is 0, this is probably the root layout being called with 0 max panes
         if max_panes <= 1 {
@@ -523,10 +524,16 @@ impl TiledPaneLayout {
             self.children.truncate(max_panes);
             self.children.iter_mut().for_each(|l| l.children.clear());
         } else {
-            let mut remaining_panes = max_panes - self.children.iter().filter(|c| c.children.is_empty()).count();
+            let mut remaining_panes = max_panes
+                - self
+                    .children
+                    .iter()
+                    .filter(|c| c.children.is_empty())
+                    .count();
             for child in self.children.iter_mut() {
                 if remaining_panes > 1 && child.children.len() > 0 {
-                    remaining_panes = remaining_panes.saturating_sub(child.truncate(remaining_panes));
+                    remaining_panes =
+                        remaining_panes.saturating_sub(child.truncate(remaining_panes));
                 } else {
                     child.children.clear();
                 }
@@ -540,7 +547,7 @@ impl TiledPaneLayout {
     }
     pub fn has_focused_node(&self) -> bool {
         if self.focus.map(|f| f).unwrap_or(false) {
-            return true
+            return true;
         };
         for child in &self.children {
             if child.has_focused_node() {
@@ -617,7 +624,14 @@ impl Layout {
     ) -> Result<(Layout, Config), ConfigError> {
         let (path_to_raw_layout, raw_layout, raw_swap_layouts) =
             Layout::stringified_from_path_or_default(layout_path, layout_dir)?;
-        let layout = Layout::from_kdl(&raw_layout, path_to_raw_layout, raw_swap_layouts.as_ref().map(|(r, f)| (r.as_str(), f.as_str())), None)?;
+        let layout = Layout::from_kdl(
+            &raw_layout,
+            path_to_raw_layout,
+            raw_swap_layouts
+                .as_ref()
+                .map(|(r, f)| (r.as_str(), f.as_str())),
+            None,
+        )?;
         let config = Config::from_kdl(&raw_layout, Some(config))?; // this merges the two config, with
         Ok((layout, config))
     }
@@ -646,7 +660,9 @@ impl Layout {
             None => Layout::stringified_from_default_assets(layout),
         }
     }
-    pub fn stringified_from_path(layout_path: &Path) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+    pub fn stringified_from_path(
+        layout_path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
         // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         let mut layout_file = File::open(&layout_path)
             .or_else(|_| File::open(&layout_path.with_extension("kdl")))
@@ -656,9 +672,15 @@ impl Layout {
 
         let mut kdl_layout = String::new();
         layout_file.read_to_string(&mut kdl_layout)?;
-        Ok((layout_path.as_os_str().to_string_lossy().into(), kdl_layout, swap_layout_and_path))
+        Ok((
+            layout_path.as_os_str().to_string_lossy().into(),
+            kdl_layout,
+            swap_layout_and_path,
+        ))
     }
-    pub fn stringified_from_default_assets(path: &Path) -> Result<(String, String, Option<(String, String)>), ConfigError> {
+    pub fn stringified_from_default_assets(
+        path: &Path,
+    ) -> Result<(String, String, Option<(String, String)>), ConfigError> {
         // (path_to_layout as String, stringified_layout, Option<path_to_swap_layout as String, stringified_swap_layout>)
         // TODO: ideally these should not be hard-coded
         // we should load layouts by name from the config
@@ -670,7 +692,7 @@ impl Layout {
                 Some((
                     "Default swap layout".into(),
                     Self::stringified_default_swap_from_assets()?,
-                ))
+                )),
             )),
             Some("strider") => Ok((
                 "Strider layout".into(),
@@ -678,7 +700,7 @@ impl Layout {
                 Some((
                     "Strider swap layout".into(),
                     Self::stringified_strider_swap_from_assets()?,
-                ))
+                )),
             )),
             Some("disable-status-bar") => Ok((
                 "Disable Status Bar layout".into(),
@@ -691,7 +713,7 @@ impl Layout {
                 Some((
                     "Compact layout swap".into(),
                     Self::stringified_compact_swap_from_assets()?,
-                ))
+                )),
             )),
             None | Some(_) => Err(ConfigError::IoPath(
                 std::io::Error::new(std::io::ErrorKind::Other, "The layout was not found"),
@@ -753,19 +775,28 @@ impl Layout {
             Ok(mut stringified_swap_layout_file) => {
                 let mut swap_kdl_layout = String::new();
                 match stringified_swap_layout_file.read_to_string(&mut swap_kdl_layout) {
-                    Ok(..) => {
-                        Some((swap_layout_path.as_os_str().to_string_lossy().into(), swap_kdl_layout))
-                    },
+                    Ok(..) => Some((
+                        swap_layout_path.as_os_str().to_string_lossy().into(),
+                        swap_kdl_layout,
+                    )),
                     Err(e) => {
-                        log::warn!("Failed to read swap layout file: {}. Error: {:?}", swap_layout_path.as_os_str().to_string_lossy(), e);
+                        log::warn!(
+                            "Failed to read swap layout file: {}. Error: {:?}",
+                            swap_layout_path.as_os_str().to_string_lossy(),
+                            e
+                        );
                         None
-                    }
+                    },
                 }
             },
             Err(e) => {
-                log::warn!("Failed to read swap layout file: {}. Error: {:?}", swap_layout_path.as_os_str().to_string_lossy(), e);
+                log::warn!(
+                    "Failed to read swap layout file: {}. Error: {:?}",
+                    swap_layout_path.as_os_str().to_string_lossy(),
+                    e
+                );
                 None
-            }
+            },
         }
     }
 }
@@ -777,7 +808,11 @@ fn split_space(
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
-        let mut sizes: Vec<Option<SplitSize>> = layout.children.iter().map(|_part| Some(SplitSize::Fixed(1))).collect();
+        let mut sizes: Vec<Option<SplitSize>> = layout
+            .children
+            .iter()
+            .map(|_part| Some(SplitSize::Fixed(1)))
+            .collect();
         if let Some(last_size) = sizes.last_mut() {
             *last_size = None;
         }
@@ -809,7 +844,7 @@ fn split_space(
 
     let min_size_for_panes = sizes.iter().fold(0, |acc, size| match size {
         Some(SplitSize::Percent(_)) | None => acc + 1, // TODO: minimum height/width as relevant here
-        Some(SplitSize::Fixed(fixed)) => acc + fixed
+        Some(SplitSize::Fixed(fixed)) => acc + fixed,
     });
     if min_size_for_panes > split_dimension_space.as_usize() {
         return Err("Not enough room for panes"); // TODO: use error infra
@@ -844,7 +879,11 @@ fn split_space(
                 Dimension::percent(free_percent / flex_parts as f64)
             },
         };
-        split_dimension.adjust_inner(total_split_dimension_space.as_usize().saturating_sub(total_fixed_size));
+        split_dimension.adjust_inner(
+            total_split_dimension_space
+                .as_usize()
+                .saturating_sub(total_fixed_size),
+        );
         total_pane_size += split_dimension.as_usize();
 
         let geom = match layout.children_split_direction {

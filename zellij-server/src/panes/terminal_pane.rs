@@ -16,9 +16,9 @@ use std::time::{self, Instant};
 use zellij_utils::input::command::RunCommand;
 use zellij_utils::pane_size::Offset;
 use zellij_utils::{
-    input::layout::Run,
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -362,7 +362,9 @@ impl Pane for TerminalPane {
         let mut frame_geom = self.current_geom();
         if !frame_params.should_draw_pane_frames {
             // in this case the width of the frame needs not include the pane corners
-            frame_geom.cols.set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+            frame_geom
+                .cols
+                .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
         }
         let mut frame = PaneFrame::new(
             frame_geom.into(),

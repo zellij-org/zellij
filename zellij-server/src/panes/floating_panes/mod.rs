@@ -206,7 +206,9 @@ impl FloatingPanes {
         // returns the focused pane of any client_id - should be safe because the way things are
         // set up at the time of writing, all clients are focused on the same floating pane due to
         // z_index issues
-        client_id.and_then(|client_id| self.active_panes.get(&client_id).copied()).or_else(|| self.panes.keys().next().copied())
+        client_id
+            .and_then(|client_id| self.active_panes.get(&client_id).copied())
+            .or_else(|| self.panes.keys().next().copied())
     }
     pub fn toggle_show_panes(&mut self, should_show_floating_panes: bool) {
         self.show_panes = should_show_floating_panes;
@@ -224,7 +226,8 @@ impl FloatingPanes {
     }
     pub fn add_next_geom(&mut self, next_geom: PaneGeom) {
         // TODO: removeme
-        if true { // TODO: config flag to cancel this behaviour - classic_pane_algorithm?
+        if true {
+            // TODO: config flag to cancel this behaviour - classic_pane_algorithm?
             self.next_geoms.push_back(next_geom);
         }
     }
@@ -241,7 +244,7 @@ impl FloatingPanes {
                     viewport,
                 );
                 floating_pane_grid.find_room_for_new_pane()
-            }
+            },
         }
     }
     pub fn position_floating_pane_layout(
@@ -592,7 +595,12 @@ impl FloatingPanes {
             self.set_force_render();
         }
     }
-    pub fn move_active_pane(&mut self, search_backwards: bool, os_api: &mut Box<dyn ServerOsApi>, client_id: ClientId) {
+    pub fn move_active_pane(
+        &mut self,
+        search_backwards: bool,
+        os_api: &mut Box<dyn ServerOsApi>,
+        client_id: ClientId,
+    ) {
         let active_pane_id = self.get_active_pane_id(client_id).unwrap();
 
         let new_position_id = {
@@ -821,7 +829,8 @@ impl FloatingPanes {
         }
     }
     pub fn reapply_pane_focus(&mut self) {
-        if let Some(focused_pane) = self.first_active_floating_pane_id() { // floating pane focus is the same for all clients
+        if let Some(focused_pane) = self.first_active_floating_pane_id() {
+            // floating pane focus is the same for all clients
             self.focus_pane_for_all_clients(focused_pane);
         }
     }

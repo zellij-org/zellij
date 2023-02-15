@@ -139,7 +139,9 @@ impl PaneFrame {
         background_color(" ", color.map(|c| c.0))
     }
     fn get_corner(&self, corner: &'static str) -> &'static str {
-        let corner = if !self.should_draw_pane_frames && (corner == boundary_type::TOP_LEFT || corner == boundary_type::TOP_RIGHT) {
+        let corner = if !self.should_draw_pane_frames
+            && (corner == boundary_type::TOP_LEFT || corner == boundary_type::TOP_RIGHT)
+        {
             boundary_type::HORIZONTAL
         } else if self.pane_is_stacked_under && corner == boundary_type::TOP_RIGHT {
             boundary_type::BOTTOM_RIGHT
@@ -717,7 +719,11 @@ impl PaneFrame {
             // 1 row because it could also be a flexible stacked pane)
             // in this case we should always draw the pane title line, and only the title line
             let one_line_title = self.render_one_line_title().with_context(err_context)?;
-            character_chunks.push(CharacterChunk::new(one_line_title, self.geom.x, self.geom.y));
+            character_chunks.push(CharacterChunk::new(
+                one_line_title,
+                self.geom.x,
+                self.geom.y,
+            ));
         } else {
             for row in 0..self.geom.rows {
                 if row == 0 {
@@ -757,7 +763,8 @@ impl PaneFrame {
                         character_chunks.push(CharacterChunk::new(bottom_row, x, y));
                     }
                 } else {
-                    let boundary_character_left = foreground_color(boundary_type::VERTICAL, self.color);
+                    let boundary_character_left =
+                        foreground_color(boundary_type::VERTICAL, self.color);
                     let boundary_character_right =
                         foreground_color(boundary_type::VERTICAL, self.color);
 

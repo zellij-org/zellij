@@ -13,10 +13,10 @@ use std::rc::Rc;
 use zellij_utils::pane_size::{Offset, SizeInPixels};
 use zellij_utils::position::Position;
 use zellij_utils::{
-    input::layout::Run,
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
@@ -277,7 +277,9 @@ impl Pane for PluginPane {
             let mut frame_geom = self.current_geom();
             if !frame_params.should_draw_pane_frames {
                 // in this case the width of the frame needs not include the pane corners
-                frame_geom.cols.set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+                frame_geom
+                    .cols
+                    .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
             }
             let mut frame = PaneFrame::new(
                 frame_geom.into(),
