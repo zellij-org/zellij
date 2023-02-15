@@ -2206,7 +2206,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(Some(client_id))
+                    |tab: &mut Tab, client_id: ClientId| tab.previous_swap_layout(Some(client_id)),
+                    ?
                 );
                 screen.render()?;
                 screen.update_tabs()?;
@@ -2216,7 +2217,8 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id), true)
+                    |tab: &mut Tab, client_id: ClientId| tab.next_swap_layout(Some(client_id), true),
+                    ?
                 );
                 screen.render()?;
                 screen.update_tabs()?;

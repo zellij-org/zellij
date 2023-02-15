@@ -628,7 +628,7 @@ impl FloatingPanes {
                 current_position.set_geom_override(geom);
             }
             current_position.set_should_render(true);
-            self.set_pane_frames(os_api);
+            let _ = self.set_pane_frames(os_api);
         }
     }
     pub fn move_clients_out_of_pane(&mut self, pane_id: PaneId) {

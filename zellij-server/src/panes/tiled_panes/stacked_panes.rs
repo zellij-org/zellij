@@ -114,19 +114,10 @@ impl <'a>StackedPanes <'a>{
         let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
         all_stacked_pane_positions.iter().find(|(_pid, p)| p.rows.is_percent()).map(|(pid, _p)| *pid)
     }
-    pub fn min_stack_y(&self, pane_id_in_stack: &PaneId) -> Option<usize> {
-        if let Ok(panes_in_stack) = self.positions_in_stack(pane_id_in_stack) {
-            if let Some((_pid, first_pane_geom)) = panes_in_stack.get(0) {
-                return Some(first_pane_geom.y);
-            }
-        }
-        None
-    }
     pub fn position_and_size_of_stack(&self, id: &PaneId) -> Option<PaneGeom> {
-        let err_context = || format!("Cannot determin the stack size");
         let all_stacked_pane_positions = self.positions_in_stack(id).ok()?;
         let position_of_flexible_pane = self.position_of_flexible_pane(&all_stacked_pane_positions).ok()?;
-        let (flexible_pane_id, flexible_pane) = all_stacked_pane_positions.iter().nth(position_of_flexible_pane)?;
+        let (_flexible_pane_id, flexible_pane) = all_stacked_pane_positions.iter().nth(position_of_flexible_pane)?;
         let (_, first_pane_in_stack) = all_stacked_pane_positions.first()?;
         let (_, last_pane_in_stack) = all_stacked_pane_positions.last()?;
         let mut rows = flexible_pane.rows;
@@ -192,7 +183,7 @@ impl <'a>StackedPanes <'a>{
     }
     pub fn resize_panes_in_stack(&mut self, id: &PaneId, new_full_stack_geom: PaneGeom) -> Result<()> {
         let err_context = || format!("Failed to resize panes in stack");
-        let mut all_stacked_pane_positions = self.positions_in_stack(id).with_context(err_context)?;
+        let all_stacked_pane_positions = self.positions_in_stack(id).with_context(err_context)?;
         let position_of_flexible_pane = self.position_of_flexible_pane(&all_stacked_pane_positions)?;
         let (flexible_pane_id, flexible_pane) = all_stacked_pane_positions.iter().nth(position_of_flexible_pane).with_context(err_context)?;
         let current_rows = all_stacked_pane_positions.len() + (flexible_pane.rows.as_usize() - 1);

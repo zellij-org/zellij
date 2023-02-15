@@ -469,7 +469,7 @@ impl ServerOsApi for ServerOsInputOutput {
                 id, rows, cols
             )
         };
-        if let Some(mut cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
+        if let Some(cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
             cached_resizes.insert(id, (cols, rows));
             return Ok(());
         }
@@ -743,7 +743,7 @@ impl ServerOsApi for ServerOsInputOutput {
         let mut cached_resizes = self.cached_resizes.lock().unwrap().take();
         if let Some(cached_resizes) = cached_resizes.as_mut() {
             for (terminal_id, (cols, rows)) in cached_resizes.iter() {
-                self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows);
+                let _ = self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows);
             }
         }
     }

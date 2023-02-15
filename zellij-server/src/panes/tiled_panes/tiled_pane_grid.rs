@@ -719,7 +719,7 @@ impl<'a> TiledPaneGrid<'a> {
         };
 
         for (pid, pane) in aligned_panes {
-            let pane_to_check = result.last().map(|(pid, pane)| pane).unwrap_or(&pane_to_check);
+            let pane_to_check = result.last().map(|(_pid, pane)| pane).unwrap_or(&pane_to_check);
             if match (alignment, direction) {
                 (&R, &U) | (&L, &U) => (pane.y + pane.rows.as_usize()) == pane_to_check.y,
                 (&R, &D) | (&L, &D) => pane.y == (pane_to_check.y + pane_to_check.rows.as_usize()),
@@ -760,7 +760,7 @@ impl<'a> TiledPaneGrid<'a> {
                 }
             }
         }
-        result.retain(|(pid, pane)| match direction {
+        result.retain(|(_pid, pane)| match direction {
             &L => pane.x >= resize_border,
             &D => (pane.y + pane.rows.as_usize()) <= resize_border,
             &U => pane.y >= resize_border,
@@ -777,7 +777,7 @@ impl<'a> TiledPaneGrid<'a> {
         } else {
             resize_border
         };
-        let pane_ids: Vec<PaneId> = result.iter().map(|(pid, t)| *pid).collect();
+        let pane_ids: Vec<PaneId> = result.iter().map(|(pid, _t)| *pid).collect();
 
         Ok((resize_border, pane_ids))
     }

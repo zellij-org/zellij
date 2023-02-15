@@ -1704,7 +1704,7 @@ impl<'a> KdlLayoutParser<'a> {
             },
             None => vec![],
         };
-        let mut pane_layout = TiledPaneLayout {
+        let pane_layout = TiledPaneLayout {
             children_split_direction,
             children,
             ..Default::default()

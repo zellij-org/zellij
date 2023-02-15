@@ -18,7 +18,6 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    input::layout::Run,
     data::{ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{command::RunCommand, layout::SplitDirection},
@@ -1424,16 +1423,6 @@ impl TiledPanes {
     }
     pub fn set_active_panes(&mut self, active_panes: ActivePanes) {
         self.active_panes = active_panes;
-    }
-    pub fn find_and_extract_pane(&mut self, run: &Option<Run>, position_and_size: &PaneGeom) -> Option<Box<dyn Pane>> {
-        // TODO: do we still need this?
-        let mut candidates: Vec<_> = self.panes.iter().filter(|(_, p)| p.invoked_with() == run).collect();
-        if let Some(same_position_candidate_id) = candidates.iter().find(|(_, p)| p.position_and_size() == *position_and_size).map(|(pid, _p)| *pid).copied() {
-            return self.panes.remove(&same_position_candidate_id);
-        } else if let Some(first_candidate) = candidates.iter().next().map(|(pid, _p)| *pid).copied() {
-            return self.panes.remove(&first_candidate);
-        }
-        None
     }
     fn move_clients_between_panes(&mut self, from_pane_id: PaneId, to_pane_id: PaneId) {
         let clients_in_pane: Vec<ClientId> = self
