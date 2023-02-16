@@ -330,7 +330,9 @@ pub enum CliAction {
     /// Close the current tab.
     CloseTab,
     /// Go to tab with index [index]
-    GoToTab { index: u32 },
+    GoToTab {
+        index: u32,
+    },
     /// Go to tab with name [name]
     GoToTabName {
         name: String,

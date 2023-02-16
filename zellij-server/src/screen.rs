@@ -204,7 +204,7 @@ pub enum ScreenInstruction {
         String,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
         bool,
-        Option<ClientId>
+        Option<ClientId>,
     ),
     ToggleTab(ClientId),
     UpdateTabName(Vec<u8>, ClientId),
