@@ -117,6 +117,7 @@ pub enum ExitReason {
     NormalDetached,
     ForceDetached,
     CannotAttach,
+    Disconnect,
     Error(String),
 }
 
@@ -133,6 +134,30 @@ impl Display for ExitReason {
                 f,
                 "Session attached to another client. Use --force flag to force connect."
             ),
+            Self::Disconnect => {
+                let session_tip = match crate::envs::get_session_name() {
+                    Ok(name) => format!("`zellij attach {}`", name),
+                    Err(_) => "see `zellij ls` and `zellij attach`".to_string(),
+                };
+                write!(
+                    f,
+                    "
+Your zellij client lost connection to the zellij server.
+
+As a safety measure, you have been disconnected from the current zellij session.
+However, the session should still exist and none of your data should be lost.
+
+This usually means that your terminal didn't process server messages quick
+enough. Maybe your system is currently under high load, or your terminal
+isn't performant enough.
+
+There are a few things you can try now:
+    - Reattach to your previous session and see if it works out better this
+      time: {session_tip}
+    - Try using a faster (maybe GPU-accelerated) terminal emulator
+    "
+                )
+            },
             Self::Error(e) => write!(f, "Error occurred in server:\n{}", e),
         }
     }

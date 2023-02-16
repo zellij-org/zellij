@@ -131,6 +131,8 @@ pub enum Action {
     ScrollDownAt(Position),
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
+    /// Scroll up to top in focus pane.
+    ScrollToTop,
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -181,6 +183,7 @@ pub enum Action {
     /// Close the current tab.
     CloseTab,
     GoToTab(u32),
+    GoToTabName(String, bool),
     ToggleTab,
     TabNameInput(Vec<u8>),
     UndoRenameTab,
@@ -238,6 +241,7 @@ impl Action {
             CliAction::ScrollUp => Ok(vec![Action::ScrollUp]),
             CliAction::ScrollDown => Ok(vec![Action::ScrollDown]),
             CliAction::ScrollToBottom => Ok(vec![Action::ScrollToBottom]),
+            CliAction::ScrollToTop => Ok(vec![Action::ScrollToTop]),
             CliAction::PageScrollUp => Ok(vec![Action::PageScrollUp]),
             CliAction::PageScrollDown => Ok(vec![Action::PageScrollDown]),
             CliAction::HalfPageScrollUp => Ok(vec![Action::HalfPageScrollUp]),
@@ -330,6 +334,7 @@ impl Action {
             CliAction::GoToPreviousTab => Ok(vec![Action::GoToPreviousTab]),
             CliAction::CloseTab => Ok(vec![Action::CloseTab]),
             CliAction::GoToTab { index } => Ok(vec![Action::GoToTab(index)]),
+            CliAction::GoToTabName { name, create } => Ok(vec![Action::GoToTabName(name, create)]),
             CliAction::RenameTab { name } => Ok(vec![
                 Action::TabNameInput(vec![0]),
                 Action::TabNameInput(name.as_bytes().to_vec()),

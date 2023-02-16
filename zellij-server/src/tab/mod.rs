@@ -1434,7 +1434,10 @@ impl Tab {
         let err_context = || format!("failed to write to terminal at position {position:?}");
 
         if self.floating_panes.panes_are_visible() {
-            let pane_id = self.floating_panes.get_pane_id_at(position, false).unwrap();
+            let pane_id = self
+                .floating_panes
+                .get_pane_id_at(position, false)
+                .with_context(err_context)?;
             if let Some(pane_id) = pane_id {
                 self.write_to_pane_id(input_bytes, pane_id)
                     .with_context(err_context)?;
@@ -1722,14 +1725,16 @@ impl Tab {
         let selectable_tiled_panes = self.tiled_panes.get_panes().filter(|(_, p)| p.selectable());
         selectable_tiled_panes.count() > 0
     }
-    pub fn resize_whole_tab(&mut self, new_screen_size: Size) {
+    pub fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
         // warning, here we cache resizes rather than sending them to the pty, we do that in
         // apply_cached_resizes below - beware when bailing on this function early!
         self.os_api.cache_resizes();
+        let err_context = || format!("failed to resize whole tab (index {})", self.index);
         self.floating_panes.resize(new_screen_size);
+        // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
             .resize_pty_all_panes(&mut self.os_api)
-            .unwrap(); // we need to do this explicitly because floating_panes.resize does not do this
+            .with_context(err_context)?;
         self.tiled_panes.resize(new_screen_size);
         if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
             // we do this only for floating panes, because the constraint system takes care of the
@@ -1744,6 +1749,7 @@ impl Tab {
         }
         self.should_clear_display_before_rendering = true;
         let _ = self.os_api.apply_cached_resizes();
+        Ok(())
     }
     pub fn resize(&mut self, client_id: ClientId, strategy: ResizeStrategy) -> Result<()> {
         let err_context = || format!("unable to resize pane");
@@ -1753,7 +1759,7 @@ impl Tab {
             let successfully_resized = self
                 .floating_panes
                 .resize_active_pane(client_id, &mut self.os_api, &strategy)
-                .unwrap();
+                .with_context(err_context)?;
             if successfully_resized {
                 self.set_force_render(); // we force render here to make sure the panes under the floating pane render and don't leave "garbage" in case of a decrease
             }
@@ -1811,7 +1817,9 @@ impl Tab {
         self.tiled_panes.focus_previous_pane(client_id);
     }
     // returns a boolean that indicates whether the focus moved
-    pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus left for client {}", client_id);
+
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .move_focus(
@@ -1819,19 +1827,21 @@ impl Tab {
                     &self.connected_clients.borrow().iter().copied().collect(),
                     &Direction::Left,
                 )
-                .unwrap()
+                .with_context(err_context)
         } else {
             if !self.has_selectable_panes() {
-                return false;
+                return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
                 self.switch_next_pane_fullscreen(client_id);
-                return true;
+                return Ok(true);
             }
-            self.tiled_panes.move_focus_left(client_id)
+            Ok(self.tiled_panes.move_focus_left(client_id))
         }
     }
-    pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_down(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus down for client {}", client_id);
+
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .move_focus(
@@ -1839,18 +1849,20 @@ impl Tab {
                     &self.connected_clients.borrow().iter().copied().collect(),
                     &Direction::Down,
                 )
-                .unwrap()
+                .with_context(err_context)
         } else {
             if !self.has_selectable_panes() {
-                return false;
+                return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                return false;
+                return Ok(false);
             }
-            self.tiled_panes.move_focus_down(client_id)
+            Ok(self.tiled_panes.move_focus_down(client_id))
         }
     }
-    pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_up(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus up for client {}", client_id);
+
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .move_focus(
@@ -1858,19 +1870,21 @@ impl Tab {
                     &self.connected_clients.borrow().iter().copied().collect(),
                     &Direction::Up,
                 )
-                .unwrap()
+                .with_context(err_context)
         } else {
             if !self.has_selectable_panes() {
-                return false;
+                return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                return false;
+                return Ok(false);
             }
-            self.tiled_panes.move_focus_up(client_id)
+            Ok(self.tiled_panes.move_focus_up(client_id))
         }
     }
     // returns a boolean that indicates whether the focus moved
-    pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_right(&mut self, client_id: ClientId) -> Result<bool> {
+        let err_context = || format!("failed to move focus right for client {}", client_id);
+
         if self.floating_panes.panes_are_visible() {
             self.floating_panes
                 .move_focus(
@@ -1878,16 +1892,16 @@ impl Tab {
                     &self.connected_clients.borrow().iter().copied().collect(),
                     &Direction::Right,
                 )
-                .unwrap()
+                .with_context(err_context)
         } else {
             if !self.has_selectable_panes() {
-                return false;
+                return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
                 self.switch_next_pane_fullscreen(client_id);
-                return true;
+                return Ok(true);
             }
-            self.tiled_panes.move_focus_right(client_id)
+            Ok(self.tiled_panes.move_focus_right(client_id))
         }
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {
@@ -2045,7 +2059,15 @@ impl Tab {
         // TODO: separate the "close_pane" logic and the "move_pane_somewhere_else" logic, they're
         // overloaded here and that's not great
         if !ignore_suppressed_panes && self.suppressed_panes.contains_key(&id) {
-            return self.replace_pane_with_suppressed_pane(id);
+            return match self.replace_pane_with_suppressed_pane(id) {
+                Ok(pane) => pane,
+                Err(e) => {
+                    Err::<(), _>(e)
+                        .with_context(|| format!("failed to close pane {:?}", id))
+                        .non_fatal();
+                    None
+                },
+            };
         }
         if self.floating_panes.panes_contain(&id) {
             let closed_pane = self.floating_panes.remove_pane(id);
@@ -2101,15 +2123,22 @@ impl Tab {
                 .hold_pane(id, exit_status, is_first_run, run_command);
         }
     }
-    pub fn replace_pane_with_suppressed_pane(&mut self, pane_id: PaneId) -> Option<Box<dyn Pane>> {
+    pub fn replace_pane_with_suppressed_pane(
+        &mut self,
+        pane_id: PaneId,
+    ) -> Result<Option<Box<dyn Pane>>> {
         self.suppressed_panes
             .remove(&pane_id)
+            .with_context(|| {
+                format!(
+                    "couldn't find pane with id {:?} in suppressed panes",
+                    pane_id
+                )
+            })
             .and_then(|suppressed_pane| {
                 let suppressed_pane_id = suppressed_pane.pid();
                 let replaced_pane = if self.are_floating_panes_visible() {
-                    Some(self.floating_panes.replace_pane(pane_id, suppressed_pane))
-                        .transpose()
-                        .unwrap()
+                    Some(self.floating_panes.replace_pane(pane_id, suppressed_pane)).transpose()?
                 } else {
                     self.tiled_panes.replace_pane(pane_id, suppressed_pane)
                 };
@@ -2126,9 +2155,15 @@ impl Tab {
                     // the pane there we replaced. Now, we need to update its pty about its new size.
                     // We couldn't do that before, and we can't use the original moved item now - so we
                     // need to refetch it
-                    resize_pty!(suppressed_pane, self.os_api, self.senders).unwrap();
+                    resize_pty!(suppressed_pane, self.os_api, self.senders)?;
                 }
-                replaced_pane
+                Ok(replaced_pane)
+            })
+            .with_context(|| {
+                format!(
+                    "failed to replace active pane with suppressed pane {:?}",
+                    pane_id
+                )
             })
     }
     pub fn close_focused_pane(&mut self, client_id: ClientId) -> Result<()> {
@@ -2279,6 +2314,16 @@ impl Tab {
         Ok(())
     }
 
+    pub fn scroll_active_terminal_to_top(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_scroll();
+            if let Some(size) = active_pane.get_line_number() {
+                active_pane.scroll_up(size, client_id);
+            }
+        }
+        Ok(())
+    }
+
     pub fn clear_active_terminal_scroll(&mut self, client_id: ClientId) -> Result<()> {
         // TODO: is this a thing?
         let err_context =
@@ -2367,18 +2412,20 @@ impl Tab {
         point: &Position,
         search_selectable: bool,
     ) -> Result<Option<&mut Box<dyn Pane>>> {
+        let err_context = || format!("failed to get pane at position {point:?}");
+
         if self.floating_panes.panes_are_visible() {
             if let Some(pane_id) = self
                 .floating_panes
                 .get_pane_id_at(point, search_selectable)
-                .unwrap()
+                .with_context(err_context)?
             {
                 return Ok(self.floating_panes.get_pane_mut(pane_id));
             }
         }
         if let Some(pane_id) = self
             .get_pane_id_at(point, search_selectable)
-            .with_context(|| format!("failed to get pane at position {point:?}"))?
+            .with_context(err_context)?
         {
             Ok(self.tiled_panes.get_pane_mut(pane_id))
         } else {
@@ -2515,7 +2562,11 @@ impl Tab {
             || format!("failed to focus pane at position {point:?} for client {client_id}");
 
         if self.floating_panes.panes_are_visible() {
-            if let Some(clicked_pane) = self.floating_panes.get_pane_id_at(point, true).unwrap() {
+            if let Some(clicked_pane) = self
+                .floating_panes
+                .get_pane_id_at(point, true)
+                .with_context(err_context)?
+            {
                 self.floating_panes.focus_pane(clicked_pane, client_id);
                 self.set_pane_active_at(clicked_pane);
                 return Ok(());
@@ -2641,17 +2692,20 @@ impl Tab {
             } else {
                 let relative_position = active_pane.relative_position(position);
                 if let PaneId::Terminal(_) = active_pane.pid() {
-                    if selecting && copy_on_release {
+                    if selecting {
                         active_pane.end_selection(&relative_position, client_id);
-                        let selected_text = active_pane.get_selected_text();
-                        active_pane.reset_selection();
+                        if copy_on_release {
+                            let selected_text = active_pane.get_selected_text();
+                            active_pane.reset_selection();
 
-                        if let Some(selected_text) = selected_text {
-                            self.write_selection_to_clipboard(&selected_text)
-                                .with_context(err_context)?;
+                            if let Some(selected_text) = selected_text {
+                                self.write_selection_to_clipboard(&selected_text)
+                                    .with_context(err_context)?;
+                            }
                         }
                     }
                 } else {
+                    // notify the release event to a plugin pane, should be renamed
                     active_pane.end_selection(&relative_position, client_id);
                 }
 
@@ -2906,7 +2960,9 @@ impl Tab {
             .with_context(err_context)?;
 
             // It only allows printable unicode, delete and backspace keys.
-            let is_updatable = buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x08 | 0x7F));
+            let is_updatable = buf
+                .iter()
+                .all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF | 0x08 | 0x7F));
             if is_updatable {
                 let s = str::from_utf8(&buf).with_context(err_context)?;
                 active_terminal.update_name(s);

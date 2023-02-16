@@ -14,6 +14,7 @@ use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
+    channels::TrySendError,
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
@@ -343,15 +344,24 @@ struct ClientSender {
 
 impl ClientSender {
     pub fn new(client_id: ClientId, mut sender: IpcSenderWithContext<ServerToClientMsg>) -> Self {
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(50);
+        // FIXME(hartan): This queue is responsible for buffering messages between server and
+        // client. If it fills up, the client is disconnected with a "Buffer full" sort of error
+        // message. It was previously found to be too small (with depth 50), so it was increased to
+        // 5000 instead. This decision was made because it was found that a queue of depth 5000
+        // doesn't cause noticable increase in RAM usage, but there's no reason beyond that. If in
+        // the future this is found to fill up too quickly again, it may be worthwhile to increase
+        // the size even further (or better yet, implement a redraw-on-backpressure mechanism).
+        // We, the zellij maintainers, have decided against an unbounded
+        // queue for the time being because we want to prevent e.g. the whole session being killed
+        // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
+        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                let _ = sender.send(msg).with_context(err_context);
+                sender.send(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(
-                "Buffer full".to_string(),
-            )));
+            // If we're here, the message buffer is broken for some reason
+            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
         });
         ClientSender {
             client_id,
@@ -359,9 +369,24 @@ impl ClientSender {
         }
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
-        let err_context = || format!("Client {} send buffer full", self.client_id);
+        let err_context = || {
+            format!(
+                "failed to send or buffer message for client {}",
+                self.client_id
+            )
+        };
+
         self.client_buffer_sender
             .try_send(msg)
+            .or_else(|err| {
+                if let TrySendError::Full(_) = err {
+                    log::warn!(
+                        "client {} is processing server messages too slow",
+                        self.client_id
+                    );
+                }
+                Err(err)
+            })
             .with_context(err_context)
     }
 }

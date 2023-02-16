@@ -245,7 +245,7 @@ impl<'a> LayoutApplier<'a> {
                         .send_to_pty(PtyInstruction::ClosePane(PaneId::Terminal(*unused_pid)))
                         .with_context(err_context)?;
                 }
-                self.adjust_viewport();
+                self.adjust_viewport().with_context(err_context)?;
                 self.set_focused_tiled_pane(focus_pane_id, client_id);
             },
             Err(e) => {
@@ -432,12 +432,20 @@ impl<'a> LayoutApplier<'a> {
             Ok(false)
         }
     }
-    fn resize_whole_tab(&mut self, new_screen_size: Size) {
+    fn resize_whole_tab(&mut self, new_screen_size: Size) -> Result<()> {
+        let err_context = || {
+            format!(
+                "failed to resize whole tab to new screen size {:?}",
+                new_screen_size
+            )
+        };
         self.floating_panes.resize(new_screen_size);
+        // we need to do this explicitly because floating_panes.resize does not do this
         self.floating_panes
             .resize_pty_all_panes(&mut self.os_api)
-            .unwrap(); // we need to do this explicitly because floating_panes.resize does not do this
+            .with_context(err_context)?;
         self.tiled_panes.resize(new_screen_size);
+        Ok(())
     }
     fn offset_viewport(&mut self, position_and_size: &Viewport) {
         let mut viewport = self.viewport.borrow_mut();
@@ -462,23 +470,26 @@ impl<'a> LayoutApplier<'a> {
             }
         }
     }
-    fn adjust_viewport(&mut self) {
+    fn adjust_viewport(&mut self) -> Result<()> {
         // here we offset the viewport after applying a tiled panes layout
         // from borderless panes that are on the edges of the
         // screen, this is so that when we don't have pane boundaries (eg. when they were
         // disabled by the user) boundaries won't be drawn around these panes
         // geometrically, we can only do this with panes that are on the edges of the
         // screen - so it's mostly a best-effort thing
+        let err_context = "failed to adjust viewport";
+
         let display_area = {
             let display_area = self.display_area.borrow();
             *display_area
         };
-        self.resize_whole_tab(display_area);
+        self.resize_whole_tab(display_area).context(err_context)?;
         let boundary_geoms = self.tiled_panes.borderless_pane_geoms();
         for geom in boundary_geoms {
             self.offset_viewport(&geom)
         }
         self.tiled_panes.set_pane_frames(self.draw_pane_frames);
+        Ok(())
     }
     fn set_focused_tiled_pane(&mut self, focus_pane_id: Option<PaneId>, client_id: ClientId) {
         if let Some(pane_id) = focus_pane_id {

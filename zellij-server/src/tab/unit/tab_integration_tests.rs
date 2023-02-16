@@ -1098,7 +1098,7 @@ fn move_floating_pane_focus_left() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1153,8 +1153,8 @@ fn move_floating_pane_focus_right() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id);
-    tab.move_focus_right(client_id);
+    tab.move_focus_left(client_id).unwrap();
+    tab.move_focus_right(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1209,7 +1209,7 @@ fn move_floating_pane_focus_up() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_up(client_id);
+    tab.move_focus_up(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1264,8 +1264,8 @@ fn move_floating_pane_focus_down() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_up(client_id);
-    tab.move_focus_down(client_id);
+    tab.move_focus_up(client_id).unwrap();
+    tab.move_focus_down(client_id).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1563,7 +1563,8 @@ fn resize_tab_with_floating_panes() {
     tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
-    });
+    })
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1613,7 +1614,7 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.resize_whole_tab(Size { cols: 50, rows: 10 });
+    tab.resize_whole_tab(Size { cols: 50, rows: 10 }).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1663,11 +1664,12 @@ fn shrink_whole_tab_with_floating_panes_horizontally_and_vertically_and_expand_b
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.resize_whole_tab(Size { cols: 50, rows: 10 });
+    tab.resize_whole_tab(Size { cols: 50, rows: 10 }).unwrap();
     tab.resize_whole_tab(Size {
         cols: 121,
         rows: 20,
-    });
+    })
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, _cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1935,7 +1937,7 @@ fn save_cursor_position_across_resizes() {
         1,
         Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
     ).unwrap();
-    tab.resize_whole_tab(Size { cols: 100, rows: 3 });
+    tab.resize_whole_tab(Size { cols: 100, rows: 3 }).unwrap();
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()))
         .unwrap();
 
@@ -2208,7 +2210,8 @@ fn resize_whole_tab_while_tiled_pane_is_suppressed() {
     tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
-    });
+    })
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2240,7 +2243,8 @@ fn resize_whole_tab_while_floting_pane_is_suppressed() {
     tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
-    });
+    })
+    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2851,7 +2855,7 @@ fn move_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 
@@ -2894,7 +2898,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 

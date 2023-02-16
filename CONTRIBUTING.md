@@ -85,6 +85,14 @@ Note that the output is truncated at 100KB. This can be adjusted for the purpose
 
 When running Zellij with the `--debug` flag, Zellij will dump a copy of all bytes received over the pty for each pane in: `/$temp_dir/zellij-<UID>/zellij-log/zellij-<pane_id>.log`. These might be useful when troubleshooting terminal issues.
 
+## Testing plugins
+Zellij allows the use of the [Singlepass](https://crates.io/crates/wasmer-compiler-singlepass) compiler for wasmer. This can enable great gains in compilation time of plugins in detriment of stability, notably on Arm64 architectures.
+
+To enable the singlepass compiler, use the `singlepass` flag. E.g.:
+```sh
+cargo xtask run --singlepass
+```
+
 ## How we treat clippy lints
 
 We currently use clippy in [GitHub Actions](https://github.com/zellij-org/zellij/blob/main/.github/workflows/rust.yml) with the default settings that report only [`clippy::correctness`](https://github.com/rust-lang/rust-clippy#readme) as errors and other lints as warnings because Zellij is still unstable. This means that all warnings can be ignored depending on the situation at that time, even though they are also helpful to keep the code quality.

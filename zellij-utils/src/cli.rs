@@ -228,6 +228,8 @@ pub enum CliAction {
     ScrollDown,
     /// Scroll down to bottom in focus pane.
     ScrollToBottom,
+    /// Scroll up to top in focus pane.
+    ScrollToTop,
     /// Scroll up one page in focus pane.
     PageScrollUp,
     /// Scroll down one page in focus pane.
@@ -328,8 +330,13 @@ pub enum CliAction {
     /// Close the current tab.
     CloseTab,
     /// Go to tab with index [index]
-    GoToTab {
-        index: u32,
+    GoToTab { index: u32 },
+    /// Go to tab with name [name]
+    GoToTabName {
+        name: String,
+        /// Create a tab if one does not exist.
+        #[clap(short, long, value_parser)]
+        create: bool,
     },
     /// Renames the focused pane
     RenameTab {

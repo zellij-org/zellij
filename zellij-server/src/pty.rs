@@ -513,7 +513,13 @@ impl Pty {
         if hold_on_start {
             // we don't actually open a terminal in this case, just wait for the user to run it
             let starts_held = hold_on_start;
-            let terminal_id = self.bus.os_input.as_mut().unwrap().reserve_terminal_id()?;
+            let terminal_id = self
+                .bus
+                .os_input
+                .as_mut()
+                .context("couldn't get mutable reference to OS interface")
+                .and_then(|os_input| os_input.reserve_terminal_id())
+                .with_context(err_context)?;
             return Ok((terminal_id, starts_held));
         }
 

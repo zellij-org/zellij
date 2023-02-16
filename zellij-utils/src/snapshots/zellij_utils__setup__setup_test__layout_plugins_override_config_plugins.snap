@@ -3307,6 +3307,14 @@ Config {
                 ),
             ],
             Char(
+                'x',
+            ): [
+                CloseFocus,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
                 'z',
             ): [
                 ToggleFocusFullscreen,
