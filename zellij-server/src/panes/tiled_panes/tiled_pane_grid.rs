@@ -517,7 +517,6 @@ impl<'a> TiledPaneGrid<'a> {
         let err_context =
             || format!("failed to determine if pane {pane_id:?} can reduce width by {reduce_by} %");
 
-        // let panes = self.panes.borrow();
         let pane = self
             .get_pane_geom(pane_id)
             .with_context(|| no_pane_id(pane_id))

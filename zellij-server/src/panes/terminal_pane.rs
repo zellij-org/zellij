@@ -292,7 +292,6 @@ impl Pane for TerminalPane {
             let rows = self.get_content_rows();
             let columns = self.get_content_columns();
             if rows < 1 || columns < 1 {
-                // TODO: same for plugins!!
                 return Ok(None);
             }
             match self.grid.render(content_x, content_y, &self.style) {

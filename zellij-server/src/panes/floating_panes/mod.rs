@@ -18,7 +18,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Instant;
 use zellij_utils::{
@@ -48,7 +48,6 @@ pub struct FloatingPanes {
     show_panes: bool,
     pane_being_moved_with_mouse: Option<(PaneId, Position)>,
     senders: ThreadSenders,
-    next_geoms: VecDeque<PaneGeom>, // TODO: remove this?
 }
 
 #[allow(clippy::borrowed_box)]
@@ -82,7 +81,6 @@ impl FloatingPanes {
             active_panes: ActivePanes::new(&os_input),
             pane_being_moved_with_mouse: None,
             senders,
-            next_geoms: VecDeque::new(),
         }
     }
     pub fn stack(&self) -> Option<FloatingPanesStack> {
@@ -224,28 +222,16 @@ impl FloatingPanes {
     pub fn panes_contain(&self, pane_id: &PaneId) -> bool {
         self.panes.contains_key(pane_id)
     }
-    pub fn add_next_geom(&mut self, next_geom: PaneGeom) {
-        // TODO: removeme
-        if true {
-            // TODO: config flag to cancel this behaviour - classic_pane_algorithm?
-            self.next_geoms.push_back(next_geom);
-        }
-    }
     pub fn find_room_for_new_pane(&mut self) -> Option<PaneGeom> {
-        match self.next_geoms.pop_front() {
-            Some(new_pane_geom) => Some(new_pane_geom),
-            None => {
-                let display_area = *self.display_area.borrow();
-                let viewport = *self.viewport.borrow();
-                let floating_pane_grid = FloatingPaneGrid::new(
-                    &mut self.panes,
-                    &mut self.desired_pane_positions,
-                    display_area,
-                    viewport,
-                );
-                floating_pane_grid.find_room_for_new_pane()
-            },
-        }
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        floating_pane_grid.find_room_for_new_pane()
     }
     pub fn position_floating_pane_layout(
         &mut self,

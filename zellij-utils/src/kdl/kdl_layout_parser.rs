@@ -1282,8 +1282,6 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<(), ConfigError> {
         let has_borderless_prop =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
-        //         let has_focus_prop =
-        //             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus").is_some();
         let has_cwd_prop =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd").is_some();
         let has_non_cwd_run_prop = self
@@ -1301,9 +1299,6 @@ impl<'a> KdlLayoutParser<'a> {
             if has_borderless_prop {
                 offending_nodes.push("borderless");
             }
-            //             if has_focus_prop {
-            //                 offending_nodes.push("focus");
-            //            }
             if has_non_cwd_run_prop {
                 offending_nodes.push("command/edit/plugin");
             }
