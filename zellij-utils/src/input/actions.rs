@@ -208,6 +208,14 @@ pub enum Action {
 }
 
 impl Action {
+    /// Checks that two Action are match except their mutable attributes.
+    pub fn shallow_eq(&self, other_action: &Action) -> bool {
+        match (self, other_action) {
+            (Action::NewTab(_, _, _), Action::NewTab(_, _, _)) => true,
+            _ => self == other_action,
+        }
+    }
+
     pub fn actions_from_cli(
         cli_action: CliAction,
         get_current_dir: Box<dyn Fn() -> PathBuf>,

@@ -351,7 +351,13 @@ pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> 
     keymap
         .iter()
         .filter_map(|(key, acvec)| {
-            if acvec.as_slice() == action {
+            let matching = acvec
+                .iter()
+                .zip(action)
+                .filter(|(a, b)| a.shallow_eq(b))
+                .count();
+
+            if matching == acvec.len() && matching == action.len() {
                 Some(*key)
             } else {
                 None
