@@ -207,6 +207,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::ScrollToBottom(client_id))
                 .with_context(err_context)?;
         },
+        Action::ScrollToTop => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ScrollToTop(client_id))
+                .with_context(err_context)?;
+        },
         Action::PageScrollUp => {
             session
                 .senders
@@ -471,6 +477,16 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::GoToTab(i, Some(client_id)))
+                .with_context(err_context)?;
+        },
+        Action::GoToTabName(name, create) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::GoToTabName(
+                    name,
+                    create,
+                    Some(client_id),
+                ))
                 .with_context(err_context)?;
         },
         Action::TabNameInput(c) => {

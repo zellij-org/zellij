@@ -43,6 +43,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ScrollUp" => Ok(Action::ScrollUp),
                 "ScrollDown" => Ok(Action::ScrollDown),
                 "ScrollToBottom" => Ok(Action::ScrollToBottom),
+                "ScrollToTop" => Ok(Action::ScrollToTop),
                 "PageScrollUp" => Ok(Action::PageScrollUp),
                 "PageScrollDown" => Ok(Action::PageScrollDown),
                 "HalfPageScrollUp" => Ok(Action::HalfPageScrollUp),
@@ -634,6 +635,9 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "ScrollUp" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "ScrollDown" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "ScrollToBottom" => {
+                parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
+            },
+            "ScrollToTop" => {
                 parse_kdl_action_arguments!(action_name, action_arguments, kdl_action)
             },
             "PageScrollUp" => {
