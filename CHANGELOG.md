@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: add cli action to switch to tab by name (https://github.com/zellij-org/zellij/pull/2120)
 * dev: use the wasmer Singlepass compiler when compiling plugins in development (https://github.com/zellij-org/zellij/pull/2134 + https://github.com/zellij-org/zellij/pull/2146)
 * feat: add pencil light theme (https://github.com/zellij-org/zellij/pull/2157)
+* fix: apply correct color on 'more tabs' message (https://github.com/zellij-org/zellij/pull/2166)
 
 ## [0.34.4] - 2022-12-13
 
