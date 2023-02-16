@@ -960,6 +960,8 @@ dependencies = [
 [[package]]
 name = "filedescriptor"
 version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7199d965852c3bac31f779ef99cbb4537f80e952e2d6aa0ffeb30cce00f4f46e"
 dependencies = [
  "libc",
  "thiserror",
@@ -2946,7 +2948,9 @@ dependencies = [
 
 [[package]]
 name = "termwiz"
-version = "0.19.0"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9509a978a10fcbace4991deae486ae10885e0f4c2c465123e08c9714a90648fa"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
@@ -3318,6 +3322,8 @@ dependencies = [
 [[package]]
 name = "vtparse"
 version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d9b2acfb050df409c972a37d3b8e08cdea3bddb0c09db9d53137e504cfabed0"
 dependencies = [
  "utf8parse",
 ]
@@ -3762,6 +3768,8 @@ dependencies = [
 [[package]]
 name = "wezterm-bidi"
 version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1560382cf39b0fa92473eae4d5b3772f88c63202cbf5a72c35db72ba99e66c36"
 dependencies = [
  "log",
  "wezterm-dynamic",
@@ -3770,6 +3778,8 @@ dependencies = [
 [[package]]
 name = "wezterm-color-types"
 version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c6e7a483dd2785ba72705c51e8b1be18300302db2a78368dac9bc8773857777"
 dependencies = [
  "csscolorparser",
  "deltae",
@@ -3780,6 +3790,8 @@ dependencies = [
 [[package]]
 name = "wezterm-dynamic"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a75e78c0cc60a76de5d93f9dad05651105351e151b6446ab305514945d7588aa"
 dependencies = [
  "log",
  "ordered-float 3.3.0",
@@ -3791,6 +3803,8 @@ dependencies = [
 [[package]]
 name = "wezterm-dynamic-derive"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c9f5ef318442d07b3d071f9f43ea40b80992f87faee14bb4d017b6991c307f0"
 dependencies = [
  "proc-macro2",
  "quote",
