@@ -18,7 +18,7 @@ daemonize = "0.4.1"
 serde_json = "1.0"
 unicode-width = "0.1.8"
 url = "2.2.2"
-wasmer = { version = "2.3.0", features = ["singlepass"]}
+wasmer = "2.3.0"
 wasmer-wasi = "2.3.0"
 cassowary = "0.3.0"
 zellij-utils = { path = "../zellij-utils/", version = "0.34.5" }
@@ -37,4 +37,4 @@ semver = "0.11.0"
 insta = "1.6.0"
 
 [features]
-force_cranelift = []
+singlepass = ["wasmer/singlepass"]

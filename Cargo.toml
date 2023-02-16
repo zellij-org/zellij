@@ -73,4 +73,4 @@ pkg-fmt = "tgz"
 default = [ "zellij-utils/plugins_from_target" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
-force_cranelift = [ "zellij-server/force_cranelift" ]
+singlepass = [ "zellij-server/singlepass" ]
