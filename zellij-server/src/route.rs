@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
 use crate::{
@@ -670,7 +671,7 @@ macro_rules! send_to_screen_or_retry_queue {
             None => {
                 log::warn!("Server not ready, trying to place instruction in retry queue...");
                 if let Some(retry_queue) = $retry_queue.as_mut() {
-                    retry_queue.push($instruction);
+                    retry_queue.push_back($instruction);
                 }
                 Ok(())
             },
@@ -686,7 +687,7 @@ pub(crate) fn route_thread_main(
     mut receiver: IpcReceiverWithContext<ClientToServerMsg>,
     client_id: ClientId,
 ) -> Result<()> {
-    let mut retry_queue = vec![];
+    let mut retry_queue = VecDeque::new();
     let err_context = || format!("failed to handle instruction for client {client_id}");
     'route_loop: loop {
         match receiver.recv() {
@@ -694,7 +695,9 @@ pub(crate) fn route_thread_main(
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let handle_instruction = |instruction: ClientToServerMsg,
-                                          mut retry_queue: Option<&mut Vec<ClientToServerMsg>>|
+                                          mut retry_queue: Option<
+                    &mut VecDeque<ClientToServerMsg>,
+                >|
                  -> Result<bool> {
                     let mut should_break = false;
                     match instruction {
@@ -837,7 +840,7 @@ pub(crate) fn route_thread_main(
                     }
                     Ok(should_break)
                 };
-                for instruction_to_retry in retry_queue.drain(..) {
+                while let Some(instruction_to_retry) = retry_queue.pop_front() {
                     log::warn!("Server ready, retrying sending instruction.");
                     let should_break = handle_instruction(instruction_to_retry, None)?;
                     if should_break {
