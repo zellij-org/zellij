@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: add pencil light theme (https://github.com/zellij-org/zellij/pull/2157)
 * fix: apply correct color on 'more tabs' message (https://github.com/zellij-org/zellij/pull/2166)
 * deps: upgrade termwiz to 0.20.0 (https://github.com/zellij-org/zellij/pull/2169)
+* feat: swap layouts and stacked panes (https://github.com/zellij-org/zellij/pull/2167)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
