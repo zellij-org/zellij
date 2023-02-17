@@ -33,8 +33,8 @@ pub(crate) fn stdin_loop(
         let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
         match stdin_ansi_parser.read_cache() {
             Some(events) => {
-                let _ = send_input_instructions
-                    .send(InputInstruction::AnsiStdinInstructions(events));
+                let _ =
+                    send_input_instructions.send(InputInstruction::AnsiStdinInstructions(events));
                 let _ = send_input_instructions
                     .send(InputInstruction::DoneParsing)
                     .unwrap();
@@ -43,15 +43,18 @@ pub(crate) fn stdin_loop(
                 send_input_instructions
                     .send(InputInstruction::StartedParsing)
                     .unwrap();
-                let terminal_emulator_query_string = stdin_ansi_parser
-                    .terminal_emulator_query_string();
+                let terminal_emulator_query_string =
+                    stdin_ansi_parser.terminal_emulator_query_string();
                 let _ = os_input
                     .get_stdout_writer()
                     .write(terminal_emulator_query_string.as_bytes())
                     .unwrap();
                 let query_duration = stdin_ansi_parser.startup_query_duration();
-                send_done_parsing_after_query_timeout(send_input_instructions.clone(), query_duration);
-            }
+                send_done_parsing_after_query_timeout(
+                    send_input_instructions.clone(),
+                    query_duration,
+                );
+            },
         }
     }
     let mut ansi_stdin_events = vec![];
@@ -75,7 +78,10 @@ pub(crate) fn stdin_loop(
             }
         }
         if !ansi_stdin_events.is_empty() {
-            stdin_ansi_parser.lock().unwrap().write_cache(ansi_stdin_events.drain(..).collect());
+            stdin_ansi_parser
+                .lock()
+                .unwrap()
+                .write_cache(ansi_stdin_events.drain(..).collect());
         }
         current_buffer.append(&mut buf.to_vec());
         let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely

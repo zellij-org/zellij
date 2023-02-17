@@ -1,5 +1,5 @@
-use std::sync::{Arc, RwLock};
 use std::collections::VecDeque;
+use std::sync::{Arc, RwLock};
 
 use crate::{
     os_input_output::ServerOsApi,
@@ -695,7 +695,9 @@ pub(crate) fn route_thread_main(
                 err_ctx.update_thread_ctx();
                 let rlocked_sessions = session_data.read().to_anyhow().with_context(err_context)?;
                 let handle_instruction = |instruction: ClientToServerMsg,
-                                          mut retry_queue: Option<&mut VecDeque<ClientToServerMsg>>|
+                                          mut retry_queue: Option<
+                    &mut VecDeque<ClientToServerMsg>,
+                >|
                  -> Result<bool> {
                     let mut should_break = false;
                     match instruction {

@@ -78,24 +78,23 @@ impl StdinAnsiParser {
     }
     pub fn read_cache(&self) -> Option<Vec<AnsiStdinInstruction>> {
         let path = self.cache_dir_path();
-        match OpenOptions::new()
-            .read(true)
-            .open(path.as_path()) {
-                Ok(mut file) => {
-                    let mut json_cache = String::new();
-                    file.read_to_string(&mut json_cache).ok()?;
-                    let instructions = serde_json::from_str::<Vec<AnsiStdinInstruction>>(&json_cache).ok()?;
-                    if instructions.is_empty() {
-                        None
-                    } else {
-                        Some(instructions)
-                    }
-                },
-                Err(e) => {
-                    log::error!("Failed to open STDIN cache file: {:?}", e);
+        match OpenOptions::new().read(true).open(path.as_path()) {
+            Ok(mut file) => {
+                let mut json_cache = String::new();
+                file.read_to_string(&mut json_cache).ok()?;
+                let instructions =
+                    serde_json::from_str::<Vec<AnsiStdinInstruction>>(&json_cache).ok()?;
+                if instructions.is_empty() {
                     None
+                } else {
+                    Some(instructions)
                 }
-            }
+            },
+            Err(e) => {
+                log::error!("Failed to open STDIN cache file: {:?}", e);
+                None
+            },
+        }
     }
     pub fn write_cache(&self, events: Vec<AnsiStdinInstruction>) {
         let path = self.cache_dir_path();
