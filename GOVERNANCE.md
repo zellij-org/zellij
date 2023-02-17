@@ -5,7 +5,7 @@ As such, we feel it's important to codify some rules that seem obvious and strai
 ## Organization members
 Members of the Zellij organization are in effect those empowered to make decisions for the project. Individual members are trusted to make decisions on their own and to bring larger and more controversial decisions to be decided by the full quorum of members in a real-time meeting or by correspondence.
 
-## BDFL
+## BDFL (Benevolent Dictator for Life)
 Aram Drevekenin (@imsnif) is in charge of steering the project and making large decisions regarding finances and collaboration. He will bring such decisions to the group when possible in order to hear all dissenting opinions, but the ultimate decision is his.
 
 He also has veto power over decisions made by the group. Since we strive to make decisions by consensus, this power is to be used only as a last resort.
