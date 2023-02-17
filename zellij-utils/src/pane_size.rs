@@ -131,6 +131,7 @@ pub enum Constraint {
     Percent(f64),
 }
 
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Constraint {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
