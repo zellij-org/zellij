@@ -30,7 +30,7 @@ fn full_length_shortcut(
 
     let separator = if is_first_shortcut { " " } else { " / " };
     let mut bits: Vec<ANSIString> = vec![Style::new().fg(text_color).paint(separator)];
-    bits.extend(style_key_with_modifier(&key, &palette));
+    bits.extend(style_key_with_modifier(&key, &palette, None));
     bits.push(
         Style::new()
             .fg(text_color)
@@ -179,7 +179,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
 
         vec![
         (s("Move focus"), s("Move"), focus_keys),
-        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None), TO_NORMAL])),
+        (s("New"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None), TO_NORMAL])),
         (s("Close"), s("Close"), action_key(&km, &[A::CloseTab, TO_NORMAL])),
         (s("Rename"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
@@ -210,6 +210,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
             &[Action::MovePane(Some(Dir::Left))], &[Action::MovePane(Some(Dir::Down))],
             &[Action::MovePane(Some(Dir::Up))], &[Action::MovePane(Some(Dir::Right))]])),
         (s("Next pane"), s("Next"), action_key(&km, &[Action::MovePane(None)])),
+        (s("Previous pane"), s("Previous"), action_key(&km, &[Action::MovePaneBackwards])),
     ]} else if mi.mode == IM::Scroll { vec![
         (s("Scroll"), s("Scroll"),
             action_key_group(&km, &[&[Action::ScrollDown], &[Action::ScrollUp]])),
@@ -253,7 +254,7 @@ fn get_keys_and_hints(mi: &ModeInfo) -> Vec<(String, String, Vec<Key>)> {
         (s("Split down"), s("Down"), action_key(&km, &[A::NewPane(Some(Dir::Down), None), TO_NORMAL])),
         (s("Split right"), s("Right"), action_key(&km, &[A::NewPane(Some(Dir::Right), None), TO_NORMAL])),
         (s("Fullscreen"), s("Fullscreen"), action_key(&km, &[A::ToggleFocusFullscreen, TO_NORMAL])),
-        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None), TO_NORMAL])),
+        (s("New tab"), s("New"), action_key(&km, &[A::NewTab(None, vec![], None, None, None), TO_NORMAL])),
         (s("Rename tab"), s("Rename"),
             action_key(&km, &[A::SwitchToMode(IM::RenameTab), A::TabNameInput(vec![0])])),
         (s("Previous Tab"), s("Previous"), action_key(&km, &[A::GoToPreviousTab, TO_NORMAL])),

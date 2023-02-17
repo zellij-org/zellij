@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2534
+assertion_line: 2538
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -29,11 +29,11 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
     NewTab(
         None,
         Some(
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Horizontal,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -42,8 +42,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -52,6 +53,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
                 ],
                 split_size: None,
@@ -59,6 +61,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
             },
         ),
         [],
@@ -167,6 +170,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                     ],
                 ),
@@ -176,11 +183,11 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
     NewTab(
         None,
         Some(
-            PaneLayout {
+            TiledPaneLayout {
                 children_split_direction: Vertical,
                 name: None,
                 children: [
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -189,8 +196,9 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
-                    PaneLayout {
+                    TiledPaneLayout {
                         children_split_direction: Horizontal,
                         name: None,
                         children: [],
@@ -199,6 +207,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         borderless: false,
                         focus: None,
                         external_children_index: None,
+                        children_are_stacked: false,
                     },
                 ],
                 split_size: None,
@@ -206,6 +215,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                 borderless: false,
                 focus: None,
                 external_children_index: None,
+                children_are_stacked: false,
             },
         ),
         [],
@@ -317,6 +327,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                         TabInfo {
                             position: 1,
@@ -327,6 +341,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                     ],
                 ),
@@ -351,6 +369,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                         TabInfo {
                             position: 1,
@@ -361,6 +383,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                     ],
                 ),
@@ -385,6 +411,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                         TabInfo {
                             position: 1,
@@ -395,6 +425,10 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                             is_sync_panes_active: false,
                             are_floating_panes_visible: false,
                             other_focused_clients: [],
+                            active_swap_layout_name: Some(
+                                "BASE",
+                            ),
+                            is_swap_layout_dirty: false,
                         },
                     ],
                 ),

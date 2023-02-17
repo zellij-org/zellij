@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 625
+assertion_line: 696
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -80,6 +80,7 @@ Config {
         scrollback_editor: None,
         session_name: None,
         attach_to_session: None,
+        auto_layout: None,
     },
     themes: {},
     plugins: {

@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
     },
 };
 
@@ -49,8 +49,8 @@ pub enum PtyInstruction {
     GoToTab(TabIndex, ClientId),
     NewTab(
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>,
         usize,                                // tab_index
         HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
@@ -575,8 +575,8 @@ impl Pty {
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,

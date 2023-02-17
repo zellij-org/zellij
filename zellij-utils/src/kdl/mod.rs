@@ -66,6 +66,8 @@ macro_rules! parse_kdl_action_arguments {
                 "Confirm" => Ok(Action::Confirm),
                 "Deny" => Ok(Action::Deny),
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
+                "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+                "NextSwapLayout" => Ok(Action::NextSwapLayout),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -452,6 +454,7 @@ impl Action {
                     Ok(Action::MovePane(Some(direction)))
                 }
             },
+            "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
                 if string.is_empty() {
@@ -729,6 +732,11 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 action_arguments,
                 kdl_action
             ),
+            "MovePaneBackwards" => parse_kdl_action_char_or_string_arguments!(
+                action_name,
+                action_arguments,
+                kdl_action
+            ),
             "DumpScreen" => parse_kdl_action_char_or_string_arguments!(
                 action_name,
                 action_arguments,
@@ -745,7 +753,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             "NewTab" => {
                 let command_metadata = action_children.iter().next();
                 if command_metadata.is_none() {
-                    return Ok(Action::NewTab(None, vec![], None));
+                    return Ok(Action::NewTab(None, vec![], None, None, None));
                 }
 
                 let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -762,7 +770,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
 
-                let (path_to_raw_layout, raw_layout) =
+                let (path_to_raw_layout, raw_layout, swap_layouts) =
                     Layout::stringified_from_path_or_default(layout.as_ref(), None).map_err(
                         |e| {
                             ConfigError::new_kdl_error(
@@ -773,14 +781,19 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                         },
                     )?;
 
-                let layout =
-                    Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
-                        ConfigError::new_kdl_error(
-                            format!("Failed to load layout: {}", e),
-                            kdl_action.span().offset(),
-                            kdl_action.span().len(),
-                        )
-                    })?;
+                let layout = Layout::from_str(
+                    &raw_layout,
+                    path_to_raw_layout,
+                    swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())),
+                    cwd,
+                )
+                .map_err(|e| {
+                    ConfigError::new_kdl_error(
+                        format!("Failed to load layout: {}", e),
+                        kdl_action.span().offset(),
+                        kdl_action.span().len(),
+                    )
+                })?;
 
                 let mut tabs = layout.tabs();
                 if tabs.len() > 1 {
@@ -793,11 +806,23 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     let (tab_name, layout, floating_panes_layout) = tabs.drain(..).next().unwrap();
                     let name = tab_name.or(name);
 
-                    Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
+                    Ok(Action::NewTab(
+                        Some(layout),
+                        floating_panes_layout,
+                        None,
+                        None,
+                        name,
+                    ))
                 } else {
                     let (layout, floating_panes_layout) = layout.new_tab();
 
-                    Ok(Action::NewTab(Some(layout), floating_panes_layout, name))
+                    Ok(Action::NewTab(
+                        Some(layout),
+                        floating_panes_layout,
+                        None,
+                        None,
+                        name,
+                    ))
                 }
             },
             "GoToTab" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -847,6 +872,8 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                 };
                 Ok(Action::Run(run_command_action))
             },
+            "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
+            "NextSwapLayout" => Ok(Action::NextSwapLayout),
             _ => Err(ConfigError::new_kdl_error(
                 format!("Unsupported action: {}", action_name).into(),
                 kdl_action.span().offset(),
@@ -1273,6 +1300,8 @@ impl Options {
                 .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
+        let auto_layout =
+            kdl_property_first_arg_as_bool_or_error!(kdl_options, "auto_layout").map(|(v, _)| v);
         let theme = kdl_property_first_arg_as_string_or_error!(kdl_options, "theme")
             .map(|(theme, _entry)| theme.to_string());
         let default_mode =
@@ -1337,6 +1366,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         })
     }
 }
@@ -1370,36 +1400,66 @@ impl Layout {
     pub fn from_kdl(
         raw_layout: &str,
         file_name: String,
+        raw_swap_layouts: Option<(&str, &str)>, // raw_swap_layouts swap_layouts_file_name
         cwd: Option<PathBuf>,
     ) -> Result<Self, ConfigError> {
-        KdlLayoutParser::new(raw_layout, cwd).parse().map_err(|e| {
-            match e {
-                ConfigError::KdlError(kdl_error) => ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout))),
-                ConfigError::KdlDeserializationError(kdl_error) => {
-                    let error_message = match kdl_error.kind {
-                        kdl::KdlErrorKind::Context("valid node terminator") => {
-                            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
-                            "- Missing `;` after a node name, eg. { node; another_node; }",
-                            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
-                            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
-                            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+        let mut kdl_layout_parser = KdlLayoutParser::new(raw_layout, cwd);
+        let layout = kdl_layout_parser.parse().map_err(|e| match e {
+            ConfigError::KdlError(kdl_error) => {
+                ConfigError::KdlError(kdl_error.add_src(file_name, String::from(raw_layout)))
+            },
+            ConfigError::KdlDeserializationError(kdl_error) => {
+                kdl_layout_error(kdl_error, file_name, raw_layout)
+            },
+            e => e,
+        })?;
+        match raw_swap_layouts {
+            Some((raw_swap_layout_filename, raw_swap_layout)) => {
+                // here we use the same parser to parse the swap layout so that we can reuse assets
+                // (eg. pane and tab templates)
+                kdl_layout_parser
+                    .parse_external_swap_layouts(raw_swap_layout, layout)
+                    .map_err(|e| match e {
+                        ConfigError::KdlError(kdl_error) => {
+                            ConfigError::KdlError(kdl_error.add_src(
+                                String::from(raw_swap_layout_filename),
+                                String::from(raw_swap_layout),
+                            ))
                         },
-                        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
-                    };
-                    let kdl_error = KdlError {
-                        error_message,
-                        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
-                        offset: Some(kdl_error.span.offset()),
-                        len: Some(kdl_error.span.len()),
-                        help_message: None,
-                    };
-                    ConfigError::KdlError(kdl_error)
-                },
-                e => e
-            }
-        })
+                        ConfigError::KdlDeserializationError(kdl_error) => kdl_layout_error(
+                            kdl_error,
+                            raw_swap_layout_filename.into(),
+                            raw_swap_layout,
+                        ),
+                        e => e,
+                    })
+            },
+            None => Ok(layout),
+        }
     }
 }
+
+fn kdl_layout_error(kdl_error: kdl::KdlError, file_name: String, raw_layout: &str) -> ConfigError {
+    let error_message = match kdl_error.kind {
+        kdl::KdlErrorKind::Context("valid node terminator") => {
+            format!("Failed to deserialize KDL node. \nPossible reasons:\n{}\n{}\n{}\n{}",
+            "- Missing `;` after a node name, eg. { node; another_node; }",
+            "- Missing quotations (\") around an argument node eg. { first_node \"argument_node\"; }",
+            "- Missing an equal sign (=) between node arguments on a title line. eg. argument=\"value\"",
+            "- Found an extraneous equal sign (=) between node child arguments and their values. eg. { argument=\"value\" }")
+        },
+        _ => String::from(kdl_error.help.unwrap_or("Kdl Deserialization Error")),
+    };
+    let kdl_error = KdlError {
+        error_message,
+        src: Some(NamedSource::new(file_name, String::from(raw_layout))),
+        offset: Some(kdl_error.span.offset()),
+        len: Some(kdl_error.span.len()),
+        help_message: None,
+    };
+    ConfigError::KdlError(kdl_error)
+}
+
 impl EnvironmentVariables {
     pub fn from_kdl(kdl_env_variables: &KdlNode) -> Result<Self, ConfigError> {
         let mut env: HashMap<String, String> = HashMap::new();

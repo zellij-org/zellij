@@ -116,6 +116,11 @@ pub struct Options {
     #[clap(long, value_parser)]
     #[serde(default)]
     pub attach_to_session: Option<bool>,
+
+    /// Whether to lay out panes in a predefined set of layouts whenever possible
+    #[clap(long, value_parser)]
+    #[serde(default)]
+    pub auto_layout: Option<bool>,
 }
 
 #[derive(ArgEnum, Deserialize, Serialize, Debug, Clone, Copy, PartialEq)]
@@ -157,6 +162,7 @@ impl Options {
     pub fn merge(&self, other: Options) -> Options {
         let mouse_mode = other.mouse_mode.or(self.mouse_mode);
         let pane_frames = other.pane_frames.or(self.pane_frames);
+        let auto_layout = other.auto_layout.or(self.auto_layout);
         let mirror_session = other.mirror_session.or(self.mirror_session);
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
@@ -197,6 +203,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         }
     }
 
@@ -218,6 +225,7 @@ impl Options {
         let simplified_ui = merge_bool(other.simplified_ui, self.simplified_ui);
         let mouse_mode = merge_bool(other.mouse_mode, self.mouse_mode);
         let pane_frames = merge_bool(other.pane_frames, self.pane_frames);
+        let auto_layout = merge_bool(other.auto_layout, self.auto_layout);
         let mirror_session = merge_bool(other.mirror_session, self.mirror_session);
 
         let default_mode = other.default_mode.or(self.default_mode);
@@ -258,6 +266,7 @@ impl Options {
             scrollback_editor,
             session_name,
             attach_to_session,
+            auto_layout,
         }
     }
 
@@ -288,6 +297,7 @@ impl From<CliOptions> for Options {
     fn from(cli_options: CliOptions) -> Self {
         let mut opts = cli_options.options;
 
+        // TODO: what?
         if cli_options.no_pane_frames {
             opts.pane_frames = Some(false);
         }

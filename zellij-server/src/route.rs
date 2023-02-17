@@ -165,6 +165,12 @@ pub(crate) fn route_action(
                 .send_to_screen(screen_instr)
                 .with_context(err_context)?;
         },
+        Action::MovePaneBackwards => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::MovePaneBackwards(client_id))
+                .with_context(err_context)?;
+        },
         Action::DumpScreen(val, full) => {
             session
                 .senders
@@ -436,8 +442,18 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::CloseFocusedPane(client_id))
                 .with_context(err_context)?;
         },
-        Action::NewTab(tab_layout, floating_panes_layout, tab_name) => {
+        Action::NewTab(
+            tab_layout,
+            floating_panes_layout,
+            swap_tiled_layouts,
+            swap_floating_layouts,
+            tab_name,
+        ) => {
             let shell = session.default_shell.clone();
+            let swap_tiled_layouts =
+                swap_tiled_layouts.unwrap_or_else(|| session.layout.swap_tiled_layouts.clone());
+            let swap_floating_layouts = swap_floating_layouts
+                .unwrap_or_else(|| session.layout.swap_floating_layouts.clone());
             session
                 .senders
                 .send_to_screen(ScreenInstruction::NewTab(
@@ -445,6 +461,7 @@ pub(crate) fn route_action(
                     tab_layout,
                     floating_panes_layout,
                     tab_name,
+                    (swap_tiled_layouts, swap_floating_layouts),
                     client_id,
                 ))
                 .with_context(err_context)?;
@@ -480,10 +497,13 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::GoToTabName(name, create) => {
+            let swap_tiled_layouts = session.layout.swap_tiled_layouts.clone();
+            let swap_floating_layouts = session.layout.swap_floating_layouts.clone();
             session
                 .senders
                 .send_to_screen(ScreenInstruction::GoToTabName(
                     name,
+                    (swap_tiled_layouts, swap_floating_layouts),
                     create,
                     Some(client_id),
                 ))
@@ -626,6 +646,18 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::ToggleMouseMode => {}, // Handled client side
+        Action::PreviousSwapLayout => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::PreviousSwapLayout(client_id))
+                .with_context(err_context)?;
+        },
+        Action::NextSwapLayout => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NextSwapLayout(client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }
