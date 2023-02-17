@@ -27,21 +27,34 @@ pub(crate) fn stdin_loop(
     let mut holding_mouse = false;
     let mut input_parser = InputParser::new();
     let mut current_buffer = vec![];
-    // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
-    // we get a response through STDIN, so it makes sense to do this here
-    send_input_instructions
-        .send(InputInstruction::StartedParsing)
-        .unwrap();
-    let terminal_emulator_query_string = stdin_ansi_parser
-        .lock()
-        .unwrap()
-        .terminal_emulator_query_string();
-    let _ = os_input
-        .get_stdout_writer()
-        .write(terminal_emulator_query_string.as_bytes())
-        .unwrap();
-    let query_duration = stdin_ansi_parser.lock().unwrap().startup_query_duration();
-    send_done_parsing_after_query_timeout(send_input_instructions.clone(), query_duration);
+    {
+        // on startup we send a query to the terminal emulator for stuff like the pixel size and colors
+        // we get a response through STDIN, so it makes sense to do this here
+        let mut stdin_ansi_parser = stdin_ansi_parser.lock().unwrap();
+        match stdin_ansi_parser.read_cache() {
+            Some(events) => {
+                let _ = send_input_instructions
+                    .send(InputInstruction::AnsiStdinInstructions(events));
+                let _ = send_input_instructions
+                    .send(InputInstruction::DoneParsing)
+                    .unwrap();
+            },
+            None => {
+                send_input_instructions
+                    .send(InputInstruction::StartedParsing)
+                    .unwrap();
+                let terminal_emulator_query_string = stdin_ansi_parser
+                    .terminal_emulator_query_string();
+                let _ = os_input
+                    .get_stdout_writer()
+                    .write(terminal_emulator_query_string.as_bytes())
+                    .unwrap();
+                let query_duration = stdin_ansi_parser.startup_query_duration();
+                send_done_parsing_after_query_timeout(send_input_instructions.clone(), query_duration);
+            }
+        }
+    }
+    let mut ansi_stdin_events = vec![];
     loop {
         let buf = os_input.read_from_stdin();
         {
@@ -54,11 +67,15 @@ pub(crate) fn stdin_loop(
             if stdin_ansi_parser.should_parse() {
                 let events = stdin_ansi_parser.parse(buf);
                 if !events.is_empty() {
+                    ansi_stdin_events.append(&mut events.clone());
                     let _ = send_input_instructions
                         .send(InputInstruction::AnsiStdinInstructions(events));
                 }
                 continue;
             }
+        }
+        if !ansi_stdin_events.is_empty() {
+            stdin_ansi_parser.lock().unwrap().write_cache(ansi_stdin_events.drain(..).collect());
         }
         current_buffer.append(&mut buf.to_vec());
         let maybe_more = false; // read_from_stdin should (hopefully) always empty the STDIN buffer completely

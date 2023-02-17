@@ -1,10 +1,16 @@
 use std::time::{Duration, Instant};
+use zellij_utils::consts::{VERSION, ZELLIJ_CACHE_DIR};
 
 const STARTUP_PARSE_DEADLINE_MS: u64 = 500;
-const SIGWINCH_PARSE_DEADLINE_MS: u64 = 200;
 use zellij_utils::{
     ipc::PixelDimensions, lazy_static::lazy_static, pane_size::SizeInPixels, regex::Regex,
 };
+
+use serde::{Deserialize, Serialize};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use zellij_utils::anyhow::Result;
 
 #[derive(Debug)]
 pub struct StdinAnsiParser {
@@ -43,18 +49,6 @@ impl StdinAnsiParser {
             Some(Instant::now() + Duration::from_millis(STARTUP_PARSE_DEADLINE_MS));
         query_string
     }
-    pub fn window_size_change_query_string(&mut self) -> String {
-        // note that this assumes the String will be sent to the terminal emulator and so starts a
-        // deadline timeout (self.parse_deadline)
-
-        // <ESC>[14t => get text area size in pixels,
-        // <ESC>[16t => get character cell size in pixels
-        let query_string = String::from("\u{1b}[14t\u{1b}[16t");
-
-        self.parse_deadline =
-            Some(Instant::now() + Duration::from_millis(SIGWINCH_PARSE_DEADLINE_MS));
-        query_string
-    }
     fn drain_pending_events(&mut self) -> Vec<AnsiStdinInstruction> {
         let mut events = vec![];
         events.append(&mut self.pending_events);
@@ -81,6 +75,35 @@ impl StdinAnsiParser {
             self.parse_byte(byte);
         }
         self.drain_pending_events()
+    }
+    pub fn read_cache(&self) -> Option<Vec<AnsiStdinInstruction>> {
+        let path = self.cache_dir_path();
+        match OpenOptions::new()
+            .read(true)
+            .open(path.as_path()) {
+                Ok(mut file) => {
+                    let mut json_cache = String::new();
+                    file.read_to_string(&mut json_cache).ok()?;
+                    let instructions = serde_json::from_str::<Vec<AnsiStdinInstruction>>(&json_cache).ok()?;
+                    if instructions.is_empty() {
+                        None
+                    } else {
+                        Some(instructions)
+                    }
+                },
+                Err(e) => {
+                    log::error!("Failed to open STDIN cache file: {:?}", e);
+                    None
+                }
+            }
+    }
+    pub fn write_cache(&self, events: Vec<AnsiStdinInstruction>) {
+        let path = self.cache_dir_path();
+        if let Ok(serialized_events) = serde_json::to_string(&events) {
+            if let Ok(mut file) = File::create(path.as_path()) {
+                let _ = file.write_all(serialized_events.as_bytes());
+            }
+        };
     }
     fn parse_byte(&mut self, byte: u8) {
         if byte == b't' {
@@ -112,9 +135,12 @@ impl StdinAnsiParser {
             self.raw_buffer.push(byte);
         }
     }
+    fn cache_dir_path(&self) -> PathBuf {
+        ZELLIJ_CACHE_DIR.join(&format!("zellij-stdin-cache-v{}", VERSION))
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AnsiStdinInstruction {
     PixelDimensions(PixelDimensions),
     BackgroundColor(String),
