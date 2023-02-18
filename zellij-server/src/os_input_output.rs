@@ -303,9 +303,18 @@ fn spawn_terminal(
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
+                    args.push(file_to_open);
+                } else if command.ends_with("hx") || command.ends_with("helix") {
+                    // at the time of writing, helix only supports this syntax
+                    // and it might be a good idea to leave this here anyway
+                    // to keep supporting old versions
+                    args.push(format!("{}:{}", file_to_open, line_number));
+                } else {
+                    args.push(file_to_open);
                 }
+            } else {
+                args.push(file_to_open);
             }
-            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
