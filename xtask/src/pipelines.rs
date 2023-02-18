@@ -1,6 +1,8 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
+use std::ffi::OsString;
+
 use crate::flags;
 use crate::{build, clippy, format, test};
 use anyhow::Context;
@@ -168,12 +170,32 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
 
-    sh.change_dir(crate::project_root());
+    // Process flags
     let dry_run = if flags.dry_run {
         Some("--dry-run")
     } else {
         None
     };
+    let remote = if let Some(remote) = flags.git_remote {
+        remote
+    } else {
+        OsString::from("origin")
+    };
+    let registry = if let Some(registry) = flags.cargo_registry {
+        format!(
+            "--registry={}",
+            registry
+                .into_string()
+                .map_err(|registry| anyhow::Error::msg(format!(
+                    "failed to convert '{:?}' to valid registry name",
+                    registry
+                ))).context(err_context)?
+        )
+    } else {
+        "".to_string()
+    };
+
+    sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
     let project_dir = crate::project_root();
     let manifest = sh
@@ -265,7 +287,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         if flags.dry_run {
             println!("Skipping push due to dry-run");
         } else {
-            cmd!(sh, "git push --atomic origin main v{version}")
+            cmd!(sh, "git push --atomic {remote} main v{version}")
                 .run()
                 .context(err_context)?;
         }
@@ -278,7 +300,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
             let _pd = sh.push_dir(project_dir.join(member));
             loop {
-                if let Err(err) = cmd!(sh, "{cargo} publish {dry_run...}")
+                if let Err(err) = cmd!(sh, "{cargo} publish {registry} {dry_run...}")
                     .run()
                     .context(err_context)
                 {
