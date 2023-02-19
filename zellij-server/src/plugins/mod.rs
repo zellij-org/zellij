@@ -12,7 +12,7 @@ use zellij_utils::{
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
-        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPlugin, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, Run, RunPlugin, RunPluginLocation, TiledPaneLayout},
         plugins::PluginsConfig,
     },
     pane_size::Size,
@@ -28,8 +28,8 @@ pub enum PluginInstruction {
     RemoveClient(ClientId),
     NewTab(
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>, // tab name
         usize,          // tab_index
         ClientId,
@@ -102,6 +102,11 @@ pub(crate) fn plugin_thread_main(
                     .unwrap_or_else(|| layout.new_tab().0)
                     .extract_run_instructions();
                 let size = Size::default();
+                let floating_panes_layout = if floating_panes_layout.is_empty() {
+                    layout.new_tab().1
+                } else {
+                    floating_panes_layout
+                };
                 let mut extracted_floating_plugins: Vec<Option<Run>> = floating_panes_layout
                     .iter()
                     .map(|f| f.run.clone())

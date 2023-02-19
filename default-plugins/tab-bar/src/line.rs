@@ -123,13 +123,13 @@ fn left_more_message(
     // 238
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let text_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
+    let (text_color, sep_color) = match palette.theme_hue {
+        ThemeHue::Dark => (palette.white, palette.black),
+        ThemeHue::Light => (palette.black, palette.white),
     };
-    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let left_separator = style!(sep_color, palette.orange).paint(separator);
     let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, text_color).paint(separator);
+    let right_separator = style!(palette.orange, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {
@@ -155,13 +155,13 @@ fn right_more_message(
     };
     // chars length plus separator length on both sides
     let more_text_len = more_text.width() + 2 * separator.width();
-    let text_color = match palette.theme_hue {
-        ThemeHue::Dark => palette.white,
-        ThemeHue::Light => palette.black,
+    let (text_color, sep_color) = match palette.theme_hue {
+        ThemeHue::Dark => (palette.white, palette.black),
+        ThemeHue::Light => (palette.black, palette.white),
     };
-    let left_separator = style!(text_color, palette.orange).paint(separator);
+    let left_separator = style!(sep_color, palette.orange).paint(separator);
     let more_styled_text = style!(text_color, palette.orange).bold().paint(more_text);
-    let right_separator = style!(palette.orange, text_color).paint(separator);
+    let right_separator = style!(palette.orange, sep_color).paint(separator);
     let more_styled_text =
         ANSIStrings(&[left_separator, more_styled_text, right_separator]).to_string();
     LinePart {

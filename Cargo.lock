@@ -254,6 +254,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
+name = "base64"
+version = "0.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a4ddaa51a5bc52a6948f74c06d20aaaddb71924eab79b8c97a8c556e942d6a"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2942,12 +2948,12 @@ dependencies = [
 
 [[package]]
 name = "termwiz"
-version = "0.19.0"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c18a622b077791579bcf2a631c29d552fedba6816701296dbe465ad01845fda"
+checksum = "9509a978a10fcbace4991deae486ae10885e0f4c2c465123e08c9714a90648fa"
 dependencies = [
  "anyhow",
- "base64",
+ "base64 0.21.0",
  "bitflags",
  "filedescriptor",
  "finl_unicode",
@@ -4011,6 +4017,7 @@ dependencies = [
  "log",
  "mio",
  "serde",
+ "serde_json",
  "serde_yaml",
  "url",
  "zellij-utils",
@@ -4023,7 +4030,7 @@ dependencies = [
  "ansi_term",
  "arrayvec 0.7.2",
  "async-trait",
- "base64",
+ "base64 0.13.0",
  "byteorder",
  "cassowary",
  "chrono",

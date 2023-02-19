@@ -104,10 +104,22 @@ pub const DEFAULT_LAYOUT: &[u8] = include_bytes!(concat!(
     "assets/layouts/default.kdl"
 ));
 
+pub const DEFAULT_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/default.swap.kdl"
+));
+
 pub const STRIDER_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/strider.kdl"
+));
+
+pub const STRIDER_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/strider.swap.kdl"
 ));
 
 pub const NO_STATUS_LAYOUT: &[u8] = include_bytes!(concat!(
@@ -120,6 +132,12 @@ pub const COMPACT_BAR_LAYOUT: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/",
     "assets/layouts/compact.kdl"
+));
+
+pub const COMPACT_BAR_SWAP_LAYOUT: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/",
+    "assets/layouts/compact.swap.kdl"
 ));
 
 pub const FISH_EXTRA_COMPLETION: &[u8] = include_bytes!(concat!(
@@ -171,6 +189,18 @@ pub fn dump_specified_layout(layout: &str) -> std::io::Result<()> {
         not_found => Err(std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("Layout: {} not found", not_found),
+        )),
+    }
+}
+
+pub fn dump_specified_swap_layout(swap_layout: &str) -> std::io::Result<()> {
+    match swap_layout {
+        "strider" => dump_asset(STRIDER_SWAP_LAYOUT),
+        "default" => dump_asset(DEFAULT_SWAP_LAYOUT),
+        "compact" => dump_asset(COMPACT_BAR_SWAP_LAYOUT),
+        not_found => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Swap Layout not found for: {}", not_found),
         )),
     }
 }
@@ -229,6 +259,10 @@ pub struct Setup {
     /// Dump the specified layout file to stdout
     #[clap(long, value_parser)]
     pub dump_layout: Option<String>,
+
+    /// Dump the specified swap layout file to stdout
+    #[clap(long, value_parser)]
+    pub dump_swap_layout: Option<String>,
 
     /// Dump the builtin plugins to DIR or "DATA DIR" if unspecified
     #[clap(
@@ -334,6 +368,11 @@ impl Setup {
 
         if let Some(layout) = &self.dump_layout {
             dump_specified_layout(layout)?;
+            std::process::exit(0);
+        }
+
+        if let Some(swap_layout) = &self.dump_swap_layout {
+            dump_specified_swap_layout(swap_layout)?;
             std::process::exit(0);
         }
 

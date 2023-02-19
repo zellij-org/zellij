@@ -686,6 +686,8 @@ pub struct TabInfo {
     pub is_sync_panes_active: bool,
     pub are_floating_panes_visible: bool,
     pub other_focused_clients: Vec<ClientId>,
+    pub active_swap_layout_name: Option<String>,
+    pub is_swap_layout_dirty: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]

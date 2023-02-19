@@ -201,6 +201,7 @@ fn read_from_channel(
                     Rc::new(RefCell::new(Palette::default())),
                     Rc::new(RefCell::new(HashMap::new())),
                     None,
+                    None,
                 ); // 0 is the pane index
                 loop {
                     if !should_keep_running.load(Ordering::SeqCst) {
@@ -397,6 +398,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij(&mut channel);
@@ -432,6 +434,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_mirrored_session(&mut channel);
@@ -474,6 +477,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_in_session(&mut channel, session_name, mirrored);
@@ -509,6 +513,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         attach_to_existing_session(&mut channel, session_name);
@@ -544,6 +549,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_without_frames(&mut channel);
@@ -580,6 +586,7 @@ impl RemoteRunner {
             y: 0,
             rows,
             cols,
+            is_stacked: false,
         };
         setup_remote_environment(&mut channel, win_size);
         start_zellij_with_config(&mut channel, &remote_path.to_string_lossy());

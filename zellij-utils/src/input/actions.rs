@@ -1,7 +1,9 @@
 //! Definition of the actions that can be bound to keys.
 
 use super::command::RunCommandAction;
-use super::layout::{FloatingPanesLayout, Layout, PaneLayout};
+use super::layout::{
+    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+};
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
@@ -115,6 +117,7 @@ pub enum Action {
     /// If there is no pane in the direction, move to previous/next Tab.
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
+    MovePaneBackwards,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Scroll up in focus pane.
@@ -164,7 +167,13 @@ pub enum Action {
     PaneNameInput(Vec<u8>),
     UndoRenamePane,
     /// Create a new tab, optionally with a specified tab layout.
-    NewTab(Option<PaneLayout>, Vec<FloatingPanesLayout>, Option<String>), // the String is the tab name
+    NewTab(
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
+        Option<Vec<SwapTiledLayout>>,
+        Option<Vec<SwapFloatingLayout>>,
+        Option<String>,
+    ), // the String is the tab name
     /// Do nothing.
     NoOp,
     /// Go to the next tab.
@@ -205,9 +214,19 @@ pub enum Action {
     /// Toggle case sensitivity of search
     SearchToggleOption(SearchOption),
     ToggleMouseMode,
+    PreviousSwapLayout,
+    NextSwapLayout,
 }
 
 impl Action {
+    /// Checks that two Action are match except their mutable attributes.
+    pub fn shallow_eq(&self, other_action: &Action) -> bool {
+        match (self, other_action) {
+            (Action::NewTab(..), Action::NewTab(..)) => true,
+            _ => self == other_action,
+        }
+    }
+
     pub fn actions_from_cli(
         cli_action: CliAction,
         get_current_dir: Box<dyn Fn() -> PathBuf>,
@@ -220,7 +239,8 @@ impl Action {
             CliAction::FocusPreviousPane => Ok(vec![Action::FocusPreviousPane]),
             CliAction::MoveFocus { direction } => Ok(vec![Action::MoveFocus(direction)]),
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
-            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(Some(direction))]),
+            CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
+            CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,
@@ -334,10 +354,10 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let (path_to_raw_layout, raw_layout) =
+                    let (path_to_raw_layout, raw_layout, swap_layouts) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), None)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
-                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, cwd).map_err(|e| {
+                    let layout = Layout::from_str(&raw_layout, path_to_raw_layout, swap_layouts.as_ref().map(|(f, p)| (f.as_str(), p.as_str())), cwd).map_err(|e| {
                         let stringified_error = match e {
                             ConfigError::KdlError(kdl_error) => {
                                 let error = kdl_error.add_src(layout_path.as_path().as_os_str().to_string_lossy().to_string(), String::from(raw_layout));
@@ -373,26 +393,52 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
+                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_tiled_layouts.clone())
+                        };
+                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_floating_layouts.clone())
+                        };
                         let (tab_name, layout, floating_panes_layout) =
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
                         Ok(vec![Action::NewTab(
                             Some(layout),
                             floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
                             name,
                         )])
                     } else {
+                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_tiled_layouts.clone())
+                        };
+                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
+                            None
+                        } else {
+                            Some(layout.swap_floating_layouts.clone())
+                        };
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
                             Some(layout),
                             floating_panes_layout,
+                            swap_tiled_layouts,
+                            swap_floating_layouts,
                             name,
                         )])
                     }
                 } else {
-                    Ok(vec![Action::NewTab(None, vec![], name)])
+                    Ok(vec![Action::NewTab(None, vec![], None, None, name)])
                 }
             },
+            CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
+            CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
         }
     }
 }

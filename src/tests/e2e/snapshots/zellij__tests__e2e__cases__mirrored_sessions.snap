@@ -25,5 +25,5 @@ expression: first_runner_snapshot
 │                                                          ││                                                          │
 │                                                          ││                                                          │
 └──────────────────────────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
- Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT           
+ Ctrl + <g> LOCK  <p> PANE  <t> TAB  <n> RESIZE  <h> MOVE  <s> SEARCH  <o> SESSION  <q> QUIT  BASE   
  Tip: Alt + <n> => new pane. Alt + <←↓↑→> or Alt + <hjkl> => navigate. Alt + <+|-> => resize pane.                      

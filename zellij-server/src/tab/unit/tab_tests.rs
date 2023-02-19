@@ -10,7 +10,7 @@ use crate::{
 use std::path::PathBuf;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
-use zellij_utils::input::layout::{PaneLayout, SplitDirection, SplitSize};
+use zellij_utils::input::layout::{SplitDirection, SplitSize, TiledPaneLayout};
 use zellij_utils::ipc::IpcReceiverWithContext;
 use zellij_utils::pane_size::{Size, SizeInPixels};
 
@@ -146,6 +146,7 @@ fn create_new_tab(size: Size) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -169,15 +170,17 @@ fn create_new_tab(size: Size) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -188,7 +191,7 @@ fn create_new_tab(size: Size) -> Tab {
     tab
 }
 
-fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
+fn create_new_tab_with_layout(size: Size, layout: TiledPaneLayout) -> Tab {
     let index = 0;
     let position = 0;
     let name = String::new();
@@ -198,6 +201,7 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -221,12 +225,14 @@ fn create_new_tab_with_layout(size: Size, layout: PaneLayout) -> Tab {
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
     );
     let mut new_terminal_ids = vec![];
     for i in 0..layout.extract_run_instructions().len() {
@@ -257,6 +263,7 @@ fn create_new_tab_with_cell_size(
     let mode_info = ModeInfo::default();
     let style = Style::default();
     let draw_pane_frames = true;
+    let auto_layout = true;
     let client_id = 1;
     let session_is_mirrored = true;
     let mut connected_clients = HashSet::new();
@@ -279,15 +286,17 @@ fn create_new_tab_with_cell_size(
         style,
         mode_info,
         draw_pane_frames,
+        auto_layout,
         connected_clients,
         session_is_mirrored,
         client_id,
         copy_options,
         terminal_emulator_colors,
         terminal_emulator_color_codes,
+        (vec![], vec![]), // swap layouts
     );
     tab.apply_layout(
-        PaneLayout::default(),
+        TiledPaneLayout::default(),
         vec![],
         vec![(1, None)],
         vec![],
@@ -738,11 +747,11 @@ pub fn cannot_split_largest_pane_when_there_is_no_room() {
 #[test]
 pub fn cannot_split_panes_vertically_when_active_pane_has_fixed_columns() {
     let size = Size { cols: 50, rows: 20 };
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(30));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
@@ -751,11 +760,11 @@ pub fn cannot_split_panes_vertically_when_active_pane_has_fixed_columns() {
 #[test]
 pub fn cannot_split_panes_horizontally_when_active_pane_has_fixed_rows() {
     let size = Size { cols: 50, rows: 20 };
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(12));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Tab still has two panes");
@@ -5948,11 +5957,11 @@ pub fn cannot_resize_down_when_pane_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -5994,11 +6003,11 @@ pub fn cannot_resize_down_when_pane_below_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![PaneLayout::default(), fixed_child];
+    initial_layout.children = vec![TiledPaneLayout::default(), fixed_child];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -6040,11 +6049,11 @@ pub fn cannot_resize_up_when_pane_below_has_fixed_rows() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Horizontal;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(10));
-    initial_layout.children = vec![PaneLayout::default(), fixed_child];
+    initial_layout.children = vec![TiledPaneLayout::default(), fixed_child];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_up(&mut tab, 1);
 
@@ -11371,11 +11380,11 @@ pub fn cannot_resize_right_when_pane_has_fixed_columns() {
         rows: 20,
     };
 
-    let mut initial_layout = PaneLayout::default();
+    let mut initial_layout = TiledPaneLayout::default();
     initial_layout.children_split_direction = SplitDirection::Vertical;
-    let mut fixed_child = PaneLayout::default();
+    let mut fixed_child = TiledPaneLayout::default();
     fixed_child.split_size = Some(SplitSize::Fixed(60));
-    initial_layout.children = vec![fixed_child, PaneLayout::default()];
+    initial_layout.children = vec![fixed_child, TiledPaneLayout::default()];
     let mut tab = create_new_tab_with_layout(size, initial_layout);
     tab_resize_down(&mut tab, 1);
 
@@ -14377,7 +14386,7 @@ fn correctly_resize_frameless_panes_on_pane_close() {
 
     tab.new_pane(PaneId::Terminal(2), None, None, Some(1))
         .unwrap();
-    tab.close_pane(PaneId::Terminal(2), true);
+    tab.close_pane(PaneId::Terminal(2), true, None);
 
     // the size should be the same after adding and then removing a pane
     let pane = tab.tiled_panes.panes.get(&PaneId::Terminal(1)).unwrap();

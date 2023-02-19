@@ -44,6 +44,13 @@ pub struct LinePart {
     len: usize,
 }
 
+impl LinePart {
+    pub fn append(&mut self, to_append: &LinePart) {
+        self.part.push_str(&to_append.part);
+        self.len += to_append.len;
+    }
+}
+
 impl Display for LinePart {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         write!(f, "{}", self.part)
@@ -236,7 +243,8 @@ impl ZellijPlugin for State {
             ""
         };
 
-        let first_line = first_line(&self.mode_info, cols, separator);
+        let active_tab = self.tabs.iter().find(|t| t.active);
+        let first_line = first_line(&self.mode_info, active_tab, cols, separator);
         let second_line = self.second_line(cols);
 
         let background = match self.mode_info.style.colors.theme_hue {
@@ -351,7 +359,13 @@ pub fn action_key(keymap: &[(Key, Vec<Action>)], action: &[Action]) -> Vec<Key> 
     keymap
         .iter()
         .filter_map(|(key, acvec)| {
-            if acvec.as_slice() == action {
+            let matching = acvec
+                .iter()
+                .zip(action)
+                .filter(|(a, b)| a.shallow_eq(b))
+                .count();
+
+            if matching == acvec.len() && matching == action.len() {
                 Some(*key)
             } else {
                 None
@@ -390,7 +404,11 @@ pub fn action_key_group(keymap: &[(Key, Vec<Action>)], actions: &[&[Action]]) ->
 ///
 /// The returned Vector of [`ANSIString`] is suitable for transformation into an [`ANSIStrings`]
 /// type.
-pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIString<'static>> {
+pub fn style_key_with_modifier(
+    keyvec: &[Key],
+    palette: &Palette,
+    background: Option<PaletteColor>,
+) -> Vec<ANSIString<'static>> {
     // Nothing to do, quit...
     if keyvec.is_empty() {
         return vec![];
@@ -413,13 +431,32 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
     let painted_modifier = if modifier_str.is_empty() {
         Style::new().paint("")
     } else {
-        Style::new().fg(orange_color).bold().paint(modifier_str)
+        if let Some(background) = background {
+            let background = palette_match!(background);
+            Style::new()
+                .fg(orange_color)
+                .on(background)
+                .bold()
+                .paint(modifier_str)
+        } else {
+            Style::new().fg(orange_color).bold().paint(modifier_str)
+        }
     };
     ret.push(painted_modifier);
 
     // Prints key group start
     let group_start_str = if no_modifier { "<" } else { " + <" };
-    ret.push(Style::new().fg(text_color).paint(group_start_str));
+    if let Some(background) = background {
+        let background = palette_match!(background);
+        ret.push(
+            Style::new()
+                .fg(text_color)
+                .on(background)
+                .paint(group_start_str),
+        );
+    } else {
+        ret.push(Style::new().fg(text_color).paint(group_start_str));
+    }
 
     // Prints the keys
     let key = keyvec
@@ -445,18 +482,50 @@ pub fn style_key_with_modifier(keyvec: &[Key], palette: &Palette) -> Vec<ANSIStr
         "←↓↑→" => "",
         "←→" => "",
         "↓↑" => "",
+        "[]" => "",
         _ => "|",
     };
 
     for (idx, key) in key.iter().enumerate() {
         if idx > 0 && !key_separator.is_empty() {
-            ret.push(Style::new().fg(text_color).paint(key_separator));
+            if let Some(background) = background {
+                let background = palette_match!(background);
+                ret.push(
+                    Style::new()
+                        .fg(text_color)
+                        .on(background)
+                        .paint(key_separator),
+                );
+            } else {
+                ret.push(Style::new().fg(text_color).paint(key_separator));
+            }
         }
-        ret.push(Style::new().fg(green_color).bold().paint(key.clone()));
+        if let Some(background) = background {
+            let background = palette_match!(background);
+            ret.push(
+                Style::new()
+                    .fg(green_color)
+                    .on(background)
+                    .bold()
+                    .paint(key.clone()),
+            );
+        } else {
+            ret.push(Style::new().fg(green_color).bold().paint(key.clone()));
+        }
     }
 
     let group_end_str = ">";
-    ret.push(Style::new().fg(text_color).paint(group_end_str));
+    if let Some(background) = background {
+        let background = palette_match!(background);
+        ret.push(
+            Style::new()
+                .fg(text_color)
+                .on(background)
+                .paint(group_end_str),
+        );
+    } else {
+        ret.push(Style::new().fg(text_color).paint(group_end_str));
+    }
 
     ret
 }
@@ -617,7 +686,7 @@ pub mod tests {
         let keyvec = vec![Key::Char('a'), Key::Char('b'), Key::Char('c')];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<a|b|c>".to_string())
@@ -633,7 +702,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<hjkl>".to_string())
@@ -650,7 +719,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<h|k|j|l>".to_string())
@@ -666,7 +735,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<←↓↑→>".to_string())
@@ -677,7 +746,7 @@ pub mod tests {
         let keyvec = vec![Key::Char('←'), Key::Char('→')];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<←→>".to_string())
@@ -688,7 +757,7 @@ pub mod tests {
         let keyvec = vec![Key::Char('↓'), Key::Char('↑')];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<↓↑>".to_string())
@@ -704,7 +773,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Ctrl + <a|b|c|d>".to_string())
@@ -720,7 +789,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Alt + <a|b|c|d>".to_string())
@@ -736,7 +805,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Alt + <←↓↑→>".to_string())
@@ -751,7 +820,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "<Alt+a|Ctrl+b|c>".to_string())
@@ -774,7 +843,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(
@@ -788,7 +857,7 @@ pub mod tests {
         let keyvec = vec![Key::Ctrl('\n'), Key::Ctrl(' '), Key::Ctrl('\t')];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Ctrl + <ENTER|SPACE|TAB>".to_string())
@@ -803,7 +872,7 @@ pub mod tests {
         ];
         let palette = get_palette();
 
-        let ret = style_key_with_modifier(&keyvec, &palette);
+        let ret = style_key_with_modifier(&keyvec, &palette, None);
         let ret = unstyle(&ANSIStrings(&ret));
 
         assert_eq!(ret, "Alt + <ENTER|SPACE|TAB>".to_string())

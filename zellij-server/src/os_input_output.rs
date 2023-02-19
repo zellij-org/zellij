@@ -303,9 +303,18 @@ fn spawn_terminal(
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
+                    args.push(file_to_open);
+                } else if command.ends_with("hx") || command.ends_with("helix") {
+                    // at the time of writing, helix only supports this syntax
+                    // and it might be a good idea to leave this here anyway
+                    // to keep supporting old versions
+                    args.push(format!("{}:{}", file_to_open, line_number));
+                } else {
+                    args.push(file_to_open);
                 }
+            } else {
+                args.push(file_to_open);
             }
-            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
@@ -396,10 +405,11 @@ pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
-                                                                     // terminal_id exists but is
-                                                                     // not connected to an fd (eg.
-                                                                     // a command pane with a
-                                                                     // non-existing command)
+    // terminal_id exists but is
+    // not connected to an fd (eg.
+    // a command pane with a
+    // non-existing command)
+    cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>, // <terminal_id, (cols, rows)>
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -481,6 +491,8 @@ pub trait ServerOsApi: Send + Sync {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     ) -> Result<(RawFd, RawFd)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
+    fn cache_resizes(&mut self) {}
+    fn apply_cached_resizes(&mut self) {}
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -491,6 +503,10 @@ impl ServerOsApi for ServerOsInputOutput {
                 id, rows, cols
             )
         };
+        if let Some(cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
+            cached_resizes.insert(id, (cols, rows));
+            return Ok(());
+        }
 
         match self
             .terminal_id_to_raw_fd
@@ -752,6 +768,19 @@ impl ServerOsApi for ServerOsInputOutput {
             .remove(&terminal_id);
         Ok(())
     }
+    fn cache_resizes(&mut self) {
+        if self.cached_resizes.lock().unwrap().is_none() {
+            *self.cached_resizes.lock().unwrap() = Some(BTreeMap::new());
+        }
+    }
+    fn apply_cached_resizes(&mut self) {
+        let mut cached_resizes = self.cached_resizes.lock().unwrap().take();
+        if let Some(cached_resizes) = cached_resizes.as_mut() {
+            for (terminal_id, (cols, rows)) in cached_resizes.iter() {
+                let _ = self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows);
+            }
+        }
+    }
 }
 
 impl Clone for Box<dyn ServerOsApi> {
@@ -767,6 +796,7 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
         orig_termios,
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+        cached_resizes: Arc::new(Mutex::new(None)),
     })
 }
 
