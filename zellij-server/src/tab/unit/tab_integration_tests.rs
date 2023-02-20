@@ -1935,7 +1935,7 @@ fn save_cursor_position_across_resizes() {
 
     tab.handle_pty_bytes(
         1,
-        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+        Vec::from("\n\n\rI am some text\n\rI am another line of text\n\rLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
     ).unwrap();
     tab.resize_whole_tab(Size { cols: 100, rows: 3 }).unwrap();
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()))
