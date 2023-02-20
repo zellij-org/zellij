@@ -16,6 +16,7 @@ use zellij_utils::{
     channels::SenderWithContext,
     data::{Event, InputMode, Mouse, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     shared::make_terminal_title,
     vte,
@@ -65,6 +66,7 @@ pub(crate) struct PluginPane {
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
 }
 
 impl PluginPane {
@@ -80,6 +82,7 @@ impl PluginPane {
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         style: Style,
+        invoked_with: Option<Run>,
     ) -> Self {
         Self {
             pid,
@@ -104,6 +107,7 @@ impl PluginPane {
             grids: HashMap::new(),
             style,
             pane_frame_color_override: None,
+            invoked_with,
         }
     }
 }
@@ -222,6 +226,11 @@ impl Pane for PluginPane {
             if self.should_render.get(&client_id).copied().unwrap_or(false) {
                 let content_x = self.get_content_x();
                 let content_y = self.get_content_y();
+                let rows = self.get_content_rows();
+                let columns = self.get_content_columns();
+                if rows < 1 || columns < 1 {
+                    return Ok(None);
+                }
                 if let Some(grid) = self.grids.get_mut(&client_id) {
                     match grid.render(content_x, content_y, &self.style) {
                         Ok(rendered_assets) => {
@@ -265,8 +274,15 @@ impl Pane for PluginPane {
                 self.pane_name.clone()
             };
 
+            let mut frame_geom = self.current_geom();
+            if !frame_params.should_draw_pane_frames {
+                // in this case the width of the frame needs not include the pane corners
+                frame_geom
+                    .cols
+                    .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+            }
             let mut frame = PaneFrame::new(
-                self.current_geom().into(),
+                frame_geom.into(),
                 grid.scrollback_position_and_length(),
                 pane_title,
                 frame_params,
@@ -490,6 +506,12 @@ impl Pane for PluginPane {
         self.pane_frame_color_override
             .as_ref()
             .map(|(color, _text)| *color)
+    }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
+    }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
     }
 }
 

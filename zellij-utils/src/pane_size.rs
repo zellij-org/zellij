@@ -1,15 +1,17 @@
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 
 use crate::position::Position;
 
 /// Contains the position and size of a [`Pane`], or more generally of any terminal, measured
 /// in character rows and columns.
-#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Debug, Serialize, Deserialize, Eq, Hash)]
 pub struct PaneGeom {
     pub x: usize,
     pub y: usize,
     pub rows: Dimension,
     pub cols: Dimension,
+    pub is_stacked: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -40,7 +42,7 @@ pub struct SizeInPixels {
     pub width: usize,
 }
 
-#[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Eq, Clone, Copy, PartialEq, Debug, Serialize, Deserialize, Hash)]
 pub struct Dimension {
     pub constraint: Constraint,
     inner: usize,
@@ -109,9 +111,15 @@ impl Dimension {
     pub fn increase_inner(&mut self, by: usize) {
         self.inner += by;
     }
+    pub fn decrease_inner(&mut self, by: usize) {
+        self.inner -= by;
+    }
 
     pub fn is_fixed(&self) -> bool {
         matches!(self.constraint, Constraint::Fixed(_))
+    }
+    pub fn is_percent(&self) -> bool {
+        matches!(self.constraint, Constraint::Percent(_))
     }
 }
 
@@ -121,6 +129,16 @@ pub enum Constraint {
     Fixed(usize),
     /// Constrains the dimension to a flexible percent size of the total screen
     Percent(f64),
+}
+
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Constraint {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Constraint::Fixed(size) => size.hash(state),
+            Constraint::Percent(size) => (*size as usize).hash(state),
+        }
+    }
 }
 
 impl Eq for Constraint {}
@@ -146,6 +164,14 @@ impl Offset {
             bottom: size,
             right: size,
             left: size,
+        }
+    }
+
+    pub fn shift_right_and_top(right: usize, top: usize) -> Self {
+        Self {
+            right,
+            top,
+            ..Default::default()
         }
     }
 
@@ -186,6 +212,20 @@ impl From<&PaneGeom> for Size {
         Self {
             rows: pane_geom.rows.as_usize(),
             cols: pane_geom.cols.as_usize(),
+        }
+    }
+}
+
+impl From<&Size> for PaneGeom {
+    fn from(size: &Size) -> Self {
+        let mut rows = Dimension::percent(100.0);
+        let mut cols = Dimension::percent(100.0);
+        rows.set_inner(size.rows);
+        cols.set_inner(size.cols);
+        Self {
+            rows,
+            cols,
+            ..Default::default()
         }
     }
 }

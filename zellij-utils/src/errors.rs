@@ -249,6 +249,7 @@ pub enum ScreenContext {
     MoveFocusRight,
     MoveFocusRightOrNextTab,
     MovePane,
+    MovePaneBackwards,
     MovePaneDown,
     MovePaneUp,
     MovePaneRight,
@@ -320,6 +321,8 @@ pub enum ScreenContext {
     SearchToggleWrap,
     AddRedPaneFrameColorOverride,
     ClearPaneFrameColorOverride,
+    PreviousSwapLayout,
+    NextSwapLayout,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

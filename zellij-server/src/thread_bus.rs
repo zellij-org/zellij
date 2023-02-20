@@ -143,6 +143,12 @@ impl ThreadSenders {
         // this is mostly used for the tests, see struct
         self.to_pty_writer.replace(new_pty_writer);
     }
+
+    #[allow(unused)]
+    pub fn replace_to_plugin(&mut self, new_to_plugin: SenderWithContext<PluginInstruction>) {
+        // this is mostly used for the tests, see struct
+        self.to_plugin.replace(new_to_plugin);
+    }
 }
 
 /// A container for a receiver, OS input and the senders to a given thread

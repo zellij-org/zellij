@@ -18,6 +18,7 @@ use zellij_utils::pane_size::Offset;
 use zellij_utils::{
     data::{InputMode, Palette, PaletteColor, Style},
     errors::prelude::*,
+    input::layout::Run,
     pane_size::PaneGeom,
     pane_size::SizeInPixels,
     position::Position,
@@ -111,6 +112,7 @@ pub struct TerminalPane {
     banner: Option<String>, // a banner to be rendered inside this TerminalPane, used for panes
     // held on startup and can possibly be used to display some errors
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
+    invoked_with: Option<Run>,
 }
 
 impl Pane for TerminalPane {
@@ -165,6 +167,10 @@ impl Pane for TerminalPane {
     }
     fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         let Offset { top, left, .. } = self.content_offset;
         self.grid
             .cursor_coordinates()
@@ -283,6 +289,11 @@ impl Pane for TerminalPane {
         if self.should_render() {
             let content_x = self.get_content_x();
             let content_y = self.get_content_y();
+            let rows = self.get_content_rows();
+            let columns = self.get_content_columns();
+            if rows < 1 || columns < 1 {
+                return Ok(None);
+            }
             match self.grid.render(content_x, content_y, &self.style) {
                 Ok(rendered_assets) => {
                     self.set_should_render(false);
@@ -347,8 +358,15 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
+        let mut frame_geom = self.current_geom();
+        if !frame_params.should_draw_pane_frames {
+            // in this case the width of the frame needs not include the pane corners
+            frame_geom
+                .cols
+                .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
+        }
         let mut frame = PaneFrame::new(
-            self.current_geom().into(),
+            frame_geom.into(),
             self.grid.scrollback_position_and_length(),
             pane_title,
             frame_params,
@@ -690,6 +708,12 @@ impl Pane for TerminalPane {
             .as_ref()
             .map(|(color, _text)| *color)
     }
+    fn invoked_with(&self) -> &Option<Run> {
+        &self.invoked_with
+    }
+    fn set_title(&mut self, title: String) {
+        self.pane_title = title;
+    }
 }
 
 impl TerminalPane {
@@ -706,6 +730,7 @@ impl TerminalPane {
         terminal_emulator_colors: Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         initial_pane_title: Option<String>,
+        invoked_with: Option<Run>,
     ) -> TerminalPane {
         let initial_pane_title =
             initial_pane_title.unwrap_or_else(|| format!("Pane #{}", pane_index));
@@ -739,6 +764,7 @@ impl TerminalPane {
             is_held: None,
             banner: None,
             pane_frame_color_override: None,
+            invoked_with,
         }
     }
     pub fn get_x(&self) -> usize {
@@ -780,6 +806,10 @@ impl TerminalPane {
     }
     pub fn cursor_coordinates(&self) -> Option<(usize, usize)> {
         // (x, y)
+        if self.get_content_rows() < 1 || self.get_content_columns() < 1 {
+            // do not render cursor if there's no room for it
+            return None;
+        }
         self.grid.cursor_coordinates()
     }
     fn render_first_run_banner(&mut self) {

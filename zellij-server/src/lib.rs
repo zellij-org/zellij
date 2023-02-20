@@ -108,6 +108,7 @@ pub(crate) struct SessionMetaData {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
+    pub layout: Box<Layout>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -346,7 +347,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name| {
+                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
                         .read()
                         .unwrap()
@@ -358,6 +359,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             tab_layout,
                             floating_panes_layout,
                             tab_name,
+                            swap_layouts,
                             client_id,
                         ))
                         .unwrap()
@@ -369,6 +371,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
                             tab_name,
+                            (
+                                layout.swap_tiled_layouts.clone(),
+                                layout.swap_floating_layouts.clone(),
+                            ),
                         );
                     }
 
@@ -386,7 +392,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.floating_panes_template.clone(), None);
+                    spawn_tabs(
+                        None,
+                        layout.template.map(|t| t.1).clone().unwrap_or_default(),
+                        None,
+                        (
+                            layout.swap_tiled_layouts.clone(),
+                            layout.swap_floating_layouts.clone(),
+                        ),
+                    );
                 }
                 session_data
                     .read()
@@ -751,6 +765,7 @@ fn init_session(
             );
             let store = get_store();
 
+            let layout = layout.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -811,6 +826,7 @@ fn init_session(
         capabilities,
         default_shell,
         client_attributes,
+        layout,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
