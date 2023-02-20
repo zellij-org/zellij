@@ -635,8 +635,10 @@ impl Grid {
                     cursor_canonical_line_index = i;
                 }
                 if i == saved_cursor_position.y {
-                    let line_wrap_position_in_line = saved_cursor_position.y - cursor_canonical_line_index;
-                    cursor_index_in_canonical_line = line_wrap_position_in_line + saved_cursor_position.x;
+                    let line_wrap_position_in_line =
+                        saved_cursor_position.y - cursor_canonical_line_index;
+                    cursor_index_in_canonical_line =
+                        line_wrap_position_in_line + saved_cursor_position.x;
                     break;
                 }
             }
@@ -837,17 +839,22 @@ impl Grid {
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
-            let mut saved_cursor_y_coordinates = if let Some(saved_cursor) = self.saved_cursor_position.as_ref() {
-                Some(self.canonical_line_y_coordinates(saved_cursor.y))
-            } else {
-                None
-            };
+            let mut saved_cursor_y_coordinates =
+                if let Some(saved_cursor) = self.saved_cursor_position.as_ref() {
+                    Some(self.canonical_line_y_coordinates(saved_cursor.y))
+                } else {
+                    None
+                };
 
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
-            let saved_cursor_x_coordinates = if let Some(saved_cursor_index_in_canonical_line) = saved_cursor_index_in_canonical_line.as_ref() {
-                Some((*saved_cursor_index_in_canonical_line / new_columns)
-                    + (*saved_cursor_index_in_canonical_line % new_columns))
+            let saved_cursor_x_coordinates = if let Some(saved_cursor_index_in_canonical_line) =
+                saved_cursor_index_in_canonical_line.as_ref()
+            {
+                Some(
+                    (*saved_cursor_index_in_canonical_line / new_columns)
+                        + (*saved_cursor_index_in_canonical_line % new_columns),
+                )
             } else {
                 None
             };
@@ -904,7 +911,7 @@ impl Grid {
                     _ => {
                         saved_cursor_position.x = new_cursor_x;
                         saved_cursor_position.y = new_cursor_y;
-                    }
+                    },
                 }
             };
         } else if new_columns != self.width && self.alternate_screen_state.is_some() {
