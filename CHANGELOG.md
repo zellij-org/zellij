@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: swap layouts and stacked panes (https://github.com/zellij-org/zellij/pull/2167)
 * fix: cache STDIN queries to prevent startup delay (https://github.com/zellij-org/zellij/pull/2173)
 * fix: scrollback positioning with Helix (https://github.com/zellij-org/zellij/pull/2156)
+* fix: allow CJK characters in tab names (https://github.com/zellij-org/zellij/pull/2119)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
