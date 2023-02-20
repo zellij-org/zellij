@@ -626,6 +626,27 @@ impl Grid {
         }
         cursor_index_in_canonical_line
     }
+    fn saved_cursor_index_in_canonical_line(&self) -> Option<usize> {
+        if let Some(saved_cursor_position) = self.saved_cursor_position.as_ref() {
+            let mut cursor_canonical_line_index = 0;
+            let mut cursor_index_in_canonical_line = 0;
+            for (i, line) in self.viewport.iter().enumerate() {
+                if line.is_canonical {
+                    cursor_canonical_line_index = i;
+                }
+                if i == saved_cursor_position.y {
+                    let line_wrap_position_in_line =
+                        saved_cursor_position.y - cursor_canonical_line_index;
+                    cursor_index_in_canonical_line =
+                        line_wrap_position_in_line + saved_cursor_position.x;
+                    break;
+                }
+            }
+            Some(cursor_index_in_canonical_line)
+        } else {
+            None
+        }
+    }
     fn canonical_line_y_coordinates(&self, canonical_line_index: usize) -> usize {
         let mut canonical_lines_traversed = 0;
         let mut y_coordinates = 0;
@@ -713,7 +734,7 @@ impl Grid {
         }
         found_something
     }
-    fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
+    pub fn force_change_size(&mut self, new_rows: usize, new_columns: usize) {
         // this is an ugly hack - it's here because sometimes we need to change_size to the
         // existing size (eg. when resizing an alternative_grid to the current height/width) and
         // the change_size method is a no-op in that case. Should be fixed by making the
@@ -742,6 +763,7 @@ impl Grid {
             self.horizontal_tabstops = create_horizontal_tabstops(new_columns);
             let mut cursor_canonical_line_index = self.cursor_canonical_line_index();
             let cursor_index_in_canonical_line = self.cursor_index_in_canonical_line();
+            let saved_cursor_index_in_canonical_line = self.saved_cursor_index_in_canonical_line();
             let mut viewport_canonical_lines = vec![];
             for mut row in self.viewport.drain(..) {
                 if !row.is_canonical
@@ -817,9 +839,25 @@ impl Grid {
             self.viewport = new_viewport_rows;
 
             let mut new_cursor_y = self.canonical_line_y_coordinates(cursor_canonical_line_index);
+            let mut saved_cursor_y_coordinates =
+                if let Some(saved_cursor) = self.saved_cursor_position.as_ref() {
+                    Some(self.canonical_line_y_coordinates(saved_cursor.y))
+                } else {
+                    None
+                };
 
             let new_cursor_x = (cursor_index_in_canonical_line / new_columns)
                 + (cursor_index_in_canonical_line % new_columns);
+            let saved_cursor_x_coordinates = if let Some(saved_cursor_index_in_canonical_line) =
+                saved_cursor_index_in_canonical_line.as_ref()
+            {
+                Some(
+                    (*saved_cursor_index_in_canonical_line / new_columns)
+                        + (*saved_cursor_index_in_canonical_line % new_columns),
+                )
+            } else {
+                None
+            };
             let current_viewport_row_count = self.viewport.len();
             match current_viewport_row_count.cmp(&self.height) {
                 Ordering::Less => {
@@ -834,6 +872,9 @@ impl Grid {
                     );
                     let rows_pulled = self.viewport.len() - current_viewport_row_count;
                     new_cursor_y += rows_pulled;
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        *saved_cursor_y_coordinates += rows_pulled;
+                    }
                 },
                 Ordering::Greater => {
                     let row_count_to_transfer = current_viewport_row_count - self.height;
@@ -841,6 +882,13 @@ impl Grid {
                         new_cursor_y = 0;
                     } else {
                         new_cursor_y -= row_count_to_transfer;
+                    }
+                    if let Some(saved_cursor_y_coordinates) = saved_cursor_y_coordinates.as_mut() {
+                        if row_count_to_transfer > *saved_cursor_y_coordinates {
+                            *saved_cursor_y_coordinates = 0;
+                        } else {
+                            *saved_cursor_y_coordinates -= row_count_to_transfer;
+                        }
                     }
                     transfer_rows_from_viewport_to_lines_above(
                         &mut self.viewport,
@@ -855,8 +903,16 @@ impl Grid {
             self.cursor.y = new_cursor_y;
             self.cursor.x = new_cursor_x;
             if let Some(saved_cursor_position) = self.saved_cursor_position.as_mut() {
-                saved_cursor_position.y = new_cursor_y;
-                saved_cursor_position.x = new_cursor_x;
+                match (saved_cursor_x_coordinates, saved_cursor_y_coordinates) {
+                    (Some(saved_cursor_x_coordinates), Some(saved_cursor_y_coordinates)) => {
+                        saved_cursor_position.x = saved_cursor_x_coordinates;
+                        saved_cursor_position.y = saved_cursor_y_coordinates;
+                    },
+                    _ => {
+                        saved_cursor_position.x = new_cursor_x;
+                        saved_cursor_position.y = new_cursor_y;
+                    },
+                }
             };
         } else if new_columns != self.width && self.alternate_screen_state.is_some() {
             // in alternate screen just truncate exceeding width
