@@ -625,11 +625,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     session_state
                 );
             },
-            ServerInstruction::Log(tab_names, client_id) => {
+            ServerInstruction::Log(lines_to_log, client_id) => {
                 send_to_client!(
                     client_id,
                     os_input,
-                    ServerToClientMsg::Log(tab_names),
+                    ServerToClientMsg::Log(lines_to_log),
                     session_state
                 );
             },

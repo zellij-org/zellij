@@ -409,8 +409,8 @@ pub fn start_client(
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
             },
-            ClientInstruction::Log(tab_names) => {
-                log::info!("Tab names are {tab_names:?}");
+            ClientInstruction::Log(lines_to_log) => {
+                log::info!("logs are {lines_to_log:?}");
             },
             _ => {},
         }
