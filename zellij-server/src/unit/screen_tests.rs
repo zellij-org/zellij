@@ -2670,3 +2670,33 @@ pub fn send_cli_undo_rename_tab() {
         *received_plugin_instructions.lock().unwrap()
     ))
 }
+
+#[test]
+pub fn send_cli_query_tab_names_action() {
+    let size = Size { cols: 80, rows: 10 };
+    let client_id = 10; // fake client id should not appear in the screen's state
+    let mut mock_screen = MockScreen::new(size);
+    mock_screen.new_tab(TiledPaneLayout::default());
+    let session_metadata = mock_screen.clone_session_metadata();
+    let screen_thread = mock_screen.run(Some(TiledPaneLayout::default()));
+    let received_server_instructions = Arc::new(Mutex::new(vec![]));
+    let server_receiver = mock_screen.server_receiver.take().unwrap();
+    let server_thread = log_actions_in_thread!(
+        received_server_instructions,
+        ServerInstruction::KillSession,
+        server_receiver
+    );
+    let query_tab_names = CliAction::QueryTabNames;
+    send_cli_action_to_server(
+        &session_metadata,
+        query_tab_names,
+        &mut mock_screen,
+        client_id,
+    );
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    mock_screen.teardown(vec![server_thread, screen_thread]);
+    assert_snapshot!(format!(
+        "{:#?}",
+        *received_server_instructions.lock().unwrap()
+    ))
+}
