@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 640
+assertion_line: 679
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -35,6 +35,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -362,6 +376,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -694,6 +722,20 @@ Config {
             ],
             Alt(
                 Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
+            ],
+            Alt(
+                Char(
                     'h',
                 ),
             ): [
@@ -978,6 +1020,8 @@ Config {
                     None,
                     [],
                     None,
+                    None,
+                    None,
                 ),
                 SwitchToMode(
                     Normal,
@@ -1040,6 +1084,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -1301,6 +1359,20 @@ Config {
             ],
             Alt(
                 Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
+            ],
+            Alt(
+                Char(
                     'h',
                 ),
             ): [
@@ -1496,6 +1568,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -1776,6 +1862,20 @@ Config {
             ],
             Alt(
                 Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
+            ],
+            Alt(
+                Char(
                     'h',
                 ),
             ): [
@@ -1974,6 +2074,20 @@ Config {
             ],
             Alt(
                 Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
+            ],
+            Alt(
+                Char(
                     'h',
                 ),
             ): [
@@ -2166,6 +2280,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -2366,6 +2494,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -2595,6 +2737,11 @@ Config {
                     None,
                 ),
             ],
+            Char(
+                'p',
+            ): [
+                MovePaneBackwards,
+            ],
             Alt(
                 Char(
                     '+',
@@ -2624,6 +2771,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -2819,6 +2980,20 @@ Config {
             ],
             Alt(
                 Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
+            ],
+            Alt(
+                Char(
                     'h',
                 ),
             ): [
@@ -3007,6 +3182,11 @@ Config {
                 ),
             ],
             Char(
+                ' ',
+            ): [
+                NextSwapLayout,
+            ],
+            Char(
                 '"',
             ): [
                 NewPane(
@@ -3052,6 +3232,8 @@ Config {
                 NewTab(
                     None,
                     [],
+                    None,
+                    None,
                     None,
                 ),
                 SwitchToMode(
@@ -3125,6 +3307,14 @@ Config {
                 ),
             ],
             Char(
+                'x',
+            ): [
+                CloseFocus,
+                SwitchToMode(
+                    Normal,
+                ),
+            ],
+            Char(
                 'z',
             ): [
                 ToggleFocusFullscreen,
@@ -3161,6 +3351,20 @@ Config {
                     Increase,
                     None,
                 ),
+            ],
+            Alt(
+                Char(
+                    '[',
+                ),
+            ): [
+                PreviousSwapLayout,
+            ],
+            Alt(
+                Char(
+                    ']',
+                ),
+            ): [
+                NextSwapLayout,
             ],
             Alt(
                 Char(
@@ -3336,6 +3540,7 @@ Config {
         scrollback_editor: None,
         session_name: None,
         attach_to_session: None,
+        auto_layout: None,
     },
     themes: {},
     plugins: {

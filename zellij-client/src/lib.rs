@@ -266,16 +266,6 @@ pub fn start_client(
                             os_api.send_to_server(ClientToServerMsg::TerminalResize(
                                 os_api.get_terminal_size_using_fd(0),
                             ));
-                            // send a query to the terminal emulator in case the font size changed
-                            // as well - we'll parse the response through STDIN
-                            let terminal_emulator_query_string = stdin_ansi_parser
-                                .lock()
-                                .unwrap()
-                                .window_size_change_query_string();
-                            let _ = os_api
-                                .get_stdout_writer()
-                                .write(terminal_emulator_query_string.as_bytes())
-                                .unwrap();
                         }
                     }),
                     Box::new({
@@ -345,6 +335,7 @@ pub fn start_client(
 
     // for cleanup
     let mut exit_msg = String::new();
+
     let reset_style = "\u{1b}[m";
     let show_cursor = "\u{1b}[?25h";
     let restore_snapshot = "\u{1b}[?1049l";

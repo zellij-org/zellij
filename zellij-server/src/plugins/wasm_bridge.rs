@@ -30,7 +30,7 @@ use crate::{
 };
 
 use zellij_utils::{
-    consts::{DEBUG_MODE, VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
     input::{
@@ -120,6 +120,17 @@ pub struct PluginEnv {
     pub client_id: ClientId,
     #[allow(dead_code)]
     plugin_own_data_dir: PathBuf,
+}
+
+impl PluginEnv {
+    // Get the name (path) of the containing plugin
+    pub fn name(&self) -> String {
+        format!(
+            "{} (ID {})",
+            self.plugin.path.display().to_string(),
+            self.plugin_id
+        )
+    }
 }
 
 type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
@@ -236,6 +247,15 @@ impl WasmBridge {
         let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
         let cache_hit = self.plugin_cache.contains_key(&plugin.path);
 
+        // Create filesystem entries mounted into WASM.
+        // We create them here to get expressive error messages in case they fail.
+        fs::create_dir_all(&plugin_own_data_dir)
+            .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
+            .with_context(err_context)?;
+        fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
+            .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
+            .with_context(err_context)?;
+
         // We remove the entry here and repopulate it at the very bottom, if everything went well.
         // We must do that because a `get` will only give us a borrow of the Module. This suffices for
         // the purpose of setting everything up, but we cannot return a &Module from the "None" match
@@ -266,19 +286,6 @@ impl WasmBridge {
                     .with_context(err_context)
                     .fatal();
 
-                fs::create_dir_all(&plugin_own_data_dir)
-                    .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
-                    .with_context(err_context)
-                    .non_fatal();
-
-                // ensure tmp dir exists, in case it somehow was deleted (e.g systemd-tmpfiles)
-                fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
-                    .with_context(|| {
-                        format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path())
-                    })
-                    .with_context(err_context)
-                    .non_fatal();
-
                 let hash: String = PortableHash::default()
                     .hash256(&wasm_bytes)
                     .iter()
@@ -286,29 +293,37 @@ impl WasmBridge {
                     .collect();
                 let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
 
+                let timer = std::time::Instant::now();
                 unsafe {
                     match Module::deserialize_from_file(&self.store, &cached_path) {
                         Ok(m) => {
-                            log::debug!(
-                                "Loaded plugin '{}' from cache folder at '{}'",
+                            log::info!(
+                                "Loaded plugin '{}' from cache folder at '{}' in {:?}",
                                 plugin.path.display(),
                                 ZELLIJ_CACHE_DIR.display(),
+                                timer.elapsed(),
                             );
                             m
                         },
                         Err(e) => {
                             let inner_context = || format!("failed to recover from {e:?}");
 
-                            let m = Module::new(&self.store, &wasm_bytes)
-                                .with_context(inner_context)
-                                .with_context(err_context)?;
                             fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
+                                .map_err(anyError::new)
+                                .and_then(|_| {
+                                    Module::new(&self.store, &wasm_bytes).map_err(anyError::new)
+                                })
+                                .and_then(|m| {
+                                    m.serialize_to_file(&cached_path).map_err(anyError::new)?;
+                                    log::info!(
+                                        "Compiled plugin '{}' in {:?}",
+                                        plugin.path.display(),
+                                        timer.elapsed()
+                                    );
+                                    Ok(m)
+                                })
                                 .with_context(inner_context)
-                                .with_context(err_context)?;
-                            m.serialize_to_file(&cached_path)
-                                .with_context(inner_context)
-                                .with_context(err_context)?;
-                            m
+                                .with_context(err_context)?
                         },
                     }
                 }
@@ -407,18 +422,21 @@ impl WasmBridge {
                 *current_columns = new_columns;
 
                 // TODO: consolidate with above render function
-                let render = instance
+                let rendered_bytes = instance
                     .exports
                     .get_function("render")
+                    .map_err(anyError::new)
+                    .and_then(|render| {
+                        render
+                            .call(&[
+                                Value::I32(*current_rows as i32),
+                                Value::I32(*current_columns as i32),
+                            ])
+                            .map_err(anyError::new)
+                    })
+                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                     .with_context(err_context)?;
 
-                render
-                    .call(&[
-                        Value::I32(*current_rows as i32),
-                        Value::I32(*current_columns as i32),
-                    ])
-                    .with_context(err_context)?;
-                let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
@@ -431,13 +449,7 @@ impl WasmBridge {
         &mut self,
         mut updates: Vec<(Option<u32>, Option<ClientId>, Event)>,
     ) -> Result<()> {
-        let err_context = || {
-            if *DEBUG_MODE.get().unwrap_or(&true) {
-                format!("failed to update plugin state")
-            } else {
-                "failed to update plugin state".to_string()
-            }
-        };
+        let err_context = || "failed to update plugin state".to_string();
 
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
@@ -462,7 +474,7 @@ impl WasmBridge {
                         .exports
                         .get_function("update")
                         .with_context(err_context)?;
-                    wasi_write_object(&plugin_env.wasi_env, &event);
+                    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
                     let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
                         match e.downcast::<serde_json::Error>() {
                             Ok(_) => panic!(
@@ -483,14 +495,17 @@ impl WasmBridge {
                     };
 
                     if *rows > 0 && *columns > 0 && should_render {
-                        let render = instance
+                        let rendered_bytes = instance
                             .exports
                             .get_function("render")
+                            .map_err(anyError::new)
+                            .and_then(|render| {
+                                render
+                                    .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
+                                    .map_err(anyError::new)
+                            })
+                            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
                             .with_context(err_context)?;
-                        render
-                            .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
-                            .with_context(err_context)?;
-                        let rendered_bytes = wasi_read_string(&plugin_env.wasi_env);
                         plugin_bytes.push((
                             plugin_id,
                             client_id,
@@ -531,10 +546,12 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
             )))
         },
     };
-    plugin_version_func.call(&[]).with_context(err_context)?;
-    let plugin_version_str = wasi_read_string(&plugin_env.wasi_env);
-    let plugin_version = Version::parse(&plugin_version_str)
-        .context("failed to parse plugin version")
+
+    let plugin_version = plugin_version_func
+        .call(&[])
+        .map_err(anyError::new)
+        .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+        .and_then(|string| Version::parse(&string).context("failed to parse plugin version"))
         .with_context(err_context)?;
     let zellij_version = Version::parse(VERSION)
         .context("failed to parse zellij version")
@@ -542,7 +559,7 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
     if plugin_version != zellij_version {
         return Err(anyError::new(VersionMismatchError::new(
             VERSION,
-            &plugin_version_str,
+            &plugin_version.to_string(),
             &plugin_env.plugin.path,
             plugin_env.plugin.is_builtin(),
         )));
@@ -590,15 +607,27 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
 }
 
 fn host_subscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
-    let new: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
-    subscriptions.extend(new);
+    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+        .and_then(|new| {
+            plugin_env.subscriptions.lock().to_anyhow()?.extend(new);
+            Ok(())
+        })
+        .with_context(|| format!("failed to subscribe for plugin {}", plugin_env.name()))
+        .fatal();
 }
 
 fn host_unsubscribe(plugin_env: &PluginEnv) {
-    let mut subscriptions = plugin_env.subscriptions.lock().unwrap();
-    let old: HashSet<EventType> = wasi_read_object(&plugin_env.wasi_env);
-    subscriptions.retain(|k| !old.contains(k));
+    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+        .and_then(|old| {
+            plugin_env
+                .subscriptions
+                .lock()
+                .to_anyhow()?
+                .retain(|k| !old.contains(k));
+            Ok(())
+        })
+        .with_context(|| format!("failed to unsubscribe for plugin {}", plugin_env.name()))
+        .fatal();
 }
 
 fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
@@ -612,7 +641,14 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
                     selectable,
                     tab_index,
                 ))
-                .unwrap()
+                .with_context(|| {
+                    format!(
+                        "failed to set plugin {} selectable from plugin {}",
+                        selectable,
+                        plugin_env.name()
+                    )
+                })
+                .non_fatal();
         },
         _ => {
             debug!(
@@ -628,24 +664,46 @@ fn host_get_plugin_ids(plugin_env: &PluginEnv) {
         plugin_id: plugin_env.plugin_id,
         zellij_pid: process::id(),
     };
-    wasi_write_object(&plugin_env.wasi_env, &ids);
+    wasi_write_object(&plugin_env.wasi_env, &ids)
+        .with_context(|| {
+            format!(
+                "failed to query plugin IDs from host for plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_get_zellij_version(plugin_env: &PluginEnv) {
-    wasi_write_object(&plugin_env.wasi_env, VERSION);
+    wasi_write_object(&plugin_env.wasi_env, VERSION)
+        .with_context(|| {
+            format!(
+                "failed to request zellij version from host for plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_open_file(plugin_env: &PluginEnv) {
-    let path: PathBuf = wasi_read_object(&plugin_env.wasi_env);
-    plugin_env
-        .senders
-        .send_to_pty(PtyInstruction::SpawnTerminal(
-            Some(TerminalAction::OpenFile(path, None)),
-            None,
-            None,
-            ClientOrTabIndex::TabIndex(plugin_env.tab_index),
-        ))
-        .unwrap();
+    wasi_read_object::<PathBuf>(&plugin_env.wasi_env)
+        .and_then(|path| {
+            plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::OpenFile(path, None)),
+                    None,
+                    None,
+                    ClientOrTabIndex::TabIndex(plugin_env.tab_index),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open file on host from plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
@@ -655,7 +713,13 @@ fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
             tab_idx,
             Some(plugin_env.client_id),
         ))
-        .unwrap();
+        .with_context(|| {
+            format!(
+                "failed to switch host to tab {tab_idx} from plugin {}",
+                plugin_env.name()
+            )
+        })
+        .non_fatal();
 }
 
 fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
@@ -671,6 +735,7 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
     let update_target = Some(plugin_env.plugin_id);
     let client_id = plugin_env.client_id;
+    let plugin_name = plugin_env.name();
     thread::spawn(move || {
         let start_time = Instant::now();
         thread::sleep(Duration::from_secs_f64(secs));
@@ -679,18 +744,37 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
         let elapsed_time = Instant::now().duration_since(start_time).as_secs_f64();
 
         send_plugin_instructions
-            .unwrap()
-            .send(PluginInstruction::Update(vec![(
-                update_target,
-                Some(client_id),
-                Event::Timer(elapsed_time),
-            )]))
-            .unwrap();
+            .ok_or(anyhow!("found no sender to send plugin instruction to"))
+            .and_then(|sender| {
+                sender
+                    .send(PluginInstruction::Update(vec![(
+                        update_target,
+                        Some(client_id),
+                        Event::Timer(elapsed_time),
+                    )]))
+                    .to_anyhow()
+            })
+            .with_context(|| {
+                format!(
+                    "failed to set host timeout of {secs} s for plugin {}",
+                    plugin_name
+                )
+            })
+            .non_fatal();
     });
 }
 
 fn host_exec_cmd(plugin_env: &PluginEnv) {
-    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env);
+    let err_context = || {
+        format!(
+            "failed to execute command on host for plugin '{}'",
+            plugin_env.name()
+        )
+    };
+
+    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env)
+        .with_context(err_context)
+        .fatal();
     let command = cmdline.remove(0);
 
     // Bail out if we're forbidden to run command
@@ -704,7 +788,8 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
     process::Command::new(command)
         .args(cmdline)
         .spawn()
-        .unwrap();
+        .with_context(err_context)
+        .non_fatal();
 }
 
 // Custom panic handler for plugins.
@@ -713,32 +798,58 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
 fn host_report_panic(plugin_env: &PluginEnv) {
-    let msg = wasi_read_string(&plugin_env.wasi_env);
+    let msg = wasi_read_string(&plugin_env.wasi_env)
+        .with_context(|| format!("failed to report panic for plugin '{}'", plugin_env.name()))
+        .fatal();
     panic!("{}", msg);
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
-pub fn wasi_read_string(wasi_env: &WasiEnv) -> String {
-    let mut state = wasi_env.state();
-    let wasi_file = state.fs.stdout_mut().unwrap().as_mut().unwrap();
+pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
+    let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
+
     let mut buf = String::new();
-    wasi_file.read_to_string(&mut buf).unwrap();
+    wasi_env
+        .state()
+        .fs
+        .stdout_mut()
+        .map_err(anyError::new)
+        .and_then(|stdout| {
+            stdout
+                .as_mut()
+                .ok_or(anyhow!("failed to get mutable reference to stdout"))
+        })
+        .and_then(|wasi_file| wasi_file.read_to_string(&mut buf).map_err(anyError::new))
+        .with_context(err_context)?;
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
-    buf.replace("\n", "\n\r")
+    Ok(buf.replace("\n", "\n\r"))
 }
 
-pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) {
-    let mut state = wasi_env.state();
-    let wasi_file = state.fs.stdin_mut().unwrap().as_mut().unwrap();
-    writeln!(wasi_file, "{}\r", buf).unwrap();
+pub fn wasi_write_string(wasi_env: &WasiEnv, buf: &str) -> Result<()> {
+    wasi_env
+        .state()
+        .fs
+        .stdin_mut()
+        .map_err(anyError::new)
+        .and_then(|stdin| {
+            stdin
+                .as_mut()
+                .ok_or(anyhow!("failed to get mutable reference to stdin"))
+        })
+        .and_then(|stdin| writeln!(stdin, "{}\r", buf).map_err(anyError::new))
+        .with_context(|| format!("failed to write string to WASI env '{wasi_env:?}'"))
 }
 
-pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) {
-    wasi_write_string(wasi_env, &serde_json::to_string(&object).unwrap());
+pub fn wasi_write_object(wasi_env: &WasiEnv, object: &(impl Serialize + ?Sized)) -> Result<()> {
+    serde_json::to_string(&object)
+        .map_err(anyError::new)
+        .and_then(|string| wasi_write_string(wasi_env, &string))
+        .with_context(|| format!("failed to serialize object for WASI env '{wasi_env:?}'"))
 }
 
-pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> T {
-    let json = wasi_read_string(wasi_env);
-    serde_json::from_str(&json).unwrap()
+pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
+    wasi_read_string(wasi_env)
+        .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
+        .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
 }

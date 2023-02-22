@@ -1,0 +1,15 @@
+themes {
+    pencil-light {
+        fg "#005F87"
+        bg "#f1f1f1"
+        black "#f1f1f1"
+        red "#B6D6FD"
+        green "#10A778"
+        yellow "#A89C14"
+        blue "#008EC4"
+        magenta "#B6D6FD"
+        cyan "#20A5BA"
+        white "#424242"
+        orange "#D75F5F"
+    }
+}

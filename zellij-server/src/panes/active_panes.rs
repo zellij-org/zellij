@@ -3,6 +3,7 @@ use crate::tab::Pane;
 use crate::{os_input_output::ServerOsApi, panes::PaneId, ClientId};
 use std::collections::{BTreeMap, HashMap};
 
+#[derive(Clone)]
 pub struct ActivePanes {
     active_panes: HashMap<ClientId, PaneId>,
     os_api: Box<dyn ServerOsApi>,

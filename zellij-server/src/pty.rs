@@ -15,7 +15,7 @@ use zellij_utils::{
     errors::{ContextType, PtyContext},
     input::{
         command::{RunCommand, TerminalAction},
-        layout::{FloatingPanesLayout, Layout, PaneLayout, Run, RunPluginLocation},
+        layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
     },
 };
 
@@ -49,8 +49,8 @@ pub enum PtyInstruction {
     GoToTab(TabIndex, ClientId),
     NewTab(
         Option<TerminalAction>,
-        Option<PaneLayout>,
-        Vec<FloatingPanesLayout>,
+        Option<TiledPaneLayout>,
+        Vec<FloatingPaneLayout>,
         Option<String>,
         usize,                                // tab_index
         HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
@@ -513,7 +513,13 @@ impl Pty {
         if hold_on_start {
             // we don't actually open a terminal in this case, just wait for the user to run it
             let starts_held = hold_on_start;
-            let terminal_id = self.bus.os_input.as_mut().unwrap().reserve_terminal_id()?;
+            let terminal_id = self
+                .bus
+                .os_input
+                .as_mut()
+                .context("couldn't get mutable reference to OS interface")
+                .and_then(|os_input| os_input.reserve_terminal_id())
+                .with_context(err_context)?;
             return Ok((terminal_id, starts_held));
         }
 
@@ -569,8 +575,8 @@ impl Pty {
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
-        layout: PaneLayout,
-        floating_panes_layout: Vec<FloatingPanesLayout>,
+        layout: TiledPaneLayout,
+        floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
         plugin_ids: HashMap<RunPluginLocation, Vec<u32>>,
         tab_index: usize,

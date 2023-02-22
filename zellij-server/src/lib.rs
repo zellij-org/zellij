@@ -42,7 +42,7 @@ use zellij_utils::{
     cli::CliArgs,
     consts::{DEFAULT_SCROLL_BUFFER_SIZE, SCROLL_BUFFER_SIZE},
     data::{Event, PluginCapabilities},
-    errors::{ContextType, ErrorInstruction, FatalError, ServerContext},
+    errors::{prelude::*, ContextType, ErrorInstruction, FatalError, ServerContext},
     input::{
         command::{RunCommand, TerminalAction},
         get_mode_info,
@@ -108,6 +108,7 @@ pub(crate) struct SessionMetaData {
     pub capabilities: PluginCapabilities,
     pub client_attributes: ClientAttributes,
     pub default_shell: Option<TerminalAction>,
+    pub layout: Box<Layout>,
     screen_thread: Option<thread::JoinHandle<()>>,
     pty_thread: Option<thread::JoinHandle<()>>,
     plugin_thread: Option<thread::JoinHandle<()>>,
@@ -150,7 +151,21 @@ macro_rules! remove_client {
 macro_rules! send_to_client {
     ($client_id:expr, $os_input:expr, $msg:expr, $session_state:expr) => {
         let send_to_client_res = $os_input.send_to_client($client_id, $msg);
-        if let Err(_) = send_to_client_res {
+        if let Err(e) = send_to_client_res {
+            // Try to recover the message
+            let context = match e.downcast_ref::<ZellijError>() {
+                Some(ZellijError::ClientTooSlow { .. }) => {
+                    format!(
+                        "client {} is processing server messages too slow",
+                        $client_id
+                    )
+                },
+                _ => {
+                    format!("failed to route server message to client {}", $client_id)
+                },
+            };
+            // Log it so it isn't lost
+            Err::<(), _>(e).context(context).non_fatal();
             // failed to send to client, remove it
             remove_client!($client_id, $os_input, $session_state);
         }
@@ -332,7 +347,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                     })
                 });
 
-                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name| {
+                let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
                         .read()
                         .unwrap()
@@ -344,6 +359,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             tab_layout,
                             floating_panes_layout,
                             tab_name,
+                            swap_layouts,
                             client_id,
                         ))
                         .unwrap()
@@ -355,6 +371,10 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             Some(tab_layout.clone()),
                             floating_panes_layout.clone(),
                             tab_name,
+                            (
+                                layout.swap_tiled_layouts.clone(),
+                                layout.swap_floating_layouts.clone(),
+                            ),
                         );
                     }
 
@@ -372,7 +392,15 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .unwrap();
                     }
                 } else {
-                    spawn_tabs(None, layout.floating_panes_template.clone(), None);
+                    spawn_tabs(
+                        None,
+                        layout.template.map(|t| t.1).clone().unwrap_or_default(),
+                        None,
+                        (
+                            layout.swap_tiled_layouts.clone(),
+                            layout.swap_floating_layouts.clone(),
+                        ),
+                    );
                 }
                 session_data
                     .read()
@@ -552,6 +580,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // If `None`- Send an exit instruction. This is the case when a user closes the last Tab/Pane.
                 if let Some(output) = &serialized_output {
                     for (client_id, client_render_instruction) in output.iter() {
+                        // TODO: When a client is too slow or unresponsive, the channel fills up
+                        // and this call will disconnect the client in turn. Should this be
+                        // changed?
                         send_to_client!(
                             *client_id,
                             os_input,
@@ -732,8 +763,9 @@ fn init_session(
                 Some(&to_background_jobs),
                 None,
             );
-            let store = Store::default();
+            let store = get_store();
 
+            let layout = layout.clone();
             move || {
                 plugin_thread_main(
                     plugin_bus,
@@ -794,10 +826,23 @@ fn init_session(
         capabilities,
         default_shell,
         client_attributes,
+        layout,
         screen_thread: Some(screen_thread),
         pty_thread: Some(pty_thread),
         plugin_thread: Some(plugin_thread),
         pty_writer_thread: Some(pty_writer_thread),
         background_jobs_thread: Some(background_jobs_thread),
     }
+}
+
+#[cfg(not(feature = "singlepass"))]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Cranelift");
+    Store::new(&wasmer::Universal::new(wasmer::Cranelift::default()).engine())
+}
+
+#[cfg(feature = "singlepass")]
+fn get_store() -> Store {
+    log::info!("Compiling plugins using Singlepass");
+    Store::new(&wasmer::Universal::new(wasmer::Singlepass::default()).engine())
 }

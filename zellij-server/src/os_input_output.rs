@@ -14,6 +14,7 @@ use signal_hook::consts::*;
 use sysinfo::{ProcessExt, ProcessRefreshKind, System, SystemExt};
 use zellij_utils::{
     async_std, channels,
+    channels::TrySendError,
     data::Palette,
     errors::prelude::*,
     input::command::{RunCommand, TerminalAction},
@@ -302,9 +303,18 @@ fn spawn_terminal(
                 {
                     failover_cmd_args = Some(vec![file_to_open.clone()]);
                     args.push(format!("+{}", line_number));
+                    args.push(file_to_open);
+                } else if command.ends_with("hx") || command.ends_with("helix") {
+                    // at the time of writing, helix only supports this syntax
+                    // and it might be a good idea to leave this here anyway
+                    // to keep supporting old versions
+                    args.push(format!("{}:{}", file_to_open, line_number));
+                } else {
+                    args.push(file_to_open);
                 }
+            } else {
+                args.push(file_to_open);
             }
-            args.push(file_to_open);
             RunCommand {
                 command,
                 args,
@@ -343,15 +353,24 @@ struct ClientSender {
 
 impl ClientSender {
     pub fn new(client_id: ClientId, mut sender: IpcSenderWithContext<ServerToClientMsg>) -> Self {
-        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(50);
+        // FIXME(hartan): This queue is responsible for buffering messages between server and
+        // client. If it fills up, the client is disconnected with a "Buffer full" sort of error
+        // message. It was previously found to be too small (with depth 50), so it was increased to
+        // 5000 instead. This decision was made because it was found that a queue of depth 5000
+        // doesn't cause noticable increase in RAM usage, but there's no reason beyond that. If in
+        // the future this is found to fill up too quickly again, it may be worthwhile to increase
+        // the size even further (or better yet, implement a redraw-on-backpressure mechanism).
+        // We, the zellij maintainers, have decided against an unbounded
+        // queue for the time being because we want to prevent e.g. the whole session being killed
+        // (by OOM-killers or some other mechanism) just because a single client doesn't respond.
+        let (client_buffer_sender, client_buffer_receiver) = channels::bounded(5000);
         std::thread::spawn(move || {
             let err_context = || format!("failed to send message to client {client_id}");
             for msg in client_buffer_receiver.iter() {
-                let _ = sender.send(msg).with_context(err_context);
+                sender.send(msg).with_context(err_context).non_fatal();
             }
-            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Error(
-                "Buffer full".to_string(),
-            )));
+            // If we're here, the message buffer is broken for some reason
+            let _ = sender.send(ServerToClientMsg::Exit(ExitReason::Disconnect));
         });
         ClientSender {
             client_id,
@@ -359,9 +378,24 @@ impl ClientSender {
         }
     }
     pub fn send_or_buffer(&self, msg: ServerToClientMsg) -> Result<()> {
-        let err_context = || format!("Client {} send buffer full", self.client_id);
+        let err_context = || {
+            format!(
+                "failed to send or buffer message for client {}",
+                self.client_id
+            )
+        };
+
         self.client_buffer_sender
             .try_send(msg)
+            .or_else(|err| {
+                if let TrySendError::Full(_) = err {
+                    log::warn!(
+                        "client {} is processing server messages too slow",
+                        self.client_id
+                    );
+                }
+                Err(err)
+            })
             .with_context(err_context)
     }
 }
@@ -371,10 +405,11 @@ pub struct ServerOsInputOutput {
     orig_termios: Arc<Mutex<termios::Termios>>,
     client_senders: Arc<Mutex<HashMap<ClientId, ClientSender>>>,
     terminal_id_to_raw_fd: Arc<Mutex<BTreeMap<u32, Option<RawFd>>>>, // A value of None means the
-                                                                     // terminal_id exists but is
-                                                                     // not connected to an fd (eg.
-                                                                     // a command pane with a
-                                                                     // non-existing command)
+    // terminal_id exists but is
+    // not connected to an fd (eg.
+    // a command pane with a
+    // non-existing command)
+    cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>, // <terminal_id, (cols, rows)>
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -456,6 +491,8 @@ pub trait ServerOsApi: Send + Sync {
         quit_cb: Box<dyn Fn(PaneId, Option<i32>, RunCommand) + Send>, // u32 is the exit status
     ) -> Result<(RawFd, RawFd)>;
     fn clear_terminal_id(&self, terminal_id: u32) -> Result<()>;
+    fn cache_resizes(&mut self) {}
+    fn apply_cached_resizes(&mut self) {}
 }
 
 impl ServerOsApi for ServerOsInputOutput {
@@ -466,6 +503,10 @@ impl ServerOsApi for ServerOsInputOutput {
                 id, rows, cols
             )
         };
+        if let Some(cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
+            cached_resizes.insert(id, (cols, rows));
+            return Ok(());
+        }
 
         match self
             .terminal_id_to_raw_fd
@@ -727,6 +768,19 @@ impl ServerOsApi for ServerOsInputOutput {
             .remove(&terminal_id);
         Ok(())
     }
+    fn cache_resizes(&mut self) {
+        if self.cached_resizes.lock().unwrap().is_none() {
+            *self.cached_resizes.lock().unwrap() = Some(BTreeMap::new());
+        }
+    }
+    fn apply_cached_resizes(&mut self) {
+        let mut cached_resizes = self.cached_resizes.lock().unwrap().take();
+        if let Some(cached_resizes) = cached_resizes.as_mut() {
+            for (terminal_id, (cols, rows)) in cached_resizes.iter() {
+                let _ = self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows);
+            }
+        }
+    }
 }
 
 impl Clone for Box<dyn ServerOsApi> {
@@ -742,6 +796,7 @@ pub fn get_server_os_input() -> Result<ServerOsInputOutput, nix::Error> {
         orig_termios,
         client_senders: Arc::new(Mutex::new(HashMap::new())),
         terminal_id_to_raw_fd: Arc::new(Mutex::new(BTreeMap::new())),
+        cached_resizes: Arc::new(Mutex::new(None)),
     })
 }
 
