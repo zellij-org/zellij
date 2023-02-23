@@ -794,7 +794,7 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
         let cols = self.get_content_columns();
-        self.grid.change_size(rows, cols);
+        self.grid.force_change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();
