@@ -169,6 +169,20 @@ impl<'a> KdlLayoutParser<'a> {
             Ok(())
         }
     }
+    fn assert_no_grandchildren_in_stack(&self, children: &[KdlNode], is_part_of_stack: bool) -> Result<(), ConfigError> {
+        if is_part_of_stack {
+            for child in children {
+                if kdl_name!(child) == "pane" || self.pane_templates.get(kdl_name!(child)).is_some() {
+                    return Err(ConfigError::new_layout_kdl_error(
+                        format!("Stacked panes cannot have children"),
+                        child.span().offset(),
+                        child.span().len(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
     fn parse_split_size(&self, kdl_node: &KdlNode) -> Result<Option<SplitSize>, ConfigError> {
         if let Some(size) = kdl_get_string_property_or_child_value!(kdl_node, "size") {
             match SplitSize::from_str(size) {
@@ -411,7 +425,7 @@ impl<'a> KdlLayoutParser<'a> {
         }
         Ok(run)
     }
-    fn parse_pane_node(&self, kdl_node: &KdlNode) -> Result<TiledPaneLayout, ConfigError> {
+    fn parse_pane_node(&self, kdl_node: &KdlNode, is_part_of_stack: bool) -> Result<TiledPaneLayout, ConfigError> {
         self.assert_valid_pane_properties(kdl_node)?;
         let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
@@ -423,9 +437,25 @@ impl<'a> KdlLayoutParser<'a> {
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, children) =
             match kdl_children_nodes!(kdl_node) {
-                Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
+                Some(children) => {
+                    self.assert_no_grandchildren_in_stack(&children, is_part_of_stack)?;
+                    self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?
+                },
                 None => (None, vec![]),
             };
+        if children_are_stacked && external_children_index.is_none() && children.is_empty() {
+            return Err(ConfigError::new_layout_kdl_error(
+                format!("A stacked pane must have children nodes or possibly a \"children\" node if in a swap_layout"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
+        } else if children_are_stacked && children_split_direction == SplitDirection::Vertical {
+            return Err(ConfigError::new_layout_kdl_error(
+                format!("Stacked panes cannot be vertical"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
+        }
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         Ok(TiledPaneLayout {
             borderless: borderless.unwrap_or_default(),
@@ -471,11 +501,13 @@ impl<'a> KdlLayoutParser<'a> {
         pane_template: &mut TiledPaneLayout,
         pane_template_kdl_node: &KdlNode,
     ) -> Result<(), ConfigError> {
-        let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
+        let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(pane_template.children_are_stacked);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, pane_parts) =
             match kdl_children_nodes!(kdl_node) {
-                Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
+                Some(children) => {
+                    self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?
+                }
                 None => (None, vec![]),
             };
         if pane_parts.len() > 0 {
@@ -540,7 +572,7 @@ impl<'a> KdlLayoutParser<'a> {
                 let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
                 let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
                     .map(|name| name.to_string());
-                let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
+                let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
                 let args = self.parse_args(kdl_node)?;
                 let close_on_exit =
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
@@ -549,8 +581,6 @@ impl<'a> KdlLayoutParser<'a> {
                 let split_size = self.parse_split_size(kdl_node)?;
                 let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
 
-                // TODO: change should_insert_children to should_keep_pane_external_children_index
-                // or smth
                 let external_children_index = if should_mark_external_children_index
                 {
                     self.populate_external_children_index(kdl_node)?
@@ -593,10 +623,15 @@ impl<'a> KdlLayoutParser<'a> {
                 if let Some(index_of_children) = pane_template.external_children_index {
                     pane_template
                         .children
-                        .insert(index_of_children, TiledPaneLayout::default());
+                        .insert(index_of_children, TiledPaneLayout {
+                            children_are_stacked: children_are_stacked.unwrap_or_default(),
+                            ..Default::default()
+                        });
+                }
+                if let Some(children_are_stacked) = children_are_stacked {
+                    pane_template.children_are_stacked = children_are_stacked;
                 }
                 pane_template.external_children_index = external_children_index;
-                pane_template.children_are_stacked = children_are_stacked;
                 Ok(pane_template)
             },
             PaneOrFloatingPane::FloatingPane(_) => {
@@ -757,6 +792,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<bool, ConfigError> {
         // pane properties
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
+        let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
         let split_size = self.parse_split_size(kdl_node)?;
         let split_direction =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction");
@@ -771,6 +807,7 @@ impl<'a> KdlLayoutParser<'a> {
         let has_pane_properties = borderless.is_some()
             || split_size.is_some()
             || split_direction.is_some()
+            || children_are_stacked.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
             height.is_some() || width.is_some() || x.is_some() || y.is_some();
@@ -788,6 +825,7 @@ impl<'a> KdlLayoutParser<'a> {
 
         // pane properties
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
+        let children_are_stacked = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
         let split_size = self.parse_split_size(kdl_node)?;
         let split_direction =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction");
@@ -802,6 +840,7 @@ impl<'a> KdlLayoutParser<'a> {
         let has_pane_properties = borderless.is_some()
             || split_size.is_some()
             || split_direction.is_some()
+            || children_are_stacked.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
             height.is_some() || width.is_some() || x.is_some() || y.is_some();
@@ -810,6 +849,9 @@ impl<'a> KdlLayoutParser<'a> {
             let mut pane_properties = vec![];
             if borderless.is_some() {
                 pane_properties.push("borderless");
+            }
+            if children_are_stacked.is_some() {
+                pane_properties.push("stacked");
             }
             if split_size.is_some() {
                 pane_properties.push("split_size");
@@ -908,9 +950,10 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
             let split_size = self.parse_split_size(kdl_node)?;
             let children_split_direction = self.parse_split_direction(kdl_node)?;
+            let is_part_of_stack = false;
             let (external_children_index, pane_parts) =
                 match kdl_children_nodes!(kdl_node) {
-                    Some(children) => self.parse_child_pane_nodes_for_pane(&children)?,
+                    Some(children) => self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?,
                     None => (None, vec![]),
                 };
             self.assert_no_mixed_children_and_properties(kdl_node)?;
@@ -984,9 +1027,10 @@ impl<'a> KdlLayoutParser<'a> {
         child_floating_panes: &mut Vec<FloatingPaneLayout>,
     ) -> Result<Vec<TiledPaneLayout>, ConfigError> {
         let mut nodes = vec![];
+        let is_part_of_stack = false;
         for child in children {
             if kdl_name!(child) == "pane" {
-                nodes.push(self.parse_pane_node(child)?);
+                nodes.push(self.parse_pane_node(child, is_part_of_stack)?);
             } else if let Some((pane_template, pane_template_kdl_node)) =
                 self.pane_templates.get(kdl_name!(child)).cloned()
             {
@@ -1020,13 +1064,14 @@ impl<'a> KdlLayoutParser<'a> {
     fn parse_child_pane_nodes_for_pane(
         &self,
         children: &[KdlNode],
+        is_part_of_stack: bool,
     ) -> Result<(Option<usize>, Vec<TiledPaneLayout>), ConfigError> {
         // usize is external_children_index
         let mut external_children_index = None;
         let mut nodes = vec![];
         for (i, child) in children.iter().enumerate() {
             if kdl_name!(child) == "pane" {
-                nodes.push(self.parse_pane_node(child)?);
+                nodes.push(self.parse_pane_node(child, is_part_of_stack)?);
             } else if kdl_name!(child) == "children" {
                 if let Some(grand_children) = kdl_children_nodes!(child) {
                     let grand_children: Vec<&str> = grand_children
@@ -1441,10 +1486,11 @@ impl<'a> KdlLayoutParser<'a> {
         let mut tab_floating_children = vec![];
         let mut external_children_index = None;
         let mut children_index_offset = 0;
+        let is_part_of_stack = false;
         if let Some(children) = kdl_children_nodes!(kdl_node) {
             for (i, child) in children.iter().enumerate() {
                 if kdl_name!(child) == "pane" {
-                    tab_children.push(self.parse_pane_node(child)?);
+                    tab_children.push(self.parse_pane_node(child, is_part_of_stack)?);
                 } else if kdl_name!(child) == "children" {
                     let node_has_child_nodes =
                         child.children().map(|c| !c.is_empty()).unwrap_or(false);
@@ -1921,7 +1967,8 @@ impl<'a> KdlLayoutParser<'a> {
             ));
         }
         if child_name == "pane" {
-            let mut pane_node = self.parse_pane_node(child)?;
+            let is_part_of_stack = false;
+            let mut pane_node = self.parse_pane_node(child, is_part_of_stack)?;
             if let Some(global_cwd) = &self.global_cwd {
                 pane_node.add_cwd_to_layout(&global_cwd);
             }
