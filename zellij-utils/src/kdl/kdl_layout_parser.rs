@@ -53,6 +53,8 @@ impl<'a> KdlLayoutParser<'a> {
         }
     }
     fn is_a_reserved_word(&self, word: &str) -> bool {
+        // note that it's important that none of these words happens to also be a config property,
+        // otherwise they might collide
         word == "pane"
             || word == "layout"
             || word == "pane_template"
@@ -2109,6 +2111,17 @@ impl<'a> KdlLayoutParser<'a> {
             .filter(|n| kdl_name!(n) == "layout")
             .count()
             > 1;
+        let mut non_layout_nodes_in_root = kdl_layout
+            .nodes()
+            .iter()
+            .filter(|n| kdl_name!(n) != "layout" && self.is_a_reserved_word(kdl_name!(n)));
+        if let Some(first_non_layout_node) = non_layout_nodes_in_root.next() {
+            return Err(ConfigError::new_layout_kdl_error(
+                "This node should be inside the main \"layout\" node".into(),
+                first_non_layout_node.span().offset(),
+                first_non_layout_node.span().len(),
+            ));
+        }
         if has_multiple_layout_nodes {
             return Err(ConfigError::new_layout_kdl_error(
                 "Only one layout node per file allowed".into(),
