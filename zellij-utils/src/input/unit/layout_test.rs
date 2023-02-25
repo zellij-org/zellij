@@ -1956,7 +1956,13 @@ fn run_plugin_location_parsing() {
                 plugin location="file:plugin.wasm"
             }
             pane {
-                plugin location="file:/path/with space/plugin.wasm"
+                plugin location="file:relative/with space/plugin.wasm"
+            }
+            pane {
+                plugin location="file:///absolute/with space/plugin.wasm"
+            }
+            pane {
+                plugin location="file:c:/absolute/windows/plugin.wasm"
             }
         }
     "#;
@@ -1992,7 +1998,25 @@ fn run_plugin_location_parsing() {
                         run: Some(Run::Plugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from(
-                                "/path/with space/plugin.wasm",
+                                "relative/with space/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "/absolute/with space/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "c:/absolute/windows/plugin.wasm",
                             )),
                         })),
                         ..Default::default()
