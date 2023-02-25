@@ -1955,6 +1955,9 @@ fn run_plugin_location_parsing() {
             pane {
                 plugin location="file:plugin.wasm"
             }
+            pane {
+                plugin location="file:/path/with space/plugin.wasm"
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
@@ -1982,6 +1985,15 @@ fn run_plugin_location_parsing() {
                         run: Some(Run::Plugin(RunPlugin {
                             _allow_exec_host_cmd: false,
                             location: RunPluginLocation::File(PathBuf::from("plugin.wasm")),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "/path/with space/plugin.wasm",
+                            )),
                         })),
                         ..Default::default()
                     },
