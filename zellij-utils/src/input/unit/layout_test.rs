@@ -1860,13 +1860,7 @@ fn can_define_stacked_children_for_pane_node() {
            }
         }
     "#;
-    let layout = Layout::from_kdl(
-        kdl_layout,
-        "layout_file_name".into(),
-        None,
-        None,
-    )
-    .unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
@@ -1883,13 +1877,7 @@ fn can_define_stacked_children_for_pane_template() {
            }
         }
     "#;
-    let layout = Layout::from_kdl(
-        kdl_layout,
-        "layout_file_name".into(),
-        None,
-        None,
-    )
-    .unwrap();
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
 
