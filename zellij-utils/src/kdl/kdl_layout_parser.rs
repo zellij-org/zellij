@@ -22,10 +22,8 @@ use crate::{
     kdl_string_arguments,
 };
 
-use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::vec::Vec;
-use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneOrFloatingPane {
@@ -296,14 +294,13 @@ impl<'a> KdlLayoutParser<'a> {
                 plugin_block.span().len(),
             ),
         )?;
-        let url = Url::parse(string_url).map_err(|e| {
+        let location = RunPluginLocation::parse(&string_url).map_err(|e| {
             ConfigError::new_layout_kdl_error(
-                format!("Failed to parse url: {:?}", e),
+                e.to_string(),
                 url_node.span().offset(),
                 url_node.span().len(),
             )
         })?;
-        let location = RunPluginLocation::try_from(url)?;
         Ok(Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd,
             location,

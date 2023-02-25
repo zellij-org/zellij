@@ -23,7 +23,6 @@ use std::str::FromStr;
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{
     fmt,
@@ -198,6 +197,35 @@ pub struct RunPlugin {
 pub enum RunPluginLocation {
     File(PathBuf),
     Zellij(PluginTag),
+}
+
+impl RunPluginLocation {
+    pub fn parse(location: &str) -> Result<Self, PluginsConfigError> {
+        let url = Url::parse(location)?;
+
+        let decoded_path = percent_encoding::percent_decode_str(url.path()).decode_utf8_lossy();
+
+        match url.scheme() {
+            "zellij" => Ok(Self::Zellij(PluginTag::new(decoded_path))),
+            "file" => {
+                let path = if location.starts_with("file:/") {
+                    // Path is absolute, its safe to use URL path.
+                    //
+                    // This is the case if the scheme and : delimiter are followed by a / slash
+                    decoded_path
+                } else {
+                    // URL dep doesn't handle relative paths with `file` schema properly,
+                    // it always makes them absolute. Use raw location string instead.
+                    //
+                    // Unwrap is safe here since location is a valid URL
+                    location.strip_prefix("file:").unwrap().into()
+                };
+
+                Ok(Self::File(PathBuf::from(path.as_ref())))
+            },
+            _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
+        }
+    }
 }
 
 impl From<&RunPluginLocation> for Url {
@@ -941,21 +969,6 @@ fn split_space(
         pane_positions.push((layout, space_to_split.clone()));
     }
     Ok(pane_positions)
-}
-
-impl TryFrom<Url> for RunPluginLocation {
-    type Error = PluginsConfigError;
-
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
-        match url.scheme() {
-            "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
-            "file" => {
-                let path = PathBuf::from(url.path());
-                Ok(Self::File(path))
-            },
-            _ => Err(PluginsConfigError::InvalidUrl(url)),
-        }
-    }
 }
 
 impl Default for SplitDirection {
