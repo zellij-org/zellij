@@ -343,7 +343,9 @@ impl PaneFrame {
             self.render_my_and_others_focus(max_length)
         } else if !self.other_focused_clients.is_empty() {
             self.render_other_focused_users(max_length)
-        } else if self.pane_is_stacked_under || self.pane_is_stacked_over {
+        } else if (self.pane_is_stacked_under || self.pane_is_stacked_over)
+            && self.exit_status.is_some()
+        {
             let (first_part, first_part_len) = self.first_exited_held_title_part_full();
             if first_part_len <= max_length {
                 Some((first_part, first_part_len))
