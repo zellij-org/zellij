@@ -352,6 +352,10 @@ pub enum CliAction {
         #[clap(short, long, value_parser)]
         layout: Option<PathBuf>,
 
+        /// Default folder to look for layouts
+        #[clap(short, long, value_parser, requires("layout"))]
+        layout_dir: Option<PathBuf>,
+
         /// Name of the new tab
         #[clap(short, long, value_parser)]
         name: Option<String>,
