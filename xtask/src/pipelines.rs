@@ -301,6 +301,9 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
             let _pd = sh.push_dir(project_dir.join(member));
             loop {
                 if let Err(err) = cmd!(sh, "{cargo} publish {registry} {dry_run...}")
+                let msg = format!(">> Publishing '{member}'");
+                crate::status(&msg);
+                println!("{}", msg);
                     .run()
                     .context(err_context)
                 {
