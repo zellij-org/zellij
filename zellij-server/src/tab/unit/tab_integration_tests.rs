@@ -1935,7 +1935,7 @@ fn save_cursor_position_across_resizes() {
 
     tab.handle_pty_bytes(
         1,
-        Vec::from("\n\nI am some text\nI am another line of text\nLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
+        Vec::from("\n\n\rI am some text\n\rI am another line of text\n\rLet's save the cursor position here \u{1b}[sI should be ovewritten".as_bytes()),
     ).unwrap();
     tab.resize_whole_tab(Size { cols: 100, rows: 3 }).unwrap();
     tab.handle_pty_bytes(1, Vec::from("\u{1b}[uthis overwrote me!".as_bytes()))
@@ -3163,7 +3163,7 @@ fn swap_tiled_layout_with_stacked_children() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3213,7 +3213,7 @@ fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3263,7 +3263,7 @@ fn move_focus_up_with_stacked_panes() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3315,7 +3315,7 @@ fn move_focus_down_with_stacked_panes() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3371,7 +3371,7 @@ fn move_focus_right_into_stacked_panes() {
                 tab {
                     pane split_direction="vertical" {
                         pane
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3431,7 +3431,7 @@ fn move_focus_left_into_stacked_panes() {
             swap_tiled_layout {
                 tab {
                     pane split_direction="vertical" {
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                         pane focus=true
                     }
                 }
@@ -3494,7 +3494,7 @@ fn move_focus_up_into_stacked_panes() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -3558,7 +3558,7 @@ fn move_focus_down_into_stacked_panes() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -3617,7 +3617,7 @@ fn close_main_stacked_pane() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3668,7 +3668,7 @@ fn close_main_stacked_pane_in_mid_stack() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3728,7 +3728,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3789,7 +3789,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3849,7 +3849,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -3912,7 +3912,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -3976,7 +3976,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4044,7 +4044,7 @@ fn increasing_size_of_main_pane_in_stack_horizontally_does_not_break_stack() {
                             pane focus=true
                             pane
                         }
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4125,7 +4125,7 @@ fn can_increase_size_into_pane_stack_horizontally() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -4187,7 +4187,7 @@ fn can_increase_size_into_pane_stack_vertically() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4252,7 +4252,7 @@ fn can_increase_size_into_pane_stack_non_directionally() {
                     pane
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4320,7 +4320,7 @@ fn increasing_size_into_main_pane_in_stack_horizontally_does_not_break_stack() {
                             pane focus=true
                             pane
                         }
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4397,7 +4397,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -4457,7 +4457,7 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -4521,7 +4521,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4586,7 +4586,7 @@ fn focus_stacked_pane_over_flexible_pane_with_the_mouse() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4645,7 +4645,7 @@ fn focus_stacked_pane_under_flexible_pane_with_the_mouse() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4706,7 +4706,7 @@ fn close_stacked_pane_with_previously_focused_other_pane() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4774,7 +4774,7 @@ fn close_pane_near_stacked_panes() {
                 tab {
                     pane split_direction="vertical" {
                         pane
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                 }
             }
@@ -4837,7 +4837,7 @@ fn focus_next_pane_expands_stacked_panes() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }
@@ -4897,7 +4897,7 @@ fn stacked_panes_can_become_fullscreen() {
                 tab {
                     pane split_direction="vertical" {
                         pane focus=true
-                        pane { children stacked=true; }
+                        pane stacked=true { children; }
                     }
                     pane
                 }

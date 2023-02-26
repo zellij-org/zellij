@@ -1849,3 +1849,96 @@ fn can_load_swap_layouts_from_a_different_file() {
     .unwrap();
     assert_snapshot!(format!("{:#?}", layout));
 }
+
+#[test]
+fn can_define_stacked_children_for_pane_node() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn can_define_stacked_children_for_pane_template() {
+    let kdl_layout = r#"
+        layout {
+           pane_template name="stack" stacked=true {
+               children
+           }
+           stack {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
+fn cannot_define_stacked_panes_for_bare_node() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "error provided for tab name with space");
+}
+
+#[test]
+fn cannot_define_stacked_panes_with_vertical_split_direction() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true split_direction="vertical" {
+               pane
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "error provided for tab name with space");
+}
+
+#[test]
+fn cannot_define_stacked_panes_with_grandchildren() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true {
+               pane {
+                   pane
+                   pane
+               }
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "error provided for tab name with space");
+}
+
+#[test]
+fn cannot_define_stacked_panes_with_grandchildren_in_pane_template() {
+    let kdl_layout = r#"
+        layout {
+           pane_template name="stack" stacked=true {
+               children
+           }
+           stack {
+               pane
+               pane {
+                   pane
+                   pane
+               }
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "error provided for tab name with space");
+}

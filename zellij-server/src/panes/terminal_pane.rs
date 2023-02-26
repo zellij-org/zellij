@@ -358,13 +358,7 @@ impl Pane for TerminalPane {
             self.pane_name.clone()
         };
 
-        let mut frame_geom = self.current_geom();
-        if !frame_params.should_draw_pane_frames {
-            // in this case the width of the frame needs not include the pane corners
-            frame_geom
-                .cols
-                .set_inner(frame_geom.cols.as_usize().saturating_sub(1));
-        }
+        let frame_geom = self.current_geom();
         let mut frame = PaneFrame::new(
             frame_geom.into(),
             self.grid.scrollback_position_and_length(),
@@ -794,7 +788,7 @@ impl TerminalPane {
     fn reflow_lines(&mut self) {
         let rows = self.get_content_rows();
         let cols = self.get_content_columns();
-        self.grid.change_size(rows, cols);
+        self.grid.force_change_size(rows, cols);
         if self.banner.is_some() {
             self.grid.reset_terminal_state();
             self.render_first_run_banner();
