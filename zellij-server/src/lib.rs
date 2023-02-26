@@ -387,9 +387,9 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             .as_ref()
                             .unwrap()
                             .senders
-                            .send_to_pty(PtyInstruction::GoToTab(
+                            .send_to_screen(ScreenInstruction::GoToTab(
                                 (focused_tab_index + 1) as u32,
-                                client_id,
+                                Some(client_id),
                             ))
                             .unwrap();
                     }

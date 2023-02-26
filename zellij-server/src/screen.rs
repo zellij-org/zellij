@@ -1415,6 +1415,10 @@ pub(crate) fn screen_thread_main(
         copy_options,
     );
 
+    let mut pending_tab_ids: HashSet<usize> = HashSet::new();
+    let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
+                                                                               // tab_index
+
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -2013,6 +2017,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
             ) => {
                 let tab_index = screen.get_new_tab_index();
+                pending_tab_ids.insert(tab_index);
                 screen.new_tab(tab_index, swap_layouts, client_id)?;
                 screen
                     .bus
@@ -2044,11 +2049,17 @@ pub(crate) fn screen_thread_main(
                     tab_index,
                     client_id,
                 )?;
+                pending_tab_ids.remove(&tab_index);
+                if pending_tab_ids.is_empty() {
+                    for (tab_index, client_id) in pending_tab_switches.drain() {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                    }
+                }
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
-                let client_id = if client_id.is_none() {
+                let client_id_to_switch = if client_id.is_none() {
                     None
                 } else if screen
                     .active_tab_indices
@@ -2058,10 +2069,17 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen.active_tab_indices.keys().next().copied()
                 };
-                if let Some(client_id) = client_id {
-                    screen.go_to_tab(tab_index as usize, client_id)?;
-                    screen.unblock_input()?;
-                    screen.render()?;
+                match client_id_to_switch {
+                    Some(client_id) => {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                        screen.unblock_input()?;
+                        screen.render()?;
+                    },
+                    None => {
+                        if let Some(client_id) = client_id {
+                            pending_tab_switches.insert((tab_index as usize, client_id));
+                        }
+                    },
                 }
             },
             ScreenInstruction::GoToTabName(tab_name, swap_layouts, create, client_id) => {
