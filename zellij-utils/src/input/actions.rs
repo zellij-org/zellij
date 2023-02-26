@@ -9,7 +9,7 @@ use crate::data::InputMode;
 use crate::data::{Direction, Resize};
 use crate::input::config::{ConfigError, KdlError};
 use crate::input::options::OnForceClose;
-use crate::setup::{get_layout_dir, find_default_config_dir};
+use crate::setup::{find_default_config_dir, get_layout_dir};
 use miette::{NamedSource, Report};
 use serde::{Deserialize, Serialize};
 
@@ -349,13 +349,19 @@ impl Action {
                 Action::TabNameInput(name.as_bytes().to_vec()),
             ]),
             CliAction::UndoRenameTab => Ok(vec![Action::UndoRenameTab]),
-            CliAction::NewTab { name, layout, layout_dir, cwd } => {
+            CliAction::NewTab {
+                name,
+                layout,
+                layout_dir,
+                cwd,
+            } => {
                 let current_dir = get_current_dir();
                 let cwd = cwd
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let layout_dir = layout_dir.or_else(|| get_layout_dir(find_default_config_dir()));
+                    let layout_dir =
+                        layout_dir.or_else(|| get_layout_dir(find_default_config_dir()));
                     let (path_to_raw_layout, raw_layout, swap_layouts) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
