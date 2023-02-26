@@ -1409,7 +1409,7 @@ pub(crate) fn screen_thread_main(
 
     let mut pending_tab_ids: HashSet<usize> = HashSet::new();
     let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
-                                                                                       // tab_index
+                                                                               // tab_index
 
     loop {
         let (event, mut err_ctx) = screen
@@ -2064,7 +2064,7 @@ pub(crate) fn screen_thread_main(
                         if let Some(client_id) = client_id {
                             pending_tab_switches.insert((tab_index as usize, client_id));
                         }
-                    }
+                    },
                 }
             },
             ScreenInstruction::GoToTabName(tab_name, swap_layouts, create, client_id) => {
