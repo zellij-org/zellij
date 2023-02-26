@@ -1,8 +1,6 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use std::ffi::OsString;
-
 use crate::flags;
 use crate::{build, clippy, format, test};
 use anyhow::Context;
@@ -185,7 +183,8 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 .map_err(|registry| anyhow::Error::msg(format!(
                     "failed to convert '{:?}' to valid registry name",
                     registry
-                ))).context(err_context)?
+                )))
+                .context(err_context)?
         ))
     } else {
         None
@@ -308,9 +307,12 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     _ => None,
                 };
 
-                if let Err(err) = cmd!(sh, "{cargo} publish {registry...} {more_args...} {dry_run...}")
-                    .run()
-                    .context(err_context)
+                if let Err(err) = cmd!(
+                    sh,
+                    "{cargo} publish {registry...} {more_args...} {dry_run...}"
+                )
+                .run()
+                .context(err_context)
                 {
                     println!();
                     println!("Publishing crate '{member}' failed with error:");
