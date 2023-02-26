@@ -176,13 +176,9 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     } else {
         None
     };
-    let remote = if let Some(remote) = flags.git_remote {
-        remote
-    } else {
-        OsString::from("origin")
-    };
+    let remote = flags.git_remote.unwrap_or("origin".into());
     let registry = if let Some(registry) = flags.cargo_registry {
-        format!(
+        Some(format!(
             "--registry={}",
             registry
                 .into_string()
@@ -190,10 +186,11 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     "failed to convert '{:?}' to valid registry name",
                     registry
                 ))).context(err_context)?
-        )
+        ))
     } else {
-        "".to_string()
+        None
     };
+    let registry = registry.as_ref();
 
     sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
@@ -300,7 +297,6 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
             let _pd = sh.push_dir(project_dir.join(member));
             loop {
-                if let Err(err) = cmd!(sh, "{cargo} publish {registry} {dry_run...}")
                 let msg = format!(">> Publishing '{member}'");
                 crate::status(&msg);
                 println!("{}", msg);
@@ -311,6 +307,8 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     "." => Some("--no-default-features"),
                     _ => None,
                 };
+
+                if let Err(err) = cmd!(sh, "{cargo} publish {registry...} {more_args...} {dry_run...}")
                     .run()
                     .context(err_context)
                 {
@@ -357,6 +355,11 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 }
             }
         }
+
+        println!();
+        println!(" +-----------------------------------------------+");
+        println!(" | PRAISE THE DEVS, WE HAVE A NEW ZELLIJ RELEASE |");
+        println!(" +-----------------------------------------------+");
         Ok(())
     };
 
