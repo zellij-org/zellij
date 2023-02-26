@@ -304,6 +304,13 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 let msg = format!(">> Publishing '{member}'");
                 crate::status(&msg);
                 println!("{}", msg);
+
+                let more_args = match *member {
+                    // This is needed for zellij to pick up the plugins from the assets included in
+                    // the released zellij-utils binary
+                    "." => Some("--no-default-features"),
+                    _ => None,
+                };
                     .run()
                     .context(err_context)
                 {
