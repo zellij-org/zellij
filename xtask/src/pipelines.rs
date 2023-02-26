@@ -294,7 +294,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
 
         // Publish all the crates
         for member in crate::WORKSPACE_MEMBERS.iter() {
-            if member.contains("plugin") {
+            if member.contains("plugin") || member.contains("xtask") {
                 continue;
             }
 
