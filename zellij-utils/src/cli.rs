@@ -23,6 +23,10 @@ pub struct CliArgs {
     #[clap(long, value_parser, hide = true, overrides_with = "server")]
     pub server: Option<PathBuf>,
 
+    /// Create a session in the background, without attaching.
+    #[clap(long, short, overrides_with = "background", value_parser)]
+    pub background: bool,
+
     /// Specify name of a new session
     #[clap(long, short, overrides_with = "session", value_parser)]
     pub session: Option<String>,
