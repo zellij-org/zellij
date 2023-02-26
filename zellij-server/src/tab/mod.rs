@@ -89,6 +89,7 @@ type HoldForCommand = Option<RunCommand>;
 enum BufferedTabInstruction {
     SetPaneSelectable(PaneId, bool),
     HandlePtyBytes(u32, VteBytes),
+    HoldPane(PaneId, Option<i32>, bool, RunCommand), // Option<i32> is the exit status, bool is is_first_run
 }
 
 pub(crate) struct Tab {
@@ -736,6 +737,9 @@ impl Tab {
                 },
                 BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
                     self.handle_pty_bytes(terminal_id, bytes)?;
+                },
+                BufferedTabInstruction::HoldPane(terminal_id, exit_status, is_first_run, run_command) => {
+                    self.hold_pane(terminal_id, exit_status, is_first_run, run_command);
                 },
             }
         }
@@ -2145,6 +2149,11 @@ impl Tab {
         is_first_run: bool,
         run_command: RunCommand,
     ) {
+        if self.is_pending {
+            self.pending_instructions
+                .push(BufferedTabInstruction::HoldPane(id, exit_status, is_first_run, run_command));
+            return;
+        }
         if self.floating_panes.panes_contain(&id) {
             self.floating_panes
                 .hold_pane(id, exit_status, is_first_run, run_command);

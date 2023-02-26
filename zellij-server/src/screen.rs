@@ -175,7 +175,7 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
+    HoldPane(PaneId, Option<i32>, RunCommand, Option<usize>, Option<ClientId>), // Option<i32> is the exit status, Option<usize> is the tab_index
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
@@ -1914,10 +1914,10 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
                 let is_first_run = false;
-                match client_id {
-                    Some(client_id) => {
+                match (client_id, tab_index) {
+                    (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
                             id,
                             exit_status,
@@ -1925,7 +1925,13 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    None => {
+                    (_,  Some(tab_index))=> {
+                        let tab = screen.tabs
+                            .get_mut(&tab_index)
+                            .context("couldn't find tab with index {tab_index}")?;
+                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                    },
+                    _ => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
                                 tab.hold_pane(id, exit_status, is_first_run, run_command);
