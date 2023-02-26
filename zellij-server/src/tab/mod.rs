@@ -738,7 +738,12 @@ impl Tab {
                 BufferedTabInstruction::HandlePtyBytes(terminal_id, bytes) => {
                     self.handle_pty_bytes(terminal_id, bytes)?;
                 },
-                BufferedTabInstruction::HoldPane(terminal_id, exit_status, is_first_run, run_command) => {
+                BufferedTabInstruction::HoldPane(
+                    terminal_id,
+                    exit_status,
+                    is_first_run,
+                    run_command,
+                ) => {
                     self.hold_pane(terminal_id, exit_status, is_first_run, run_command);
                 },
             }
@@ -2151,7 +2156,12 @@ impl Tab {
     ) {
         if self.is_pending {
             self.pending_instructions
-                .push(BufferedTabInstruction::HoldPane(id, exit_status, is_first_run, run_command));
+                .push(BufferedTabInstruction::HoldPane(
+                    id,
+                    exit_status,
+                    is_first_run,
+                    run_command,
+                ));
             return;
         }
         if self.floating_panes.panes_contain(&id) {

@@ -175,7 +175,13 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(PaneId, Option<i32>, RunCommand, Option<usize>, Option<ClientId>), // Option<i32> is the exit status, Option<usize> is the tab_index
+    HoldPane(
+        PaneId,
+        Option<i32>,
+        RunCommand,
+        Option<usize>,
+        Option<ClientId>,
+    ), // Option<i32> is the exit status, Option<usize> is the tab_index
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
@@ -1925,8 +1931,9 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    (_,  Some(tab_index))=> {
-                        let tab = screen.tabs
+                    (_, Some(tab_index)) => {
+                        let tab = screen
+                            .tabs
                             .get_mut(&tab_index)
                             .context("couldn't find tab with index {tab_index}")?;
                         tab.hold_pane(id, exit_status, is_first_run, run_command);
