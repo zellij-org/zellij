@@ -291,8 +291,8 @@ impl Setup {
     /// file options, superceeding the config file options:
     /// 1. command line options (`zellij options`)
     /// 2. layout options
-    ///    (`layout.yaml` / `zellij --layout`)
-    /// 3. config options (`config.yaml`)
+    ///    (`layout.kdl` / `zellij --layout`)
+    /// 3. config options (`config.kdl`)
     pub fn from_cli_args(cli_args: &CliArgs) -> Result<(Config, Layout, Options), ConfigError> {
         // note that this can potentially exit the process
         Setup::handle_setup_commands(cli_args);
