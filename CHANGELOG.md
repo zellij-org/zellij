@@ -31,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: allow CJK characters in tab names (https://github.com/zellij-org/zellij/pull/2119)
 * fix: fullscreen navigation (https://github.com/zellij-org/zellij/pull/2117)
 * fix: glitchy resizes (https://github.com/zellij-org/zellij/pull/2182)
+* fix: race when opening command panesin layout (https://github.com/zellij-org/zellij/pull/2196)
+* fix: `focus` attribute in tab layouts now works (https://github.com/zellij-org/zellij/pull/2197)
+* fix: new-tab cli action now properly looks in the layout folder as well (https://github.com/zellij-org/zellij/pull/2198)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:

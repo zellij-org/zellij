@@ -175,7 +175,13 @@ pub enum ScreenInstruction {
     TogglePaneFrames,
     SetSelectable(PaneId, bool, usize),
     ClosePane(PaneId, Option<ClientId>),
-    HoldPane(PaneId, Option<i32>, RunCommand, Option<ClientId>), // Option<i32> is the exit status
+    HoldPane(
+        PaneId,
+        Option<i32>,
+        RunCommand,
+        Option<usize>,
+        Option<ClientId>,
+    ), // Option<i32> is the exit status, Option<usize> is the tab_index
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
@@ -1407,6 +1413,10 @@ pub(crate) fn screen_thread_main(
         copy_options,
     );
 
+    let mut pending_tab_ids: HashSet<usize> = HashSet::new();
+    let mut pending_tab_switches: HashSet<(usize, ClientId)> = HashSet::new(); // usize is the
+                                                                               // tab_index
+
     loop {
         let (event, mut err_ctx) = screen
             .bus
@@ -1914,10 +1924,10 @@ pub(crate) fn screen_thread_main(
                 screen.update_tabs()?;
                 screen.unblock_input()?;
             },
-            ScreenInstruction::HoldPane(id, exit_status, run_command, client_id) => {
+            ScreenInstruction::HoldPane(id, exit_status, run_command, tab_index, client_id) => {
                 let is_first_run = false;
-                match client_id {
-                    Some(client_id) => {
+                match (client_id, tab_index) {
+                    (Some(client_id), _) => {
                         active_tab!(screen, client_id, |tab: &mut Tab| tab.hold_pane(
                             id,
                             exit_status,
@@ -1925,7 +1935,14 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    None => {
+                    (_, Some(tab_index)) => {
+                        let tab = screen
+                            .tabs
+                            .get_mut(&tab_index)
+                            .context("couldn't find tab with index {tab_index}")?;
+                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                    },
+                    _ => {
                         for tab in screen.tabs.values_mut() {
                             if tab.get_all_pane_ids().contains(&id) {
                                 tab.hold_pane(id, exit_status, is_first_run, run_command);
@@ -1998,6 +2015,7 @@ pub(crate) fn screen_thread_main(
                 client_id,
             ) => {
                 let tab_index = screen.get_new_tab_index();
+                pending_tab_ids.insert(tab_index);
                 screen.new_tab(tab_index, swap_layouts, client_id)?;
                 screen
                     .bus
@@ -2029,11 +2047,17 @@ pub(crate) fn screen_thread_main(
                     tab_index,
                     client_id,
                 )?;
+                pending_tab_ids.remove(&tab_index);
+                if pending_tab_ids.is_empty() {
+                    for (tab_index, client_id) in pending_tab_switches.drain() {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                    }
+                }
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::GoToTab(tab_index, client_id) => {
-                let client_id = if client_id.is_none() {
+                let client_id_to_switch = if client_id.is_none() {
                     None
                 } else if screen
                     .active_tab_indices
@@ -2043,10 +2067,17 @@ pub(crate) fn screen_thread_main(
                 } else {
                     screen.active_tab_indices.keys().next().copied()
                 };
-                if let Some(client_id) = client_id {
-                    screen.go_to_tab(tab_index as usize, client_id)?;
-                    screen.unblock_input()?;
-                    screen.render()?;
+                match client_id_to_switch {
+                    Some(client_id) => {
+                        screen.go_to_tab(tab_index as usize, client_id)?;
+                        screen.unblock_input()?;
+                        screen.render()?;
+                    },
+                    None => {
+                        if let Some(client_id) = client_id {
+                            pending_tab_switches.insert((tab_index as usize, client_id));
+                        }
+                    },
                 }
             },
             ScreenInstruction::GoToTabName(tab_name, swap_layouts, create, client_id) => {
