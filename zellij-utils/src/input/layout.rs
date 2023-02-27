@@ -110,12 +110,24 @@ impl Run {
                 Some(Run::Command(base_run_command)),
                 Some(Run::EditFile(file_to_edit, line_number, edit_cwd)),
             ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number, Some(cwd.join(edit_cwd.clone().unwrap_or_default())))),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number, edit_cwd.clone())),
+                Some(cwd) => Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd.join(edit_cwd.clone().unwrap_or_default())),
+                )),
+                None => Some(Run::EditFile(
+                    file_to_edit.clone(),
+                    *line_number,
+                    edit_cwd.clone(),
+                )),
             },
             (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number, edit_cwd))) => {
                 let cwd = edit_cwd.clone().unwrap_or(cwd.clone());
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number, Some(cwd)))
+                Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd),
+                ))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -140,7 +152,7 @@ impl Run {
                     },
                     None => {
                         let _ = edit_cwd.insert(cwd.clone());
-                    }
+                    },
                 };
                 *path_to_file = cwd.join(&path_to_file);
             },

@@ -152,7 +152,13 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
-    EditFile(PathBuf, Option<usize>, Option<PathBuf>, Option<Direction>, bool), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false
+    EditFile(
+        PathBuf,
+        Option<usize>,
+        Option<PathBuf>,
+        Option<Direction>,
+        bool,
+    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
