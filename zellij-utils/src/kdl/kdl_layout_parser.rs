@@ -374,8 +374,10 @@ impl<'a> KdlLayoutParser<'a> {
                 hold_on_close,
                 hold_on_start,
             }))),
-            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
+            (None, Some(edit), Some(cwd)) => {
+                Ok(Some(Run::EditFile(cwd.join(edit), None, Some(cwd))))
+            },
+            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None, None))),
             (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),
@@ -962,7 +964,6 @@ impl<'a> KdlLayoutParser<'a> {
                     .unwrap_or(false);
             let split_size = self.parse_split_size(kdl_node)?;
             let children_split_direction = self.parse_split_direction(kdl_node)?;
-            let is_part_of_stack = false;
             let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
                 Some(children) => {
                     self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?

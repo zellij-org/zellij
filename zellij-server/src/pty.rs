@@ -166,7 +166,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     || format!("failed to open in-place editor for client {}", client_id);
 
                 match pty.spawn_terminal(
-                    Some(TerminalAction::OpenFile(temp_file, line_number)),
+                    Some(TerminalAction::OpenFile(temp_file, line_number, None)),
                     ClientOrTabIndex::ClientId(client_id),
                 ) {
                     Ok((pid, _starts_held)) => {
@@ -822,7 +822,7 @@ impl Pty {
                     },
                 }
             },
-            Some(Run::EditFile(path_to_file, line_number)) => {
+            Some(Run::EditFile(path_to_file, line_number, cwd)) => {
                 let starts_held = false; // we do not hold edit panes (for now?)
                 match self
                     .bus
@@ -831,7 +831,7 @@ impl Pty {
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
                     .spawn_terminal(
-                        TerminalAction::OpenFile(path_to_file, line_number),
+                        TerminalAction::OpenFile(path_to_file, line_number, cwd),
                         quit_cb,
                         self.default_editor.clone(),
                     )
