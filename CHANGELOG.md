@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: `focus` attribute in tab layouts now works (https://github.com/zellij-org/zellij/pull/2197)
 * fix: new-tab cli action now properly looks in the layout folder as well (https://github.com/zellij-org/zellij/pull/2198)
 * fix: new-tab keybind now properly looks in the layout folder as well (https://github.com/zellij-org/zellij/pull/2200)
+* fix: cwd for edit panes (https://github.com/zellij-org/zellij/pull/2201)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
