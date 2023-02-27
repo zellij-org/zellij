@@ -822,7 +822,7 @@ impl Pty {
                     },
                 }
             },
-            Some(Run::EditFile(path_to_file, line_number)) => {
+            Some(Run::EditFile(path_to_file, line_number, cwd)) => {
                 let starts_held = false; // we do not hold edit panes (for now?)
                 match self
                     .bus
@@ -831,7 +831,7 @@ impl Pty {
                     .context("no OS I/O interface found")
                     .with_context(err_context)?
                     .spawn_terminal(
-                        TerminalAction::OpenFile(path_to_file, line_number, None),
+                        TerminalAction::OpenFile(path_to_file, line_number, cwd),
                         quit_cb,
                         self.default_editor.clone(),
                     )

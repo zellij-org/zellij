@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1574
+assertion_line: 1630
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -21,6 +21,9 @@ Layout {
                             EditFile(
                                 "/tmp/foo/bar",
                                 None,
+                                Some(
+                                    "/tmp/foo/",
+                                ),
                             ),
                         ),
                         borderless: false,

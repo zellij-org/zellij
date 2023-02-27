@@ -374,8 +374,8 @@ impl<'a> KdlLayoutParser<'a> {
                 hold_on_close,
                 hold_on_start,
             }))),
-            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
+            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None, Some(cwd)))),
+            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None, None))),
             (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),

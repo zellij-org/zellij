@@ -73,7 +73,7 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
     Cwd(PathBuf),
 }
 
@@ -108,13 +108,14 @@ impl Run {
             },
             (
                 Some(Run::Command(base_run_command)),
-                Some(Run::EditFile(file_to_edit, line_number)),
+                Some(Run::EditFile(file_to_edit, line_number, edit_cwd)),
             ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number, Some(cwd.join(edit_cwd.clone().unwrap_or_default())))),
+                None => Some(Run::EditFile(file_to_edit.clone(), *line_number, edit_cwd.clone())),
             },
-            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number, edit_cwd))) => {
+                let cwd = edit_cwd.clone().unwrap_or(cwd.clone());
+                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number, Some(cwd)))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -132,7 +133,15 @@ impl Run {
                     run_command.cwd = Some(cwd.clone());
                 },
             },
-            Run::EditFile(path_to_file, _line_number) => {
+            Run::EditFile(path_to_file, _line_number, edit_cwd) => {
+                match edit_cwd.as_mut() {
+                    Some(edit_cwd) => {
+                        *edit_cwd = cwd.join(&edit_cwd);
+                    },
+                    None => {
+                        let _ = edit_cwd.insert(cwd.clone());
+                    }
+                };
                 *path_to_file = cwd.join(&path_to_file);
             },
             Run::Cwd(path) => {
