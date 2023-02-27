@@ -1039,7 +1039,8 @@ impl Tab {
                     if should_auto_layout {
                         // no need to relayout here, we'll do it when reapplying the swap layout
                         // below
-                        self.tiled_panes.insert_pane_without_relayout(pid, Box::new(new_terminal));
+                        self.tiled_panes
+                            .insert_pane_without_relayout(pid, Box::new(new_terminal));
                     } else {
                         self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
                     }
