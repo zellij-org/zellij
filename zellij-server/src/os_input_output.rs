@@ -277,7 +277,12 @@ fn spawn_terminal(
     // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open, line_number) => {
+        TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
+            if file_to_open.is_relative() {
+                if let Some(cwd) = cwd.as_ref() {
+                    file_to_open = cwd.join(file_to_open);
+                }
+            }
             let mut command = default_editor.unwrap_or_else(|| {
                 PathBuf::from(
                     env::var("EDITOR")
@@ -318,7 +323,7 @@ fn spawn_terminal(
             RunCommand {
                 command,
                 args,
-                cwd: None,
+                cwd,
                 hold_on_close: false,
                 hold_on_start: false,
             }
