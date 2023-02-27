@@ -7,6 +7,7 @@ use crate::input::layout::{Layout, RunPlugin, RunPluginLocation};
 use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
+use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
 use std::fs::File;
@@ -770,8 +771,12 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
                     .and_then(|c_m| kdl_child_string_value_for_entry(c_m, "name"))
                     .map(|name_string| name_string.to_string());
 
+                let layout_dir = config_options
+                    .layout_dir
+                    .clone()
+                    .or_else(|| get_layout_dir(find_default_config_dir()));
                 let (path_to_raw_layout, raw_layout, swap_layouts) =
-                    Layout::stringified_from_path_or_default(layout.as_ref(), None).map_err(
+                    Layout::stringified_from_path_or_default(layout.as_ref(), layout_dir).map_err(
                         |e| {
                             ConfigError::new_kdl_error(
                                 format!("Failed to load layout: {}", e),
