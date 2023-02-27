@@ -962,7 +962,6 @@ impl<'a> KdlLayoutParser<'a> {
                     .unwrap_or(false);
             let split_size = self.parse_split_size(kdl_node)?;
             let children_split_direction = self.parse_split_direction(kdl_node)?;
-            let is_part_of_stack = false;
             let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
                 Some(children) => {
                     self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?

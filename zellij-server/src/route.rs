@@ -284,9 +284,9 @@ pub(crate) fn route_action(
                 .send_to_pty(pty_instr)
                 .with_context(err_context)?;
         },
-        Action::EditFile(path_to_file, line_number, split_direction, should_float) => {
+        Action::EditFile(path_to_file, line_number, cwd, split_direction, should_float) => {
             let title = format!("Editing: {}", path_to_file.display());
-            let open_file = TerminalAction::OpenFile(path_to_file, line_number);
+            let open_file = TerminalAction::OpenFile(path_to_file, line_number, cwd);
             let pty_instr = match (split_direction, should_float) {
                 (Some(Direction::Left), false) => {
                     PtyInstruction::SpawnTerminalVertically(Some(open_file), Some(title), client_id)
