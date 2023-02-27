@@ -609,7 +609,7 @@ impl ExistingTabState {
         default_to_closest_position: bool,
     ) -> Vec<(&PaneId, &Box<dyn Pane>)> {
         let mut candidates: Vec<_> = self.existing_panes.iter().collect();
-        candidates.sort_by(|(_a_id, a), (_b_id, b)| {
+        candidates.sort_by(|(a_id, a), (b_id, b)| {
             let a_invoked_with = a.invoked_with();
             let b_invoked_with = b.invoked_with();
             if Run::is_same_category(run, a_invoked_with)
@@ -637,7 +637,7 @@ impl ExistingTabState {
                     let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
                     (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
                 } else {
-                    std::cmp::Ordering::Equal
+                    a_id.cmp(&b_id) // just so it's a stable sort
                 }
             }
         });
