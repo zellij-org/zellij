@@ -160,7 +160,27 @@ impl TiledPanes {
         self.move_clients_between_panes(pane_id, with_pane_id);
         removed_pane
     }
-    pub fn insert_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>) {
+    pub fn insert_pane(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+        let should_relayout = true;
+        self.add_pane(pane_id, pane, should_relayout);
+    }
+    pub fn insert_pane_without_relayout(&mut self, pane_id: PaneId, pane: Box<dyn Pane>) {
+        let should_relayout = false;
+        self.add_pane(pane_id, pane, should_relayout);
+    }
+    pub fn has_room_for_new_pane(&mut self) -> bool {
+        let cursor_height_width_ratio = self.cursor_height_width_ratio();
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        pane_grid
+            .find_room_for_new_pane(cursor_height_width_ratio)
+            .is_some()
+    }
+    fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
         let pane_grid = TiledPaneGrid::new(
             &mut self.panes,
@@ -178,21 +198,11 @@ impl TiledPanes {
                 pane_to_split.set_geom(first_geom);
                 pane.set_geom(second_geom);
                 self.panes.insert(pane_id, pane);
-                self.relayout(!split_direction);
+                if should_relayout {
+                    self.relayout(!split_direction);
+                }
             }
         }
-    }
-    pub fn has_room_for_new_pane(&mut self) -> bool {
-        let cursor_height_width_ratio = self.cursor_height_width_ratio();
-        let pane_grid = TiledPaneGrid::new(
-            &mut self.panes,
-            &self.panes_to_hide,
-            *self.display_area.borrow(),
-            *self.viewport.borrow(),
-        );
-        pane_grid
-            .find_room_for_new_pane(cursor_height_width_ratio)
-            .is_some()
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
         self.panes

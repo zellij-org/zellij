@@ -1017,6 +1017,7 @@ impl Tab {
             if self.tiled_panes.fullscreen_is_active() {
                 self.tiled_panes.unset_fullscreen();
             }
+            let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
             if self.tiled_panes.has_room_for_new_pane() {
                 if let PaneId::Terminal(term_pid) = pid {
                     let next_terminal_position = self.get_next_terminal_position();
@@ -1035,14 +1036,20 @@ impl Tab {
                         None,
                     );
                     new_terminal.set_active_at(Instant::now());
-                    self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
+                    if should_auto_layout {
+                        // no need to relayout here, we'll do it when reapplying the swap layout
+                        // below
+                        self.tiled_panes.insert_pane_without_relayout(pid, Box::new(new_terminal));
+                    } else {
+                        self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
+                    }
                     self.should_clear_display_before_rendering = true;
                     if let Some(client_id) = client_id {
                         self.tiled_panes.focus_pane(pid, client_id);
                     }
                 }
             }
-            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
+            if should_auto_layout {
                 // only do this if we're already in this layout, otherwise it might be
                 // confusing and not what the user intends
                 self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
