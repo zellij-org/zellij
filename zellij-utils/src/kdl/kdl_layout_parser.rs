@@ -1827,7 +1827,9 @@ impl<'a> KdlLayoutParser<'a> {
                 layout_node
             ));
         };
-        if let Some(exact_panes) = kdl_get_string_property_or_child_value!(layout_node, "exact_panes") {
+        if let Some(exact_panes) =
+            kdl_get_string_property_or_child_value!(layout_node, "exact_panes")
+        {
             return Err(kdl_parsing_error!(
                 format!(
                     "exact_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
