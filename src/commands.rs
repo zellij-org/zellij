@@ -18,7 +18,7 @@ use zellij_server::{os_input_output::get_server_os_input, start_server as start_
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
-    input::{actions::Action, config::ConfigError, options::Options},
+    input::{actions::Action, config::{Config, ConfigError}, options::Options},
     nix,
     setup::Setup,
 };
@@ -115,6 +115,7 @@ fn find_indexed_session(
 pub(crate) fn send_action_to_session(
     cli_action: zellij_utils::cli::CliAction,
     requested_session_name: Option<String>,
+    config: Option<Config>,
 ) {
     match get_active_session() {
         ActiveSession::None => {
@@ -132,13 +133,13 @@ pub(crate) fn send_action_to_session(
                     std::process::exit(1);
                 }
             }
-            attach_with_cli_client(cli_action, &session_name);
+            attach_with_cli_client(cli_action, &session_name, config);
         },
         ActiveSession::Many => {
             let existing_sessions = get_sessions().unwrap();
             if let Some(session_name) = requested_session_name {
                 if existing_sessions.contains(&session_name) {
-                    attach_with_cli_client(cli_action, &session_name);
+                    attach_with_cli_client(cli_action, &session_name, config);
                 } else {
                     eprintln!(
                         "Session '{}' not found. The following sessions are active:",
@@ -148,7 +149,7 @@ pub(crate) fn send_action_to_session(
                     std::process::exit(1);
                 }
             } else if let Ok(session_name) = envs::get_session_name() {
-                attach_with_cli_client(cli_action, &session_name);
+                attach_with_cli_client(cli_action, &session_name, config);
             } else {
                 eprintln!("Please specify the session name to send actions to. The following sessions are active:");
                 print_sessions(existing_sessions);
@@ -226,10 +227,10 @@ pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
     }
 }
 
-fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str) {
+fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str, config: Option<Config>) {
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    match Action::actions_from_cli(cli_action, Box::new(get_current_dir)) {
+    match Action::actions_from_cli(cli_action, Box::new(get_current_dir), config) {
         Ok(actions) => {
             zellij_client::cli_client::start_cli_client(Box::new(os_input), session_name, actions);
             std::process::exit(0);
