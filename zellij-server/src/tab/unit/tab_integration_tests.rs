@@ -5681,8 +5681,8 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
         )),
         true,
     );
-    tab.move_focus_down(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.close_pane(PaneId::Terminal(3), false, Some(client_id));
     tab.render(&mut output, None).unwrap();
 
@@ -5694,7 +5694,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((1, 11)),
+        Some((62, 1)),
         "cursor coordinates moved to the new pane",
     );
     assert_snapshot!(snapshot);
