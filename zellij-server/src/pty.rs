@@ -455,18 +455,46 @@ impl Pty {
             default_editor,
         }
     }
-    pub fn get_default_terminal(&self, cwd: Option<PathBuf>) -> TerminalAction {
-        let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
-            log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
-            "/bin/sh".to_string()
-        }));
-        TerminalAction::RunCommand(RunCommand {
-            args: vec![],
-            command: shell,
-            cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
-            hold_on_close: false,
-            hold_on_start: false,
-        })
+    pub fn get_default_terminal(
+        &self,
+        cwd: Option<PathBuf>,
+        default_shell: Option<TerminalAction>,
+    ) -> TerminalAction {
+        match default_shell {
+            Some(mut default_shell) => {
+                if let Some(cwd) = cwd {
+                    match default_shell {
+                        TerminalAction::RunCommand(ref mut command) => {
+                            command.cwd = Some(cwd);
+                        },
+                        TerminalAction::OpenFile(ref file, line_number, ref mut edit_cwd) => {
+                            match edit_cwd.as_mut() {
+                                Some(edit_cwd) => {
+                                    *edit_cwd = cwd.join(&edit_cwd);
+                                },
+                                None => {
+                                    let _ = edit_cwd.insert(cwd.clone());
+                                },
+                            };
+                        },
+                    }
+                }
+                default_shell
+            },
+            None => {
+                let shell = PathBuf::from(env::var("SHELL").unwrap_or_else(|_| {
+                    log::warn!("Cannot read SHELL env, falling back to use /bin/sh");
+                    "/bin/sh".to_string()
+                }));
+                TerminalAction::RunCommand(RunCommand {
+                    args: vec![],
+                    command: shell,
+                    cwd, // note: this might also be filled by the calling function, eg. spawn_terminal
+                    hold_on_close: false,
+                    hold_on_start: false,
+                })
+            },
+        }
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
         if let TerminalAction::RunCommand(run_command) = terminal_action {
@@ -499,12 +527,12 @@ impl Pty {
         let terminal_action = match client_or_tab_index {
             ClientOrTabIndex::ClientId(client_id) => {
                 let mut terminal_action =
-                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None));
+                    terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None));
                 self.fill_cwd(&mut terminal_action, client_id);
                 terminal_action
             },
             ClientOrTabIndex::TabIndex(_) => {
-                terminal_action.unwrap_or_else(|| self.get_default_terminal(None))
+                terminal_action.unwrap_or_else(|| self.get_default_terminal(None, None))
             },
         };
         let (hold_on_start, hold_on_close) = match &terminal_action {
@@ -589,7 +617,8 @@ impl Pty {
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
-        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None));
+        let mut default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(None, None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions =
@@ -800,7 +829,7 @@ impl Pty {
             },
             Some(Run::Cwd(cwd)) => {
                 let starts_held = false; // we do not hold Cwd panes
-                let shell = self.get_default_terminal(Some(cwd));
+                let shell = self.get_default_terminal(Some(cwd), Some(default_shell.clone()));
                 match self
                     .bus
                     .os_input
