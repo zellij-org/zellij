@@ -103,7 +103,7 @@ fn send_cli_action_to_server(
     let os_input = Box::new(mock_screen.os_input.clone());
     let to_server = mock_screen.to_server.clone();
     let get_current_dir = || PathBuf::from(".");
-    let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir)).unwrap();
+    let actions = Action::actions_from_cli(cli_action, Box::new(get_current_dir), None).unwrap();
     for action in actions {
         route_action(
             action,

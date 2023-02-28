@@ -7,7 +7,7 @@ use super::layout::{
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
-use crate::input::config::{ConfigError, KdlError};
+use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use miette::{NamedSource, Report};
@@ -239,6 +239,7 @@ impl Action {
     pub fn actions_from_cli(
         cli_action: CliAction,
         get_current_dir: Box<dyn Fn() -> PathBuf>,
+        config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
@@ -369,8 +370,9 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let layout_dir =
-                        layout_dir.or_else(|| get_layout_dir(find_default_config_dir()));
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
                     let (path_to_raw_layout, raw_layout, swap_layouts) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
