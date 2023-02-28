@@ -467,7 +467,7 @@ impl Pty {
                         TerminalAction::RunCommand(ref mut command) => {
                             command.cwd = Some(cwd);
                         },
-                        TerminalAction::OpenFile(ref file, line_number, ref mut edit_cwd) => {
+                        TerminalAction::OpenFile(ref _file, _line_number, ref mut edit_cwd) => {
                             match edit_cwd.as_mut() {
                                 Some(edit_cwd) => {
                                     *edit_cwd = cwd.join(&edit_cwd);

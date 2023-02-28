@@ -119,6 +119,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "children"
             || property_name == "max_panes"
             || property_name == "min_panes"
+            || property_name == "exact_panes"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -1747,6 +1748,12 @@ impl<'a> KdlLayoutParser<'a> {
                                 tab_template_kdl_node,
                             )?;
                             swap_tiled_layout.insert(layout_constraint, layout);
+                        } else {
+                            return Err(ConfigError::new_layout_kdl_error(
+                                format!("Unknown layout node: '{}'", layout_node_name),
+                                layout.span().offset(),
+                                layout.span().len(),
+                            ));
                         }
                     }
                     swap_tiled_layouts.push((swap_tiled_layout, swap_layout_name));
@@ -1787,6 +1794,12 @@ impl<'a> KdlLayoutParser<'a> {
                                 tab_template_kdl_node,
                             )?;
                             swap_floating_layout.insert(layout_constraint, layout);
+                        } else {
+                            return Err(ConfigError::new_layout_kdl_error(
+                                format!("Unknown layout node: '{}'", layout_node_name),
+                                layout.span().offset(),
+                                layout.span().len(),
+                            ));
                         }
                     }
                     swap_floating_layouts.push((swap_floating_layout, swap_layout_name));
@@ -1814,17 +1827,41 @@ impl<'a> KdlLayoutParser<'a> {
                 layout_node
             ));
         };
+        if let Some(exact_panes) =
+            kdl_get_string_property_or_child_value!(layout_node, "exact_panes")
+        {
+            return Err(kdl_parsing_error!(
+                format!(
+                    "exact_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
+                    exact_panes,
+                ),
+                layout_node
+            ));
+        };
         let max_panes = kdl_get_int_property_or_child_value!(layout_node, "max_panes");
         let min_panes = kdl_get_int_property_or_child_value!(layout_node, "min_panes");
-        match (min_panes, max_panes) {
-            (Some(_min_panes), Some(_max_panes)) => Err(kdl_parsing_error!(
+        let exact_panes = kdl_get_int_property_or_child_value!(layout_node, "exact_panes");
+        let mut constraint_count = 0;
+        let mut constraint = None;
+        if let Some(max_panes) = max_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::MaxPanes(max_panes as usize));
+        }
+        if let Some(min_panes) = min_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::MinPanes(min_panes as usize));
+        }
+        if let Some(exact_panes) = exact_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::ExactPanes(exact_panes as usize));
+        }
+        if constraint_count > 1 {
+            return Err(kdl_parsing_error!(
                 format!("cannot have more than one constraint (eg. max_panes + min_panes)'"),
                 layout_node
-            )),
-            (Some(min_panes), None) => Ok(LayoutConstraint::MinPanes(min_panes as usize)),
-            (None, Some(max_panes)) => Ok(LayoutConstraint::MaxPanes(max_panes as usize)),
-            _ => Ok(LayoutConstraint::NoConstraint),
+            ));
         }
+        Ok(constraint.unwrap_or(LayoutConstraint::NoConstraint))
     }
     fn populate_one_swap_tiled_layout(
         &self,

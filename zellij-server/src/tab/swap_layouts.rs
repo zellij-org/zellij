@@ -40,12 +40,14 @@ impl SwapLayouts {
         let mut base_swap_floating_layout = BTreeMap::new();
         let tiled_panes_count = layout.0.pane_count();
         let floating_panes_count = layout.1.len();
-        // we set MaxPanes to the current panes in the layout, because the base layout is not
+        // we set ExactPanes to the current panes in the layout, because the base layout is not
         // intended to be progressive - i.e. to have additional panes added to it
+        // we also don't want it to be applied for less than the expected amount of panes, because
+        // then unintended things can happen
         // we still want to keep it around in case we'd like to swap layouts without adding panes
-        base_swap_tiled_layout.insert(LayoutConstraint::MaxPanes(tiled_panes_count), layout.0);
+        base_swap_tiled_layout.insert(LayoutConstraint::ExactPanes(tiled_panes_count), layout.0);
         base_swap_floating_layout
-            .insert(LayoutConstraint::MaxPanes(floating_panes_count), layout.1);
+            .insert(LayoutConstraint::ExactPanes(floating_panes_count), layout.1);
         self.swap_tiled_layouts
             .insert(0, (base_swap_tiled_layout, Some("BASE".into())));
         self.swap_floating_layouts
@@ -174,6 +176,9 @@ impl SwapLayouts {
             LayoutConstraint::MinPanes(min_panes) => {
                 tiled_panes.visible_panes_count() >= *min_panes
             },
+            LayoutConstraint::ExactPanes(pane_count) => {
+                tiled_panes.visible_panes_count() == *pane_count
+            },
             LayoutConstraint::NoConstraint => true,
         }
     }
@@ -188,6 +193,9 @@ impl SwapLayouts {
             },
             LayoutConstraint::MinPanes(min_panes) => {
                 floating_panes.visible_panes_count() >= *min_panes
+            },
+            LayoutConstraint::ExactPanes(pane_count) => {
+                floating_panes.visible_panes_count() == *pane_count
             },
             LayoutConstraint::NoConstraint => true,
         }

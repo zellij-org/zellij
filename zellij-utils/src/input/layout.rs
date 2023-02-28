@@ -252,6 +252,7 @@ impl fmt::Display for RunPluginLocation {
 pub enum LayoutConstraint {
     MaxPanes(usize),
     MinPanes(usize),
+    ExactPanes(usize),
     NoConstraint,
 }
 
