@@ -368,8 +368,7 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let layout_dir =
-                        layout_dir
+                    let layout_dir = layout_dir
                         .or_else(|| config.and_then(|c| c.options.layout_dir))
                         .or_else(|| get_layout_dir(find_default_config_dir()));
                     let (path_to_raw_layout, raw_layout, swap_layouts) =

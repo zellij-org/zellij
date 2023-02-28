@@ -18,7 +18,11 @@ use zellij_server::{os_input_output::get_server_os_input, start_server as start_
 use zellij_utils::{
     cli::{CliArgs, Command, SessionCommand, Sessions},
     envs,
-    input::{actions::Action, config::{Config, ConfigError}, options::Options},
+    input::{
+        actions::Action,
+        config::{Config, ConfigError},
+        options::Options,
+    },
     nix,
     setup::Setup,
 };
@@ -227,7 +231,11 @@ pub(crate) fn convert_old_theme_file(old_theme_file: PathBuf) {
     }
 }
 
-fn attach_with_cli_client(cli_action: zellij_utils::cli::CliAction, session_name: &str, config: Option<Config>) {
+fn attach_with_cli_client(
+    cli_action: zellij_utils::cli::CliAction,
+    session_name: &str,
+    config: Option<Config>,
+) {
     let os_input = get_os_input(zellij_client::os_input_output::get_cli_client_os_input);
     let get_current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     match Action::actions_from_cli(cli_action, Box::new(get_current_dir), config) {

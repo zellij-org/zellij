@@ -455,7 +455,11 @@ impl Pty {
             default_editor,
         }
     }
-    pub fn get_default_terminal(&self, cwd: Option<PathBuf>, default_shell: Option<TerminalAction>) -> TerminalAction {
+    pub fn get_default_terminal(
+        &self,
+        cwd: Option<PathBuf>,
+        default_shell: Option<TerminalAction>,
+    ) -> TerminalAction {
         match default_shell {
             Some(mut default_shell) => {
                 if let Some(cwd) = cwd {
@@ -472,7 +476,7 @@ impl Pty {
                                     let _ = edit_cwd.insert(cwd.clone());
                                 },
                             };
-                        }
+                        },
                     }
                 }
                 default_shell
@@ -489,7 +493,7 @@ impl Pty {
                     hold_on_close: false,
                     hold_on_start: false,
                 })
-            }
+            },
         }
     }
     fn fill_cwd(&self, terminal_action: &mut TerminalAction, client_id: ClientId) {
@@ -613,7 +617,8 @@ impl Pty {
     ) -> Result<()> {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
-        let mut default_shell = default_shell.unwrap_or_else(|| self.get_default_terminal(None, None));
+        let mut default_shell =
+            default_shell.unwrap_or_else(|| self.get_default_terminal(None, None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions =
