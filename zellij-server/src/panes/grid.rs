@@ -2384,9 +2384,11 @@ impl Perform for Grid {
                 .unwrap_or(default) as usize
         };
         if c == 'm' {
-            self.cursor
-                .pending_styles
-                .add_style_from_ansi_params(&mut params_iter);
+            if intermediates.is_empty() {
+                self.cursor
+                    .pending_styles
+                    .add_style_from_ansi_params(&mut params_iter);
+            }
         } else if c == 'C' || c == 'a' {
             // move cursor forward
             let move_by = next_param_or(1);
@@ -2394,13 +2396,13 @@ impl Perform for Grid {
         } else if c == 'K' {
             // clear line (0 => right, 1 => left, 2 => all)
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
+                let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
+                if let Some(background_color) = self.cursor.pending_styles.background {
+                    char_to_replace.styles.background = Some(background_color);
+                }
                 if clear_type == 0 {
-                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                    char_to_replace.styles = self.cursor.pending_styles;
                     self.replace_characters_in_line_after_cursor(char_to_replace);
                 } else if clear_type == 1 {
-                    let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-                    char_to_replace.styles = self.cursor.pending_styles;
                     self.replace_characters_in_line_before_cursor(char_to_replace);
                 } else if clear_type == 2 {
                     self.clear_cursor_line();
@@ -2409,8 +2411,9 @@ impl Perform for Grid {
         } else if c == 'J' {
             // clear all (0 => below, 1 => above, 2 => all, 3 => saved)
             let mut char_to_replace = EMPTY_TERMINAL_CHARACTER;
-            char_to_replace.styles = self.cursor.pending_styles;
-
+            if let Some(background_color) = self.cursor.pending_styles.background {
+                char_to_replace.styles.background = Some(background_color);
+            }
             if let Some(clear_type) = params_iter.next().map(|param| param[0]) {
                 if clear_type == 0 {
                     self.clear_all_after_cursor(char_to_replace);
