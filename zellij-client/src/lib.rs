@@ -59,7 +59,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
-            ServerToClientMsg::Log(tab_names) => ClientInstruction::Log(tab_names),
+            ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
         }
     }
 }
@@ -410,7 +410,9 @@ pub fn start_client(
                     .unwrap();
             },
             ClientInstruction::Log(lines_to_log) => {
-                log::info!("logs are {lines_to_log:?}");
+                for line in lines_to_log {
+                    log::info!("{line}");
+                }
             },
             _ => {},
         }
