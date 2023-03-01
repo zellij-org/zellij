@@ -722,7 +722,11 @@ impl ServerOsApi for ServerOsInputOutput {
         system_info.refresh_processes_specifics(ProcessRefreshKind::default());
 
         if let Some(process) = system_info.process(pid.into()) {
-            return Some(process.cwd().to_path_buf());
+            let cwd = process.cwd();
+            let cwd_is_empty = cwd.iter().next().is_none();
+            if !cwd_is_empty {
+                return Some(process.cwd().to_path_buf());
+            }
         }
         None
     }
