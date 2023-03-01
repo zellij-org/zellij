@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: report pixel size in ioctl (https://github.com/zellij-org/zellij/pull/2212)
 * fix: handle empty cwd from unreadable processes (https://github.com/zellij-org/zellij/pull/2213)
 * fix: properly decode plugin urls with spaces (https://github.com/zellij-org/zellij/pull/2190)
+* feat: QueryTabNames cli action (https://github.com/zellij-org/zellij/pull/2145)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
