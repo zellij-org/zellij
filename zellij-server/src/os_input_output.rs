@@ -174,12 +174,7 @@ fn handle_openpty(
                 if current_dir.exists() && current_dir.is_dir() {
                     command.current_dir(current_dir);
                 } else {
-                    // TODO: propagate this to the user
-                    return Err(anyhow!(
-                        "Failed to set CWD for new pane. '{}' does not exist or is not a folder",
-                        current_dir.display()
-                    ))
-                    .context("failed to open PTY");
+                    log::error!("Failed to set CWD for new pane. '{}' does not exist or is not a folder", current_dir.display());
                 }
             }
             command
