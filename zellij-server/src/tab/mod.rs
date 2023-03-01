@@ -63,6 +63,42 @@ macro_rules! resize_pty {
                 *pid,
                 $pane.get_content_columns() as u16,
                 $pane.get_content_rows() as u16,
+                None,
+                None,
+            ),
+            PaneId::Plugin(ref pid) => {
+                let err_context = || format!("failed to resize plugin {pid}");
+                $senders
+                    .send_to_plugin(PluginInstruction::Resize(
+                        *pid,
+                        $pane.get_content_columns(),
+                        $pane.get_content_rows(),
+                    ))
+                    .with_context(err_context)
+            },
+        }
+    }};
+    ($pane:expr, $os_input:expr, $senders:expr, $character_cell_size:expr) => {{
+        let (width_in_pixels, height_in_pixels) = {
+            let character_cell_size = $character_cell_size.borrow();
+            match *character_cell_size {
+                Some(size_in_pixels) => {
+                    let width_in_pixels =
+                        (size_in_pixels.width * $pane.get_content_columns()) as u16;
+                    let height_in_pixels =
+                        (size_in_pixels.height * $pane.get_content_rows()) as u16;
+                    (Some(width_in_pixels), Some(height_in_pixels))
+                },
+                None => (None, None),
+            }
+        };
+        match $pane.pid() {
+            PaneId::Terminal(ref pid) => $os_input.set_terminal_size_using_terminal_id(
+                *pid,
+                $pane.get_content_columns() as u16,
+                $pane.get_content_rows() as u16,
+                width_in_pixels,
+                height_in_pixels,
             ),
             PaneId::Plugin(ref pid) => {
                 let err_context = || format!("failed to resize plugin {pid}");
@@ -490,6 +526,7 @@ impl Tab {
             connected_clients.clone(),
             connected_clients_in_app,
             mode_info.clone(),
+            character_cell_size.clone(),
             session_is_mirrored,
             default_mode_info.clone(),
             style,
@@ -900,8 +937,13 @@ impl Tab {
                         embedded_pane_to_float.set_content_offset(Offset::frame(1));
                     }
                     embedded_pane_to_float.set_geom(new_pane_geom);
-                    resize_pty!(embedded_pane_to_float, self.os_api, self.senders)
-                        .with_context(err_context)?;
+                    resize_pty!(
+                        embedded_pane_to_float,
+                        self.os_api,
+                        self.senders,
+                        self.character_cell_size
+                    )
+                    .with_context(err_context)?;
                     embedded_pane_to_float.set_active_at(Instant::now());
                     self.floating_panes
                         .add_pane(focused_pane_id, embedded_pane_to_float);
@@ -1001,7 +1043,13 @@ impl Tab {
                     );
                     new_pane.set_active_at(Instant::now());
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
-                    resize_pty!(new_pane, self.os_api, self.senders).with_context(err_context)?;
+                    resize_pty!(
+                        new_pane,
+                        self.os_api,
+                        self.senders,
+                        self.character_cell_size
+                    )
+                    .with_context(err_context)?;
                     self.floating_panes.add_pane(pid, Box::new(new_pane));
                     self.floating_panes.focus_pane_for_all_clients(pid);
                 }
@@ -1101,7 +1149,12 @@ impl Tab {
                         self.get_active_pane(client_id)
                             .with_context(|| format!("no active pane found for client {client_id}"))
                             .and_then(|current_active_pane| {
-                                resize_pty!(current_active_pane, self.os_api, self.senders)
+                                resize_pty!(
+                                    current_active_pane,
+                                    self.os_api,
+                                    self.senders,
+                                    self.character_cell_size
+                                )
                             })
                             .with_context(err_context)?;
                     },
@@ -1375,8 +1428,13 @@ impl Tab {
             })
         {
             if self.pids_waiting_resize.remove(&pid) {
-                resize_pty!(terminal_output, self.os_api, self.senders)
-                    .with_context(err_context)?;
+                resize_pty!(
+                    terminal_output,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                )
+                .with_context(err_context)?;
             }
             terminal_output.handle_pty_bytes(bytes);
             let messages_to_pty = terminal_output.drain_messages_to_pty();
@@ -2212,7 +2270,12 @@ impl Tab {
                     // the pane there we replaced. Now, we need to update its pty about its new size.
                     // We couldn't do that before, and we can't use the original moved item now - so we
                     // need to refetch it
-                    resize_pty!(suppressed_pane, self.os_api, self.senders)?;
+                    resize_pty!(
+                        suppressed_pane,
+                        self.os_api,
+                        self.senders,
+                        self.character_cell_size
+                    )?;
                 }
                 Ok(replaced_pane)
             })
