@@ -48,7 +48,14 @@ struct FakeInputOutput {
 }
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) -> Result<()> {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        _id: u32,
+        _cols: u16,
+        _rows: u16,
+        _width_in_pixels: Option<u16>,
+        _height_in_pixels: Option<u16>,
+    ) -> Result<()> {
         // noop
         Ok(())
     }
