@@ -1942,3 +1942,92 @@ fn cannot_define_stacked_panes_with_grandchildren_in_pane_template() {
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
     assert!(layout.is_err(), "error provided for tab name with space");
 }
+
+#[test]
+fn run_plugin_location_parsing() {
+    let kdl_layout = r#"
+        layout {
+            pane {
+                plugin location="zellij:tab-bar"
+            }
+            pane {
+                plugin location="file:/path/to/my/plugin.wasm"
+            }
+            pane {
+                plugin location="file:plugin.wasm"
+            }
+            pane {
+                plugin location="file:relative/with space/plugin.wasm"
+            }
+            pane {
+                plugin location="file:///absolute/with space/plugin.wasm"
+            }
+            pane {
+                plugin location="file:c:/absolute/windows/plugin.wasm"
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    let expected_layout = Layout {
+        template: Some((
+            TiledPaneLayout {
+                children: vec![
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::Zellij(PluginTag::new("tab-bar")),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "/path/to/my/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from("plugin.wasm")),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "relative/with space/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "/absolute/with space/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                    TiledPaneLayout {
+                        run: Some(Run::Plugin(RunPlugin {
+                            _allow_exec_host_cmd: false,
+                            location: RunPluginLocation::File(PathBuf::from(
+                                "c:/absolute/windows/plugin.wasm",
+                            )),
+                        })),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            },
+            vec![],
+        )),
+        ..Default::default()
+    };
+    assert_eq!(layout, expected_layout);
+}

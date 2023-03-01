@@ -225,8 +225,10 @@ impl Default for PluginType {
 pub enum PluginsConfigError {
     #[error("Duplication in plugin tag names is not allowed: '{}'", String::from(.0.clone()))]
     DuplicatePlugins(PluginTag),
+    #[error("Failed to parse url: {0:?}")]
+    InvalidUrl(#[from] url::ParseError),
     #[error("Only 'file:' and 'zellij:' url schemes are supported for plugin lookup. '{0}' does not match either.")]
-    InvalidUrl(Url),
+    InvalidUrlScheme(Url),
     #[error("Could not find plugin at the path: '{0:?}'")]
     InvalidPluginLocation(PathBuf),
 }

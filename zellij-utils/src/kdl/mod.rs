@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use strum::IntoEnumIterator;
-use url::Url;
 
 use miette::NamedSource;
 
@@ -1387,14 +1386,13 @@ impl RunPlugin {
                 kdl_node.span().len(),
             ),
         )?;
-        let url = Url::parse(string_url).map_err(|e| {
-            ConfigError::new_kdl_error(
-                format!("Failed to parse url: {:?}", e),
+        let location = RunPluginLocation::parse(string_url).map_err(|e| {
+            ConfigError::new_layout_kdl_error(
+                e.to_string(),
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             )
         })?;
-        let location = RunPluginLocation::try_from(url)?;
         Ok(RunPlugin {
             _allow_exec_host_cmd,
             location,

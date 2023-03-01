@@ -4095,6 +4095,7 @@ dependencies = [
  "miette 3.3.0",
  "nix 0.23.1",
  "once_cell",
+ "percent-encoding",
  "regex",
  "rmp-serde",
  "serde",
