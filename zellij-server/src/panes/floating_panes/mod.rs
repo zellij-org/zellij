@@ -307,7 +307,8 @@ impl FloatingPanes {
             } else {
                 pane.set_content_offset(Offset::default());
             }
-            resize_pty!(pane, os_api, self.senders, self.character_cell_size).with_context(|| err_context(&pane.pid()))?;
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(|| err_context(&pane.pid()))?;
         }
         Ok(())
     }
@@ -427,7 +428,8 @@ impl FloatingPanes {
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api, self.senders, self.character_cell_size).with_context(err_context)?;
+                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                    .with_context(err_context)?;
             }
             self.set_force_render();
             return Ok(true);
@@ -844,7 +846,13 @@ impl FloatingPanes {
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);
             }
-            resize_pty!(current_position, os_api, self.senders, self.character_cell_size).unwrap();
+            resize_pty!(
+                current_position,
+                os_api,
+                self.senders,
+                self.character_cell_size
+            )
+            .unwrap();
             current_position.set_should_render(true);
             self.focus_pane_for_all_clients(active_pane_id);
         }

@@ -305,7 +305,12 @@ impl<'a> LayoutApplier<'a> {
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
-                resize_pty!(new_pane, self.os_api, self.senders, self.character_cell_size)?;
+                resize_pty!(
+                    new_pane,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                )?;
                 self.floating_panes
                     .add_pane(PaneId::Plugin(pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {
@@ -340,7 +345,12 @@ impl<'a> LayoutApplier<'a> {
                 if let Some(held_command) = hold_for_command {
                     new_pane.hold(None, true, held_command.clone());
                 }
-                resize_pty!(new_pane, self.os_api, self.senders, self.character_cell_size)?;
+                resize_pty!(
+                    new_pane,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                )?;
                 self.floating_panes
                     .add_pane(PaneId::Terminal(*pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {

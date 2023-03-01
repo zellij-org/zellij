@@ -43,7 +43,13 @@ use std::{
 pub use async_trait::async_trait;
 pub use nix::unistd::Pid;
 
-fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16, width_in_pixels: Option<u16>, height_in_pixels: Option<u16>) {
+fn set_terminal_size_using_fd(
+    fd: RawFd,
+    columns: u16,
+    rows: u16,
+    width_in_pixels: Option<u16>,
+    height_in_pixels: Option<u16>,
+) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCSWINSZ;
@@ -450,7 +456,14 @@ impl AsyncReader for RawFdAsyncReader {
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16, width_in_pixels: Option<u16>, height_in_pixels: Option<u16>) -> Result<()>;
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        id: u32,
+        cols: u16,
+        rows: u16,
+        width_in_pixels: Option<u16>,
+        height_in_pixels: Option<u16>,
+    ) -> Result<()>;
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
@@ -503,7 +516,14 @@ pub trait ServerOsApi: Send + Sync {
 }
 
 impl ServerOsApi for ServerOsInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16, width_in_pixels: Option<u16>, height_in_pixels: Option<u16>) -> Result<()> {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        id: u32,
+        cols: u16,
+        rows: u16,
+        width_in_pixels: Option<u16>,
+        height_in_pixels: Option<u16>,
+    ) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to set terminal id {} to size ({}, {})",
@@ -783,8 +803,16 @@ impl ServerOsApi for ServerOsInputOutput {
     fn apply_cached_resizes(&mut self) {
         let mut cached_resizes = self.cached_resizes.lock().unwrap().take();
         if let Some(cached_resizes) = cached_resizes.as_mut() {
-            for (terminal_id, (cols, rows, width_in_pixels, height_in_pixels)) in cached_resizes.iter() {
-                let _ = self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows, width_in_pixels.clone(), height_in_pixels.clone());
+            for (terminal_id, (cols, rows, width_in_pixels, height_in_pixels)) in
+                cached_resizes.iter()
+            {
+                let _ = self.set_terminal_size_using_terminal_id(
+                    *terminal_id,
+                    *cols,
+                    *rows,
+                    width_in_pixels.clone(),
+                    height_in_pixels.clone(),
+                );
             }
         }
     }
