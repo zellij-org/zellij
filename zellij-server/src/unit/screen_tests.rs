@@ -128,6 +128,8 @@ impl ServerOsApi for FakeInputOutput {
         _terminal_id: u32,
         _cols: u16,
         _rows: u16,
+        _width_in_pixels: Option<u16>,
+        _height_in_pixels: Option<u16>,
     ) -> Result<()> {
         // noop
         Ok(())
