@@ -39,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: cwd for edit panes (https://github.com/zellij-org/zellij/pull/2201)
 * fix: get config parameters from config file when opening new-tab through the cli (https://github.com/zellij-org/zellij/pull/2203)
 * Terminal compatibility: fix wrong styling interpretation when deleting characters (https://github.com/zellij-org/zellij/pull/2204)
+* fix: report pixel size in ioctl (https://github.com/zellij-org/zellij/pull/2212)
+* fix: handle empty cwd from unreadable processes (https://github.com/zellij-org/zellij/pull/2213)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
