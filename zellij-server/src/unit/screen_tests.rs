@@ -2699,8 +2699,15 @@ pub fn send_cli_query_tab_names_action() {
     );
     std::thread::sleep(std::time::Duration::from_millis(100));
     mock_screen.teardown(vec![server_thread, screen_thread]);
-    assert_snapshot!(format!(
-        "{:#?}",
-        *received_server_instructions.lock().unwrap()
-    ))
+    let log_tab_names_instruction =
+        received_server_instructions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|instruction| match instruction {
+                ServerInstruction::Log(..) => true,
+                _ => false,
+            })
+            .cloned();
+    assert_snapshot!(format!("{:#?}", log_tab_names_instruction));
 }
