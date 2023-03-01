@@ -223,6 +223,8 @@ pub enum Action {
     ToggleMouseMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
 }
 
 impl Action {
@@ -456,6 +458,7 @@ impl Action {
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
         }
     }
 }

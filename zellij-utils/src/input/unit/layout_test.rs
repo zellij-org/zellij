@@ -1943,6 +1943,7 @@ fn cannot_define_stacked_panes_with_grandchildren_in_pane_template() {
     assert!(layout.is_err(), "error provided for tab name with space");
 }
 
+#[test]
 fn run_plugin_location_parsing() {
     let kdl_layout = r#"
         layout {

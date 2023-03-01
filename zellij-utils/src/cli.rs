@@ -366,4 +366,6 @@ pub enum CliAction {
     },
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
 }

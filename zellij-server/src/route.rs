@@ -659,6 +659,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::NextSwapLayout(client_id))
                 .with_context(err_context)?;
         },
+        Action::QueryTabNames => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
+                .with_context(err_context)?;
+        },
     }
     Ok(should_break)
 }

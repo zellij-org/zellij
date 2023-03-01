@@ -45,6 +45,7 @@ pub(crate) enum ClientInstruction {
     ActiveClients(Vec<ClientId>),
     StartedParsingStdinQuery,
     DoneParsingStdinQuery,
+    Log(Vec<String>),
 }
 
 impl From<ServerToClientMsg> for ClientInstruction {
@@ -58,6 +59,7 @@ impl From<ServerToClientMsg> for ClientInstruction {
             },
             ServerToClientMsg::Connected => ClientInstruction::Connected,
             ServerToClientMsg::ActiveClients(clients) => ClientInstruction::ActiveClients(clients),
+            ServerToClientMsg::Log(log_lines) => ClientInstruction::Log(log_lines),
         }
     }
 }
@@ -72,6 +74,7 @@ impl From<&ClientInstruction> for ClientContext {
             ClientInstruction::SwitchToMode(_) => ClientContext::SwitchToMode,
             ClientInstruction::Connected => ClientContext::Connected,
             ClientInstruction::ActiveClients(_) => ClientContext::ActiveClients,
+            ClientInstruction::Log(_) => ClientContext::Log,
             ClientInstruction::StartedParsingStdinQuery => ClientContext::StartedParsingStdinQuery,
             ClientInstruction::DoneParsingStdinQuery => ClientContext::DoneParsingStdinQuery,
         }
@@ -405,6 +408,11 @@ pub fn start_client(
                 send_input_instructions
                     .send(InputInstruction::SwitchToMode(input_mode))
                     .unwrap();
+            },
+            ClientInstruction::Log(lines_to_log) => {
+                for line in lines_to_log {
+                    log::info!("{line}");
+                }
             },
             _ => {},
         }
