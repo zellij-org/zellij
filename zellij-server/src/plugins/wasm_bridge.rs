@@ -691,7 +691,7 @@ fn host_open_file(plugin_env: &PluginEnv) {
             plugin_env
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
-                    Some(TerminalAction::OpenFile(path, None)),
+                    Some(TerminalAction::OpenFile(path, None, None)),
                     None,
                     None,
                     ClientOrTabIndex::TabIndex(plugin_env.tab_index),

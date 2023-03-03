@@ -22,10 +22,8 @@ use crate::{
     kdl_string_arguments,
 };
 
-use std::convert::TryFrom;
 use std::path::PathBuf;
 use std::vec::Vec;
-use url::Url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaneOrFloatingPane {
@@ -119,6 +117,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "children"
             || property_name == "max_panes"
             || property_name == "min_panes"
+            || property_name == "exact_panes"
     }
     fn assert_legal_node_name(&self, name: &str, kdl_node: &KdlNode) -> Result<(), ConfigError> {
         if name.contains(char::is_whitespace) {
@@ -296,14 +295,13 @@ impl<'a> KdlLayoutParser<'a> {
                 plugin_block.span().len(),
             ),
         )?;
-        let url = Url::parse(string_url).map_err(|e| {
+        let location = RunPluginLocation::parse(&string_url).map_err(|e| {
             ConfigError::new_layout_kdl_error(
-                format!("Failed to parse url: {:?}", e),
+                e.to_string(),
                 url_node.span().offset(),
                 url_node.span().len(),
             )
         })?;
-        let location = RunPluginLocation::try_from(url)?;
         Ok(Some(Run::Plugin(RunPlugin {
             _allow_exec_host_cmd,
             location,
@@ -374,8 +372,10 @@ impl<'a> KdlLayoutParser<'a> {
                 hold_on_close,
                 hold_on_start,
             }))),
-            (None, Some(edit), Some(cwd)) => Ok(Some(Run::EditFile(cwd.join(edit), None))),
-            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None))),
+            (None, Some(edit), Some(cwd)) => {
+                Ok(Some(Run::EditFile(cwd.join(edit), None, Some(cwd))))
+            },
+            (None, Some(edit), None) => Ok(Some(Run::EditFile(edit, None, None))),
             (Some(_command), Some(_edit), _) => Err(ConfigError::new_layout_kdl_error(
                 "cannot have both a command and an edit instruction for the same pane".into(),
                 pane_node.span().offset(),
@@ -962,7 +962,6 @@ impl<'a> KdlLayoutParser<'a> {
                     .unwrap_or(false);
             let split_size = self.parse_split_size(kdl_node)?;
             let children_split_direction = self.parse_split_direction(kdl_node)?;
-            let is_part_of_stack = false;
             let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
                 Some(children) => {
                     self.parse_child_pane_nodes_for_pane(&children, children_are_stacked)?
@@ -1746,6 +1745,12 @@ impl<'a> KdlLayoutParser<'a> {
                                 tab_template_kdl_node,
                             )?;
                             swap_tiled_layout.insert(layout_constraint, layout);
+                        } else {
+                            return Err(ConfigError::new_layout_kdl_error(
+                                format!("Unknown layout node: '{}'", layout_node_name),
+                                layout.span().offset(),
+                                layout.span().len(),
+                            ));
                         }
                     }
                     swap_tiled_layouts.push((swap_tiled_layout, swap_layout_name));
@@ -1786,6 +1791,12 @@ impl<'a> KdlLayoutParser<'a> {
                                 tab_template_kdl_node,
                             )?;
                             swap_floating_layout.insert(layout_constraint, layout);
+                        } else {
+                            return Err(ConfigError::new_layout_kdl_error(
+                                format!("Unknown layout node: '{}'", layout_node_name),
+                                layout.span().offset(),
+                                layout.span().len(),
+                            ));
                         }
                     }
                     swap_floating_layouts.push((swap_floating_layout, swap_layout_name));
@@ -1813,17 +1824,41 @@ impl<'a> KdlLayoutParser<'a> {
                 layout_node
             ));
         };
+        if let Some(exact_panes) =
+            kdl_get_string_property_or_child_value!(layout_node, "exact_panes")
+        {
+            return Err(kdl_parsing_error!(
+                format!(
+                    "exact_panes should be a fixed number (eg. 1) and not a quoted string (\"{}\")",
+                    exact_panes,
+                ),
+                layout_node
+            ));
+        };
         let max_panes = kdl_get_int_property_or_child_value!(layout_node, "max_panes");
         let min_panes = kdl_get_int_property_or_child_value!(layout_node, "min_panes");
-        match (min_panes, max_panes) {
-            (Some(_min_panes), Some(_max_panes)) => Err(kdl_parsing_error!(
+        let exact_panes = kdl_get_int_property_or_child_value!(layout_node, "exact_panes");
+        let mut constraint_count = 0;
+        let mut constraint = None;
+        if let Some(max_panes) = max_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::MaxPanes(max_panes as usize));
+        }
+        if let Some(min_panes) = min_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::MinPanes(min_panes as usize));
+        }
+        if let Some(exact_panes) = exact_panes {
+            constraint_count += 1;
+            constraint = Some(LayoutConstraint::ExactPanes(exact_panes as usize));
+        }
+        if constraint_count > 1 {
+            return Err(kdl_parsing_error!(
                 format!("cannot have more than one constraint (eg. max_panes + min_panes)'"),
                 layout_node
-            )),
-            (Some(min_panes), None) => Ok(LayoutConstraint::MinPanes(min_panes as usize)),
-            (None, Some(max_panes)) => Ok(LayoutConstraint::MaxPanes(max_panes as usize)),
-            _ => Ok(LayoutConstraint::NoConstraint),
+            ));
         }
+        Ok(constraint.unwrap_or(LayoutConstraint::NoConstraint))
     }
     fn populate_one_swap_tiled_layout(
         &self,

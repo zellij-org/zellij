@@ -48,7 +48,14 @@ struct FakeInputOutput {
 }
 
 impl ServerOsApi for FakeInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, _id: u32, _cols: u16, _rows: u16) -> Result<()> {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        _id: u32,
+        _cols: u16,
+        _rows: u16,
+        _width_in_pixels: Option<u16>,
+        _height_in_pixels: Option<u16>,
+    ) -> Result<()> {
         // noop
         Ok(())
     }
@@ -4009,98 +4016,10 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
-    let snapshot = take_snapshot(
-        output.serialize().unwrap().get(&client_id).unwrap(),
-        size.rows,
-        size.cols,
-        Palette::default(),
-    );
-    assert_snapshot!(snapshot);
-}
-
-#[test]
-fn increasing_size_of_main_pane_in_stack_horizontally_does_not_break_stack() {
-    // here we test a situation where we're increasing the size of the main pane in a stack
-    // while adjacent to this main pane there's another pane perfectly aligned to it
-    // if the pane weren't a member of the stack, we would increase into that adjacent pane
-    // now, we increase all of the stack also into the panes above said pane
-    let size = Size {
-        cols: 121,
-        rows: 40,
-    };
-    let client_id = 1;
-    let mut output = Output::default();
-    let swap_layouts = r#"
-        layout {
-            swap_tiled_layout {
-                tab {
-                    pane
-                    pane split_direction="vertical" {
-                        pane {
-                            pane focus=true
-                            pane
-                        }
-                        pane stacked=true { children; }
-                    }
-                    pane
-                }
-            }
-        }
-    "#;
-    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None, None).unwrap();
-    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
-    let swap_floating_layouts = layout.swap_floating_layouts.clone();
-    let mut tab = create_new_tab_with_swap_layouts(
-        size,
-        ModeInfo::default(),
-        (swap_tiled_layouts, swap_floating_layouts),
-        None,
-        true,
-    );
-    let new_pane_id_1 = PaneId::Terminal(2);
-    let new_pane_id_2 = PaneId::Terminal(3);
-    let new_pane_id_3 = PaneId::Terminal(4);
-    let new_pane_id_4 = PaneId::Terminal(5);
-    let new_pane_id_5 = PaneId::Terminal(6);
-    let new_pane_id_6 = PaneId::Terminal(7);
-    let new_pane_id_7 = PaneId::Terminal(8);
-    let new_pane_id_8 = PaneId::Terminal(9);
-    let new_pane_id_9 = PaneId::Terminal(10);
-    let new_pane_id_10 = PaneId::Terminal(11);
-    let new_pane_id_11 = PaneId::Terminal(12);
-
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_6, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_7, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_8, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_9, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_10, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_11, None, None, Some(client_id))
-        .unwrap();
-    tab.move_focus_right(client_id);
-    tab.resize(
-        client_id,
-        ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
-    )
-    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -4285,94 +4204,9 @@ fn can_increase_size_into_pane_stack_non_directionally() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_left(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
-    tab.render(&mut output, None).unwrap();
-    let snapshot = take_snapshot(
-        output.serialize().unwrap().get(&client_id).unwrap(),
-        size.rows,
-        size.cols,
-        Palette::default(),
-    );
-    assert_snapshot!(snapshot);
-}
-
-#[test]
-fn increasing_size_into_main_pane_in_stack_horizontally_does_not_break_stack() {
-    // here we test a situation where we're increasing the size of the main pane in a stack
-    // while adjacent to this main pane there's another pane perfectly aligned to it
-    // if the pane weren't a member of the stack, we would increase into that adjacent pane
-    // now, we increase all of the stack also into the panes above said pane
-    let size = Size {
-        cols: 121,
-        rows: 40,
-    };
-    let client_id = 1;
-    let mut output = Output::default();
-    let swap_layouts = r#"
-        layout {
-            swap_tiled_layout {
-                tab {
-                    pane
-                    pane split_direction="vertical" {
-                        pane {
-                            pane focus=true
-                            pane
-                        }
-                        pane stacked=true { children; }
-                    }
-                    pane
-                }
-            }
-        }
-    "#;
-    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None, None).unwrap();
-    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
-    let swap_floating_layouts = layout.swap_floating_layouts.clone();
-    let mut tab = create_new_tab_with_swap_layouts(
-        size,
-        ModeInfo::default(),
-        (swap_tiled_layouts, swap_floating_layouts),
-        None,
-        true,
-    );
-    let new_pane_id_1 = PaneId::Terminal(2);
-    let new_pane_id_2 = PaneId::Terminal(3);
-    let new_pane_id_3 = PaneId::Terminal(4);
-    let new_pane_id_4 = PaneId::Terminal(5);
-    let new_pane_id_5 = PaneId::Terminal(6);
-    let new_pane_id_6 = PaneId::Terminal(7);
-    let new_pane_id_7 = PaneId::Terminal(8);
-    let new_pane_id_8 = PaneId::Terminal(9);
-    let new_pane_id_9 = PaneId::Terminal(10);
-    let new_pane_id_10 = PaneId::Terminal(11);
-
-    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_4, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_5, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_6, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_7, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_8, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_9, None, None, Some(client_id))
-        .unwrap();
-    tab.new_pane(new_pane_id_10, None, None, Some(client_id))
-        .unwrap();
-    tab.resize(
-        client_id,
-        ResizeStrategy::new(Resize::Increase, Some(Direction::Right)),
-    )
-    .unwrap();
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -5854,8 +5688,8 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
         )),
         true,
     );
-    tab.move_focus_down(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.close_pane(PaneId::Terminal(3), false, Some(client_id));
     tab.render(&mut output, None).unwrap();
 
@@ -5867,7 +5701,7 @@ fn when_closing_a_pane_in_auto_layout_the_focus_goes_to_last_focused_pane() {
     );
     assert_eq!(
         cursor_coordinates,
-        Some((1, 11)),
+        Some((62, 1)),
         "cursor coordinates moved to the new pane",
     );
     assert_snapshot!(snapshot);

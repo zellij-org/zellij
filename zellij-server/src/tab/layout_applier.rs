@@ -132,7 +132,7 @@ impl<'a> LayoutApplier<'a> {
                             Some(position_and_size),
                         );
                         pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
-                        resize_pty!(pane, self.os_api, self.senders)?;
+                        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                         self.tiled_panes
                             .add_pane_with_existing_geom(pane.pid(), pane);
                     }
@@ -305,7 +305,12 @@ impl<'a> LayoutApplier<'a> {
                 );
                 new_pane.set_borderless(false);
                 new_pane.set_content_offset(Offset::frame(1));
-                resize_pty!(new_pane, self.os_api, self.senders)?;
+                resize_pty!(
+                    new_pane,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                )?;
                 self.floating_panes
                     .add_pane(PaneId::Plugin(pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {
@@ -340,7 +345,12 @@ impl<'a> LayoutApplier<'a> {
                 if let Some(held_command) = hold_for_command {
                     new_pane.hold(None, true, held_command.clone());
                 }
-                resize_pty!(new_pane, self.os_api, self.senders)?;
+                resize_pty!(
+                    new_pane,
+                    self.os_api,
+                    self.senders,
+                    self.character_cell_size
+                )?;
                 self.floating_panes
                     .add_pane(PaneId::Terminal(*pid), Box::new(new_pane));
                 if floating_pane_layout.focus.unwrap_or(false) {
@@ -398,7 +408,7 @@ impl<'a> LayoutApplier<'a> {
                     .focus
                     .or(Some(!layout_has_focused_pane));
                 pane_focuser.set_pane_id_in_focused_location(pane_is_focused, &pane);
-                resize_pty!(pane, self.os_api, self.senders)?;
+                resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                 self.floating_panes.add_pane(pane.pid(), pane);
             }
         }
@@ -415,7 +425,7 @@ impl<'a> LayoutApplier<'a> {
                         );
                         pane_focuser
                             .set_pane_id_in_focused_location(Some(!layout_has_focused_pane), &pane);
-                        resize_pty!(pane, self.os_api, self.senders)?;
+                        resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                         self.floating_panes.add_pane(pane.pid(), pane);
                     }
                 },
@@ -609,7 +619,7 @@ impl ExistingTabState {
         default_to_closest_position: bool,
     ) -> Vec<(&PaneId, &Box<dyn Pane>)> {
         let mut candidates: Vec<_> = self.existing_panes.iter().collect();
-        candidates.sort_by(|(_a_id, a), (_b_id, b)| {
+        candidates.sort_by(|(a_id, a), (b_id, b)| {
             let a_invoked_with = a.invoked_with();
             let b_invoked_with = b.invoked_with();
             if Run::is_same_category(run, a_invoked_with)
@@ -637,7 +647,7 @@ impl ExistingTabState {
                     let b_y_distance = abs(b.position_and_size().y, position_and_size.y);
                     (a_x_distance + a_y_distance).cmp(&(b_x_distance + b_y_distance))
                 } else {
-                    std::cmp::Ordering::Equal
+                    a_id.cmp(&b_id) // just so it's a stable sort
                 }
             }
         });

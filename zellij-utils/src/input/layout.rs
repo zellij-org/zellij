@@ -23,7 +23,6 @@ use std::str::FromStr;
 use super::plugins::{PluginTag, PluginsConfigError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::convert::TryFrom;
 use std::vec::Vec;
 use std::{
     fmt,
@@ -73,7 +72,7 @@ pub enum Run {
     Plugin(RunPlugin),
     #[serde(rename = "command")]
     Command(RunCommand),
-    EditFile(PathBuf, Option<usize>), // TODO: merge this with TerminalAction::OpenFile
+    EditFile(PathBuf, Option<usize>, Option<PathBuf>), // TODO: merge this with TerminalAction::OpenFile
     Cwd(PathBuf),
 }
 
@@ -108,13 +107,26 @@ impl Run {
             },
             (
                 Some(Run::Command(base_run_command)),
-                Some(Run::EditFile(file_to_edit, line_number)),
+                Some(Run::EditFile(file_to_edit, line_number, edit_cwd)),
             ) => match &base_run_command.cwd {
-                Some(cwd) => Some(Run::EditFile(cwd.join(&file_to_edit), *line_number)),
-                None => Some(Run::EditFile(file_to_edit.clone(), *line_number)),
+                Some(cwd) => Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd.join(edit_cwd.clone().unwrap_or_default())),
+                )),
+                None => Some(Run::EditFile(
+                    file_to_edit.clone(),
+                    *line_number,
+                    edit_cwd.clone(),
+                )),
             },
-            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number))) => {
-                Some(Run::EditFile(cwd.join(&file_to_edit), *line_number))
+            (Some(Run::Cwd(cwd)), Some(Run::EditFile(file_to_edit, line_number, edit_cwd))) => {
+                let cwd = edit_cwd.clone().unwrap_or(cwd.clone());
+                Some(Run::EditFile(
+                    cwd.join(&file_to_edit),
+                    *line_number,
+                    Some(cwd),
+                ))
             },
             (Some(_base), Some(other)) => Some(other.clone()),
             (Some(base), _) => Some(base.clone()),
@@ -132,7 +144,15 @@ impl Run {
                     run_command.cwd = Some(cwd.clone());
                 },
             },
-            Run::EditFile(path_to_file, _line_number) => {
+            Run::EditFile(path_to_file, _line_number, edit_cwd) => {
+                match edit_cwd.as_mut() {
+                    Some(edit_cwd) => {
+                        *edit_cwd = cwd.join(&edit_cwd);
+                    },
+                    None => {
+                        let _ = edit_cwd.insert(cwd.clone());
+                    },
+                };
                 *path_to_file = cwd.join(&path_to_file);
             },
             Run::Cwd(path) => {
@@ -200,6 +220,35 @@ pub enum RunPluginLocation {
     Zellij(PluginTag),
 }
 
+impl RunPluginLocation {
+    pub fn parse(location: &str) -> Result<Self, PluginsConfigError> {
+        let url = Url::parse(location)?;
+
+        let decoded_path = percent_encoding::percent_decode_str(url.path()).decode_utf8_lossy();
+
+        match url.scheme() {
+            "zellij" => Ok(Self::Zellij(PluginTag::new(decoded_path))),
+            "file" => {
+                let path = if location.starts_with("file:/") {
+                    // Path is absolute, its safe to use URL path.
+                    //
+                    // This is the case if the scheme and : delimiter are followed by a / slash
+                    decoded_path
+                } else {
+                    // URL dep doesn't handle relative paths with `file` schema properly,
+                    // it always makes them absolute. Use raw location string instead.
+                    //
+                    // Unwrap is safe here since location is a valid URL
+                    location.strip_prefix("file:").unwrap().into()
+                };
+
+                Ok(Self::File(PathBuf::from(path.as_ref())))
+            },
+            _ => Err(PluginsConfigError::InvalidUrlScheme(url)),
+        }
+    }
+}
+
 impl From<&RunPluginLocation> for Url {
     fn from(location: &RunPluginLocation) -> Self {
         let url = match location {
@@ -231,6 +280,7 @@ impl fmt::Display for RunPluginLocation {
 pub enum LayoutConstraint {
     MaxPanes(usize),
     MinPanes(usize),
+    ExactPanes(usize),
     NoConstraint,
 }
 
@@ -941,21 +991,6 @@ fn split_space(
         pane_positions.push((layout, space_to_split.clone()));
     }
     Ok(pane_positions)
-}
-
-impl TryFrom<Url> for RunPluginLocation {
-    type Error = PluginsConfigError;
-
-    fn try_from(url: Url) -> Result<Self, Self::Error> {
-        match url.scheme() {
-            "zellij" => Ok(Self::Zellij(PluginTag::new(url.path()))),
-            "file" => {
-                let path = PathBuf::from(url.path());
-                Ok(Self::File(path))
-            },
-            _ => Err(PluginsConfigError::InvalidUrl(url)),
-        }
-    }
 }
 
 impl Default for SplitDirection {

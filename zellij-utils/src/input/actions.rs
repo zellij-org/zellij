@@ -7,7 +7,7 @@ use super::layout::{
 use crate::cli::CliAction;
 use crate::data::InputMode;
 use crate::data::{Direction, Resize};
-use crate::input::config::{ConfigError, KdlError};
+use crate::input::config::{Config, ConfigError, KdlError};
 use crate::input::options::OnForceClose;
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use miette::{NamedSource, Report};
@@ -152,7 +152,13 @@ pub enum Action {
     /// If no direction is specified, will try to use the biggest available space.
     NewPane(Option<Direction>, Option<String>), // String is an optional pane name
     /// Open the file in a new pane using the default editor
-    EditFile(PathBuf, Option<usize>, Option<Direction>, bool), // usize is an optional line number, bool is floating true/false
+    EditFile(
+        PathBuf,
+        Option<usize>,
+        Option<PathBuf>,
+        Option<Direction>,
+        bool,
+    ), // usize is an optional line number, Option<PathBuf> is an optional cwd, bool is floating true/false
     /// Open a new floating pane
     NewFloatingPane(Option<RunCommandAction>, Option<String>), // String is an optional pane name
     /// Open a new tiled (embedded, non-floating) pane
@@ -217,6 +223,8 @@ pub enum Action {
     ToggleMouseMode,
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
 }
 
 impl Action {
@@ -231,6 +239,7 @@ impl Action {
     pub fn actions_from_cli(
         cli_action: CliAction,
         get_current_dir: Box<dyn Fn() -> PathBuf>,
+        config: Option<Config>,
     ) -> Result<Vec<Action>, String> {
         match cli_action {
             CliAction::Write { bytes } => Ok(vec![Action::Write(bytes)]),
@@ -317,13 +326,14 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if file.is_relative() {
-                    if let Some(cwd) = cwd {
+                    if let Some(cwd) = cwd.as_ref() {
                         file = cwd.join(file);
                     }
                 }
                 Ok(vec![Action::EditFile(
                     file,
                     line_number,
+                    cwd,
                     direction,
                     floating,
                 )])
@@ -360,8 +370,9 @@ impl Action {
                     .map(|cwd| current_dir.join(cwd))
                     .or_else(|| Some(current_dir));
                 if let Some(layout_path) = layout {
-                    let layout_dir =
-                        layout_dir.or_else(|| get_layout_dir(find_default_config_dir()));
+                    let layout_dir = layout_dir
+                        .or_else(|| config.and_then(|c| c.options.layout_dir))
+                        .or_else(|| get_layout_dir(find_default_config_dir()));
                     let (path_to_raw_layout, raw_layout, swap_layouts) =
                         Layout::stringified_from_path_or_default(Some(&layout_path), layout_dir)
                             .map_err(|e| format!("Failed to load layout: {}", e))?;
@@ -447,6 +458,7 @@ impl Action {
             },
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
+            CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
         }
     }
 }

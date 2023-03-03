@@ -109,6 +109,7 @@ pub enum ServerToClientMsg {
     SwitchToMode(InputMode),
     Connected,
     ActiveClients(Vec<ClientId>),
+    Log(Vec<String>),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

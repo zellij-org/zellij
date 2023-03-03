@@ -248,6 +248,7 @@ pub enum ScreenInstruction {
     ClearPaneFrameColorOverride(Vec<PaneId>),
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
+    QueryTabNames(ClientId),
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -390,6 +391,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             },
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
+            ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
         }
     }
 }
@@ -1171,7 +1173,7 @@ impl Screen {
                             },
                             c => {
                                 // It only allows printable unicode
-                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0x80..=0xFF)) {
+                                if buf.iter().all(|u| matches!(u, 0x20..=0x7E | 0xA0..=0xFF)) {
                                     active_tab.name.push_str(c);
                                 }
                             },
@@ -2359,6 +2361,17 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
                 screen.update_tabs()?;
                 screen.unblock_input()?;
+            },
+            ScreenInstruction::QueryTabNames(client_id) => {
+                let tab_names = screen
+                    .get_tabs_mut()
+                    .values()
+                    .map(|tab| tab.name.clone())
+                    .collect::<Vec<String>>();
+                screen
+                    .bus
+                    .senders
+                    .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
         }
     }

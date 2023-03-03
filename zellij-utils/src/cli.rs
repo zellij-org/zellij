@@ -353,7 +353,7 @@ pub enum CliAction {
         layout: Option<PathBuf>,
 
         /// Default folder to look for layouts
-        #[clap(short, long, value_parser, requires("layout"))]
+        #[clap(long, value_parser, requires("layout"))]
         layout_dir: Option<PathBuf>,
 
         /// Name of the new tab
@@ -366,4 +366,6 @@ pub enum CliAction {
     },
     PreviousSwapLayout,
     NextSwapLayout,
+    /// Query all tab names
+    QueryTabNames,
 }

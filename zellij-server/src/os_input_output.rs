@@ -43,16 +43,24 @@ use std::{
 pub use async_trait::async_trait;
 pub use nix::unistd::Pid;
 
-fn set_terminal_size_using_fd(fd: RawFd, columns: u16, rows: u16) {
+fn set_terminal_size_using_fd(
+    fd: RawFd,
+    columns: u16,
+    rows: u16,
+    width_in_pixels: Option<u16>,
+    height_in_pixels: Option<u16>,
+) {
     // TODO: do this with the nix ioctl
     use libc::ioctl;
     use libc::TIOCSWINSZ;
 
+    let ws_xpixel = width_in_pixels.unwrap_or(0);
+    let ws_ypixel = height_in_pixels.unwrap_or(0);
     let winsize = Winsize {
         ws_col: columns,
         ws_row: rows,
-        ws_xpixel: 0,
-        ws_ypixel: 0,
+        ws_xpixel,
+        ws_ypixel,
     };
     // TIOCGWINSZ is an u32, but the second argument to ioctl is u64 on
     // some platforms. When checked on Linux, clippy will complain about
@@ -166,12 +174,10 @@ fn handle_openpty(
                 if current_dir.exists() && current_dir.is_dir() {
                     command.current_dir(current_dir);
                 } else {
-                    // TODO: propagate this to the user
-                    return Err(anyhow!(
+                    log::error!(
                         "Failed to set CWD for new pane. '{}' does not exist or is not a folder",
                         current_dir.display()
-                    ))
-                    .context("failed to open PTY");
+                    );
                 }
             }
             command
@@ -277,7 +283,12 @@ fn spawn_terminal(
     // secondary fd
     let mut failover_cmd_args = None;
     let cmd = match terminal_action {
-        TerminalAction::OpenFile(file_to_open, line_number) => {
+        TerminalAction::OpenFile(mut file_to_open, line_number, cwd) => {
+            if file_to_open.is_relative() {
+                if let Some(cwd) = cwd.as_ref() {
+                    file_to_open = cwd.join(file_to_open);
+                }
+            }
             let mut command = default_editor.unwrap_or_else(|| {
                 PathBuf::from(
                     env::var("EDITOR")
@@ -318,7 +329,7 @@ fn spawn_terminal(
             RunCommand {
                 command,
                 args,
-                cwd: None,
+                cwd,
                 hold_on_close: false,
                 hold_on_start: false,
             }
@@ -409,7 +420,7 @@ pub struct ServerOsInputOutput {
     // not connected to an fd (eg.
     // a command pane with a
     // non-existing command)
-    cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16)>>>>, // <terminal_id, (cols, rows)>
+    cached_resizes: Arc<Mutex<Option<BTreeMap<u32, (u16, u16, Option<u16>, Option<u16>)>>>>, // <terminal_id, (cols, rows, width_in_pixels, height_in_pixels)>
 }
 
 // async fn in traits is not supported by rust, so dtolnay's excellent async_trait macro is being
@@ -443,7 +454,14 @@ impl AsyncReader for RawFdAsyncReader {
 /// The `ServerOsApi` trait represents an abstract interface to the features of an operating system that
 /// Zellij server requires.
 pub trait ServerOsApi: Send + Sync {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()>;
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        id: u32,
+        cols: u16,
+        rows: u16,
+        width_in_pixels: Option<u16>,
+        height_in_pixels: Option<u16>,
+    ) -> Result<()>;
     /// Spawn a new terminal, with a terminal action. The returned tuple contains the master file
     /// descriptor of the forked pseudo terminal and a [ChildId] struct containing process id's for
     /// the forked child process.
@@ -496,7 +514,14 @@ pub trait ServerOsApi: Send + Sync {
 }
 
 impl ServerOsApi for ServerOsInputOutput {
-    fn set_terminal_size_using_terminal_id(&self, id: u32, cols: u16, rows: u16) -> Result<()> {
+    fn set_terminal_size_using_terminal_id(
+        &self,
+        id: u32,
+        cols: u16,
+        rows: u16,
+        width_in_pixels: Option<u16>,
+        height_in_pixels: Option<u16>,
+    ) -> Result<()> {
         let err_context = || {
             format!(
                 "failed to set terminal id {} to size ({}, {})",
@@ -504,7 +529,7 @@ impl ServerOsApi for ServerOsInputOutput {
             )
         };
         if let Some(cached_resizes) = self.cached_resizes.lock().unwrap().as_mut() {
-            cached_resizes.insert(id, (cols, rows));
+            cached_resizes.insert(id, (cols, rows, width_in_pixels, height_in_pixels));
             return Ok(());
         }
 
@@ -517,7 +542,7 @@ impl ServerOsApi for ServerOsInputOutput {
         {
             Some(Some(fd)) => {
                 if cols > 0 && rows > 0 {
-                    set_terminal_size_using_fd(*fd, cols, rows);
+                    set_terminal_size_using_fd(*fd, cols, rows, width_in_pixels, height_in_pixels);
                 }
             },
             _ => {
@@ -717,7 +742,11 @@ impl ServerOsApi for ServerOsInputOutput {
         system_info.refresh_processes_specifics(ProcessRefreshKind::default());
 
         if let Some(process) = system_info.process(pid.into()) {
-            return Some(process.cwd().to_path_buf());
+            let cwd = process.cwd();
+            let cwd_is_empty = cwd.iter().next().is_none();
+            if !cwd_is_empty {
+                return Some(process.cwd().to_path_buf());
+            }
         }
         None
     }
@@ -776,8 +805,16 @@ impl ServerOsApi for ServerOsInputOutput {
     fn apply_cached_resizes(&mut self) {
         let mut cached_resizes = self.cached_resizes.lock().unwrap().take();
         if let Some(cached_resizes) = cached_resizes.as_mut() {
-            for (terminal_id, (cols, rows)) in cached_resizes.iter() {
-                let _ = self.set_terminal_size_using_terminal_id(*terminal_id, *cols, *rows);
+            for (terminal_id, (cols, rows, width_in_pixels, height_in_pixels)) in
+                cached_resizes.iter()
+            {
+                let _ = self.set_terminal_size_using_terminal_id(
+                    *terminal_id,
+                    *cols,
+                    *rows,
+                    width_in_pixels.clone(),
+                    height_in_pixels.clone(),
+                );
             }
         }
     }

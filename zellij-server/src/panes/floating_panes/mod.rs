@@ -26,7 +26,7 @@ use zellij_utils::{
     errors::prelude::*,
     input::command::RunCommand,
     input::layout::FloatingPaneLayout,
-    pane_size::{Dimension, Offset, PaneGeom, Size, Viewport},
+    pane_size::{Dimension, Offset, PaneGeom, Size, SizeInPixels, Viewport},
 };
 
 const RESIZE_INCREMENT_WIDTH: usize = 5;
@@ -39,6 +39,7 @@ pub struct FloatingPanes {
     connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
     mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+    character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
     default_mode_info: ModeInfo,
     style: Style,
     session_is_mirrored: bool,
@@ -59,6 +60,7 @@ impl FloatingPanes {
         connected_clients: Rc<RefCell<HashSet<ClientId>>>,
         connected_clients_in_app: Rc<RefCell<HashSet<ClientId>>>,
         mode_info: Rc<RefCell<HashMap<ClientId, ModeInfo>>>,
+        character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
         session_is_mirrored: bool,
         default_mode_info: ModeInfo,
         style: Style,
@@ -72,6 +74,7 @@ impl FloatingPanes {
             connected_clients,
             connected_clients_in_app,
             mode_info,
+            character_cell_size,
             session_is_mirrored,
             default_mode_info,
             style,
@@ -304,7 +307,8 @@ impl FloatingPanes {
             } else {
                 pane.set_content_offset(Offset::default());
             }
-            resize_pty!(pane, os_api, self.senders).with_context(|| err_context(&pane.pid()))?;
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                .with_context(|| err_context(&pane.pid()))?;
         }
         Ok(())
     }
@@ -390,7 +394,7 @@ impl FloatingPanes {
 
     pub fn resize_pty_all_panes(&mut self, os_api: &mut Box<dyn ServerOsApi>) -> Result<()> {
         for pane in self.panes.values_mut() {
-            resize_pty!(pane, os_api, self.senders)
+            resize_pty!(pane, os_api, self.senders, self.character_cell_size)
                 .with_context(|| format!("failed to resize PTY in pane {:?}", pane.pid()))?;
         }
         Ok(())
@@ -424,7 +428,8 @@ impl FloatingPanes {
                 .with_context(err_context)?;
 
             for pane in self.panes.values_mut() {
-                resize_pty!(pane, os_api, self.senders).with_context(err_context)?;
+                resize_pty!(pane, os_api, self.senders, self.character_cell_size)
+                    .with_context(err_context)?;
             }
             self.set_force_render();
             return Ok(true);
@@ -833,7 +838,7 @@ impl FloatingPanes {
             if let Some(geom) = prev_geom_override {
                 new_position.set_geom_override(geom);
             }
-            resize_pty!(new_position, os_api, self.senders).unwrap();
+            resize_pty!(new_position, os_api, self.senders, self.character_cell_size).unwrap();
             new_position.set_should_render(true);
 
             let current_position = self.panes.get_mut(&active_pane_id).unwrap();
@@ -841,7 +846,13 @@ impl FloatingPanes {
             if let Some(geom) = next_geom_override {
                 current_position.set_geom_override(geom);
             }
-            resize_pty!(current_position, os_api, self.senders).unwrap();
+            resize_pty!(
+                current_position,
+                os_api,
+                self.senders,
+                self.character_cell_size
+            )
+            .unwrap();
             current_position.set_should_render(true);
             self.focus_pane_for_all_clients(active_pane_id);
         }
