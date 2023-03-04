@@ -19,9 +19,9 @@
 
 <h4 align="center">
   [<a href="https://zellij.dev/documentation/installation">Installation</a>]
-  [<a href="https://zellij.dev/documentation/overview">Overview</a>]
+  [<a href="https://zellij.dev/screencasts/">Screencasts & Tutorials</a>]
   [<a href="https://zellij.dev/documentation/configuration">Configuration</a>]
-  [<a href="https://zellij.dev/documentation/layouts-templates">Templates</a>]
+  [<a href="https://zellij.dev/documentation/layouts">Layouts</a>]
   [<a href="https://zellij.dev/documentation/faq">FAQ</a>]
 </h4>
 
@@ -39,15 +39,15 @@ For more details about our future plans, read about upcoming features in our [ro
 
 ## How do I install it?
 
-The easiest way to install Zellij is to download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could also do this [automatically for you](#try-zellij-without-installing).
+The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).
+
+If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could also do this [automatically for you](#try-zellij-without-installing).
 
 You can also install (compile) with `cargo`:
 
 ```
 cargo install --locked zellij
 ```
-
-Or you could use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
 #### Try Zellij without installing
 
