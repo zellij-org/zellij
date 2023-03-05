@@ -1,5 +1,6 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
+use crate::consts::ZELLIJ_ASSET_DIR;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
@@ -310,26 +311,14 @@ impl Setup {
             None => config.options.clone(),
         };
 
-        if let Some(theme_dir) = config_options
-            .theme_dir
-            .clone()
-            .or_else(|| get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)))
-        {
-            if theme_dir.is_dir() {
-                for entry in (theme_dir.read_dir()?).flatten() {
-                    if let Some(extension) = entry.path().extension() {
-                        if extension == "kdl" {
-                            match Themes::from_path(entry.path()) {
-                                Ok(themes) => config.themes = config.themes.merge(themes),
-                                Err(e) => {
-                                    log::error!("error loading theme file: {:?}", e);
-                                },
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
+            get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
+        });
+        let default_theme_dir = get_theme_dir(Some(ZELLIJ_ASSET_DIR.to_path_buf()));
+        config.themes = config.themes.merge(Setup::load_external_themes(
+            user_theme_dir,
+            default_theme_dir,
+        )?);
 
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup
@@ -514,6 +503,7 @@ impl Setup {
 
         Ok(())
     }
+
     fn generate_completion(shell: &str) {
         let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
@@ -564,6 +554,7 @@ impl Setup {
             _ => {},
         }
     }
+
     fn parse_layout_and_override_config(
         cli_config_options: Option<&Options>,
         config: Config,
@@ -593,6 +584,7 @@ impl Setup {
         // that needs to take precedence
         Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
     }
+
     fn handle_setup_commands(cli_args: &CliArgs) {
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup.from_cli().map_or_else(
@@ -603,6 +595,22 @@ impl Setup {
                 |_| {},
             );
         };
+    }
+
+    fn load_external_themes(
+        user_dir: Option<PathBuf>,
+        default_dir: Option<PathBuf>,
+    ) -> Result<Themes, ConfigError> {
+        let mut themes = Themes::default();
+
+        if let Some(default_dir) = default_dir {
+            themes = themes.merge(Themes::from_dir(default_dir)?);
+        }
+        if let Some(user_dir) = user_dir {
+            themes = themes.merge(Themes::from_dir(user_dir)?);
+        }
+
+        Ok(themes)
     }
 }
 

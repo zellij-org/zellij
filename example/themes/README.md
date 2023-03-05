@@ -1,19 +1,4 @@
 # Themes
 
-Themes can contain different flavors in one file, or can be created as individual files.
-
-Example:
-
-```
-gruvbox.kdl
-├─ gruvbox-light
-└─ gruvbox-dark
-
-or
-
-gruvbox-light.kdl
-└─ gruvbox-light
-
-gruvbox-dark.kdl
-└─ gruvbox-dark
-```
+It contains examples showing how to write a theme.
+If you would like to add a theme to zellij, please refer [zellij-utils/assets/themes](../zellij-utils/assets/themes).
