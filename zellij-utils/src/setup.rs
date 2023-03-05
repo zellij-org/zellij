@@ -88,6 +88,17 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("themes"))
 }
+
+#[cfg(not(test))]
+pub fn get_default_theme_dir() -> Option<PathBuf> {
+    get_theme_dir(Some(ZELLIJ_ASSET_DIR.to_path_buf()))
+}
+
+#[cfg(test)]
+pub fn get_default_theme_dir() -> Option<PathBuf> {
+    None
+}
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -314,7 +325,7 @@ impl Setup {
         let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
             get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
         });
-        let default_theme_dir = get_theme_dir(Some(ZELLIJ_ASSET_DIR.to_path_buf()));
+        let default_theme_dir = get_default_theme_dir();
         config.themes = config.themes.merge(Setup::load_external_themes(
             user_theme_dir,
             default_theme_dir,
