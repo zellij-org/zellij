@@ -1,6 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2581
+assertion_line: 2672
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -65,7 +65,6 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
             },
         ),
         [],
-        None,
         0,
         1,
     ),
@@ -219,7 +218,6 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
             },
         ),
         [],
-        None,
         1,
         1,
     ),

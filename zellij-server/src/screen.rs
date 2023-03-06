@@ -932,6 +932,7 @@ impl Screen {
         &mut self,
         tab_index: usize,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        tab_name: Option<String>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
@@ -944,11 +945,13 @@ impl Screen {
             client_id
         };
 
+        let tab_name = tab_name.unwrap_or_else(|| String::new());
+
         let position = self.tabs.len();
         let tab = Tab::new(
             tab_index,
             position,
-            String::new(),
+            tab_name,
             self.size,
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
@@ -2018,7 +2021,7 @@ pub(crate) fn screen_thread_main(
             ) => {
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
-                screen.new_tab(tab_index, swap_layouts, client_id)?;
+                screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id)?;
                 screen
                     .bus
                     .senders
@@ -2026,7 +2029,6 @@ pub(crate) fn screen_thread_main(
                         default_shell,
                         layout,
                         floating_panes_layout,
-                        tab_name,
                         tab_index,
                         client_id,
                     ))?;
@@ -2099,7 +2101,7 @@ pub(crate) fn screen_thread_main(
                         screen.render()?;
                         if create && !tab_exists {
                             let tab_index = screen.get_new_tab_index();
-                            screen.new_tab(tab_index, swap_layouts, client_id)?;
+                            screen.new_tab(tab_index, swap_layouts, Some(tab_name), client_id)?;
                             screen
                                 .bus
                                 .senders
@@ -2107,7 +2109,6 @@ pub(crate) fn screen_thread_main(
                                     None,
                                     None,
                                     vec![],
-                                    Some(tab_name),
                                     tab_index,
                                     client_id,
                                 ))?;
