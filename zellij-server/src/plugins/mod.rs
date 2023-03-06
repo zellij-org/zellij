@@ -30,7 +30,7 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        usize,          // tab_index
+        usize, // tab_index
         ClientId,
     ),
     Exit,

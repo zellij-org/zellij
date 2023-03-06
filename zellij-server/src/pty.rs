@@ -359,7 +359,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                 )
                 .with_context(err_context)?;
-
             },
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id)
