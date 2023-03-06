@@ -38,6 +38,10 @@ xflags::xflags! {
         cmd publish {
             /// Perform a dry-run (don't push/publish anything)
             optional --dry-run
+            /// Push commit to custom git remote
+            optional --git-remote remote: OsString
+            /// Publish crates to custom registry
+            optional --cargo-registry registry: OsString
         }
 
         /// Package zellij for distribution (result found in ./target/dist)
@@ -151,6 +155,8 @@ pub struct Manpage;
 #[derive(Debug)]
 pub struct Publish {
     pub dry_run: bool,
+    pub git_remote: Option<OsString>,
+    pub cargo_registry: Option<OsString>,
 }
 
 #[derive(Debug)]
@@ -175,7 +181,6 @@ pub struct Run {
     pub args: Vec<OsString>,
 
     pub data_dir: Option<PathBuf>,
-
     pub singlepass: bool,
 }
 

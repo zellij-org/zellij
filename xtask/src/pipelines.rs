@@ -44,7 +44,6 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
 /// Runs the following steps in sequence:
 ///
 /// - [`build`](build::build) (release, plugins only)
-/// - [`wasm_opt_plugins`](build::wasm_opt_plugins)
 /// - [`build`](build::build) (release, without plugins)
 /// - [`manpage`](build::manpage)
 /// - Copy the executable to [target file](flags::Install::destination)
@@ -168,12 +167,30 @@ pub fn dist(sh: &Shell, _flags: flags::Dist) -> anyhow::Result<()> {
 pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
     let err_context = "failed to publish zellij";
 
-    sh.change_dir(crate::project_root());
+    // Process flags
     let dry_run = if flags.dry_run {
         Some("--dry-run")
     } else {
         None
     };
+    let remote = flags.git_remote.unwrap_or("origin".into());
+    let registry = if let Some(registry) = flags.cargo_registry {
+        Some(format!(
+            "--registry={}",
+            registry
+                .into_string()
+                .map_err(|registry| anyhow::Error::msg(format!(
+                    "failed to convert '{:?}' to valid registry name",
+                    registry
+                )))
+                .context(err_context)?
+        ))
+    } else {
+        None
+    };
+    let registry = registry.as_ref();
+
+    sh.change_dir(crate::project_root());
     let cargo = crate::cargo().context(err_context)?;
     let project_dir = crate::project_root();
     let manifest = sh
@@ -265,22 +282,36 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         if flags.dry_run {
             println!("Skipping push due to dry-run");
         } else {
-            cmd!(sh, "git push --atomic origin main v{version}")
+            cmd!(sh, "git push --atomic {remote} main v{version}")
                 .run()
                 .context(err_context)?;
         }
 
         // Publish all the crates
         for member in crate::WORKSPACE_MEMBERS.iter() {
-            if member.contains("plugin") {
+            if member.contains("plugin") || member.contains("xtask") {
                 continue;
             }
 
             let _pd = sh.push_dir(project_dir.join(member));
             loop {
-                if let Err(err) = cmd!(sh, "{cargo} publish {dry_run...}")
-                    .run()
-                    .context(err_context)
+                let msg = format!(">> Publishing '{member}'");
+                crate::status(&msg);
+                println!("{}", msg);
+
+                let more_args = match *member {
+                    // This is needed for zellij to pick up the plugins from the assets included in
+                    // the released zellij-utils binary
+                    "." => Some("--no-default-features"),
+                    _ => None,
+                };
+
+                if let Err(err) = cmd!(
+                    sh,
+                    "{cargo} publish {registry...} {more_args...} {dry_run...}"
+                )
+                .run()
+                .context(err_context)
                 {
                     println!();
                     println!("Publishing crate '{member}' failed with error:");
@@ -325,6 +356,11 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 }
             }
         }
+
+        println!();
+        println!(" +-----------------------------------------------+");
+        println!(" | PRAISE THE DEVS, WE HAVE A NEW ZELLIJ RELEASE |");
+        println!(" +-----------------------------------------------+");
         Ok(())
     };
 
