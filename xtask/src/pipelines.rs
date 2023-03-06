@@ -44,7 +44,6 @@ pub fn make(sh: &Shell, flags: flags::Make) -> anyhow::Result<()> {
 /// Runs the following steps in sequence:
 ///
 /// - [`build`](build::build) (release, plugins only)
-/// - [`wasm_opt_plugins`](build::wasm_opt_plugins)
 /// - [`build`](build::build) (release, without plugins)
 /// - [`manpage`](build::manpage)
 /// - Copy the executable to [target file](flags::Install::destination)
