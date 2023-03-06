@@ -43,16 +43,6 @@ pub fn find_default_config_dir() -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(test))]
-pub fn get_default_theme_dir() -> Option<PathBuf> {
-    Some(ZELLIJ_THEMES_DIR.to_path_buf())
-}
-
-#[cfg(test)]
-pub fn get_default_theme_dir() -> Option<PathBuf> {
-    None
-}
-
 /// Order in which config directories are checked
 fn default_config_dirs() -> Vec<Option<PathBuf>> {
     vec![
@@ -60,6 +50,22 @@ fn default_config_dirs() -> Vec<Option<PathBuf>> {
         Some(xdg_config_dir()),
         Some(Path::new(SYSTEM_DEFAULT_CONFIG_DIR).to_path_buf()),
     ]
+}
+
+#[cfg(not(test))]
+fn get_default_themes() -> Result<Themes, ConfigError> {
+    let mut themes = Themes::default();
+    for entry in ZELLIJ_THEMES_DIR.files() {
+        if let Some(entry) = entry.contents_utf8() {
+            themes = themes.merge(Themes::from_string(entry.to_string())?);
+        }
+    }
+    Ok(themes)
+}
+
+#[cfg(test)]
+fn get_default_themes() -> Result<Themes, ConfigError> {
+    Ok(Themes::default())
 }
 
 /// Looks for an existing dir, uses that, else returns a
@@ -98,6 +104,7 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("themes"))
 }
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -321,14 +328,14 @@ impl Setup {
             None => config.options.clone(),
         };
 
+        config.themes = config.themes.merge(get_default_themes()?);
+
         let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
             get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
         });
-        let default_theme_dir = get_default_theme_dir();
-        config.themes = config.themes.merge(Setup::load_external_themes(
-            user_theme_dir,
-            default_theme_dir,
-        )?);
+        if let Some(user_dir) = user_theme_dir {
+            config.themes = config.themes.merge(Themes::from_dir(user_dir)?);
+        }
 
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup
@@ -605,22 +612,6 @@ impl Setup {
                 |_| {},
             );
         };
-    }
-
-    fn load_external_themes(
-        user_dir: Option<PathBuf>,
-        default_dir: Option<PathBuf>,
-    ) -> Result<Themes, ConfigError> {
-        let mut themes = Themes::default();
-
-        if let Some(default_dir) = default_dir {
-            themes = themes.merge(Themes::from_dir(default_dir)?);
-        }
-        if let Some(user_dir) = user_dir {
-            themes = themes.merge(Themes::from_dir(user_dir)?);
-        }
-
-        Ok(themes)
     }
 }
 
