@@ -51,7 +51,6 @@ pub enum PtyInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        Option<String>,
         usize,                                // tab_index
         HashMap<RunPluginLocation, Vec<u32>>, // plugin_ids
         ClientId,
@@ -340,7 +339,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                 terminal_action,
                 tab_layout,
                 floating_panes_layout,
-                tab_name,
                 tab_index,
                 plugin_ids,
                 client_id,
@@ -361,21 +359,6 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     client_id,
                 )
                 .with_context(err_context)?;
-
-                if let Some(tab_name) = tab_name {
-                    // clear current name at first
-                    pty.bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(vec![0], client_id))
-                        .with_context(err_context)?;
-                    pty.bus
-                        .senders
-                        .send_to_screen(ScreenInstruction::UpdateTabName(
-                            tab_name.into_bytes(),
-                            client_id,
-                        ))
-                        .with_context(err_context)?;
-                }
             },
             PtyInstruction::ClosePane(id) => {
                 pty.close_pane(id)

@@ -498,6 +498,7 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::GoToTabName(name, create) => {
+            let shell = session.default_shell.clone();
             let swap_tiled_layouts = session.layout.swap_tiled_layouts.clone();
             let swap_floating_layouts = session.layout.swap_floating_layouts.clone();
             session
@@ -505,6 +506,7 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::GoToTabName(
                     name,
                     (swap_tiled_layouts, swap_floating_layouts),
+                    shell,
                     create,
                     Some(client_id),
                 ))

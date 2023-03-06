@@ -671,8 +671,6 @@ impl Tab {
                 client_id,
             )?;
         }
-        self.is_pending = false;
-        self.apply_buffered_instructions()?;
         self.set_force_render();
         Ok(())
     }
@@ -726,8 +724,6 @@ impl Tab {
             )?;
         }
         self.tiled_panes.reapply_pane_frames();
-        self.is_pending = false;
-        self.apply_buffered_instructions()?;
         let display_area = *self.display_area.borrow();
         // we do this so that the new swap layout has a chance to pass through the constraint system
         self.tiled_panes.resize(display_area);
