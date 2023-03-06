@@ -1,6 +1,6 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
-use crate::consts::ZELLIJ_ASSET_DIR;
+use crate::consts::ZELLIJ_THEMES_DIR;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
@@ -91,7 +91,7 @@ pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 
 #[cfg(not(test))]
 pub fn get_default_theme_dir() -> Option<PathBuf> {
-    get_theme_dir(Some(ZELLIJ_ASSET_DIR.to_path_buf()))
+    Some(ZELLIJ_THEMES_DIR.to_path_buf())
 }
 
 #[cfg(test)]
