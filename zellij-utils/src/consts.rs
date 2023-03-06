@@ -28,6 +28,8 @@ lazy_static! {
     pub static ref ZELLIJ_PROJ_DIR: ProjectDirs =
         ProjectDirs::from("org", "Zellij Contributors", "Zellij").unwrap();
     pub static ref ZELLIJ_CACHE_DIR: PathBuf = ZELLIJ_PROJ_DIR.cache_dir().to_path_buf();
+    pub static ref ZELLIJ_THEMES_DIR: PathBuf =
+        PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/themes"));
 }
 
 pub const FEATURES: &[&str] = &[
