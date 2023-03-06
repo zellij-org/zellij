@@ -46,7 +46,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: log error instead of crashing when unable to set CWD in a template (https://github.com/zellij-org/zellij/pull/2214)
 * fix: tab names in layout and gototabname crash on create (https://github.com/zellij-org/zellij/pull/2225)
 * feat: add self-provided themes (https://github.com/zellij-org/zellij/pull/2224)
-* feat: allow simulating releases (https://github.com/zellij-org/zellij/pull/2194)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:
