@@ -1,7 +1,6 @@
 //! Zellij program-wide constants.
 
 use directories_next::ProjectDirs;
-use include_dir::{include_dir, Dir};
 use lazy_static::lazy_static;
 use once_cell::sync::OnceCell;
 use std::path::PathBuf;
@@ -16,7 +15,6 @@ pub static DEBUG_MODE: OnceCell<bool> = OnceCell::new();
 
 pub const SYSTEM_DEFAULT_CONFIG_DIR: &str = "/etc/zellij";
 pub const SYSTEM_DEFAULT_DATA_DIR_PREFIX: &str = system_default_data_dir();
-pub static ZELLIJ_THEMES_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets/themes");
 
 const fn system_default_data_dir() -> &'static str {
     if let Some(data_dir) = std::option_env!("PREFIX") {

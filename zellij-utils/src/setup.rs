@@ -1,6 +1,5 @@
 #[cfg(not(target_family = "wasm"))]
 use crate::consts::ASSET_MAP;
-use crate::consts::ZELLIJ_THEMES_DIR;
 use crate::input::theme::Themes;
 use crate::{
     cli::{CliArgs, Command},
@@ -52,22 +51,6 @@ fn default_config_dirs() -> Vec<Option<PathBuf>> {
     ]
 }
 
-#[cfg(not(test))]
-fn get_default_themes() -> Result<Themes, ConfigError> {
-    let mut themes = Themes::default();
-    for entry in ZELLIJ_THEMES_DIR.files() {
-        if let Some(entry) = entry.contents_utf8() {
-            themes = themes.merge(Themes::from_string(entry.to_string())?);
-        }
-    }
-    Ok(themes)
-}
-
-#[cfg(test)]
-fn get_default_themes() -> Result<Themes, ConfigError> {
-    Ok(Themes::default())
-}
-
 /// Looks for an existing dir, uses that, else returns a
 /// dir matching the config spec.
 pub fn get_default_data_dir() -> PathBuf {
@@ -104,7 +87,6 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
     config_dir.map(|dir| dir.join("themes"))
 }
-
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
@@ -328,13 +310,25 @@ impl Setup {
             None => config.options.clone(),
         };
 
-        config.themes = config.themes.merge(get_default_themes()?);
-
-        let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
-            get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
-        });
-        if let Some(user_dir) = user_theme_dir {
-            config.themes = config.themes.merge(Themes::from_dir(user_dir)?);
+        if let Some(theme_dir) = config_options
+            .theme_dir
+            .clone()
+            .or_else(|| get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir)))
+        {
+            if theme_dir.is_dir() {
+                for entry in (theme_dir.read_dir()?).flatten() {
+                    if let Some(extension) = entry.path().extension() {
+                        if extension == "kdl" {
+                            match Themes::from_path(entry.path()) {
+                                Ok(themes) => config.themes = config.themes.merge(themes),
+                                Err(e) => {
+                                    log::error!("error loading theme file: {:?}", e);
+                                },
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
@@ -520,7 +514,6 @@ impl Setup {
 
         Ok(())
     }
-
     fn generate_completion(shell: &str) {
         let shell: Shell = match shell.to_lowercase().parse() {
             Ok(shell) => shell,
@@ -571,7 +564,6 @@ impl Setup {
             _ => {},
         }
     }
-
     fn parse_layout_and_override_config(
         cli_config_options: Option<&Options>,
         config: Config,
@@ -601,7 +593,6 @@ impl Setup {
         // that needs to take precedence
         Layout::from_path_or_default(chosen_layout.as_ref(), layout_dir.clone(), config)
     }
-
     fn handle_setup_commands(cli_args: &CliArgs) {
         if let Some(Command::Setup(ref setup)) = &cli_args.command {
             setup.from_cli().map_or_else(
