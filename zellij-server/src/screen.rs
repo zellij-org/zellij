@@ -209,6 +209,7 @@ pub enum ScreenInstruction {
     GoToTabName(
         String,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
+        Option<TerminalAction>, // default_shell
         bool,
         Option<ClientId>,
     ),
@@ -2084,7 +2085,7 @@ pub(crate) fn screen_thread_main(
                     },
                 }
             },
-            ScreenInstruction::GoToTabName(tab_name, swap_layouts, create, client_id) => {
+            ScreenInstruction::GoToTabName(tab_name, swap_layouts, default_shell, create, client_id) => {
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -2106,7 +2107,7 @@ pub(crate) fn screen_thread_main(
                                 .bus
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
-                                    None,
+                                    default_shell,
                                     None,
                                     vec![],
                                     tab_index,
