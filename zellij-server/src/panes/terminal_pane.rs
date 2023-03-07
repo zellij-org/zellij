@@ -499,6 +499,9 @@ impl Pane for TerminalPane {
     fn dump_screen(&mut self, _client_id: ClientId, full: bool) -> String {
         self.grid.dump_screen(full)
     }
+    fn clear_screen(&mut self) {
+        self.grid.clear_screen()
+    }
     fn scroll_up(&mut self, count: usize, _client_id: ClientId) {
         self.grid.move_viewport_up(count);
         self.set_should_render(true);

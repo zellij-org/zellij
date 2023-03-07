@@ -235,6 +235,9 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
+    fn clear_screen(&mut self) {
+        todo!();
+    }
     fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
         "".to_owned()
     }
@@ -2305,6 +2308,12 @@ impl Tab {
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .with_context(|| err_context(active_pane_id))?;
+        }
+        Ok(())
+    }
+    pub fn clear_active_terminal_screen(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_screen();
         }
         Ok(())
     }

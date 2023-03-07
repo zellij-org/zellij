@@ -1109,7 +1109,13 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-
+    /// Clears all buffers with text
+    pub fn clear_screen(&mut self) {
+        self.lines_above = Default::default();
+        self.lines_below = Default::default();
+        self.viewport = Default::default();
+    }
+    /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {

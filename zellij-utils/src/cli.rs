@@ -212,6 +212,8 @@ pub enum CliAction {
     },
     /// Rotate the location of the previous pane backwards
     MovePaneBackwards,
+    /// Clear all buffers for a focused pane
+    Clear,
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,
