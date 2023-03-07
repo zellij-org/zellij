@@ -3,6 +3,7 @@ mod stacked_panes;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
+use log::info;
 use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
@@ -1011,7 +1012,7 @@ impl TiledPanes {
             None => false,
         }
     }
-    pub fn move_focus_right(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_right(&mut self, client_id: ClientId, single_tab_wraparoud: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
@@ -1020,7 +1021,14 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+                info!("active_pane_id: {:?}", active_pane_id);
+                let mut next_index =
+                    pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
+
+                if next_index.is_none() && single_tab_wraparoud {
+                    next_index = Some(PaneId::Terminal(0));
+                }
+                info!("next_index: {:?}", next_index);
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1540,9 +1548,9 @@ impl TiledPanes {
         self.toggle_active_pane_fullscreen(client_id);
     }
 
-    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId, single_tab_wraparoud: bool) {
         self.unset_fullscreen();
-        self.move_focus_right(client_id);
+        self.move_focus_right(client_id, single_tab_wraparoud);
         self.toggle_active_pane_fullscreen(client_id);
     }
 

@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use std::str;
 
+use log::info;
 use zellij_utils::data::{Direction, Resize, ResizeStrategy};
 use zellij_utils::errors::prelude::*;
 use zellij_utils::input::command::RunCommand;
@@ -678,6 +679,11 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
+                    info!(
+                        "Switching to next tab: current tab position: {active_tab_pos}, new tab position: {new_tab_pos}",
+                        active_tab_pos = active_tab_pos,
+                        new_tab_pos = new_tab_pos,
+                    );
                     return self.switch_active_tab(new_tab_pos, client_id);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -705,6 +711,11 @@ impl Screen {
                     } else {
                         active_tab_pos - 1
                     };
+                    info!(
+                        "Switching to previous tab: current tab position: {active_tab_pos}, new tab position: {new_tab_pos}",
+                        active_tab_pos = active_tab_pos,
+                        new_tab_pos = new_tab_pos,
+                    );
 
                     return self.switch_active_tab(new_tab_pos, client_id);
                 },
@@ -877,10 +888,14 @@ impl Screen {
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => self
-                .tabs
-                .get(tab)
-                .ok_or_else(|| anyhow!("active tab {} does not exist", tab)),
+            Some(tab) => {
+                info!("active tab for client {:?} is {}", client_id, tab);
+
+                return self
+                    .tabs
+                    .get(tab)
+                    .ok_or_else(|| anyhow!("active tab {} does not exist", tab));
+            },
             None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
@@ -1341,11 +1356,14 @@ impl Screen {
             self.get_first_client_id()
         };
 
+        info!("active tabs: {:?}", self.active_tab_indices);
+        let single_tab_wraparound = if self.tabs.len() == 1 { true } else { false };
+
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
                     active_tab
-                        .move_focus_right(client_id)
+                        .move_focus_right(client_id, single_tab_wraparound)
                         .and_then(|success| {
                             if !success {
                                 self.switch_tab_next(client_id)
@@ -1673,7 +1691,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, false),
                     ?
                 );
                 screen.render()?;

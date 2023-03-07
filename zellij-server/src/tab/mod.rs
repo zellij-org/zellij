@@ -7,6 +7,7 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
+use log::info;
 use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_utils::data::{Direction, ResizeStrategy};
@@ -1621,12 +1622,17 @@ impl Tab {
 
         self.tiled_panes.focus_pane_left_fullscreen(client_id);
     }
-    pub fn focus_pane_right_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_right_fullscreen(
+        &mut self,
+        client_id: ClientId,
+        single_tab_wraparound: bool,
+    ) {
         if !self.is_fullscreen_active() {
             return;
         }
 
-        self.tiled_panes.focus_pane_right_fullscreen(client_id);
+        self.tiled_panes
+            .focus_pane_right_fullscreen(client_id, single_tab_wraparound);
     }
     pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
         if !self.is_fullscreen_active() {
@@ -1983,10 +1989,15 @@ impl Tab {
         }
     }
     // returns a boolean that indicates whether the focus moved
-    pub fn move_focus_right(&mut self, client_id: ClientId) -> Result<bool> {
+    pub fn move_focus_right(
+        &mut self,
+        client_id: ClientId,
+        single_tab_wraparound: bool,
+    ) -> Result<bool> {
         let err_context = || format!("failed to move focus right for client {}", client_id);
 
         if self.floating_panes.panes_are_visible() {
+            info!("moving focus right in floating panes");
             self.floating_panes
                 .move_focus(
                     client_id,
@@ -1996,13 +2007,17 @@ impl Tab {
                 .with_context(err_context)
         } else {
             if !self.has_selectable_panes() {
+                info!("no selectable panes");
                 return Ok(false);
             }
             if self.tiled_panes.fullscreen_is_active() {
-                self.focus_pane_right_fullscreen(client_id);
+                info!("fullscreen is active");
+                self.focus_pane_right_fullscreen(client_id, single_tab_wraparound);
                 return Ok(true);
             }
-            Ok(self.tiled_panes.move_focus_right(client_id))
+            Ok(self
+                .tiled_panes
+                .move_focus_right(client_id, single_tab_wraparound))
         }
     }
     pub fn move_active_pane(&mut self, client_id: ClientId) {

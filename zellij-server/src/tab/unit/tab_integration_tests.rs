@@ -1161,7 +1161,7 @@ fn move_floating_pane_focus_right() {
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
     tab.move_focus_left(client_id).unwrap();
-    tab.move_focus_right(client_id).unwrap();
+    tab.move_focus_right(client_id, false).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3296,7 +3296,7 @@ fn move_focus_up_with_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -3348,7 +3348,7 @@ fn move_focus_down_with_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
@@ -3404,7 +3404,7 @@ fn move_focus_right_into_stacked_panes() {
         .unwrap();
 
     tab.move_focus_up(client_id);
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -3460,7 +3460,7 @@ fn move_focus_left_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.horizontal_split(PaneId::Terminal(1), None, client_id)
         .unwrap();
 
@@ -3523,7 +3523,7 @@ fn move_focus_up_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_left(client_id);
     tab.move_focus_down(client_id);
@@ -3707,7 +3707,7 @@ fn close_main_stacked_pane_in_mid_stack() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_3, false, None);
@@ -3768,7 +3768,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
     tab.move_focus_left(client_id);
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_2, false, None);
@@ -3828,7 +3828,7 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_1, false, None);
@@ -3888,7 +3888,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
@@ -3952,7 +3952,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
@@ -4017,7 +4017,7 @@ fn can_increase_size_of_main_pane_in_stack_non_directionally() {
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
     let _ = tab.move_focus_up(client_id);
-    let _ = tab.move_focus_right(client_id);
+    let _ = tab.move_focus_right(client_id, false);
     tab.resize(client_id, ResizeStrategy::new(Resize::Increase, None))
         .unwrap();
     tab.render(&mut output, None).unwrap();
@@ -4139,7 +4139,7 @@ fn can_increase_size_into_pane_stack_vertically() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id);
+    tab.move_focus_right(client_id, false);
     tab.move_focus_down(client_id);
     tab.resize(
         client_id,
