@@ -1136,7 +1136,7 @@ pub fn close_pane_with_another_pane_to_the_right() {
     let mut tab = create_new_tab(size);
     let new_pane_id = PaneId::Terminal(2);
     tab.vertical_split(new_pane_id, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.close_focused_pane(1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 1, "One pane left in tab");
 
@@ -1423,9 +1423,9 @@ pub fn close_pane_with_multiple_panes_to_the_left() {
     let new_pane_id_1 = PaneId::Terminal(2);
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.close_focused_pane(1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
@@ -1535,7 +1535,7 @@ pub fn close_pane_with_multiple_panes_to_the_right() {
     let new_pane_id_2 = PaneId::Terminal(3);
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.close_focused_pane(1).unwrap();
     assert_eq!(tab.tiled_panes.panes.len(), 2, "Two panes left in tab");
 
@@ -1650,14 +1650,14 @@ pub fn close_pane_with_multiple_panes_above_it_away_from_screen_edges() {
 
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab.vertical_split(new_pane_id_2, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(new_pane_id_4, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(new_pane_id_5, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_down(&mut tab, 1);
     tab.vertical_split(new_pane_id_6, None, 1).unwrap();
@@ -1950,14 +1950,14 @@ pub fn close_pane_with_multiple_panes_below_it_away_from_screen_edges() {
 
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab.vertical_split(new_pane_id_2, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(new_pane_id_4, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(new_pane_id_5, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_up(&mut tab, 1);
     tab.vertical_split(new_pane_id_6, None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -2259,12 +2259,12 @@ pub fn close_pane_with_multiple_panes_to_the_left_away_from_screen_edges() {
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(new_pane_id_5, None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
     tab.horizontal_split(new_pane_id_6, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.close_focused_pane(1).unwrap();
 
     assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
@@ -2567,7 +2567,7 @@ pub fn close_pane_with_multiple_panes_to_the_right_away_from_screen_edges() {
     tab_resize_up(&mut tab, 1);
     tab_resize_up(&mut tab, 1);
     tab.horizontal_split(new_pane_id_6, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.close_focused_pane(1).unwrap();
 
     assert_eq!(tab.tiled_panes.panes.len(), 6, "Six panes left in tab");
@@ -2939,7 +2939,7 @@ pub fn move_focus_left() {
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
 
     assert_eq!(
         tab.get_active_pane(1).unwrap().x(),
@@ -2960,11 +2960,11 @@ pub fn move_focus_left_to_the_most_recently_used_pane() {
     let new_pane_id_3 = PaneId::Terminal(4);
 
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_right(1, true).unwrap();
+    tab.move_focus_left(1, true).unwrap();
 
     assert_eq!(
         tab.get_active_pane(1).unwrap().y(),
@@ -2988,8 +2988,8 @@ pub fn move_focus_right() {
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_left(1, true).unwrap();
+    tab.move_focus_right(1, true).unwrap();
 
     assert_eq!(
         tab.get_active_pane(1).unwrap().x(),
@@ -3012,8 +3012,8 @@ pub fn move_focus_right_to_the_most_recently_used_pane() {
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_left(1, true).unwrap();
+    tab.move_focus_right(1, true).unwrap();
 
     assert_eq!(
         tab.get_active_pane(1).unwrap().y(),
@@ -3182,10 +3182,10 @@ pub fn move_active_pane_left_to_the_most_recently_used_position() {
     let new_pane_id_3 = PaneId::Terminal(4);
 
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.move_active_pane_left(1);
 
     assert_eq!(
@@ -3216,7 +3216,7 @@ pub fn move_active_pane_right() {
     let new_pane_id = PaneId::Terminal(2);
 
     tab.vertical_split(new_pane_id, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_active_pane_right(1);
 
     assert_eq!(
@@ -3245,7 +3245,7 @@ pub fn move_active_pane_right_to_the_most_recently_used_position() {
     tab.vertical_split(new_pane_id_1, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_2, None, 1).unwrap();
     tab.horizontal_split(new_pane_id_3, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_active_pane_right(1);
 
     assert_eq!(
@@ -4213,7 +4213,7 @@ pub fn resize_down_with_panes_above_aligned_right_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(pane_above_and_right, None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -4413,7 +4413,7 @@ pub fn resize_down_with_panes_below_aligned_right_with_current_pane() {
     tab.vertical_split(pane_below_and_right, None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(pane_to_the_right, None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -4611,7 +4611,7 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
 
@@ -4896,7 +4896,7 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -5181,10 +5181,10 @@ pub fn resize_down_with_panes_above_aligned_left_and_right_with_panes_to_the_lef
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.vertical_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(8), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -5552,15 +5552,15 @@ pub fn resize_down_with_panes_below_aligned_left_and_right_with_to_the_left_and_
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(8), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_down(&mut tab, 1);
 
     assert_eq!(
@@ -6206,7 +6206,7 @@ pub fn resize_left_with_pane_to_the_right() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -6312,7 +6312,7 @@ pub fn resize_left_with_panes_to_the_left_and_right() {
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -6459,9 +6459,9 @@ pub fn resize_left_with_multiple_panes_to_the_left() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -6807,7 +6807,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -7194,7 +7194,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -7679,7 +7679,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_current_p
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_left(&mut tab, 1);
 
     assert_eq!(
@@ -8341,7 +8341,7 @@ pub fn resize_left_with_panes_to_the_right_aligned_top_and_bottom_with_panes_abo
     tab.move_focus_down(1).unwrap();
     tab_resize_down(&mut tab, 1);
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(8), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -8849,7 +8849,7 @@ pub fn resize_right_with_pane_to_the_right() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
 
     assert_eq!(
@@ -8955,7 +8955,7 @@ pub fn resize_right_with_panes_to_the_left_and_right() {
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
 
     assert_eq!(
@@ -9103,7 +9103,7 @@ pub fn resize_right_with_multiple_panes_to_the_left() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_right(1, false).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -9253,9 +9253,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_top_with_current_pane() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, 1).unwrap();
     tab_resize_right(&mut tab, 1);
 
@@ -9446,11 +9446,11 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_with_current_pane() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
 
     assert_eq!(
@@ -9641,9 +9641,9 @@ pub fn resize_right_with_panes_to_the_left_aligned_bottom_with_current_pane() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_right(&mut tab, 1);
@@ -9836,12 +9836,12 @@ pub fn resize_right_with_panes_to_the_right_aligned_bottom_with_current_pane() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_right(1, false).unwrap();
+    tab.move_focus_right(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(4), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
 
     assert_eq!(
@@ -10325,7 +10325,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_current_
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_right(&mut tab, 1);
 
     assert_eq!(
@@ -10985,7 +10985,7 @@ pub fn resize_right_with_panes_to_the_right_aligned_top_and_bottom_with_panes_ab
     tab.move_focus_down(1).unwrap();
     tab_resize_up(&mut tab, 1);
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.horizontal_split(PaneId::Terminal(8), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
@@ -12342,7 +12342,7 @@ pub fn resize_up_with_panes_above_aligned_right_with_current_pane() {
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_up(&mut tab, 1);
 
     assert_eq!(
@@ -12538,7 +12538,7 @@ pub fn resize_up_with_panes_below_aligned_right_with_current_pane() {
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(PaneId::Terminal(4), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
 
@@ -12736,7 +12736,7 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_up(&mut tab, 1);
 
     assert_eq!(
@@ -13019,7 +13019,7 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_current_pane() {
     tab.move_focus_up(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.move_focus_up(1).unwrap();
     tab_resize_up(&mut tab, 1);
 
@@ -13304,10 +13304,10 @@ pub fn resize_up_with_panes_above_aligned_left_and_right_with_panes_to_the_left_
     tab.move_focus_down(1).unwrap();
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.vertical_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(8), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_up(&mut tab, 1);
 
     assert_eq!(
@@ -13678,10 +13678,10 @@ pub fn resize_up_with_panes_below_aligned_left_and_right_with_to_the_left_and_ri
     tab.vertical_split(PaneId::Terminal(5), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(6), None, 1).unwrap();
     tab.move_focus_up(1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.vertical_split(PaneId::Terminal(7), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(8), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_up(&mut tab, 1);
 
     assert_eq!(
@@ -14134,7 +14134,7 @@ pub fn nondirectional_resize_increase_with_2_panes_to_left() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab.move_focus_right(1, false).unwrap();
     tab_resize_increase(&mut tab, 1);
@@ -14192,7 +14192,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_above() {
     };
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab.horizontal_split(PaneId::Terminal(3), None, 1).unwrap();
     tab_resize_increase(&mut tab, 1);
 
@@ -14249,7 +14249,7 @@ pub fn nondirectional_resize_increase_with_1_pane_to_right_1_pane_to_left() {
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_increase(&mut tab, 1);
 
     assert_eq!(
@@ -14305,7 +14305,7 @@ pub fn nondirectional_resize_increase_with_pane_above_aligned_right_with_current
     let mut tab = create_new_tab(size);
     tab.vertical_split(PaneId::Terminal(2), None, 1).unwrap();
     tab.vertical_split(PaneId::Terminal(3), None, 1).unwrap();
-    tab.move_focus_left(1).unwrap();
+    tab.move_focus_left(1, true).unwrap();
     tab_resize_increase(&mut tab, 1);
 
     assert_eq!(

@@ -1322,11 +1322,12 @@ impl Screen {
         } else {
             self.get_first_client_id()
         };
+        let wrap_around_flag = if self.tabs.len() == 1 { true } else { false };
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
                     active_tab
-                        .move_focus_left(client_id)
+                        .move_focus_left(client_id, wrap_around_flag)
                         .and_then(|success| {
                             if !success {
                                 self.switch_tab_prev(client_id)
@@ -1356,14 +1357,13 @@ impl Screen {
             self.get_first_client_id()
         };
 
-        info!("active tabs: {:?}", self.active_tab_indices);
-        let single_tab_wraparound = if self.tabs.len() == 1 { true } else { false };
+        let wrap_around_flag = if self.tabs.len() == 1 { true } else { false };
 
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
                     active_tab
-                        .move_focus_right(client_id, single_tab_wraparound)
+                        .move_focus_right(client_id, wrap_around_flag)
                         .and_then(|success| {
                             if !success {
                                 self.switch_tab_next(client_id)
@@ -1666,7 +1666,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id,false),
                     ?
                 );
                 screen.render()?;

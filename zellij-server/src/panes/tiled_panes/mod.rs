@@ -863,7 +863,7 @@ impl TiledPanes {
             (size_in_pixels.height as f64 / size_in_pixels.width as f64).round() as usize
         })
     }
-    pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_left(&mut self, client_id: ClientId, wrap_around: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
@@ -872,7 +872,11 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+                let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+                if next_index.is_none() && wrap_around {
+                    let index = self.panes.len() - 3;
+                    next_index = Some(PaneId::Terminal(index as u32));
+                }
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1021,14 +1025,12 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                info!("active_pane_id: {:?}", active_pane_id);
                 let mut next_index =
                     pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
 
                 if next_index.is_none() && single_tab_wraparoud {
                     next_index = Some(PaneId::Terminal(0));
                 }
-                info!("next_index: {:?}", next_index);
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1542,9 +1544,9 @@ impl TiledPanes {
         }
     }
 
-    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_left_fullscreen(&mut self, client_id: ClientId, wrap_around: bool) {
         self.unset_fullscreen();
-        self.move_focus_left(client_id);
+        self.move_focus_left(client_id, wrap_around);
         self.toggle_active_pane_fullscreen(client_id);
     }
 

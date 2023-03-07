@@ -1105,7 +1105,7 @@ fn move_floating_pane_focus_left() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id).unwrap();
+    tab.move_focus_left(client_id, false).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1160,7 +1160,7 @@ fn move_floating_pane_focus_right() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id).unwrap();
+    tab.move_focus_left(client_id, false).unwrap();
     tab.move_focus_right(client_id, false).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -2862,7 +2862,7 @@ fn move_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id).unwrap();
+    tab.move_focus_left(client_id, false).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 
@@ -2905,7 +2905,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id).unwrap();
+    tab.move_focus_left(client_id, false).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 
@@ -3399,7 +3399,7 @@ fn move_focus_right_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.horizontal_split(PaneId::Terminal(16), None, client_id)
         .unwrap();
 
@@ -3465,7 +3465,7 @@ fn move_focus_left_into_stacked_panes() {
         .unwrap();
 
     tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -3525,7 +3525,7 @@ fn move_focus_up_into_stacked_panes() {
     }
     tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.move_focus_down(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id)
         .unwrap();
@@ -3587,7 +3587,7 @@ fn move_focus_down_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.move_focus_up(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id)
         .unwrap();
@@ -3767,7 +3767,7 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.move_focus_right(client_id, false);
     tab.move_focus_up(client_id);
     tab.move_focus_up(client_id);
@@ -4704,7 +4704,7 @@ fn focus_next_pane_expands_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_left(client_id);
+    tab.move_focus_left(client_id, false);
     tab.focus_next_pane(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
