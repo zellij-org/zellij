@@ -324,6 +324,7 @@ impl From<CliOptions> for Options {
             scrollback_editor: opts.scrollback_editor,
             session_name: opts.session_name,
             attach_to_session: opts.attach_to_session,
+            auto_layout: opts.auto_layout,
             ..Default::default()
         }
     }

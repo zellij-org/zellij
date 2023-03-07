@@ -43,9 +43,6 @@ cargo xtask manpage
 You can see a list of all commands (with supported arguments) with `cargo xtask
 --help`. For convenience, `xtask` may be shortened to `x`: `cargo x build` etc.
 
-To run `install` or `publish`, you'll need the package `binaryen` in the
-version `wasm-opt --version` > 97, for it's command `wasm-opt`.
-
 To run `test`, you will need the package `pkg-config` and a version of `openssl`.
 
 ## Running the end-to-end tests

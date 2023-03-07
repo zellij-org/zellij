@@ -485,7 +485,7 @@ fn new_tab(screen: &mut Screen, pid: u32, tab_index: usize) {
     let new_terminal_ids = vec![(pid, None)];
     let new_plugin_ids = HashMap::new();
     screen
-        .new_tab(tab_index, (vec![], vec![]), client_id)
+        .new_tab(tab_index, (vec![], vec![]), None, client_id)
         .expect("TEST");
     screen
         .apply_layout(

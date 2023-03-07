@@ -36,8 +36,6 @@ jobs:
       run: sudo apt-get install -y --no-install-recommends musl-tools
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
-    - name: Install wasm-opt
-      run: sudo apt-get install -y --no-install-recommends binaryen
       #run: cargo install --debug cargo-make
     - name: Build asset
       run: cargo xtask ci e2e --build
