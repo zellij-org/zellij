@@ -47,8 +47,51 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             base_cmd = base_cmd.arg("--release");
         }
         base_cmd.run().with_context(err_context)?;
+
+        if subcrate.contains("plugins") {
+            let (_, plugin_name) = subcrate
+                .rsplit_once('/')
+                .context("Cannot determine plugin name from '{subcrate}'")?;
+
+            if flags.release {
+                // Move plugin into assets folder
+                move_plugin_to_assets(sh, plugin_name)?;
+            }
+        }
     }
     Ok(())
+}
+
+fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
+    let err_context = || format!("failed to move plugin '{plugin_name}' to assets folder");
+
+    // Get asset path
+    let asset_name = crate::project_root()
+        .join("zellij-utils")
+        .join("assets")
+        .join("plugins")
+        .join(plugin_name)
+        .with_extension("wasm");
+
+    // Get plugin path
+    let plugin = PathBuf::from(
+        std::env::var_os("CARGO_TARGET_DIR")
+            .unwrap_or(crate::project_root().join("target").into_os_string()),
+    )
+    .join("wasm32-wasi")
+    .join("release")
+    .join(plugin_name)
+    .with_extension("wasm");
+
+    if !plugin.is_file() {
+        return Err(anyhow::anyhow!("No plugin found at '{}'", plugin.display()))
+            .with_context(err_context);
+    }
+
+    // This is a plugin we want to move
+    let from = plugin.as_path();
+    let to = asset_name.as_path();
+    sh.copy_file(from, to).with_context(err_context)
 }
 
 /// Build the manpage with `mandown`.
