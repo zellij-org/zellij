@@ -352,7 +352,8 @@ pub(crate) fn start_client(opts: CliArgs) {
         let client = if let Some(idx) = index {
             attach_with_session_index(config_options.clone(), idx, create)
         } else {
-            if create {
+            let session_exists = session_name.as_ref().and_then(|s| session_exists(&s).ok()).unwrap_or(false);
+            if create && !session_exists {
                 session_name.clone().map(start_client_plan);
             }
             attach_with_session_name(session_name, config_options.clone(), create)
