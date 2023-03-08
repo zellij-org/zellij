@@ -679,11 +679,6 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                    info!(
-                        "Switching to next tab: current tab position: {active_tab_pos}, new tab position: {new_tab_pos}",
-                        active_tab_pos = active_tab_pos,
-                        new_tab_pos = new_tab_pos,
-                    );
                     return self.switch_active_tab(new_tab_pos, client_id);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -711,12 +706,6 @@ impl Screen {
                     } else {
                         active_tab_pos - 1
                     };
-                    info!(
-                        "Switching to previous tab: current tab position: {active_tab_pos}, new tab position: {new_tab_pos}",
-                        active_tab_pos = active_tab_pos,
-                        new_tab_pos = new_tab_pos,
-                    );
-
                     return self.switch_active_tab(new_tab_pos, client_id);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
@@ -889,8 +878,6 @@ impl Screen {
     pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
             Some(tab) => {
-                info!("active tab for client {:?} is {}", client_id, tab);
-
                 return self
                     .tabs
                     .get(tab)
@@ -1003,6 +990,8 @@ impl Screen {
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
+        info!("layout is {:#?}", layout);
+        info!("floating layout is {:#?}", floating_panes_layout);
         let client_id = if self.get_active_tab(client_id).is_ok() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
@@ -1666,7 +1655,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id,false),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id, true), // set wrap around flag to true does not cause problem since the action does not change tab
                     ?
                 );
                 screen.render()?;
@@ -1691,7 +1680,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, false),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, true), // set wrap around flag to true does not cause problem since the action does not change tab
                     ?
                 );
                 screen.render()?;

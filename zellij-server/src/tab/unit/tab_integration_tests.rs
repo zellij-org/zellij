@@ -3296,8 +3296,8 @@ fn move_focus_up_with_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3348,9 +3348,9 @@ fn move_focus_down_with_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_3, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3359,6 +3359,61 @@ fn move_focus_down_with_stacked_panes() {
         Palette::default(),
     );
     assert_snapshot!(snapshot);
+}
+
+#[test]
+fn move_focus_left_wrap_around() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id_1 = PaneId::Terminal(0);
+    let new_pane_id_2 = PaneId::Terminal(1);
+    let mut output = Output::default();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    let _ = tab.move_focus_left(client_id, true);
+    let _ = tab.move_focus_left(client_id, true);
+    tab.render(&mut output, None).unwrap();
+
+    let active_pane_id = if let Some(active_pane) = tab.get_active_pane_id(client_id) {
+        active_pane
+    } else {
+        PaneId::Terminal(u32::MAX)
+    };
+
+    assert_eq!(PaneId::Terminal(0), active_pane_id);
+}
+
+#[test]
+fn move_focus_right_wrap_around() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let new_pane_id_1 = PaneId::Terminal(0);
+    let new_pane_id_2 = PaneId::Terminal(1);
+    let mut output = Output::default();
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    let _ = tab.move_focus_right(client_id, true);
+    tab.render(&mut output, None).unwrap();
+
+    let active_pane_id = if let Some(active_pane) = tab.get_active_pane_id(client_id) {
+        active_pane
+    } else {
+        PaneId::Terminal(u32::MAX)
+    };
+
+    assert_eq!(PaneId::Terminal(0), active_pane_id);
 }
 
 #[test]
@@ -3399,13 +3454,13 @@ fn move_focus_right_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_left(client_id, false);
+    let _ = tab.move_focus_left(client_id, true);
     tab.horizontal_split(PaneId::Terminal(16), None, client_id)
         .unwrap();
 
-    tab.move_focus_up(client_id);
-    tab.move_focus_right(client_id, false);
-    tab.render(&mut output, None).unwrap();
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id, true);
+    let _ = tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3460,13 +3515,13 @@ fn move_focus_left_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_right(client_id, false);
     tab.horizontal_split(PaneId::Terminal(1), None, client_id)
         .unwrap();
 
-    tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id, false);
-    tab.render(&mut output, None).unwrap();
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id, false);
+    let _ = tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -3523,14 +3578,14 @@ fn move_focus_up_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
-    tab.move_focus_left(client_id, false);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id, false);
+    let _ = tab.move_focus_down(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id)
         .unwrap();
 
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -3587,12 +3642,12 @@ fn move_focus_down_into_stacked_panes() {
         tab.new_pane(PaneId::Terminal(new_pane_id), None, None, Some(client_id))
             .unwrap();
     }
-    tab.move_focus_left(client_id, false);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id, false);
+    let _ = tab.move_focus_up(client_id);
     tab.vertical_split(PaneId::Terminal(7), None, client_id)
         .unwrap();
 
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
@@ -3707,9 +3762,9 @@ fn close_main_stacked_pane_in_mid_stack() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_3, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -3767,10 +3822,10 @@ fn close_one_liner_stacked_pane_below_main_pane() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_left(client_id, false);
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_left(client_id, false);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_2, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -3828,9 +3883,9 @@ fn close_one_liner_stacked_pane_above_main_pane() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(new_pane_id_1, false, None);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -3888,7 +3943,7 @@ fn can_increase_size_of_main_pane_in_stack_horizontally() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_right(client_id, false);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Left)),
@@ -3952,7 +4007,7 @@ fn can_increase_size_of_main_pane_in_stack_vertically() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_right(client_id, false);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
@@ -4139,8 +4194,8 @@ fn can_increase_size_into_pane_stack_vertically() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_right(client_id, false);
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_right(client_id, false);
+    let _ = tab.move_focus_down(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Up)),
@@ -4263,7 +4318,7 @@ fn decreasing_size_of_whole_tab_treats_stacked_panes_properly() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
     });
@@ -4323,11 +4378,11 @@ fn increasing_size_of_whole_tab_treats_stacked_panes_properly() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 100,
         rows: 10,
     });
-    tab.resize_whole_tab(Size {
+    let _ = tab.resize_whole_tab(Size {
         cols: 121,
         rows: 20,
     });
@@ -4388,7 +4443,7 @@ fn cannot_decrease_stack_size_beyond_minimum_height() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     for _ in 0..6 {
         tab.resize(
             client_id,
@@ -4704,7 +4759,7 @@ fn focus_next_pane_expands_stacked_panes() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_left(client_id, false);
+    let _ = tab.move_focus_left(client_id, false);
     tab.focus_next_pane(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -4764,7 +4819,7 @@ fn stacked_panes_can_become_fullscreen() {
         .unwrap();
     tab.new_pane(new_pane_id_5, None, None, Some(client_id))
         .unwrap();
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.toggle_active_pane_fullscreen(client_id);
     tab.render(&mut output, None).unwrap();
     let snapshot = take_snapshot(
@@ -5463,7 +5518,7 @@ fn when_swapping_tiled_layouts_in_a_damaged_state_layout_and_pane_focus_are_unch
         )),
         true,
     );
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.resize(
         client_id,
         ResizeStrategy::new(Resize::Increase, Some(Direction::Down)),
@@ -5541,7 +5596,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_pane_focuses_on_focused_nod
         )),
         true,
     );
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.next_swap_layout(Some(client_id), true).unwrap();
     tab.render(&mut output, None).unwrap();
 
@@ -5615,7 +5670,7 @@ fn when_swapping_tiled_layouts_in_an_undamaged_state_with_no_focus_node_pane_foc
         )),
         true,
     );
-    tab.move_focus_down(client_id);
+    let _ = tab.move_focus_down(client_id);
     tab.next_swap_layout(Some(client_id), true).unwrap();
     tab.render(&mut output, None).unwrap();
 
@@ -6598,8 +6653,8 @@ fn when_closing_a_floating_pane_in_auto_layout_the_focus_goes_to_last_focused_pa
         )),
         true,
     );
-    tab.move_focus_up(client_id);
-    tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
+    let _ = tab.move_focus_up(client_id);
     tab.close_pane(PaneId::Terminal(1), false, Some(client_id));
     tab.render(&mut output, None).unwrap();
 
@@ -6667,7 +6722,7 @@ fn when_resizing_whole_tab_with_auto_layout_and_floating_panes_the_layout_is_mai
         cols: 150,
         rows: 30,
     };
-    tab.resize_whole_tab(new_size);
+    let _ = tab.resize_whole_tab(new_size);
     tab.render(&mut output, None).unwrap();
 
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(

@@ -3,7 +3,6 @@ mod stacked_panes;
 mod tiled_pane_grid;
 
 use crate::resize_pty;
-use log::info;
 use tiled_pane_grid::{split, TiledPaneGrid, RESIZE_PERCENT};
 
 use crate::{
@@ -863,6 +862,16 @@ impl TiledPanes {
             (size_in_pixels.height as f64 / size_in_pixels.width as f64).round() as usize
         })
     }
+
+    fn plugin_pane_count(&self) -> usize {
+        let mut count = 0;
+        for key in self.panes.keys() {
+            if let PaneId::Plugin(_) = key {
+                count += 1;
+            }
+        }
+        return count;
+    }
     pub fn move_focus_left(&mut self, client_id: ClientId, wrap_around: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
@@ -873,8 +882,10 @@ impl TiledPanes {
                     *self.viewport.borrow(),
                 );
                 let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
+
                 if next_index.is_none() && wrap_around {
-                    let index = self.panes.len() - 3;
+                    let plugin_count = self.plugin_pane_count();
+                    let index = self.panes.len() - plugin_count - 1;
                     next_index = Some(PaneId::Terminal(index as u32));
                 }
                 match next_index {
