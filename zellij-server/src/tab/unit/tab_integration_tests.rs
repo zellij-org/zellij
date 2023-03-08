@@ -728,10 +728,12 @@ fn clear_screen() {
         .unwrap();
     let file = "/tmp/log.sh";
     tab.clear_active_terminal_screen(client_id).unwrap();
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id, false)
+        .unwrap();
     assert_eq!(
         map.lock().unwrap().get(file).unwrap(),
-        "scratch",
-        "screen was dumped properly"
+        "",
+        "screen was cleared properly"
     );
 }
 
