@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
+* fix: crash when closing tab with command panes (https://github.com/zellij-org/zellij/pull/2251)
 
 ## [0.35.1] - 2023-03-07
 * fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
