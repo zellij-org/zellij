@@ -3386,7 +3386,7 @@ fn move_focus_left_wrap_around() {
         PaneId::Terminal(u32::MAX)
     };
 
-    assert_eq!(PaneId::Terminal(0), active_pane_id);
+    assert_eq!(PaneId::Terminal(1), active_pane_id);
 }
 
 #[test]
