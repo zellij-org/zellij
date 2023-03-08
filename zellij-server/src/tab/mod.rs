@@ -7,7 +7,6 @@ mod layout_applier;
 mod swap_layouts;
 
 use copy_command::CopyCommand;
-use log::info;
 use std::env::temp_dir;
 use uuid::Uuid;
 use zellij_utils::data::{Direction, ResizeStrategy};
@@ -1990,7 +1989,6 @@ impl Tab {
         let err_context = || format!("failed to move focus right for client {}", client_id);
 
         if self.floating_panes.panes_are_visible() {
-            info!("moving focus right in floating panes");
             self.floating_panes
                 .move_focus(
                     client_id,

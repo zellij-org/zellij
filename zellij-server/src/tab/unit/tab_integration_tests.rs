@@ -1105,7 +1105,7 @@ fn move_floating_pane_focus_left() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id, false).unwrap();
+    tab.move_focus_left(client_id, true).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -1160,8 +1160,8 @@ fn move_floating_pane_focus_right() {
         .unwrap();
     tab.handle_pty_bytes(6, Vec::from("\u{1b}#8".as_bytes()))
         .unwrap();
-    tab.move_focus_left(client_id, false).unwrap();
-    tab.move_focus_right(client_id, false).unwrap();
+    tab.move_focus_left(client_id, true).unwrap();
+    tab.move_focus_right(client_id, true).unwrap();
     tab.render(&mut output, None).unwrap();
     let (snapshot, cursor_coordinates) = take_snapshot_and_cursor_position(
         output.serialize().unwrap().get(&client_id).unwrap(),
@@ -2862,7 +2862,7 @@ fn move_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id, false).unwrap();
+    tab.move_focus_left(client_id, true).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 
@@ -2905,7 +2905,7 @@ fn move_floating_pane_focus_sends_tty_csi_event() {
         Vec::from("\u{1b}[?1004h".as_bytes()),
     )
     .unwrap();
-    tab.move_focus_left(client_id, false).unwrap();
+    tab.move_focus_left(client_id, true).unwrap();
     assert_snapshot!(format!("{:?}", *tty_stdin_bytes.lock().unwrap()));
 }
 
