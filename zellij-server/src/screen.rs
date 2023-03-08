@@ -1947,11 +1947,12 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    (_, Some(tab_index)) => {
-                        match screen.tabs.get_mut(&tab_index) {
-                            Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
-                            None => log::warn!("Tab with index {tab_index} not found. Cannot hold pane with id {:?}", id),
-                        }
+                    (_, Some(tab_index)) => match screen.tabs.get_mut(&tab_index) {
+                        Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
+                        None => log::warn!(
+                            "Tab with index {tab_index} not found. Cannot hold pane with id {:?}",
+                            id
+                        ),
                     },
                     _ => {
                         for tab in screen.tabs.values_mut() {
