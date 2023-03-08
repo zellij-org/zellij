@@ -988,6 +988,12 @@ impl Screen {
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
+        if self.tabs.get(&tab_index).is_none() {
+            // TODO: we should prevent this situation with a UI - eg. cannot close tabs with a
+            // pending state
+            log::error!("Tab with index {tab_index} not found. Cannot apply layout!");
+            return Ok(());
+        }
         let client_id = if self.get_active_tab(client_id).is_ok() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
@@ -1941,12 +1947,12 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    (_, Some(tab_index)) => {
-                        let tab = screen
-                            .tabs
-                            .get_mut(&tab_index)
-                            .context("couldn't find tab with index {tab_index}")?;
-                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                    (_, Some(tab_index)) => match screen.tabs.get_mut(&tab_index) {
+                        Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
+                        None => log::warn!(
+                            "Tab with index {tab_index} not found. Cannot hold pane with id {:?}",
+                            id
+                        ),
                     },
                     _ => {
                         for tab in screen.tabs.values_mut() {
