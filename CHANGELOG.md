@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
+* fix: crash when closing tab with command panes (https://github.com/zellij-org/zellij/pull/2251)
+
+## [0.35.1] - 2023-03-07
 * fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
 * build: Use `xtask` as build system (https://github.com/zellij-org/zellij/pull/2012)
 * fix: show visual error when failing to resize panes in various situations (https://github.com/zellij-org/zellij/pull/2036)
