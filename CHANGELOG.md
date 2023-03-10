@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
 * fix: crash when closing tab with command panes (https://github.com/zellij-org/zellij/pull/2251)
 * Terminal compatibility: pad end of line on `CSI P` (https://github.com/zellij-org/zellij/pull/2259)
