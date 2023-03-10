@@ -197,7 +197,7 @@ pub(crate) fn assert_session(name: &str) {
     process::exit(1);
 }
 
-pub(crate) fn assert_session_ne(name: &str) {
+pub(crate) fn assert_session_ne(name: &str, create: bool) {
     if name.trim().is_empty() {
         eprintln!("Session name cannot be empty. Please provide a specific session name.");
         process::exit(1);
@@ -213,6 +213,7 @@ pub(crate) fn assert_session_ne(name: &str) {
 
     match session_exists(name) {
         Ok(result) if !result => return,
+        Ok(_) if create => return, // When zellij is started with 'attach -c <name>'
         Ok(_) => println!("Session with name {:?} already exists. Use attach command to connect to it or specify a different name.", name),
         Err(e) => eprintln!("Error occurred: {:?}", e),
     };
