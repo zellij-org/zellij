@@ -52,6 +52,9 @@ pub struct Options {
     /// Set the default shell
     #[clap(long, value_parser)]
     pub default_shell: Option<PathBuf>,
+    /// Set the default cwd
+    #[clap(long, value_parser)]
+    pub default_cwd: Option<PathBuf>,
     /// Set the default layout
     #[clap(long, value_parser)]
     pub default_layout: Option<PathBuf>,
@@ -167,6 +170,7 @@ impl Options {
         let simplified_ui = other.simplified_ui.or(self.simplified_ui);
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -189,6 +193,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -230,6 +235,7 @@ impl Options {
 
         let default_mode = other.default_mode.or(self.default_mode);
         let default_shell = other.default_shell.or_else(|| self.default_shell.clone());
+        let default_cwd = other.default_cwd.or_else(|| self.default_cwd.clone());
         let default_layout = other.default_layout.or_else(|| self.default_layout.clone());
         let layout_dir = other.layout_dir.or_else(|| self.layout_dir.clone());
         let theme_dir = other.theme_dir.or_else(|| self.theme_dir.clone());
@@ -252,6 +258,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -310,6 +317,7 @@ impl From<CliOptions> for Options {
             theme: opts.theme,
             default_mode: opts.default_mode,
             default_shell: opts.default_shell,
+            default_cwd: opts.default_cwd,
             default_layout: opts.default_layout,
             layout_dir: opts.layout_dir,
             theme_dir: opts.theme_dir,
