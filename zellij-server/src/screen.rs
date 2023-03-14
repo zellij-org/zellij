@@ -700,8 +700,6 @@ impl Screen {
                 .with_context(err_context)
         } else {
             let client_mode_infos_in_closed_tab = tab_to_close.drain_connected_clients(None);
-            self.move_clients_from_closed_tab(client_mode_infos_in_closed_tab)
-                .with_context(err_context)?;
             let visible_tab_positions: HashSet<usize> =
                 self.active_tab_indices.values().copied().collect();
 
@@ -713,8 +711,24 @@ impl Screen {
                 }
             }
 
+            // let mut old_position_client_ids = vec![];
+            let mut old_position_client_ids: HashMap<usize, Vec<(ClientId, ModeInfo)>> =
+                HashMap::new();
+            old_position_client_ids.insert(tab_position, client_mode_infos_in_closed_tab.clone());
             for mut tab in split_off_tabs.into_values() {
                 let old_position = tab.position;
+                let connected_clients = tab.drain_connected_clients(None);
+
+                for (client_id, client_mode) in connected_clients {
+                    // old_position_client_ids.push((old_position, connected_client_id));
+                    old_position_client_ids
+                        .entry(old_position)
+                        .and_modify(|entry| {
+                            entry.push((client_id, client_mode.clone()));
+                        })
+                        .or_insert(vec![(client_id, client_mode.clone())]);
+                    // old_position_client_ids.insert(connected_client_id, old_position);
+                }
 
                 tab.position -= 1;
 
@@ -730,15 +744,63 @@ impl Screen {
                 self.tabs.insert(tab.position, tab);
             }
 
-            let new_tab_position = if tab_position >= self.tabs.len() {
-                self.tabs.keys().last().copied()
-            } else {
-                Some(tab_position)
-            };
-
             let current_active_tab_positions = self.active_tab_indices.clone();
-            for (client_id, _pos) in current_active_tab_positions {
-                self.update_client_tab_focus(client_id.clone(), new_tab_position.unwrap_or(0));
+
+            self.move_clients_from_closed_tab(client_mode_infos_in_closed_tab)
+                .with_context(err_context)?;
+
+            for (client_id, pos) in current_active_tab_positions {
+                // bug 1: 2 clients connected:
+                //  * client 1 on first tab
+                //  * client 2 creates 2 tabs, on last tab
+                //  * client 2 closes last tab
+                //  * BUG: client 1 AND client 2 are now focused on the middle tab
+                //  * EXPECTED: client 1 stays focused on first tab, client 2 is focused on middle tab
+                // TODO: fixed?
+
+                // bug 2: 2 clients connected:
+                //  * client 1 on first tab
+                //  * client 2 creates 2 tabs, on last tab
+                //  * client 1 closes first tab
+                //  * BUG: client 2 is now in weird state re: focused tabs
+                //  * EXPECTED: client 1 is focused on middle tab, client 2 is focused on last tab
+                // XXX: not fixed?
+                log::error!(
+                    "position is {pos}, client id is {client_id}, closing position {tab_position}"
+                );
+                match old_position_client_ids.get(&pos) {
+                    // TODO: if tab was focused in client, then do thing
+                    Some(ids) if tab_position == pos => {
+                        log::error!("1111111111111111111111111111111111111111111111");
+                        let new_tab_position = if tab_position >= self.tabs.len() {
+                            self.tabs.keys().last().copied()
+                        } else {
+                            Some(tab_position)
+                        };
+
+                        log::error!("2222222222222222222222222222222222222222222222");
+                        for (id, _mode) in ids {
+                            log::error!("3333333333333333333333333333333333333333333333");
+                            if &client_id == id {
+                                log::error!("4444444444444444444444444444444444444444444444");
+                                log::error!("position is {pos}, client id is {client_id}");
+                                self.update_client_tab_focus(
+                                    client_id,
+                                    new_tab_position.unwrap_or(0),
+                                );
+                            }
+                        }
+                    },
+                    // TODO: if tab was _not_ focused, get the focused tab's new
+                    // position and set that as active (get a ref to the tab
+                    // struct and access position?)
+                    Some(_ids) => {
+                        todo!()
+                    },
+                    None => {
+                        log::error!("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                    },
+                }
             }
 
             self.update_tabs().with_context(err_context)?;
