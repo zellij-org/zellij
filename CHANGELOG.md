@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
+* fix: crash when closing tab with command panes (https://github.com/zellij-org/zellij/pull/2251)
+
+## [0.35.1] - 2023-03-07
 * fix: show visual error when unable to split panes vertically/horizontally (https://github.com/zellij-org/zellij/pull/2025)
 * build: Use `xtask` as build system (https://github.com/zellij-org/zellij/pull/2012)
 * fix: show visual error when failing to resize panes in various situations (https://github.com/zellij-org/zellij/pull/2036)
@@ -44,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly decode plugin urls with spaces (https://github.com/zellij-org/zellij/pull/2190)
 * feat: QueryTabNames cli action (https://github.com/zellij-org/zellij/pull/2145)
 * fix: log error instead of crashing when unable to set CWD in a template (https://github.com/zellij-org/zellij/pull/2214)
+* fix: tab names in layout and gototabname crash on create (https://github.com/zellij-org/zellij/pull/2225)
+* feat: allow simulating releases (https://github.com/zellij-org/zellij/pull/2194)
 * feat: add args to new-tab action in keybinds (https://github.com/zellij-org/zellij/pull/2072)
 
   Eg:

@@ -210,6 +210,7 @@ pub enum ScreenInstruction {
     GoToTabName(
         String,
         (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>), // swap layouts
+        Option<TerminalAction>,                          // default_shell
         bool,
         Option<ClientId>,
     ),
@@ -934,6 +935,7 @@ impl Screen {
         &mut self,
         tab_index: usize,
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
+        tab_name: Option<String>,
         client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to create new tab for client {client_id:?}",);
@@ -946,11 +948,13 @@ impl Screen {
             client_id
         };
 
+        let tab_name = tab_name.unwrap_or_else(|| String::new());
+
         let position = self.tabs.len();
         let tab = Tab::new(
             tab_index,
             position,
-            String::new(),
+            tab_name,
             self.size,
             self.character_cell_size.clone(),
             self.sixel_image_store.clone(),
@@ -986,6 +990,12 @@ impl Screen {
         tab_index: usize,
         client_id: ClientId,
     ) -> Result<()> {
+        if self.tabs.get(&tab_index).is_none() {
+            // TODO: we should prevent this situation with a UI - eg. cannot close tabs with a
+            // pending state
+            log::error!("Tab with index {tab_index} not found. Cannot apply layout!");
+            return Ok(());
+        }
         let client_id = if self.get_active_tab(client_id).is_ok() {
             client_id
         } else if let Some(first_client_id) = self.get_first_client_id() {
@@ -1951,12 +1961,12 @@ pub(crate) fn screen_thread_main(
                             run_command
                         ));
                     },
-                    (_, Some(tab_index)) => {
-                        let tab = screen
-                            .tabs
-                            .get_mut(&tab_index)
-                            .context("couldn't find tab with index {tab_index}")?;
-                        tab.hold_pane(id, exit_status, is_first_run, run_command);
+                    (_, Some(tab_index)) => match screen.tabs.get_mut(&tab_index) {
+                        Some(tab) => tab.hold_pane(id, exit_status, is_first_run, run_command),
+                        None => log::warn!(
+                            "Tab with index {tab_index} not found. Cannot hold pane with id {:?}",
+                            id
+                        ),
                     },
                     _ => {
                         for tab in screen.tabs.values_mut() {
@@ -2032,7 +2042,7 @@ pub(crate) fn screen_thread_main(
             ) => {
                 let tab_index = screen.get_new_tab_index();
                 pending_tab_ids.insert(tab_index);
-                screen.new_tab(tab_index, swap_layouts, client_id)?;
+                screen.new_tab(tab_index, swap_layouts, tab_name.clone(), client_id)?;
                 screen
                     .bus
                     .senders
@@ -2040,7 +2050,6 @@ pub(crate) fn screen_thread_main(
                         default_shell,
                         layout,
                         floating_panes_layout,
-                        tab_name,
                         tab_index,
                         client_id,
                     ))?;
@@ -2096,7 +2105,13 @@ pub(crate) fn screen_thread_main(
                     },
                 }
             },
-            ScreenInstruction::GoToTabName(tab_name, swap_layouts, create, client_id) => {
+            ScreenInstruction::GoToTabName(
+                tab_name,
+                swap_layouts,
+                default_shell,
+                create,
+                client_id,
+            ) => {
                 let client_id = if client_id.is_none() {
                     None
                 } else if screen
@@ -2113,15 +2128,14 @@ pub(crate) fn screen_thread_main(
                         screen.render()?;
                         if create && !tab_exists {
                             let tab_index = screen.get_new_tab_index();
-                            screen.new_tab(tab_index, swap_layouts, client_id)?;
+                            screen.new_tab(tab_index, swap_layouts, Some(tab_name), client_id)?;
                             screen
                                 .bus
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
-                                    None,
+                                    default_shell,
                                     None,
                                     vec![],
-                                    Some(tab_name),
                                     tab_index,
                                     client_id,
                                 ))?;

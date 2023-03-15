@@ -30,8 +30,7 @@ pub enum PluginInstruction {
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
-        Option<String>, // tab name
-        usize,          // tab_index
+        usize, // tab_index
         ClientId,
     ),
     Exit,
@@ -92,7 +91,6 @@ pub(crate) fn plugin_thread_main(
                 terminal_action,
                 tab_layout,
                 floating_panes_layout,
-                tab_name,
                 tab_index,
                 client_id,
             ) => {
@@ -123,7 +121,6 @@ pub(crate) fn plugin_thread_main(
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,
-                    tab_name,
                     tab_index,
                     plugin_ids,
                     client_id,

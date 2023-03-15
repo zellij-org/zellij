@@ -19,40 +19,35 @@
 
 <h4 align="center">
   [<a href="https://zellij.dev/documentation/installation">Installation</a>]
-  [<a href="https://zellij.dev/documentation/overview">Overview</a>]
+  [<a href="https://zellij.dev/screencasts/">Screencasts & Tutorials</a>]
   [<a href="https://zellij.dev/documentation/configuration">Configuration</a>]
-  [<a href="https://zellij.dev/documentation/layouts-templates">Templates</a>]
+  [<a href="https://zellij.dev/documentation/layouts">Layouts</a>]
   [<a href="https://zellij.dev/documentation/faq">FAQ</a>]
 </h4>
 
 # What is this?
 
-[Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal.
-At its core, it is a terminal multiplexer (similar to [tmux](https://github.com/tmux/tmux) and [GNU Screen](https://www.gnu.org/software/screen/)), but this is merely its infrastructure layer.
+[Zellij](https://en.wikipedia.org/wiki/Zellij) is a workspace aimed at developers, ops-oriented people and anyone who loves the terminal. Similar programs are sometimes called "Terminal Multiplexers".
 
-Zellij includes a [layout system](https://zellij.dev/documentation/layouts.html), and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
+Zellij is designed around the philosophy that one must not sacrifice simplicity for power, taking pride in its great experience out of the box as well as the advanced features it places at its users' fingertips.
 
-You can get started by [installing](https://zellij.dev/documentation/installation.html) Zellij and reading the [overview](https://zellij.dev/documentation/overview.html).
+Zellij is geared toward beginner and power users alike - allowing deep customizability, personal automation through [layouts](https://zellij.dev/documentation/layouts.html), true multiplayer collaboration, unique UX features such as floating and stacked panes, and a [plugin system](https://zellij.dev/documentation/plugins.html) allowing one to create plugins in any language that compiles to WebAssembly.
+
+You can get started by [installing](https://zellij.dev/documentation/installation.html) Zellij and checking out the [Screencasts & Tutorials](https://zellij.dev/screencasts/).
 
 For more details about our future plans, read about upcoming features in our [roadmap](#roadmap).
 
-Zellij was initially called ***Mosaic***.
-
 ## How do I install it?
 
-You can install with `cargo`:
+The easiest way to install Zellij is through a [package for your OS](./docs/THIRD_PARTY_INSTALL.md).
+
+If one is not available for your OS, you could download a prebuilt binary from the [latest release](https://github.com/zellij-org/zellij/releases/latest) and place it in your `$PATH`. If you'd like, we could [automatically choose one for you](#try-zellij-without-installing).
+
+You can also install (compile) with `cargo`:
 
 ```
 cargo install --locked zellij
 ```
-
-Or if want to a prebuilt binary, you can download it from our [releases](https://github.com/zellij-org/zellij/releases), or use [`cargo-binstall`](https://github.com/ryankurte/cargo-binstall).
-
-```
-cargo-binstall zellij
-```
-
-Or you can also use [Third Party Repositories](./docs/THIRD_PARTY_INSTALL.md).
 
 #### Try Zellij without installing
 
@@ -90,8 +85,6 @@ For configuring Zellij, please see the [Configuration Documentation](https://zel
 ## What is the current status of the project?
 
 Zellij should be ready for everyday use, but it's still classified as a beta. This means that there might be a rare crash or wrong behaviour here and there, but that once found it should be fixed rather quickly. If this happens to you, we would be very happy if you could open an issue and tell us how to reproduce it as best you can.
-
-
 
 ## Roadmap
 Presented here is the project roadmap, divided into three main sections.
