@@ -597,7 +597,7 @@ impl Screen {
     }
 
     /// A helper function to switch to a new tab at specified position.
-    fn switch_active_tab(&mut self, new_tab_pos: usize, client_id: ClientId) -> Result<()> {
+    fn switch_active_tab(&mut self, new_tab_pos: usize, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
         let err_context = || {
             format!(
             "Failed to switch to active tab at position {new_tab_pos} for client id: {client_id:?}"
@@ -621,6 +621,12 @@ impl Screen {
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
+                            match (should_change_pane_focus, self.get_indexed_tab_mut(new_tab_index)) {
+                                (Some(direction), Some(new_tab)) => {
+                                    new_tab.focus_pane_on_edge(direction, client_id);
+                                },
+                                _ => {}
+                            }
                         }
                     } else {
                         self.move_clients_between_tabs(
@@ -629,6 +635,12 @@ impl Screen {
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
+                        match (should_change_pane_focus, self.get_indexed_tab_mut(new_tab_index)) {
+                            (Some(direction), Some(new_tab)) => {
+                                new_tab.focus_pane_on_edge(direction, client_id);
+                            },
+                            _ => {}
+                        }
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
 
@@ -656,7 +668,7 @@ impl Screen {
     fn switch_active_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
         match self.tabs.values().find(|t| t.name == name) {
             Some(new_tab) => {
-                self.switch_active_tab(new_tab.position, client_id)?;
+                self.switch_active_tab(new_tab.position, None, client_id)?;
                 Ok(true)
             },
             None => Ok(false),
@@ -664,7 +676,7 @@ impl Screen {
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
-    pub fn switch_tab_next(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_next(&mut self, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -678,7 +690,7 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                    return self.switch_active_tab(new_tab_pos, client_id);
+                    return self.switch_active_tab(new_tab_pos, should_change_pane_focus, client_id);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -687,7 +699,7 @@ impl Screen {
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
-    pub fn switch_tab_prev(&mut self, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_prev(&mut self, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -706,7 +718,7 @@ impl Screen {
                         active_tab_pos - 1
                     };
 
-                    return self.switch_active_tab(new_tab_pos, client_id);
+                    return self.switch_active_tab(new_tab_pos, should_change_pane_focus, client_id);
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -715,7 +727,7 @@ impl Screen {
     }
 
     pub fn go_to_tab(&mut self, tab_index: usize, client_id: ClientId) -> Result<()> {
-        self.switch_active_tab(tab_index.saturating_sub(1), client_id)
+        self.switch_active_tab(tab_index.saturating_sub(1), None, client_id)
     }
 
     pub fn go_to_tab_name(&mut self, name: String, client_id: ClientId) -> Result<bool> {
@@ -1320,7 +1332,7 @@ impl Screen {
                         .move_focus_left(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_prev(client_id)
+                                self.switch_tab_prev(Some(Direction::Left), client_id)
                                     .context("failed to move focus to previous tab")
                             } else {
                                 Ok(())
@@ -1354,7 +1366,7 @@ impl Screen {
                         .move_focus_right(client_id)
                         .and_then(|success| {
                             if !success {
-                                self.switch_tab_next(client_id)
+                                self.switch_tab_next(Some(Direction::Right), client_id)
                                     .context("failed to move focus to next tab")
                             } else {
                                 Ok(())
@@ -2004,12 +2016,12 @@ pub(crate) fn screen_thread_main(
                 screen.unblock_input()?;
             },
             ScreenInstruction::SwitchTabNext(client_id) => {
-                screen.switch_tab_next(client_id)?;
+                screen.switch_tab_next(None, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },
             ScreenInstruction::SwitchTabPrev(client_id) => {
-                screen.switch_tab_prev(client_id)?;
+                screen.switch_tab_prev(None, client_id)?;
                 screen.unblock_input()?;
                 screen.render()?;
             },

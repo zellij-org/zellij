@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{ModeInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{command::RunCommand, layout::SplitDirection},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -861,6 +861,35 @@ impl TiledPanes {
         character_cell_size.map(|size_in_pixels| {
             (size_in_pixels.height as f64 / size_in_pixels.width as f64).round() as usize
         })
+    }
+    pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let next_index = pane_grid.pane_id_on_edge(direction).unwrap();
+        // render previously active pane so that its frame does not remain actively
+        // colored
+        let previously_active_pane = self
+            .panes
+            .get_mut(self.active_panes.get(&client_id).unwrap())
+            .unwrap();
+
+        previously_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        previously_active_pane.render_full_viewport();
+
+        let next_active_pane = self.panes.get_mut(&next_index).unwrap();
+        next_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        next_active_pane.render_full_viewport();
+
+        self.focus_pane(next_index, client_id);
+        self.set_pane_active_at(next_index);
     }
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
