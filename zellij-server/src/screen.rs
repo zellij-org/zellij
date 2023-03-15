@@ -597,7 +597,12 @@ impl Screen {
     }
 
     /// A helper function to switch to a new tab at specified position.
-    fn switch_active_tab(&mut self, new_tab_pos: usize, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
+    fn switch_active_tab(
+        &mut self,
+        new_tab_pos: usize,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || {
             format!(
             "Failed to switch to active tab at position {new_tab_pos} for client id: {client_id:?}"
@@ -621,11 +626,14 @@ impl Screen {
                             self.connected_clients.borrow().iter().copied().collect();
                         for client_id in all_connected_clients {
                             self.update_client_tab_focus(client_id, new_tab_index);
-                            match (should_change_pane_focus, self.get_indexed_tab_mut(new_tab_index)) {
+                            match (
+                                should_change_pane_focus,
+                                self.get_indexed_tab_mut(new_tab_index),
+                            ) {
                                 (Some(direction), Some(new_tab)) => {
                                     new_tab.focus_pane_on_edge(direction, client_id);
                                 },
-                                _ => {}
+                                _ => {},
                             }
                         }
                     } else {
@@ -635,11 +643,14 @@ impl Screen {
                             Some(vec![client_id]),
                         )
                         .with_context(err_context)?;
-                        match (should_change_pane_focus, self.get_indexed_tab_mut(new_tab_index)) {
+                        match (
+                            should_change_pane_focus,
+                            self.get_indexed_tab_mut(new_tab_index),
+                        ) {
                             (Some(direction), Some(new_tab)) => {
                                 new_tab.focus_pane_on_edge(direction, client_id);
                             },
-                            _ => {}
+                            _ => {},
                         }
                         self.update_client_tab_focus(client_id, new_tab_index);
                     }
@@ -676,7 +687,11 @@ impl Screen {
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the next tab.
-    pub fn switch_tab_next(&mut self, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_next(
+        &mut self,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to switch to next tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -690,7 +705,11 @@ impl Screen {
                 Ok(active_tab) => {
                     let active_tab_pos = active_tab.position;
                     let new_tab_pos = (active_tab_pos + 1) % self.tabs.len();
-                    return self.switch_active_tab(new_tab_pos, should_change_pane_focus, client_id);
+                    return self.switch_active_tab(
+                        new_tab_pos,
+                        should_change_pane_focus,
+                        client_id,
+                    );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }
@@ -699,7 +718,11 @@ impl Screen {
     }
 
     /// Sets this [`Screen`]'s active [`Tab`] to the previous tab.
-    pub fn switch_tab_prev(&mut self, should_change_pane_focus: Option<Direction>, client_id: ClientId) -> Result<()> {
+    pub fn switch_tab_prev(
+        &mut self,
+        should_change_pane_focus: Option<Direction>,
+        client_id: ClientId,
+    ) -> Result<()> {
         let err_context = || format!("failed to switch to previous tab for client {client_id}");
 
         let client_id = if self.get_active_tab(client_id).is_ok() {
@@ -718,7 +741,11 @@ impl Screen {
                         active_tab_pos - 1
                     };
 
-                    return self.switch_active_tab(new_tab_pos, should_change_pane_focus, client_id);
+                    return self.switch_active_tab(
+                        new_tab_pos,
+                        should_change_pane_focus,
+                        client_id,
+                    );
                 },
                 Err(err) => Err::<(), _>(err).with_context(err_context).non_fatal(),
             }

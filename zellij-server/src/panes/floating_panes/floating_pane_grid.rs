@@ -635,38 +635,35 @@ impl<'a> FloatingPaneGrid<'a> {
         let next_index = panes
             .iter()
             .enumerate()
-            .max_by(|(_, (_, a)), (_, (_, b))| {
-                match direction {
-                    Direction::Left => {
-                        let x_comparison = a.x().cmp(&b.x());
-                        match x_comparison {
-                            Ordering::Equal => a.y().cmp(&b.y()),
-                            _ => x_comparison,
-                        }
+            .max_by(|(_, (_, a)), (_, (_, b))| match direction {
+                Direction::Left => {
+                    let x_comparison = a.x().cmp(&b.x());
+                    match x_comparison {
+                        Ordering::Equal => a.y().cmp(&b.y()),
+                        _ => x_comparison,
                     }
-                    Direction::Right => {
-                        let x_comparison = b.x().cmp(&a.x());
-                        match x_comparison {
-                            Ordering::Equal => a.y().cmp(&b.y()),
-                            _ => x_comparison,
-                        }
+                },
+                Direction::Right => {
+                    let x_comparison = b.x().cmp(&a.x());
+                    match x_comparison {
+                        Ordering::Equal => a.y().cmp(&b.y()),
+                        _ => x_comparison,
                     }
-                    Direction::Up => {
-                        let y_comparison = a.y().cmp(&b.y());
-                        match y_comparison {
-                            Ordering::Equal => a.x().cmp(&b.x()),
-                            _ => y_comparison,
-                        }
+                },
+                Direction::Up => {
+                    let y_comparison = a.y().cmp(&b.y());
+                    match y_comparison {
+                        Ordering::Equal => a.x().cmp(&b.x()),
+                        _ => y_comparison,
                     }
-                    Direction::Down => {
-                        let y_comparison = b.y().cmp(&a.y());
-                        match y_comparison {
-                            Ordering::Equal => b.x().cmp(&a.x()),
-                            _ => y_comparison,
-                        }
-
+                },
+                Direction::Down => {
+                    let y_comparison = b.y().cmp(&a.y());
+                    match y_comparison {
+                        Ordering::Equal => b.x().cmp(&a.x()),
+                        _ => y_comparison,
                     }
-                }
+                },
             })
             .map(|(_, (pid, _))| pid)
             .copied();
