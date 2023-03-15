@@ -334,6 +334,13 @@ impl<'a> KdlLayoutParser<'a> {
     fn parse_cwd(&self, kdl_node: &KdlNode) -> Result<Option<PathBuf>, ConfigError> {
         Ok(
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd")
+                .and_then(|cwd| match shellexpand::env(cwd) {
+                    Ok(cwd) => Some(cwd.to_string()),
+                    Err(e) => {
+                        log::error!("when parsing `cwd`: {}", e);
+                        None
+                    },
+                })
                 .map(|cwd| PathBuf::from(cwd)),
         )
     }

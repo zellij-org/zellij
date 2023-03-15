@@ -2031,3 +2031,35 @@ fn run_plugin_location_parsing() {
     };
     assert_eq!(layout, expected_layout);
 }
+
+fn get_cwd(layout: &Layout) -> Option<&PathBuf> {
+    match layout.template.as_ref()?.0.children.get(0)?.run.as_ref()? {
+        Run::Cwd(cwd) => Some(cwd),
+        _ => None,
+    }
+}
+
+#[test]
+fn pane_cwd_valid_env_var() {
+    let kdl_layout = r#"
+        layout {
+            pane cwd="$ZELLIJ_FOO/foo"
+        }
+    "#;
+    std::env::set_var("ZELLIJ_FOO", "/test_cwd");
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    let cwd = get_cwd(&layout).unwrap();
+    assert_eq!(cwd.to_string_lossy(), "/test_cwd/foo");
+}
+
+#[test]
+fn pane_cwd_invalid_env_var() {
+    let kdl_layout = r#"
+        layout {
+            pane cwd="$ZELLIJ_BAR/foo"
+        }
+    "#;
+    std::env::remove_var("ZELLIJ_BAR");
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_eq!(get_cwd(&layout), None);
+}
