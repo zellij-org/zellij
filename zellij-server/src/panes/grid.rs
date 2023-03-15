@@ -1109,8 +1109,12 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-    /// Clears all buffers with text
+    /// Clears all buffers with text for a current screen
     pub fn clear_screen(&mut self) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear pane with alternate_screen_state");
+            return;
+        }
         self.lines_above = Default::default();
         self.lines_below = Default::default();
         self.viewport = Default::default();

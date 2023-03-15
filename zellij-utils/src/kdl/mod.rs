@@ -68,6 +68,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
+                "Clear" => Ok(Action::ClearScreen),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),

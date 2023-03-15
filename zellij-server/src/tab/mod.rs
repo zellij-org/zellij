@@ -235,9 +235,7 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
-    fn clear_screen(&mut self) {
-        todo!();
-    }
+    fn clear_screen(&mut self);
     fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
         "".to_owned()
     }

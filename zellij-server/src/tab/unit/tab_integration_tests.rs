@@ -726,7 +726,7 @@ fn clear_screen() {
         .unwrap();
     tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
         .unwrap();
-    let file = "/tmp/log.sh";
+    let file = "/tmp/log-clear-screen.sh";
     tab.clear_active_terminal_screen(client_id).unwrap();
     tab.dump_active_terminal_screen(Some(file.to_string()), client_id, false)
         .unwrap();
