@@ -1366,6 +1366,21 @@ impl<'a> TiledPaneGrid<'a> {
             direction.map(|direction| (*t_id_to_split, direction))
         })
     }
+    pub fn has_room_for_new_stacked_pane(&self) -> bool {
+        let panes = self.panes.borrow();
+        let flexible_pane_in_stack: Vec<(&PaneId, &&mut Box<dyn Pane>)> = panes
+            .iter()
+            .filter(|(_, p)| {
+                p.selectable() && p.current_geom().is_stacked && !p.current_geom().rows.is_fixed()
+            })
+            .collect();
+        flexible_pane_in_stack
+            .iter()
+            .any(|(_p_id, p)| p.current_geom().rows.as_usize() > 1)
+    }
+    pub fn make_room_in_stack_for_pane(&mut self) -> Result<PaneGeom> {
+        StackedPanes::new(self.panes.clone()).make_room_for_new_pane()
+    }
 }
 
 pub fn split(direction: SplitDirection, rect: &PaneGeom) -> Option<(PaneGeom, PaneGeom)> {

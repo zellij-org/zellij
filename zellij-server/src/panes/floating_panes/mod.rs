@@ -532,7 +532,7 @@ impl FloatingPanes {
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
         let display_area = *self.display_area.borrow();
         let viewport = *self.viewport.borrow();
-        let mut floating_pane_grid = FloatingPaneGrid::new(
+        let floating_pane_grid = FloatingPaneGrid::new(
             &mut self.panes,
             &mut self.desired_pane_positions,
             display_area,
