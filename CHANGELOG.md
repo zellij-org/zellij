@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
+* fix: adding panes to lone stack (https://github.com/zellij-org/zellij/pull/2298)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
