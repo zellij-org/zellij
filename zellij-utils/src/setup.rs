@@ -85,8 +85,18 @@ pub fn get_layout_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
 }
 
 pub fn get_theme_dir(config_dir: Option<PathBuf>) -> Option<PathBuf> {
-    config_dir.map(|dir| dir.join("themes"))
+    const THEME_DIR: &str = "themes";
+
+    [
+        config_dir,
+        Some(get_default_data_dir())
+    ]
+    .into_iter()
+    .filter(|p| p.is_some())
+    .find(|dir| dir.clone().unwrap().join(THEME_DIR).exists())
+    .map(|dir| dir.clone().unwrap().join(THEME_DIR))
 }
+
 pub fn dump_asset(asset: &[u8]) -> std::io::Result<()> {
     std::io::stdout().write_all(asset)?;
     Ok(())
