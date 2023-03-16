@@ -1916,8 +1916,6 @@ impl Tab {
         self.tiled_panes.focus_previous_pane(client_id);
     }
     pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
-        let err_context = || format!("failed to move focus left for client {}", client_id);
-
         if self.floating_panes.panes_are_visible() {
             self.floating_panes.focus_pane_on_edge(direction, client_id);
         } else if self.has_selectable_panes() && !self.tiled_panes.fullscreen_is_active() {
