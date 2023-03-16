@@ -13,7 +13,7 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
     },
     position::Position,
 };
@@ -250,6 +250,14 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
+    NewTiledPluginPane(Option<Direction>, RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    AddPlugin(Option<Direction>, RunPlugin, Option<String>, usize, u32, ClientId), // Option<string>
+                                                                                       // - pane
+                                                                                       // title
+                                                                                       // usize -
+                                                                                       // tab index
+                                                                                       // u32 -
+                                                                                       // plugin id
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -393,6 +401,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
+            ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
         }
     }
 }
@@ -1154,6 +1164,42 @@ impl Screen {
             .send_to_plugin(PluginInstruction::Update(plugin_updates))
             .context("failed to update tabs")?;
         Ok(())
+    }
+    pub fn plugin_tab_state_updates(&self) -> Result<Vec<(Option<u32>, Option<ClientId>, Event)>> { // u32 is the plugin id
+        // TODO: merge this with update_tabs above
+        let mut plugin_updates = vec![];
+        for (client_id, active_tab_index) in self.active_tab_indices.iter() {
+            let mut tab_data = vec![];
+            for tab in self.tabs.values() {
+                let other_focused_clients: Vec<ClientId> = if self.session_is_mirrored {
+                    vec![]
+                } else {
+                    self.active_tab_indices
+                        .iter()
+                        .filter(|(c_id, tab_position)| {
+                            **tab_position == tab.index && *c_id != client_id
+                        })
+                        .map(|(c_id, _)| c_id)
+                        .copied()
+                        .collect()
+                };
+                let (active_swap_layout_name, is_swap_layout_dirty) = tab.swap_layout_info();
+                tab_data.push(TabInfo {
+                    position: tab.position,
+                    name: tab.name.clone(),
+                    active: *active_tab_index == tab.index,
+                    panes_to_hide: tab.panes_to_hide_count(),
+                    is_fullscreen_active: tab.is_fullscreen_active(),
+                    is_sync_panes_active: tab.is_sync_panes_active(),
+                    are_floating_panes_visible: tab.are_floating_panes_visible(),
+                    other_focused_clients,
+                    active_swap_layout_name,
+                    is_swap_layout_dirty,
+                });
+            }
+            plugin_updates.push((None, Some(*client_id), Event::TabUpdate(tab_data)));
+        }
+        Ok(plugin_updates)
     }
 
     pub fn update_active_tab_name(&mut self, buf: Vec<u8>, client_id: ClientId) -> Result<()> {
@@ -2387,6 +2433,34 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
+            ScreenInstruction::NewTiledPluginPane(direction, run_plugin_location, pane_title, client_id) => {
+                log::info!("screen.active_tab_indices: {:?}, client_id: {:?}", screen.active_tab_indices, client_id);
+                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
+                                                                                 // unwrap and
+                                                                                 // better
+                let size = Size::default(); // TODO: ???
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location
+                };
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Load(direction, pane_title, run_plugin, *tab_index, client_id, size))?;
+            }
+            ScreenInstruction::AddPlugin(direction, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
+                // TODO: CONTINUE HERE
+                // * start a new pane in this tab_index with this plugin_id, with the direction and
+                // all the things
+                log::info!("AddPlugin, run_plugin_location: {:?}", run_plugin_location);
+                if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
+                    let should_float = None;
+                    active_tab.new_plugin_pane(PaneId::Plugin(plugin_id), pane_title, should_float, None)?;
+                } else {
+                    log::error!("Tab index not found: {:?}", tab_index);
+                }
+                screen.unblock_input()?;
+            }
         }
     }
     Ok(())

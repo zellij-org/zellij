@@ -457,6 +457,7 @@ impl Action {
             "MovePaneBackwards" => Ok(Action::MovePaneBackwards),
             "DumpScreen" => Ok(Action::DumpScreen(string, false)),
             "NewPane" => {
+                // TODO: handle new plugin pane
                 if string.is_empty() {
                     return Ok(Action::NewPane(None, None));
                 } else {

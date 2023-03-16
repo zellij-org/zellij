@@ -4,11 +4,12 @@ use std::{collections::HashMap, fs, path::PathBuf};
 use wasmer::Store;
 
 use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId};
+use crate::screen::ScreenInstruction;
 
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::Event,
+    data::{Direction, Event},
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -20,7 +21,7 @@ use zellij_utils::{
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(RunPlugin, usize, ClientId, Size), // plugin metadata, tab_index, client_ids
+    Load(Option<Direction>, Option<String>, RunPlugin, usize, ClientId, Size), // Option<String> is the pane title, plugin metadata, tab_index, client_ids
     Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(u32),                                         // plugin_id
     Resize(u32, usize, usize),                           // plugin_id, columns, rows
@@ -33,6 +34,7 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
+    ApplyCachedEvents(u32, ClientId), // u32 is the plugin id
     Exit,
 }
 
@@ -47,6 +49,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
+            PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
         }
     }
 }
@@ -69,8 +72,11 @@ pub(crate) fn plugin_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(run, tab_index, client_id, size) => {
-                wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
+            PluginInstruction::Load(direction, pane_title, run, tab_index, client_id, size) => {
+                // TODO: this was the original... is it still around somewhere?
+                // wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
+                let plugin_id = wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
+                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(direction, run, pane_title, tab_index, plugin_id, client_id)));
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates)?;
@@ -126,6 +132,9 @@ pub(crate) fn plugin_thread_main(
                     client_id,
                 )));
             },
+            PluginInstruction::ApplyCachedEvents(plugin_id, client_id) => {
+                wasm_bridge.apply_cached_events(plugin_id, client_id)?;
+            }
             PluginInstruction::Exit => break,
         }
     }

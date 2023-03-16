@@ -324,6 +324,8 @@ pub enum ScreenContext {
     PreviousSwapLayout,
     NextSwapLayout,
     QueryTabNames,
+    NewTiledPluginPane,
+    AddPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -354,6 +356,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     NewTab,
+    ApplyCachedEvents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

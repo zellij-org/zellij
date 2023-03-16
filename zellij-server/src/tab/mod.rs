@@ -28,7 +28,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, TerminalPane},
+    panes::{LinkHandler, PaneId, TerminalPane, PluginPane},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -1087,6 +1087,114 @@ impl Tab {
                             .insert_pane_without_relayout(pid, Box::new(new_terminal));
                     } else {
                         self.tiled_panes.insert_pane(pid, Box::new(new_terminal));
+                    }
+                    self.should_clear_display_before_rendering = true;
+                    if let Some(client_id) = client_id {
+                        self.tiled_panes.focus_pane(pid, client_id);
+                    }
+                }
+            }
+            if should_auto_layout {
+                // only do this if we're already in this layout, otherwise it might be
+                // confusing and not what the user intends
+                self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                          // next layout
+                self.next_swap_layout(client_id, true)?;
+            }
+        }
+        Ok(())
+    }
+    pub fn new_plugin_pane(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: Option<String>,
+        should_float: Option<bool>,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to create new pane with id {pid:?}");
+
+        match should_float {
+            Some(true) => self.show_floating_panes(),
+            Some(false) => self.hide_floating_panes(),
+            None => {},
+        };
+        if self.floating_panes.panes_are_visible() {
+            if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+                // let next_terminal_position = self.get_next_terminal_position();
+                if let PaneId::Plugin(plugin_pid) = pid {
+                    let mut new_pane = PluginPane::new(
+                        plugin_pid,
+                        new_pane_geom,
+                        self.senders
+                            .to_plugin
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone(),
+                        initial_pane_title.unwrap_or_default(), // TODO: default title? next
+                                                                // terminal position?
+                        String::new(), // TODO: pane name?
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.style,
+                        None, // TODO: add Run<RunPlugin> here for the invoked_with
+                    );
+                    new_pane.set_active_at(Instant::now());
+                    new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
+                    resize_pty!(
+                        new_pane,
+                        self.os_api,
+                        self.senders,
+                        self.character_cell_size
+                    )
+                    .with_context(err_context)?;
+                    self.floating_panes.add_pane(pid, Box::new(new_pane));
+                    self.floating_panes.focus_pane_for_all_clients(pid);
+                }
+                if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                    // only do this if we're already in this layout, otherwise it might be
+                    // confusing and not what the user intends
+                    self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                                 // next layout
+                    self.next_swap_layout(client_id, true)?;
+                }
+            }
+        } else {
+            if self.tiled_panes.fullscreen_is_active() {
+                self.tiled_panes.unset_fullscreen();
+            }
+            let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+            if self.tiled_panes.has_room_for_new_pane() {
+                if let PaneId::Plugin(plugin_pid) = pid {
+                    let mut new_pane = PluginPane::new(
+                        plugin_pid,
+                        PaneGeom::default(), // the initial size will be set later
+                        self.senders
+                            .to_plugin
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone(),
+                        initial_pane_title.unwrap_or_default(), // TODO: default title? next
+                                                                // terminal position?
+                        String::new(), // TODO: pane name?
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.style,
+                        None, // TODO: add Run<RunPlugin> here for the invoked_with
+                    );
+                    new_pane.set_active_at(Instant::now());
+                    if should_auto_layout {
+                        // no need to relayout here, we'll do it when reapplying the swap layout
+                        // below
+                        self.tiled_panes
+                            .insert_pane_without_relayout(pid, Box::new(new_pane));
+                    } else {
+                        self.tiled_panes.insert_pane(pid, Box::new(new_pane));
                     }
                     self.should_clear_display_before_rendering = true;
                     if let Some(client_id) = client_id {

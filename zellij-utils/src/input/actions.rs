@@ -2,7 +2,7 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout, RunPluginLocation
 };
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -225,6 +225,8 @@ pub enum Action {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    /// Open a new tiled (embedded, non-floating) plugin pane
+    NewTiledPluginPane(Option<Direction>, RunPluginLocation, Option<String>), // String is an optional name
 }
 
 impl Action {
@@ -270,13 +272,30 @@ impl Action {
             CliAction::NewPane {
                 direction,
                 command,
+                plugin,
                 cwd,
                 floating,
                 name,
                 close_on_exit,
                 start_suspended,
             } => {
-                if !command.is_empty() {
+                if plugin.is_some() && !command.is_empty() {
+                    // TODO: error
+                    unimplemented!()
+                } else if let Some(plugin) = plugin {
+                    if floating {
+                        unimplemented!()
+                    } else {
+                        let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
+                                                                                 // error, no
+                                                                                 // unwrap
+                        Ok(vec![Action::NewTiledPluginPane(
+                            direction,
+                            plugin,
+                            name,
+                        )])
+                    }
+                } else if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let current_dir = get_current_dir();

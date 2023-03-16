@@ -254,6 +254,9 @@ pub enum CliAction {
         #[clap(last(true))]
         command: Vec<String>,
 
+        #[clap(conflicts_with("command"))]
+        plugin: Option<String>,
+
         /// Change the working directory of the new pane
         #[clap(long, value_parser)]
         cwd: Option<PathBuf>,
