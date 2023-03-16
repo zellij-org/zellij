@@ -303,7 +303,7 @@ mod config_test {
             theme "my cool theme"
             default_mode "locked"
             default_shell "/path/to/my/shell"
-            default_cwd "/path"
+            override_cwd "/path"
             default_layout "/path/to/my/layout.kdl"
             layout_dir "/path/to/my/layout-dir"
             theme_dir "/path/to/my/theme-dir"
@@ -341,7 +341,7 @@ mod config_test {
             "Option set in config"
         );
         assert_eq!(
-            config.options.default_cwd,
+            config.options.override_cwd,
             Some(PathBuf::from("/path")),
             "Option set in config"
         );

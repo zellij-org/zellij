@@ -1302,7 +1302,7 @@ impl Options {
         let default_shell =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
                 .map(|(string, _entry)| PathBuf::from(string));
-        let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
+        let override_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "override_cwd")
             .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
@@ -1358,7 +1358,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
-            default_cwd,
+            override_cwd,
             default_layout,
             layout_dir,
             theme_dir,

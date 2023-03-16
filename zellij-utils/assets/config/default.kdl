@@ -200,9 +200,9 @@ plugins {
 //
 // default_shell "fish"
 
-// Choose the path to the default cwd that zellij will use for opening new panes
+// Choose the path to override cwd that zellij will use for opening new panes
 //
-// default_cwd ""
+// override_cwd ""
 
 // Toggle between having pane frames around the panes
 // Options:

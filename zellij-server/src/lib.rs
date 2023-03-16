@@ -345,7 +345,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
-                        cwd: config_options.default_cwd.clone(),
+                        cwd: config_options.override_cwd.clone(),
                         ..Default::default()
                     })
                 });
@@ -706,7 +706,7 @@ fn init_session(
     let default_shell = config_options.default_shell.clone().map(|command| {
         TerminalAction::RunCommand(RunCommand {
             command,
-            cwd: config_options.default_cwd.clone(),
+            cwd: config_options.override_cwd.clone(),
             ..Default::default()
         })
     });
