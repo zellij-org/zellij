@@ -167,6 +167,7 @@ pub fn start_client(
         style: Style {
             colors: palette,
             rounded_corners: config.ui.pane_frames.rounded_corners,
+            hide_tab_bar_prefix: config.ui.pane_frames.hide_tab_bar_prefix,
         },
         keybinds: config.keybinds.clone(),
     };
