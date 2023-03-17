@@ -643,6 +643,7 @@ pub struct Palette {
 pub struct Style {
     pub colors: Palette,
     pub rounded_corners: bool,
+    pub hide_tab_bar_prefix: bool,
 }
 
 // FIXME: Poor devs hashtable since HashTable can't derive `Default`...
