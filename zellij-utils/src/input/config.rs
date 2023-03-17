@@ -639,7 +639,7 @@ mod config_test {
             ui {
                 pane_frames {
                     rounded_corners true
-                    hide_tab_bar_prefix true
+                    hide_session_name true
                 }
             }
         "#;
@@ -647,7 +647,7 @@ mod config_test {
         let expected_ui_config = UiConfig {
             pane_frames: FrameConfig {
                 rounded_corners: true,
-                hide_tab_bar_prefix: true,
+                hide_session_name: true,
             },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");

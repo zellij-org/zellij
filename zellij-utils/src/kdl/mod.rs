@@ -1699,12 +1699,11 @@ impl UiConfig {
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
                     .unwrap_or(false);
-            let hide_tab_bar_prefix =
-                kdl_get_child_entry_bool_value!(pane_frames, "hide_tab_bar_prefix")
-                    .unwrap_or(false);
+            let hide_session_name =
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
             let frame_config = FrameConfig {
                 rounded_corners,
-                hide_tab_bar_prefix,
+                hide_session_name,
             };
             ui_config.pane_frames = frame_config;
         }

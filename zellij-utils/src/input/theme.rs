@@ -25,14 +25,14 @@ impl UiConfig {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct FrameConfig {
     pub rounded_corners: bool,
-    pub hide_tab_bar_prefix: bool,
+    pub hide_session_name: bool,
 }
 
 impl FrameConfig {
     pub fn merge(&self, other: FrameConfig) -> Self {
         let mut merged = self.clone();
         merged.rounded_corners = other.rounded_corners;
-        merged.hide_tab_bar_prefix = other.hide_tab_bar_prefix;
+        merged.hide_session_name = other.hide_session_name;
         merged
     }
 }

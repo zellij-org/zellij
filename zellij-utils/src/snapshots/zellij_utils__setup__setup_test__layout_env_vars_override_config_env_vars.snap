@@ -3603,7 +3603,7 @@ Config {
     ui: UiConfig {
         pane_frames: FrameConfig {
             rounded_corners: false,
-            hide_tab_bar_prefix: false,
+            hide_session_name: false,
         },
     },
     env: {
