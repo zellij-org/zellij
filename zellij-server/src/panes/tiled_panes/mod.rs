@@ -863,15 +863,6 @@ impl TiledPanes {
         })
     }
 
-    fn plugin_pane_count(&self) -> usize {
-        let mut count = 0;
-        for key in self.panes.keys() {
-            if let PaneId::Plugin(_) = key {
-                count += 1;
-            }
-        }
-        return count;
-    }
     pub fn move_focus_left(&mut self, client_id: ClientId, wrap_around: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
@@ -884,9 +875,21 @@ impl TiledPanes {
                 let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
 
                 if next_index.is_none() && wrap_around {
-                    let plugin_count = self.plugin_pane_count();
-                    let index = self.panes.len() - plugin_count - 1;
-                    next_index = Some(PaneId::Terminal(index as u32));
+                    let pane_grid = TiledPaneGrid::new(
+                        &mut self.panes,
+                        &self.panes_to_hide,
+                        *self.display_area.borrow(),
+                        *self.viewport.borrow(),
+                    );
+
+                    // While loop to find the rightmost pane
+                    let mut candidate_right_pane_id = active_pane_id;
+                    while let Some(next_pane_id) =
+                        pane_grid.next_selectable_pane_id_to_the_right(&candidate_right_pane_id)
+                    {
+                        candidate_right_pane_id = next_pane_id;
+                    }
+                    next_index = Some(candidate_right_pane_id);
                 }
                 match next_index {
                     Some(p) => {
@@ -1040,7 +1043,21 @@ impl TiledPanes {
                     pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
 
                 if next_index.is_none() && single_tab_wraparoud {
-                    next_index = Some(PaneId::Terminal(0));
+                    let pane_grid = TiledPaneGrid::new(
+                        &mut self.panes,
+                        &self.panes_to_hide,
+                        *self.display_area.borrow(),
+                        *self.viewport.borrow(),
+                    );
+
+                    // While loop to find the leftmost pane
+                    let mut candidate_left_pane_id = active_pane_id;
+                    while let Some(next_pane_id) =
+                        pane_grid.next_selectable_pane_id_to_the_left(&candidate_left_pane_id)
+                    {
+                        candidate_left_pane_id = next_pane_id;
+                    }
+                    next_index = Some(candidate_left_pane_id);
                 }
                 match next_index {
                     Some(p) => {

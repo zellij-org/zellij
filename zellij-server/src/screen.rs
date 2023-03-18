@@ -876,12 +876,10 @@ impl Screen {
     /// Returns an immutable reference to this [`Screen`]'s active [`Tab`].
     pub fn get_active_tab(&self, client_id: ClientId) -> Result<&Tab> {
         match self.active_tab_indices.get(&client_id) {
-            Some(tab) => {
-                return self
-                    .tabs
-                    .get(tab)
-                    .ok_or_else(|| anyhow!("active tab {} does not exist", tab));
-            },
+            Some(tab) => self
+                .tabs
+                .get(tab)
+                .ok_or_else(|| anyhow!("active tab {} does not exist", tab)),
             None => Err(anyhow!("active tab not found for client {:?}", client_id)),
         }
     }
@@ -1658,7 +1656,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id, true), // set wrap around flag to true does not cause problem since the action does not change tab
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id, false),
                     ?
                 );
                 screen.render()?;
@@ -1683,7 +1681,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, true), // set wrap around flag to true does not cause problem since the action does not change tab
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, false),
                     ?
                 );
                 screen.render()?;
