@@ -1616,10 +1616,17 @@ impl Grid {
         }
         self.output_buffer.update_line(self.cursor.y);
     }
-    pub fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
+    fn erase_characters(&mut self, count: usize, empty_char_style: CharacterStyles) {
         let mut empty_character = EMPTY_TERMINAL_CHARACTER;
         empty_character.styles = empty_char_style;
         let current_row = self.viewport.get_mut(self.cursor.y).unwrap();
+
+        // pad row if needed
+        if current_row.width_cached() < self.width {
+            let padding_count = self.width - current_row.width_cached();
+            let mut columns_padding = VecDeque::from(vec![EMPTY_TERMINAL_CHARACTER; padding_count]);
+            current_row.columns.append(&mut columns_padding);
+        }
         for _ in 0..count {
             let deleted_character = current_row.delete_and_return_character(self.cursor.x);
             let excess_width = deleted_character
@@ -1629,6 +1636,7 @@ impl Grid {
             for _ in 0..excess_width {
                 current_row.insert_character_at(empty_character, self.cursor.x);
             }
+            current_row.push(empty_character);
         }
         self.output_buffer.update_line(self.cursor.y);
     }

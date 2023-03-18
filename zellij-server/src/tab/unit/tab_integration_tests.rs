@@ -3207,6 +3207,53 @@ fn swap_tiled_layout_with_stacked_children() {
 }
 
 #[test]
+fn swap_tiled_layout_with_only_stacked_children() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut output = Output::default();
+    let swap_layouts = r#"
+        layout {
+            swap_tiled_layout {
+                tab {
+                    pane stacked=true { children; }
+                }
+            }
+        }
+    "#;
+    let layout = Layout::from_kdl(swap_layouts, "file_name.kdl".into(), None, None).unwrap();
+    let swap_tiled_layouts = layout.swap_tiled_layouts.clone();
+    let swap_floating_layouts = layout.swap_floating_layouts.clone();
+    let mut tab = create_new_tab_with_swap_layouts(
+        size,
+        ModeInfo::default(),
+        (swap_tiled_layouts, swap_floating_layouts),
+        None,
+        true,
+    );
+    let new_pane_id_1 = PaneId::Terminal(2);
+    let new_pane_id_2 = PaneId::Terminal(3);
+    let new_pane_id_3 = PaneId::Terminal(4);
+
+    tab.new_pane(new_pane_id_1, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_2, None, None, Some(client_id))
+        .unwrap();
+    tab.new_pane(new_pane_id_3, None, None, Some(client_id))
+        .unwrap();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
+
+#[test]
 fn swap_tiled_layout_with_stacked_children_and_no_pane_frames() {
     let size = Size {
         cols: 121,
