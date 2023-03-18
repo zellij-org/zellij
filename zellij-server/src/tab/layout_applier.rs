@@ -235,6 +235,9 @@ impl<'a> LayoutApplier<'a> {
                             layout.run.clone(),
                         );
                         new_plugin.set_borderless(layout.borderless);
+                        if let Some(exclude_from_sync) = layout.exclude_from_sync {
+                            new_plugin.set_exclude_from_sync(exclude_from_sync);
+                        }
                         self.tiled_panes
                             .add_pane_with_existing_geom(PaneId::Plugin(pid), Box::new(new_plugin));
                         set_focus_pane_id(layout, PaneId::Plugin(pid));
@@ -262,6 +265,9 @@ impl<'a> LayoutApplier<'a> {
                                 layout.run.clone(),
                             );
                             new_pane.set_borderless(layout.borderless);
+                            if let Some(exclude_from_sync) = layout.exclude_from_sync {
+                                new_pane.set_exclude_from_sync(exclude_from_sync);
+                            }
                             if let Some(held_command) = hold_for_command {
                                 new_pane.hold(None, true, held_command.clone());
                             }

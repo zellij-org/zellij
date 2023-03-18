@@ -395,6 +395,7 @@ pub struct TiledPaneLayout {
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
     pub is_expanded_in_stack: bool,
+    pub exclude_from_sync: Option<bool>,
 }
 
 impl TiledPaneLayout {

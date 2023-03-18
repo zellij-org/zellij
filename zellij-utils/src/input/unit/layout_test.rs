@@ -1009,6 +1009,17 @@ fn combined_tab_and_pane_template_both_with_children() {
 }
 
 #[test]
+fn layout_with_pane_excluded_from_sync() {
+    let kdl_layout = r#"
+        layout {
+            pane exclude_from_sync=true
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn cannot_define_tab_template_name_with_space() {
     let kdl_layout = r#"
         layout {

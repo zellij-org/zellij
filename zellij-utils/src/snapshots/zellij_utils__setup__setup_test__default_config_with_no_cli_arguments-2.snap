@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 622
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -38,6 +37,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -50,6 +50,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -77,6 +78,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -86,6 +88,7 @@ Layout {
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),
@@ -126,6 +129,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -146,6 +150,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -160,6 +165,7 @@ Layout {
                                             ),
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -169,6 +175,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -178,6 +185,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -205,6 +213,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -214,6 +223,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 MaxPanes(
                     8,
@@ -247,6 +257,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -269,6 +280,7 @@ Layout {
                                             ),
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -285,6 +297,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -297,6 +310,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -309,6 +323,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -321,6 +336,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -330,6 +346,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -339,6 +356,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -348,6 +366,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -375,6 +394,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -384,6 +404,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 MaxPanes(
                     12,
@@ -417,6 +438,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -439,6 +461,7 @@ Layout {
                                             ),
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -455,6 +478,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -467,6 +491,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -479,6 +504,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -491,6 +517,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -500,6 +527,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -516,6 +544,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -528,6 +557,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -540,6 +570,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -552,6 +583,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -561,6 +593,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -570,6 +603,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -579,6 +613,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -606,6 +641,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -615,6 +651,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
             },
             Some(
@@ -655,6 +692,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -671,6 +709,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                                 TiledPaneLayout {
                                     children_split_direction: Horizontal,
@@ -683,6 +722,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -692,6 +732,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -719,6 +760,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -728,6 +770,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 MaxPanes(
                     8,
@@ -761,6 +804,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -783,6 +827,7 @@ Layout {
                                             ),
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -799,6 +844,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -811,6 +857,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -823,6 +870,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -835,6 +883,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -844,6 +893,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -853,6 +903,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -862,6 +913,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -889,6 +941,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -898,6 +951,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 MaxPanes(
                     12,
@@ -931,6 +985,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -953,6 +1008,7 @@ Layout {
                                             ),
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -969,6 +1025,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -981,6 +1038,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -993,6 +1051,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1005,6 +1064,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -1014,6 +1074,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Vertical,
@@ -1030,6 +1091,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1042,6 +1104,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1054,6 +1117,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                                 TiledPaneLayout {
                                                     children_split_direction: Horizontal,
@@ -1066,6 +1130,7 @@ Layout {
                                                     external_children_index: None,
                                                     children_are_stacked: false,
                                                     is_expanded_in_stack: false,
+                                                    exclude_from_sync: None,
                                                 },
                                             ],
                                             split_size: None,
@@ -1075,6 +1140,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -1084,6 +1150,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -1093,6 +1160,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1120,6 +1188,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -1129,6 +1198,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
             },
             Some(
@@ -1169,6 +1239,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1189,6 +1260,7 @@ Layout {
                                             external_children_index: None,
                                             children_are_stacked: false,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                         TiledPaneLayout {
                                             children_split_direction: Horizontal,
@@ -1203,6 +1275,7 @@ Layout {
                                             ),
                                             children_are_stacked: true,
                                             is_expanded_in_stack: false,
+                                            exclude_from_sync: None,
                                         },
                                     ],
                                     split_size: None,
@@ -1212,6 +1285,7 @@ Layout {
                                     external_children_index: None,
                                     children_are_stacked: false,
                                     is_expanded_in_stack: false,
+                                    exclude_from_sync: None,
                                 },
                             ],
                             split_size: None,
@@ -1221,6 +1295,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                         TiledPaneLayout {
                             children_split_direction: Horizontal,
@@ -1248,6 +1323,7 @@ Layout {
                             external_children_index: None,
                             children_are_stacked: false,
                             is_expanded_in_stack: false,
+                            exclude_from_sync: None,
                         },
                     ],
                     split_size: None,
@@ -1257,6 +1333,7 @@ Layout {
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
             },
             Some(
