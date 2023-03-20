@@ -292,7 +292,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                                 ),
                             },
                             rounded_corners: false,
-                            hide_tab_bar_prefix: false,
+                            hide_session_name: false,
                         },
                         capabilities: PluginCapabilities {
                             arrow_fonts: false,
