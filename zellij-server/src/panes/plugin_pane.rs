@@ -55,6 +55,7 @@ pub(crate) struct PluginPane {
     pub pane_title: String,
     pub pane_name: String,
     pub style: Style,
+    banner: HashMap<ClientId, String>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -106,6 +107,7 @@ impl PluginPane {
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
             style,
+            banner: HashMap::new(),
             pane_frame_color_override: None,
             invoked_with,
         }

@@ -207,6 +207,7 @@ impl WasmBridge {
             let connected_clients = self.connected_clients.clone();
             log::info!("calling start_plugin_async for plugin_id: {:?}", plugin_id);
             async move {
+                let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, format!("Starting plugin {plugin_id}...").as_bytes().to_vec())]));
                 let _ = start_plugin_async(
                         plugin_id,
                         client_id,
@@ -221,7 +222,8 @@ impl WasmBridge {
                         connected_clients,
                     ).with_context(err_context);
                 log::info!("done loading plugin {:?}!", plugin_id);
-                senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id, client_id));
+                let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, format!("Done loading plugin {plugin_id}").as_bytes().to_vec())]));
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id, client_id));
             }
             // TODO: error handling
         });
@@ -742,62 +744,111 @@ fn start_plugin_async(
     size: Size,
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
 ) -> Result<()> {
-        let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
-        let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-        create_plugin_fs_entries(&plugin_own_data_dir)?;
+    // TODO: CONTINUE HERE - keep improving the plugin loading messages, and then try and see if we
+    // can solve some of the deadlocks (store?)
+    let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
+    let mut loading_messages = String::new();
+    let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
+    create_plugin_fs_entries(&plugin_own_data_dir)?;
 
-        let (module, cache_hit) = load_module_from_memory(&mut *plugin_cache.lock().unwrap(), &plugin.path);
+    loading_messages.push_str(&format!("Attempting to load plugin {plugin_id} from memory... "));
+    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+    let (module, cache_hit) = load_module_from_memory(&mut *plugin_cache.lock().unwrap(), &plugin.path);
 
-        let module = match module {
-            Some(module) => module,
-            None => load_module_from_hd_or_compile_module(&plugin, &plugin_dir, &mut *store.lock().unwrap())?,
-        };
+    let module = match module {
+        Some(module) => {
+            loading_messages.push_str(&format!("SUCCESS\n\r"));
+            let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+            module
+        }
+        None => {
+            loading_messages.push_str(&format!("NOT FOUND\n\r"));
+            loading_messages.push_str(&format!("Attempting to load plugin {plugin_id} from cache... "));
+            let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
 
-        let (instance, plugin_env) = create_plugin_instance_and_environment(
-            plugin_id,
-            client_id,
-            plugin,
-            &module,
-            tab_index,
-            plugin_own_data_dir,
-            senders.clone(),
+            let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin, &plugin_dir);
+            let timer = std::time::Instant::now();
+            let mut store = store.lock().unwrap();
+            match load_module_from_hd_cache(&mut store, &plugin.path, &timer, &cached_path) {
+                Ok(module) => {
+                    loading_messages.push_str(&format!("SUCCESS\n\r"));
+                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+                    module
+                },
+                Err(_e) => {
+                    loading_messages.push_str(&format!("NOT FOUND\n\r"));
+                    loading_messages.push_str(&format!("Compiling plugin {plugin_id}... "));
+                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+                    let module = compile_module(&mut store, &plugin.path, &timer, &cached_path, wasm_bytes)?;
+                    loading_messages.push_str(&format!("DONE\n\r"));
+                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+                    module
+                }
+            }
+        }
+    };
+
+    let (instance, plugin_env) = create_plugin_instance_and_environment(
+        plugin_id,
+        client_id,
+        plugin,
+        &module,
+        tab_index,
+        plugin_own_data_dir,
+        senders.clone(),
+        &mut *store.lock().unwrap()
+    )?;
+
+    if !cache_hit {
+        // Check plugin version
+        // TODO: TEST THIS!
+        assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+    }
+
+    // Only do an insert when everything went well!
+    let cloned_plugin = plugin.clone();
+    plugin_cache.lock().unwrap().insert(cloned_plugin.path, module);
+
+    let mut main_user_instance = instance.clone();
+    let main_user_env = plugin_env.clone();
+    loading_messages.push_str(&format!("Starting plugin {plugin_id}... "));
+    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+    load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
+    loading_messages.push_str(&format!("DONE\n\r"));
+    loading_messages.push_str(&format!("Writing plugin {plugin_id} to cache... "));
+    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+
+    plugin_map.lock().unwrap().insert(
+        (plugin_id, client_id),
+        (main_user_instance, main_user_env, (size.rows, size.cols)),
+    );
+
+    loading_messages.push_str(&format!("DONE\n\r"));
+    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+
+    // clone plugins for the rest of the client ids if they exist
+    let connected_clients = connected_clients.lock().unwrap();
+    if !connected_clients.is_empty() {
+        loading_messages.push_str(&format!("Cloning plugin {plugin_id} for other connected clients... "));
+        let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+    }
+    for client_id in connected_clients.iter() {
+        let (instance, new_plugin_env) = clone_plugin_for_client(
+            &plugin_env,
+            *client_id,
+            &instance,
             &mut *store.lock().unwrap()
         )?;
-
-        if !cache_hit {
-            // Check plugin version
-            // TODO: TEST THIS!
-            assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
-        }
-
-        // Only do an insert when everything went well!
-        let cloned_plugin = plugin.clone();
-        plugin_cache.lock().unwrap().insert(cloned_plugin.path, module);
-
-        let mut main_user_instance = instance.clone();
-        let main_user_env = plugin_env.clone();
-        load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
-
         plugin_map.lock().unwrap().insert(
-            (plugin_id, client_id),
-            (main_user_instance, main_user_env, (size.rows, size.cols)),
+            (plugin_id, *client_id),
+            (instance, new_plugin_env, (size.rows, size.cols)),
         );
-
-        // clone plugins for the rest of the client ids if they exist
-        let connected_clients = connected_clients.lock().unwrap();
-        for client_id in connected_clients.iter() {
-            let (instance, new_plugin_env) = clone_plugin_for_client(
-                &plugin_env,
-                *client_id,
-                &instance,
-                &mut *store.lock().unwrap()
-            )?;
-            plugin_map.lock().unwrap().insert(
-                (plugin_id, *client_id),
-                (instance, new_plugin_env, (size.rows, size.cols)),
-            );
-        };
-        Ok(())
+    };
+    if !connected_clients.is_empty() {
+        loading_messages.push_str(&format!("DONE\n\r"));
+        let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
+    }
+    Ok(())
 }
 
 fn apply_event_to_plugin(plugin_id: u32, client_id: ClientId, instance: &Instance, plugin_env: &PluginEnv, event: &Event, rows: usize, columns: usize, plugin_bytes: &mut Vec<(u32, ClientId, Vec<u8>)>) -> Result<()> {
