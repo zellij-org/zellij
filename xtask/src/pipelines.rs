@@ -357,10 +357,6 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                         println!("Aborting publish for crate '{crate_name}'");
                         return Err::<(), _>(err);
                     }
-                } else {
-                    println!("Waiting for crates.io to catch up...");
-                    std::thread::sleep(std::time::Duration::from_secs(15));
-                    break;
                 }
             }
         }
