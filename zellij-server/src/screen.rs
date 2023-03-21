@@ -1494,13 +1494,10 @@ pub(crate) fn screen_thread_main(
                 }
             },
             ScreenInstruction::PluginBytes(mut plugin_bytes) => {
-                log::info!("ScreenInstruction::PluginBytes: {:?}", plugin_bytes);
                 for (pid, client_id, vte_bytes) in plugin_bytes.drain(..) {
                     let all_tabs = screen.get_tabs_mut();
                     for tab in all_tabs.values_mut() {
-                        log::info!("has plugin?");
                         if tab.has_plugin(pid) {
-                            log::info!("yep!");
                             tab.handle_plugin_bytes(pid, client_id, vte_bytes)
                                 .context("failed to process plugin bytes")?;
                             break;
@@ -2437,7 +2434,6 @@ pub(crate) fn screen_thread_main(
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
             ScreenInstruction::NewTiledPluginPane(direction, run_plugin_location, pane_title, client_id) => {
-                log::info!("screen.active_tab_indices: {:?}, client_id: {:?}", screen.active_tab_indices, client_id);
                 let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
                                                                                  // unwrap and
                                                                                  // better
@@ -2452,10 +2448,6 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::Load(direction, pane_title, run_plugin, *tab_index, client_id, size))?;
             }
             ScreenInstruction::AddPlugin(direction, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
-                // TODO: CONTINUE HERE
-                // * start a new pane in this tab_index with this plugin_id, with the direction and
-                // all the things
-                log::info!("AddPlugin, run_plugin_location: {:?}", run_plugin_location);
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                     let should_float = None;
                     active_tab.new_plugin_pane(PaneId::Plugin(plugin_id), pane_title, should_float, None)?;

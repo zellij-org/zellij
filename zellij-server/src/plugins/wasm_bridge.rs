@@ -757,13 +757,13 @@ fn start_plugin_async(
 
     let module = match module {
         Some(module) => {
-            loading_messages.push_str(&format!("SUCCESS\n\r"));
+            loading_messages.push_str(&format!("SUCCESS"));
             let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
             module
         }
         None => {
-            loading_messages.push_str(&format!("NOT FOUND\n\r"));
-            loading_messages.push_str(&format!("Attempting to load plugin {plugin_id} from cache... "));
+            loading_messages.push_str(&format!("NOT FOUND"));
+            loading_messages.push_str(&format!("\n\rAttempting to load plugin {plugin_id} from cache... "));
             let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
 
             let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin, &plugin_dir);
@@ -771,16 +771,16 @@ fn start_plugin_async(
             let mut store = store.lock().unwrap();
             match load_module_from_hd_cache(&mut store, &plugin.path, &timer, &cached_path) {
                 Ok(module) => {
-                    loading_messages.push_str(&format!("SUCCESS\n\r"));
+                    loading_messages.push_str(&format!("SUCCESS"));
                     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
                     module
                 },
                 Err(_e) => {
-                    loading_messages.push_str(&format!("NOT FOUND\n\r"));
-                    loading_messages.push_str(&format!("Compiling plugin {plugin_id}... "));
+                    loading_messages.push_str(&format!("NOT FOUND"));
+                    loading_messages.push_str(&format!("\n\rCompiling plugin {plugin_id}... "));
                     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
                     let module = compile_module(&mut store, &plugin.path, &timer, &cached_path, wasm_bytes)?;
-                    loading_messages.push_str(&format!("DONE\n\r"));
+                    loading_messages.push_str(&format!("DONE"));
                     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
                     module
                 }
@@ -811,11 +811,11 @@ fn start_plugin_async(
 
     let mut main_user_instance = instance.clone();
     let main_user_env = plugin_env.clone();
-    loading_messages.push_str(&format!("Starting plugin {plugin_id}... "));
+    loading_messages.push_str(&format!("\n\rStarting plugin {plugin_id}... "));
     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
     load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
-    loading_messages.push_str(&format!("DONE\n\r"));
-    loading_messages.push_str(&format!("Writing plugin {plugin_id} to cache... "));
+    loading_messages.push_str(&format!("DONE"));
+    loading_messages.push_str(&format!("\n\rWriting plugin {plugin_id} to cache... "));
     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
 
     plugin_map.lock().unwrap().insert(
@@ -823,13 +823,13 @@ fn start_plugin_async(
         (main_user_instance, main_user_env, (size.rows, size.cols)),
     );
 
-    loading_messages.push_str(&format!("DONE\n\r"));
+    loading_messages.push_str(&format!("DONE"));
     let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
 
     // clone plugins for the rest of the client ids if they exist
     let connected_clients = connected_clients.lock().unwrap();
     if !connected_clients.is_empty() {
-        loading_messages.push_str(&format!("Cloning plugin {plugin_id} for other connected clients... "));
+        loading_messages.push_str(&format!("\n\rCloning plugin {plugin_id} for other connected clients... "));
         let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
     }
     for client_id in connected_clients.iter() {
@@ -845,7 +845,7 @@ fn start_plugin_async(
         );
     };
     if !connected_clients.is_empty() {
-        loading_messages.push_str(&format!("DONE\n\r"));
+        loading_messages.push_str(&format!("DONE"));
         let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(vec![(plugin_id, client_id, loading_messages.as_bytes().to_vec())]));
     }
     Ok(())
