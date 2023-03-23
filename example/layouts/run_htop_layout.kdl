@@ -1,0 +1,14 @@
+layout {
+    default_tab_template {
+        children
+    }
+    tab split_direction="Vertical" {
+        pane split_direction="Vertical" {
+            pane size="50%" split_direction="Horizontal" {
+                pane size="50%"
+                pane command="htop" size="50%"
+            }
+            pane command="htop" size="50%"
+        }
+    }
+}

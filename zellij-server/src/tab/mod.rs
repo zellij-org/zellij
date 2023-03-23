@@ -2030,6 +2030,13 @@ impl Tab {
         }
         self.tiled_panes.focus_previous_pane(client_id);
     }
+    pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
+        if self.floating_panes.panes_are_visible() {
+            self.floating_panes.focus_pane_on_edge(direction, client_id);
+        } else if self.has_selectable_panes() && !self.tiled_panes.fullscreen_is_active() {
+            self.tiled_panes.focus_pane_on_edge(direction, client_id);
+        }
+    }
     // returns a boolean that indicates whether the focus moved
     pub fn move_focus_left(&mut self, client_id: ClientId) -> Result<bool> {
         let err_context = || format!("failed to move focus left for client {}", client_id);
@@ -2310,12 +2317,7 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
-            let closed_pane_is_stacked = closed_pane
-                .as_ref()
-                .map(|p| p.position_and_size().is_stacked)
-                .unwrap_or(false);
-            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !closed_pane_is_stacked
-            {
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing

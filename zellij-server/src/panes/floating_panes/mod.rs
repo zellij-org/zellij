@@ -529,6 +529,19 @@ impl FloatingPanes {
         }
         Ok(false)
     }
+    pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
+        let display_area = *self.display_area.borrow();
+        let viewport = *self.viewport.borrow();
+        let floating_pane_grid = FloatingPaneGrid::new(
+            &mut self.panes,
+            &mut self.desired_pane_positions,
+            display_area,
+            viewport,
+        );
+        let pane_id = floating_pane_grid.pane_id_on_edge(direction).unwrap();
+        self.focus_pane(pane_id, client_id);
+        self.set_force_render();
+    }
 
     pub fn move_active_pane_down(&mut self, client_id: ClientId) {
         let display_area = *self.display_area.borrow();

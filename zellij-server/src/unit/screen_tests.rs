@@ -529,7 +529,7 @@ pub fn switch_to_prev_tab() {
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -548,8 +548,8 @@ pub fn switch_to_next_tab() {
 
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
-    screen.switch_tab_prev(1).expect("TEST");
-    screen.switch_tab_next(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
+    screen.switch_tab_next(None, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
@@ -623,7 +623,7 @@ pub fn close_the_middle_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
     screen.close_tab(1).expect("TEST");
 
     assert_eq!(screen.tabs.len(), 2, "Two tabs left");
@@ -645,7 +645,7 @@ fn move_focus_left_at_left_screen_edge_changes_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
     screen.move_focus_left_or_previous_tab(1).expect("TEST");
 
     assert_eq!(
@@ -666,7 +666,7 @@ fn move_focus_right_at_right_screen_edge_changes_tab() {
     new_tab(&mut screen, 1, 1);
     new_tab(&mut screen, 2, 2);
     new_tab(&mut screen, 3, 3);
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
     screen.move_focus_right_or_next_tab(1).expect("TEST");
 
     assert_eq!(
@@ -802,7 +802,7 @@ pub fn toggle_to_previous_tab_delete() {
         "Active tab toggler to previous tab"
     );
 
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 1, 3],
@@ -813,7 +813,7 @@ pub fn toggle_to_previous_tab_delete() {
         2,
         "Active tab toggler to previous tab"
     );
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
     assert_eq!(
         screen.tab_history.get(&1).unwrap(),
         &[0, 3, 2],
@@ -868,7 +868,7 @@ fn switch_to_tab_with_fullscreen() {
     }
     new_tab(&mut screen, 2, 2);
 
-    screen.switch_tab_prev(1).expect("TEST");
+    screen.switch_tab_prev(None, 1).expect("TEST");
 
     assert_eq!(
         screen.get_active_tab(1).unwrap().position,
