@@ -14,7 +14,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
@@ -30,6 +30,7 @@ pub struct LayoutApplier<'a> {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     style: Style,
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     tiled_panes: &'a mut TiledPanes,
@@ -48,6 +49,7 @@ impl<'a> LayoutApplier<'a> {
         terminal_emulator_colors: &Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: &Rc<RefCell<HashMap<usize, String>>>,
         character_cell_size: &Rc<RefCell<Option<SizeInPixels>>>,
+        connected_clients: &Rc<RefCell<HashSet<ClientId>>>,
         style: &Style,
         display_area: &Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
         tiled_panes: &'a mut TiledPanes,
@@ -63,6 +65,7 @@ impl<'a> LayoutApplier<'a> {
         let terminal_emulator_colors = terminal_emulator_colors.clone();
         let terminal_emulator_color_codes = terminal_emulator_color_codes.clone();
         let character_cell_size = character_cell_size.clone();
+        let connected_clients = connected_clients.clone();
         let style = style.clone();
         let display_area = display_area.clone();
         let os_api = os_api.clone();
@@ -74,6 +77,7 @@ impl<'a> LayoutApplier<'a> {
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             character_cell_size,
+            connected_clients,
             style,
             display_area,
             tiled_panes,
@@ -198,6 +202,7 @@ impl<'a> LayoutApplier<'a> {
                             self.terminal_emulator_color_codes.clone(),
                             self.link_handler.clone(),
                             self.character_cell_size.clone(),
+                            self.connected_clients.borrow().iter().copied().collect(),
                             self.style,
                             layout.run.clone(),
                         );
@@ -300,6 +305,7 @@ impl<'a> LayoutApplier<'a> {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
                     floating_pane_layout.run.clone(),
                 );

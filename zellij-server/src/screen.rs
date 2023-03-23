@@ -24,13 +24,13 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
-    panes::PaneId,
+    panes::{PaneId, LoadingIndication},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
     ui::overlay::{Overlay, OverlayWindow, Overlayable},
-    ClientId, ServerInstruction,
+    ClientId, ServerInstruction
 };
 use zellij_utils::{
     data::{Event, InputMode, ModeInfo, Palette, PaletteColor, PluginCapabilities, Style, TabInfo},
@@ -258,6 +258,8 @@ pub enum ScreenInstruction {
                                                                                        // tab index
                                                                                        // u32 -
                                                                                        // plugin id
+    UpdatePluginLoadingStage(u32, ClientId, LoadingIndication), // u32 - plugin_id
+    ProgressPluginLoadingOffset(u32), // u32 - plugin id
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -403,6 +405,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
+            ScreenInstruction::UpdatePluginLoadingStage(..) => ScreenContext::UpdatePluginLoadingStage,
+            ScreenInstruction::ProgressPluginLoadingOffset(..) => ScreenContext::ProgressPluginLoadingOffset,
         }
     }
 }
@@ -2455,6 +2459,26 @@ pub(crate) fn screen_thread_main(
                     log::error!("Tab index not found: {:?}", tab_index);
                 }
                 screen.unblock_input()?;
+            }
+            ScreenInstruction::UpdatePluginLoadingStage(pid, client_id, loading_indication) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.update_plugin_loading_stage(pid, loading_indication);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::ProgressPluginLoadingOffset(pid) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.progress_plugin_loading_offset(pid);
+                        break;
+                    }
+                }
+                screen.render()?;
             }
         }
     }

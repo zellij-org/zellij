@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::time::Instant;
+use std::fmt::{Display, Error, Formatter};
 
 use crate::output::{CharacterChunk, SixelImageChunk};
 use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
@@ -43,6 +44,257 @@ macro_rules! get_or_create_grid {
     }};
 }
 
+#[derive(Debug, Clone)]
+pub enum LoadingStatus {
+    InProgress,
+    Success,
+    NotFound,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LoadingIndication {
+    loading_from_memory: Option<LoadingStatus>,
+    loading_from_hd_cache: Option<LoadingStatus>,
+    compiling: Option<LoadingStatus>,
+    starting_plugin: Option<LoadingStatus>,
+    writing_plugin_to_cache: Option<LoadingStatus>,
+    cloning_plugin_for_other_clients: Option<LoadingStatus>,
+    animation_offset: usize,
+    plugin_name: String,
+    terminal_emulator_colors: Option<Palette>,
+    ended: bool,
+}
+
+impl LoadingIndication {
+    pub fn new(plugin_name: String) -> Self {
+        LoadingIndication {
+            plugin_name,
+            animation_offset: 0,
+            ..Default::default()
+        }
+    }
+    pub fn with_colors(mut self, terminal_emulator_colors: Palette) -> Self {
+        self.terminal_emulator_colors = Some(terminal_emulator_colors);
+        self
+    }
+    pub fn merge(&mut self, other: LoadingIndication) {
+        let current_animation_offset = self.animation_offset;
+        let current_terminal_emulator_colors = self.terminal_emulator_colors.take();
+        drop(std::mem::replace(self, other));
+        self.animation_offset = current_animation_offset;
+        self.terminal_emulator_colors = current_terminal_emulator_colors;
+    }
+    pub fn indicate_loading_plugin_from_memory(&mut self) {
+        self.loading_from_memory = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_loading_plugin_from_memory_success(&mut self) {
+        self.loading_from_memory = Some(LoadingStatus::Success);
+    }
+    pub fn indicate_loading_plugin_from_memory_notfound(&mut self) {
+        self.loading_from_memory = Some(LoadingStatus::NotFound);
+    }
+    pub fn indicate_loading_plugin_from_hd_cache(&mut self) {
+        self.loading_from_hd_cache = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_loading_plugin_from_hd_cache_success(&mut self) {
+        self.loading_from_hd_cache = Some(LoadingStatus::Success);
+    }
+    pub fn indicate_loading_plugin_from_hd_cache_notfound(&mut self) {
+        self.loading_from_hd_cache = Some(LoadingStatus::NotFound);
+    }
+    pub fn indicate_compiling_plugin(&mut self) {
+        self.compiling = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_compiling_plugin_success(&mut self) {
+        self.compiling = Some(LoadingStatus::Success);
+    }
+    pub fn indicate_starting_plugin(&mut self) {
+        self.starting_plugin = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_starting_plugin_success(&mut self) {
+        self.starting_plugin = Some(LoadingStatus::Success);
+    }
+    pub fn indicate_writing_plugin_to_cache(&mut self) {
+        self.writing_plugin_to_cache = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_writing_plugin_to_cache_success(&mut self) {
+        self.writing_plugin_to_cache = Some(LoadingStatus::Success);
+    }
+    pub fn indicate_cloning_plugin_for_other_clients(&mut self) {
+        self.cloning_plugin_for_other_clients = Some(LoadingStatus::InProgress);
+    }
+    pub fn indicate_cloning_plugin_for_other_clients_success(&mut self) {
+        self.cloning_plugin_for_other_clients = Some(LoadingStatus::Success);
+    }
+    pub fn end(&mut self) {
+        self.ended = true;
+    }
+    pub fn progress_animation_offset(&mut self) {
+        if self.animation_offset == 3 {
+            self.animation_offset = 0;
+        } else {
+            self.animation_offset += 1;
+        }
+    }
+    fn started_loading(&self) -> bool {
+        self.loading_from_memory.is_some() ||
+        self.loading_from_hd_cache.is_some() ||
+        self.compiling.is_some() ||
+        self.starting_plugin.is_some() ||
+        self.writing_plugin_to_cache.is_some() ||
+        self.cloning_plugin_for_other_clients.is_some()
+    }
+}
+
+// TODO: from zellij-tile-utils??
+macro_rules! style {
+    ($fg:expr) => {
+        ansi_term::Style::new()
+            .fg(match $fg {
+                PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+                PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+            })
+//             .on(match $bg {
+//                 PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+//                 PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+//             })
+    };
+}
+
+impl Display for LoadingIndication {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        // TODO: CONTINUE HERE (22/03 evening) - make this pretty!
+        let cyan = match self.terminal_emulator_colors {
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.cyan).bold()
+            },
+            None => ansi_term::Style::new()
+        };
+        let green = match self.terminal_emulator_colors {
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.green).bold()
+            },
+            None => ansi_term::Style::new()
+        };
+        let yellow = match self.terminal_emulator_colors {
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.yellow).bold()
+            },
+            None => ansi_term::Style::new()
+        };
+        let red = match self.terminal_emulator_colors {
+            Some(terminal_emulator_colors) => {
+                style!(terminal_emulator_colors.red).bold()
+            },
+            None => ansi_term::Style::new()
+        };
+        let bold = ansi_term::Style::new().bold().italic();
+        let plugin_name = &self.plugin_name;
+        let success = green.paint("SUCCESS");
+        let failure = red.paint("FAILED");
+        let not_found = yellow.paint("NOT FOUND");
+        let add_dots = |stringified: &mut String| {
+            for _ in 0..self.animation_offset {
+                stringified.push('.');
+            }
+            stringified.push(' ');
+        };
+        let mut stringified = String::new();
+        let loading_text = "Loading";
+        let loading_from_memory_text = "Attempting to load from memory";
+        let loading_from_hd_cache_text = "Attempting to load from cache";
+        let compiling_text = "Compiling WASM";
+        let starting_plugin_text = "Starting";
+        let writing_plugin_to_cache_text = "Writing to cache";
+        let cloning_plugin_for_other_clients_text = "Cloning for other clients";
+        if self.started_loading() {
+            stringified.push_str(&format!("{} {}...", loading_text, cyan.paint(plugin_name)));
+        } else {
+            stringified.push_str(&format!("{} {}", bold.paint(loading_text), cyan.italic().paint(plugin_name)));
+            add_dots(&mut stringified);
+        }
+        match self.loading_from_memory {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(loading_from_memory_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{loading_from_memory_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{loading_from_memory_text}... {not_found}"));
+            }
+            None => {}
+        }
+        match self.loading_from_hd_cache {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(loading_from_hd_cache_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{loading_from_hd_cache_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{loading_from_hd_cache_text}... {not_found}"));
+            }
+            None => {}
+        }
+        match self.compiling {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(compiling_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{compiling_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{compiling_text}... {failure}"));
+            }
+            None => {}
+        }
+        match self.starting_plugin {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(starting_plugin_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{starting_plugin_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{starting_plugin_text}... {failure}"));
+            }
+            None => {}
+        }
+        match self.writing_plugin_to_cache {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(writing_plugin_to_cache_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{writing_plugin_to_cache_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{writing_plugin_to_cache_text}... {failure}"));
+            }
+            None => {}
+        }
+        match self.cloning_plugin_for_other_clients {
+            Some(LoadingStatus::InProgress) => {
+                stringified.push_str(&format!("\n\r{}", bold.paint(cloning_plugin_for_other_clients_text)));
+                add_dots(&mut stringified);
+            }
+            Some(LoadingStatus::Success) => {
+                stringified.push_str(&format!("\n\r{cloning_plugin_for_other_clients_text}... {success}"));
+            }
+            Some(LoadingStatus::NotFound) => {
+                stringified.push_str(&format!("\n\r{cloning_plugin_for_other_clients_text}... {failure}"));
+            }
+            None => {}
+        }
+        write!(f, "{}", stringified)
+    }
+}
+
 pub(crate) struct PluginPane {
     pub pid: u32,
     pub should_render: HashMap<ClientId, bool>,
@@ -55,7 +307,6 @@ pub(crate) struct PluginPane {
     pub pane_title: String,
     pub pane_name: String,
     pub style: Style,
-    banner: HashMap<ClientId, String>,
     sixel_image_store: Rc<RefCell<SixelImageStore>>,
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
@@ -68,6 +319,7 @@ pub(crate) struct PluginPane {
     borderless: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
+    loading_indication: LoadingIndication,
 }
 
 impl PluginPane {
@@ -82,10 +334,13 @@ impl PluginPane {
         terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
         link_handler: Rc<RefCell<LinkHandler>>,
         character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+        currently_connected_clients: Vec<ClientId>,
         style: Style,
         invoked_with: Option<Run>,
     ) -> Self {
-        Self {
+        let loading_indication = LoadingIndication::new(title.clone()).with_colors(style.colors);
+        let initial_loading_message = loading_indication.to_string();
+        let mut plugin = PluginPane {
             pid,
             should_render: HashMap::new(),
             selectable: true,
@@ -107,10 +362,14 @@ impl PluginPane {
             vte_parsers: HashMap::new(),
             grids: HashMap::new(),
             style,
-            banner: HashMap::new(),
             pane_frame_color_override: None,
             invoked_with,
+            loading_indication,
+        };
+        for client_id in currently_connected_clients {
+            plugin.handle_plugin_bytes(client_id, initial_loading_message.as_bytes().to_vec());
         }
+        plugin
     }
 }
 
@@ -515,6 +774,20 @@ impl Pane for PluginPane {
     fn set_title(&mut self, title: String) {
         self.pane_title = title;
     }
+    fn update_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        if self.loading_indication.ended {
+            return;
+        }
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(self.loading_indication.to_string().as_bytes().to_vec());
+    }
+    fn progress_animation_offset(&mut self) {
+        if self.loading_indication.ended {
+            return;
+        }
+        self.loading_indication.progress_animation_offset();
+        self.handle_plugin_bytes_for_all_clients(self.loading_indication.to_string().as_bytes().to_vec());
+    }
 }
 
 impl PluginPane {
@@ -528,5 +801,11 @@ impl PluginPane {
     }
     fn set_client_should_render(&mut self, client_id: ClientId, should_render: bool) {
         self.should_render.insert(client_id, should_render);
+    }
+    fn handle_plugin_bytes_for_all_clients(&mut self, bytes: VteBytes) {
+        let client_ids: Vec<ClientId> = self.grids.keys().copied().collect();
+        for client_id in client_ids {
+            self.handle_plugin_bytes(client_id, bytes.clone());
+        }
     }
 }

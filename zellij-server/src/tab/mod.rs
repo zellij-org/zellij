@@ -27,7 +27,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
-    panes::{FloatingPanes, TiledPanes},
+    panes::{FloatingPanes, TiledPanes, LoadingIndication},
     panes::{LinkHandler, PaneId, TerminalPane, PluginPane},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
@@ -438,6 +438,8 @@ pub trait Pane {
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
+    fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
+    fn progress_animation_offset(&mut self) {} // only relevant for plugins
 }
 
 #[derive(Clone, Debug)]
@@ -599,6 +601,7 @@ impl Tab {
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
             &self.character_cell_size,
+            &self.connected_clients,
             &self.style,
             &self.display_area,
             &mut self.tiled_panes,
@@ -657,6 +660,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
+                &self.connected_clients,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -709,6 +713,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
+                &self.connected_clients,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -1138,6 +1143,7 @@ impl Tab {
                         self.terminal_emulator_color_codes.clone(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.connected_clients.borrow().iter().copied().collect(),
                         self.style,
                         None, // TODO: add Run<RunPlugin> here for the invoked_with
                     );
@@ -1184,6 +1190,7 @@ impl Tab {
                         self.terminal_emulator_color_codes.clone(),
                         self.link_handler.clone(),
                         self.character_cell_size.clone(),
+                        self.connected_clients.borrow().iter().copied().collect(),
                         self.style,
                         None, // TODO: add Run<RunPlugin> here for the invoked_with
                     );
@@ -3326,7 +3333,34 @@ impl Tab {
             pane.clear_pane_frame_color_override();
         }
     }
-
+    pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.update_loading_indication(loading_indication);
+        }
+    }
+    pub fn progress_plugin_loading_offset(&mut self, pid: u32) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.progress_animation_offset();
+        }
+    }
     fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);

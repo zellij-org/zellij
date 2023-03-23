@@ -326,6 +326,8 @@ pub enum ScreenContext {
     QueryTabNames,
     NewTiledPluginPane,
     AddPlugin,
+    UpdatePluginLoadingStage,
+    ProgressPluginLoadingOffset,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -402,6 +404,8 @@ pub enum PtyWriteContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BackgroundJobContext {
     DisplayPaneError,
+    AnimatePluginLoading,
+    StopPluginLoadingAnimation,
     Exit,
 }
 
