@@ -59,6 +59,7 @@ pub struct LoadingIndication {
     starting_plugin: Option<LoadingStatus>,
     writing_plugin_to_cache: Option<LoadingStatus>,
     cloning_plugin_for_other_clients: Option<LoadingStatus>,
+    error: Option<String>,
     animation_offset: usize,
     plugin_name: String,
     terminal_emulator_colors: Option<Palette>,
@@ -135,6 +136,9 @@ impl LoadingIndication {
         } else {
             self.animation_offset += 1;
         }
+    }
+    pub fn indicate_loading_error(&mut self, error_text: String) {
+        self.error = Some(error_text);
     }
     fn started_loading(&self) -> bool {
         self.loading_from_memory.is_some() ||
@@ -290,6 +294,9 @@ impl Display for LoadingIndication {
                 stringified.push_str(&format!("\n\r{cloning_plugin_for_other_clients_text}... {failure}"));
             }
             None => {}
+        }
+        if let Some(error_text) = &self.error {
+            stringified.push_str(&format!("\n\r{} {error_text}", red.bold().paint("ERROR:")));
         }
         write!(f, "{}", stringified)
     }

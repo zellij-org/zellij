@@ -227,6 +227,7 @@ pub enum Action {
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(Option<Direction>, RunPluginLocation, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
 }
 
 impl Action {
@@ -279,12 +280,15 @@ impl Action {
                 close_on_exit,
                 start_suspended,
             } => {
-                if plugin.is_some() && !command.is_empty() {
-                    // TODO: error
-                    unimplemented!()
-                } else if let Some(plugin) = plugin {
+                if let Some(plugin) = plugin {
                     if floating {
-                        unimplemented!()
+                        let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
+                                                                                 // error, no
+                                                                                 // unwrap
+                        Ok(vec![Action::NewFloatingPluginPane(
+                            plugin,
+                            name,
+                        )])
                     } else {
                         let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
                                                                                  // error, no

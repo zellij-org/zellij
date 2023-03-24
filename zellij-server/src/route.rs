@@ -673,6 +673,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::NewTiledPluginPane(direction, run_plugin, name, client_id))
                 .with_context(err_context)?;
         }
+        Action::NewFloatingPluginPane(run_plugin, name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NewFloatingPluginPane(run_plugin, name, client_id))
+                .with_context(err_context)?;
+        }
     }
     Ok(should_break)
 }

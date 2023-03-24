@@ -251,13 +251,17 @@ pub enum ScreenInstruction {
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
     NewTiledPluginPane(Option<Direction>, RunPluginLocation, Option<String>, ClientId), // Option<String> is
-    AddPlugin(Option<Direction>, RunPlugin, Option<String>, usize, u32, ClientId), // Option<string>
-                                                                                       // - pane
-                                                                                       // title
-                                                                                       // usize -
-                                                                                       // tab index
-                                                                                       // u32 -
-                                                                                       // plugin id
+    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+                                                                        // optional pane title
+    AddPlugin(
+        Option<Direction>,
+        Option<bool>, // should_float
+        RunPlugin,
+        Option<String>, // pane title
+        usize, // tab index
+        u32, // plugin id
+        ClientId
+    ),
     UpdatePluginLoadingStage(u32, ClientId, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32), // u32 - plugin id
 }
@@ -404,6 +408,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
+            ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
             ScreenInstruction::UpdatePluginLoadingStage(..) => ScreenContext::UpdatePluginLoadingStage,
             ScreenInstruction::ProgressPluginLoadingOffset(..) => ScreenContext::ProgressPluginLoadingOffset,
@@ -2481,6 +2486,7 @@ pub(crate) fn screen_thread_main(
                                                                                  // unwrap and
                                                                                  // better
                 let size = Size::default(); // TODO: ???
+                let should_float = Some(false);
                 let run_plugin = RunPlugin {
                     _allow_exec_host_cmd: false,
                     location: run_plugin_location
@@ -2488,11 +2494,25 @@ pub(crate) fn screen_thread_main(
                 screen
                     .bus
                     .senders
-                    .send_to_plugin(PluginInstruction::Load(direction, pane_title, run_plugin, *tab_index, client_id, size))?;
+                    .send_to_plugin(PluginInstruction::Load(direction, should_float, pane_title, run_plugin, *tab_index, client_id, size))?;
             }
-            ScreenInstruction::AddPlugin(direction, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
+            ScreenInstruction::NewFloatingPluginPane(run_plugin_location, pane_title, client_id) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
+                                                                                 // unwrap and
+                                                                                 // better
+                let size = Size::default(); // TODO: ???
+                let should_float = Some(true);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location
+                };
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Load(None, should_float, pane_title, run_plugin, *tab_index, client_id, size))?;
+            }
+            ScreenInstruction::AddPlugin(direction, should_float, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
-                    let should_float = None;
                     active_tab.new_plugin_pane(PaneId::Plugin(plugin_id), pane_title, should_float, None)?;
                 } else {
                     log::error!("Tab index not found: {:?}", tab_index);
