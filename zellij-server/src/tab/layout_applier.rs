@@ -14,7 +14,7 @@ use crate::{
     ClientId,
 };
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 use zellij_utils::{
     data::{Palette, Style},
@@ -30,6 +30,7 @@ pub struct LayoutApplier<'a> {
     terminal_emulator_colors: Rc<RefCell<Palette>>,
     terminal_emulator_color_codes: Rc<RefCell<HashMap<usize, String>>>,
     character_cell_size: Rc<RefCell<Option<SizeInPixels>>>,
+    connected_clients: Rc<RefCell<HashSet<ClientId>>>,
     style: Style,
     display_area: Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
     tiled_panes: &'a mut TiledPanes,
@@ -48,6 +49,7 @@ impl<'a> LayoutApplier<'a> {
         terminal_emulator_colors: &Rc<RefCell<Palette>>,
         terminal_emulator_color_codes: &Rc<RefCell<HashMap<usize, String>>>,
         character_cell_size: &Rc<RefCell<Option<SizeInPixels>>>,
+        connected_clients: &Rc<RefCell<HashSet<ClientId>>>,
         style: &Style,
         display_area: &Rc<RefCell<Size>>, // includes all panes (including eg. the status bar and tab bar in the default layout)
         tiled_panes: &'a mut TiledPanes,
@@ -63,6 +65,7 @@ impl<'a> LayoutApplier<'a> {
         let terminal_emulator_colors = terminal_emulator_colors.clone();
         let terminal_emulator_color_codes = terminal_emulator_color_codes.clone();
         let character_cell_size = character_cell_size.clone();
+        let connected_clients = connected_clients.clone();
         let style = style.clone();
         let display_area = display_area.clone();
         let os_api = os_api.clone();
@@ -74,6 +77,7 @@ impl<'a> LayoutApplier<'a> {
             terminal_emulator_colors,
             terminal_emulator_color_codes,
             character_cell_size,
+            connected_clients,
             style,
             display_area,
             tiled_panes,
@@ -119,7 +123,32 @@ impl<'a> LayoutApplier<'a> {
                 let mut existing_tab_state =
                     ExistingTabState::new(self.tiled_panes.drain(), currently_focused_pane_id);
                 let mut pane_focuser = PaneFocuser::new(refocus_pane);
+                let mut positions_left = vec![];
                 for (layout, position_and_size) in positions_in_layout {
+                    // first try to find panes with contents matching the layout exactly
+                    match existing_tab_state.find_and_extract_exact_match_pane(
+                        &layout.run,
+                        &position_and_size,
+                        true,
+                    ) {
+                        Some(mut pane) => {
+                            self.apply_layout_properties_to_pane(
+                                &mut pane,
+                                &layout,
+                                Some(position_and_size),
+                            );
+                            pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
+                            resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
+                            self.tiled_panes
+                                .add_pane_with_existing_geom(pane.pid(), pane);
+                        },
+                        None => {
+                            positions_left.push((layout, position_and_size));
+                        },
+                    }
+                }
+                for (layout, position_and_size) in positions_left {
+                    // now let's try to find panes on a best-effort basis
                     if let Some(mut pane) = existing_tab_state.find_and_extract_pane(
                         &layout.run,
                         &position_and_size,
@@ -198,6 +227,7 @@ impl<'a> LayoutApplier<'a> {
                             self.terminal_emulator_color_codes.clone(),
                             self.link_handler.clone(),
                             self.character_cell_size.clone(),
+                            self.connected_clients.borrow().iter().copied().collect(),
                             self.style,
                             layout.run.clone(),
                         );
@@ -300,6 +330,7 @@ impl<'a> LayoutApplier<'a> {
                     self.terminal_emulator_color_codes.clone(),
                     self.link_handler.clone(),
                     self.character_cell_size.clone(),
+                    self.connected_clients.borrow().iter().copied().collect(),
                     self.style,
                     floating_pane_layout.run.clone(),
                 );
@@ -574,6 +605,22 @@ impl ExistingTabState {
             currently_focused_pane_id,
         }
     }
+    pub fn find_and_extract_exact_match_pane(
+        &mut self,
+        run: &Option<Run>,
+        position_and_size: &PaneGeom,
+        default_to_closest_position: bool,
+    ) -> Option<Box<dyn Pane>> {
+        let candidates = self.pane_candidates(run, position_and_size, default_to_closest_position);
+        if let Some(current_pane_id_with_same_contents) =
+            self.find_pane_id_with_same_contents_and_location(&candidates, run, position_and_size)
+        {
+            return self
+                .existing_panes
+                .remove(&current_pane_id_with_same_contents);
+        }
+        None
+    }
     pub fn find_and_extract_pane(
         &mut self,
         run: &Option<Run>,
@@ -676,6 +723,18 @@ impl ExistingTabState {
         candidates
             .iter()
             .find(|(_pid, p)| p.invoked_with() == run)
+            .map(|(pid, _p)| *pid)
+            .copied()
+    }
+    fn find_pane_id_with_same_contents_and_location(
+        &self,
+        candidates: &Vec<(&PaneId, &Box<dyn Pane>)>,
+        run: &Option<Run>,
+        position: &PaneGeom,
+    ) -> Option<PaneId> {
+        candidates
+            .iter()
+            .find(|(_pid, p)| p.invoked_with() == run && p.position_and_size() == *position)
             .map(|(pid, _p)| *pid)
             .copied()
     }

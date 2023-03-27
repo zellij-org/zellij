@@ -2,7 +2,8 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+    TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -225,6 +226,9 @@ pub enum Action {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    /// Open a new tiled (embedded, non-floating) plugin pane
+    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
 }
 
 impl Action {
@@ -270,13 +274,34 @@ impl Action {
             CliAction::NewPane {
                 direction,
                 command,
+                plugin,
                 cwd,
                 floating,
                 name,
                 close_on_exit,
                 start_suspended,
             } => {
-                if !command.is_empty() {
+                if let Some(plugin) = plugin {
+                    if floating {
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin loction {plugin}: {}", e)
+                        })?;
+                        Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
+                    } else {
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin location {plugin}: {}", e)
+                        })?;
+                        // it is intentional that a new tiled plugin pane cannot include a
+                        // direction
+                        // this is because the cli client opening a tiled plugin pane is a
+                        // different client than the one opening the pane, and this can potentially
+                        // create very confusing races if the client changes focus while the plugin
+                        // is being loaded
+                        // this is not the case with terminal panes for historical reasons of
+                        // backwards compatibility to a time before we had auto layouts
+                        Ok(vec![Action::NewTiledPluginPane(plugin, name)])
+                    }
+                } else if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let current_dir = get_current_dir();
