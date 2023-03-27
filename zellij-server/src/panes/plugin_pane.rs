@@ -6,7 +6,10 @@ use crate::panes::{grid::Grid, sixel::SixelImageStore, LinkHandler, PaneId};
 use crate::plugins::PluginInstruction;
 use crate::pty::VteBytes;
 use crate::tab::Pane;
-use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::{FrameParams, PaneFrame}};
+use crate::ui::{
+    loading_indication::LoadingIndication,
+    pane_boundaries_frame::{FrameParams, PaneFrame},
+};
 use crate::ClientId;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -527,14 +530,18 @@ impl Pane for PluginPane {
             return;
         }
         self.loading_indication.merge(loading_indication);
-        self.handle_plugin_bytes_for_all_clients(self.loading_indication.to_string().as_bytes().to_vec());
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
     }
     fn progress_animation_offset(&mut self) {
         if self.loading_indication.ended {
             return;
         }
         self.loading_indication.progress_animation_offset();
-        self.handle_plugin_bytes_for_all_clients(self.loading_indication.to_string().as_bytes().to_vec());
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
     }
 }
 

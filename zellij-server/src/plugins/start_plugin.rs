@@ -1,3 +1,4 @@
+use crate::plugins::wasm_bridge::{wasi_read_string, zellij_exports, PluginEnv, PluginMap};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use semver::Version;
@@ -9,26 +10,18 @@ use std::{
     time::Instant,
 };
 use url::Url;
-use wasmer::{
-    ChainableNamedResolver, Instance, Module, Store
-};
+use wasmer::{ChainableNamedResolver, Instance, Module, Store};
 use wasmer_wasi::{Pipe, WasiState};
-use crate::plugins::wasm_bridge::{PluginEnv, PluginMap, wasi_read_string, zellij_exports};
 
 use crate::{
-    logging_pipe::LoggingPipe,
-    ui::loading_indication::LoadingIndication,
-    screen::ScreenInstruction,
-    thread_bus::ThreadSenders,
-    ClientId,
+    logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication, ClientId,
 };
 
 use zellij_utils::{
     consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
     errors::prelude::*,
-    input::{
-        plugins::PluginConfig,
-    },
+    input::plugins::PluginConfig,
     pane_size::Size,
 };
 
@@ -481,7 +474,10 @@ pub fn start_plugin(
     create_plugin_fs_entries(&plugin_own_data_dir)?;
 
     loading_indication.indicate_loading_plugin_from_memory();
-    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
     let (module, cache_hit) = {
         let mut plugin_cache = plugin_cache.lock().unwrap();
         let (module, cache_hit) = load_module_from_memory(&mut *plugin_cache, &plugin.path);
@@ -491,33 +487,49 @@ pub fn start_plugin(
     let module = match module {
         Some(module) => {
             loading_indication.indicate_loading_plugin_from_memory_success();
-            let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+            let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                plugin_id,
+                loading_indication.clone(),
+            ));
             module
-        }
+        },
         None => {
             loading_indication.indicate_loading_plugin_from_memory_notfound();
             loading_indication.indicate_loading_plugin_from_hd_cache();
-            let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+            let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                plugin_id,
+                loading_indication.clone(),
+            ));
 
             let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin, &plugin_dir);
             let timer = std::time::Instant::now();
             match load_module_from_hd_cache(&mut store, &plugin.path, &timer, &cached_path) {
                 Ok(module) => {
                     loading_indication.indicate_loading_plugin_from_hd_cache_success();
-                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                        plugin_id,
+                        loading_indication.clone(),
+                    ));
                     module
                 },
                 Err(_e) => {
                     loading_indication.indicate_loading_plugin_from_hd_cache_notfound();
                     loading_indication.indicate_compiling_plugin();
-                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
-                    let module = compile_module(&mut store, &plugin.path, &timer, &cached_path, wasm_bytes)?;
+                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                        plugin_id,
+                        loading_indication.clone(),
+                    ));
+                    let module =
+                        compile_module(&mut store, &plugin.path, &timer, &cached_path, wasm_bytes)?;
                     loading_indication.indicate_compiling_plugin_success();
-                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+                    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                        plugin_id,
+                        loading_indication.clone(),
+                    ));
                     module
-                }
+                },
             }
-        }
+        },
     };
 
     let (instance, plugin_env) = create_plugin_instance_and_environment(
@@ -547,11 +559,17 @@ pub fn start_plugin(
     let mut main_user_instance = instance.clone();
     let main_user_env = plugin_env.clone();
     loading_indication.indicate_starting_plugin();
-    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
     load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
     loading_indication.indicate_starting_plugin_success();
     loading_indication.indicate_writing_plugin_to_cache();
-    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
 
     {
         let mut plugin_map = plugin_map.lock().unwrap();
@@ -562,30 +580,39 @@ pub fn start_plugin(
     }
 
     loading_indication.indicate_writing_plugin_to_cache_success();
-    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
 
-    let connected_clients: Vec<ClientId> = connected_clients.lock().unwrap().iter().copied().collect();
+    let connected_clients: Vec<ClientId> =
+        connected_clients.lock().unwrap().iter().copied().collect();
     if !connected_clients.is_empty() {
         loading_indication.indicate_cloning_plugin_for_other_clients();
-        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+            plugin_id,
+            loading_indication.clone(),
+        ));
         let mut plugin_map = plugin_map.lock().unwrap();
         for client_id in connected_clients {
-            let (instance, new_plugin_env) = clone_plugin_for_client(
-                &plugin_env,
-                client_id,
-                &instance,
-                &mut store,
-            )?;
+            let (instance, new_plugin_env) =
+                clone_plugin_for_client(&plugin_env, client_id, &instance, &mut store)?;
             plugin_map.insert(
                 (plugin_id, client_id),
                 (instance, new_plugin_env, (size.rows, size.cols)),
             );
-        };
+        }
         loading_indication.indicate_cloning_plugin_for_other_clients_success();
-        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+            plugin_id,
+            loading_indication.clone(),
+        ));
     }
     loading_indication.end();
-    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
     Ok(())
 }
 
@@ -602,7 +629,13 @@ fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn compile_module(store: &mut Store, plugin_path: &PathBuf, timer: &Instant, cached_path: &PathBuf, wasm_bytes: Vec<u8>) -> Result<Module> {
+fn compile_module(
+    store: &mut Store,
+    plugin_path: &PathBuf,
+    timer: &Instant,
+    cached_path: &PathBuf,
+    wasm_bytes: Vec<u8>,
+) -> Result<Module> {
     let err_context = || "failed to recover cache dir";
     fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
         .map_err(anyError::new)
@@ -623,7 +656,12 @@ fn compile_module(store: &mut Store, plugin_path: &PathBuf, timer: &Instant, cac
         .with_context(err_context)?
 }
 
-fn load_module_from_hd_cache(store: &mut Store, plugin_path: &PathBuf, timer: &Instant, cached_path: &PathBuf) -> Result<Module> {
+fn load_module_from_hd_cache(
+    store: &mut Store,
+    plugin_path: &PathBuf,
+    timer: &Instant,
+    cached_path: &PathBuf,
+) -> Result<Module> {
     let module = unsafe { Module::deserialize_from_file(&*store, &cached_path)? };
     log::info!(
         "Loaded plugin '{}' from cache folder at '{}' in {:?}",
@@ -658,7 +696,10 @@ fn plugin_bytes_and_cache_path(plugin: &PluginConfig, plugin_dir: &PathBuf) -> (
     (wasm_bytes, cached_path)
 }
 
-fn load_module_from_memory(plugin_cache: &mut HashMap<PathBuf, Module>, plugin_path: &PathBuf) -> (Option<Module>, bool) {
+fn load_module_from_memory(
+    plugin_cache: &mut HashMap<PathBuf, Module>,
+    plugin_path: &PathBuf,
+) -> (Option<Module>, bool) {
     let module = plugin_cache.remove(plugin_path);
     let mut cache_hit = false;
     if module.is_some() {
@@ -714,8 +755,7 @@ fn create_plugin_instance_and_environment(
     // need: wasi, plugin_env
 
     let zellij = zellij_exports(&store, &plugin_env);
-    let instance =
-        Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
+    let instance = Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
     Ok((instance, plugin_env))
 }
 
@@ -723,7 +763,7 @@ fn clone_plugin_for_client(
     plugin_env: &PluginEnv,
     client_id: ClientId,
     instance: &Instance,
-    store: &Store
+    store: &Store,
 ) -> Result<(Instance, PluginEnv)> {
     let err_context = || format!("Failed to clone plugin for client {client_id}");
     let mut new_plugin_env = plugin_env.clone();

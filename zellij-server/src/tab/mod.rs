@@ -28,7 +28,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, TerminalPane, PluginPane},
+    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,

@@ -1,7 +1,7 @@
 use super::PluginInstruction;
+use crate::plugins::start_plugin::start_plugin;
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
-use zellij_utils::async_std::task::{self, JoinHandle};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -17,15 +17,15 @@ use wasmer::{
     WasmerEnv,
 };
 use wasmer_wasi::WasiEnv;
-use crate::plugins::start_plugin::start_plugin;
+use zellij_utils::async_std::task::{self, JoinHandle};
 
 use crate::{
     background_jobs::BackgroundJob,
-    ui::loading_indication::LoadingIndication,
     panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
     thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication,
     ClientId,
 };
 
@@ -134,10 +134,10 @@ impl PluginEnv {
 }
 
 pub type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
-                                                                                  // plugin_id,
-                                                                                  // (usize, usize)
-                                                                                  // => (rows,
-                                                                                  // columns)
+                                                                                      // plugin_id,
+                                                                                      // (usize, usize)
+                                                                                      // => (rows,
+                                                                                      // columns)
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -150,7 +150,7 @@ pub struct WasmBridge {
     next_plugin_id: u32,
     cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
     cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
-    loading_plugins: HashMap<u32, JoinHandle<()>>, // plugin_id to join-handle
+    loading_plugins: HashMap<u32, JoinHandle<()>>,               // plugin_id to join-handle
 }
 
 impl WasmBridge {
@@ -162,7 +162,8 @@ impl WasmBridge {
     ) -> Self {
         let plugin_map = Arc::new(Mutex::new(HashMap::new()));
         let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
-        let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> = Arc::new(Mutex::new(HashMap::new()));
+        let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         WasmBridge {
             connected_clients,
             plugins,
@@ -198,8 +199,10 @@ impl WasmBridge {
 
         self.next_plugin_id += 1;
 
-        self.cached_events_for_pending_plugins.insert(plugin_id, vec![]);
-        self.cached_resizes_for_pending_plugins.insert(plugin_id, (0, 0));
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (0, 0));
 
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
@@ -209,32 +212,43 @@ impl WasmBridge {
             let plugin_map = self.plugin_map.clone();
             let connected_clients = self.connected_clients.clone();
             async move {
-                let _ = senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                let _ =
+                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
                 match start_plugin(
-                        plugin_id,
-                        client_id,
-                        &plugin,
-                        tab_index,
-                        plugin_dir,
-                        plugin_cache,
-                        senders.clone(),
-                        store,
-                        plugin_map,
-                        size,
-                        connected_clients.clone(),
-                        &mut loading_indication,
+                    plugin_id,
+                    client_id,
+                    &plugin,
+                    tab_index,
+                    plugin_dir,
+                    plugin_cache,
+                    senders.clone(),
+                    store,
+                    plugin_map,
+                    size,
+                    connected_clients.clone(),
+                    &mut loading_indication,
                 ) {
                     Ok(_) => {
-                        let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
-                        let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
+                        let _ = senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
+                        );
+                        let _ =
+                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
                     },
                     Err(e) => {
-                        let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
-                        let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
+                        let _ = senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
+                        );
+                        let _ =
+                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
                         loading_indication.indicate_loading_error(e.to_string());
-                        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(plugin_id, loading_indication.clone()));
-                    }
+                        let _ =
+                            senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                                plugin_id,
+                                loading_indication.clone(),
+                            ));
+                    },
                 }
             }
         });
@@ -321,7 +335,9 @@ impl WasmBridge {
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
-        for (plugin_id, (current_rows, current_columns)) in self.cached_resizes_for_pending_plugins.iter_mut() {
+        for (plugin_id, (current_rows, current_columns)) in
+            self.cached_resizes_for_pending_plugins.iter_mut()
+        {
             if *plugin_id == pid {
                 *current_rows = new_rows;
                 *current_columns = new_columns;
@@ -341,9 +357,7 @@ impl WasmBridge {
         let plugin_map = self.plugin_map.lock().unwrap();
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in
-                &*plugin_map
-            {
+            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
                 let subs = plugin_env
                     .subscriptions
                     .lock()
@@ -358,7 +372,16 @@ impl WasmBridge {
                         || (cid.is_none() && pid == Some(plugin_id))
                         || (cid == Some(client_id) && pid == Some(plugin_id)))
                 {
-                    apply_event_to_plugin(plugin_id, client_id, &instance, &plugin_env, &event, *rows, *columns, &mut plugin_bytes)?;
+                    apply_event_to_plugin(
+                        plugin_id,
+                        client_id,
+                        &instance,
+                        &plugin_env,
+                        &event,
+                        *rows,
+                        *columns,
+                        &mut plugin_bytes,
+                    )?;
                 }
             }
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
@@ -367,7 +390,7 @@ impl WasmBridge {
                 }
             }
         }
-       let _ = self
+        let _ = self
             .senders
             .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
@@ -376,22 +399,39 @@ impl WasmBridge {
         let err_context = || format!("Failed to apply cached events to plugin {plugin_id}");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
             let mut plugin_map = self.plugin_map.lock().unwrap();
-            let all_connected_clients: Vec<ClientId> = self.connected_clients.lock().unwrap().iter().copied().collect();
+            let all_connected_clients: Vec<ClientId> = self
+                .connected_clients
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect();
             for client_id in all_connected_clients {
                 let mut plugin_bytes = vec![];
-                if let Some((instance, plugin_env, (rows, columns))) = plugin_map.get_mut(&(plugin_id, client_id)) {
+                if let Some((instance, plugin_env, (rows, columns))) =
+                    plugin_map.get_mut(&(plugin_id, client_id))
+                {
                     let subs = plugin_env
-                       .subscriptions
-                       .lock()
-                       .to_anyhow()
-                       .with_context(err_context)?;
+                        .subscriptions
+                        .lock()
+                        .to_anyhow()
+                        .with_context(err_context)?;
                     for event in events.clone() {
                         let event_type =
                             EventType::from_str(&event.to_string()).with_context(err_context)?;
                         if !subs.contains(&event_type) {
                             continue;
                         }
-                        apply_event_to_plugin(plugin_id, client_id, &instance, &plugin_env, &event, *rows, *columns, &mut plugin_bytes)?;
+                        apply_event_to_plugin(
+                            plugin_id,
+                            client_id,
+                            &instance,
+                            &plugin_env,
+                            &event,
+                            *rows,
+                            *columns,
+                            &mut plugin_bytes,
+                        )?;
                     }
                     let _ = self
                         .senders
@@ -406,16 +446,17 @@ impl WasmBridge {
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.connected_clients.lock().unwrap().retain(|c| c != &client_id);
+        self.connected_clients
+            .lock()
+            .unwrap()
+            .retain(|c| c != &client_id);
     }
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
             drop(loading_plugin_task.cancel());
         }
-
     }
 }
-
 
 fn load_plugin_instance(instance: &mut Instance) -> Result<()> {
     let err_context = || format!("failed to load plugin from instance {instance:#?}");
@@ -703,27 +744,37 @@ pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
         .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
 }
 
-pub fn apply_event_to_plugin(plugin_id: u32, client_id: ClientId, instance: &Instance, plugin_env: &PluginEnv, event: &Event, rows: usize, columns: usize, plugin_bytes: &mut Vec<(u32, ClientId, Vec<u8>)>) -> Result<()> {
+pub fn apply_event_to_plugin(
+    plugin_id: u32,
+    client_id: ClientId,
+    instance: &Instance,
+    plugin_env: &PluginEnv,
+    event: &Event,
+    rows: usize,
+    columns: usize,
+    plugin_bytes: &mut Vec<(u32, ClientId, Vec<u8>)>,
+) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     let update = instance
         .exports
         .get_function("update")
         .with_context(err_context)?;
     wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-    let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
-        match e.downcast::<serde_json::Error>() {
-            Ok(_) => panic!(
-                "{}",
-                anyError::new(VersionMismatchError::new(
-                    VERSION,
-                    "Unavailable",
-                    &plugin_env.plugin.path,
-                    plugin_env.plugin.is_builtin(),
-                ))
-            ),
-            Err(e) => Err(e).with_context(err_context),
-        }
-    })?;
+    let update_return =
+        update
+            .call(&[])
+            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
+                Ok(_) => panic!(
+                    "{}",
+                    anyError::new(VersionMismatchError::new(
+                        VERSION,
+                        "Unavailable",
+                        &plugin_env.plugin.path,
+                        plugin_env.plugin.is_builtin(),
+                    ))
+                ),
+                Err(e) => Err(e).with_context(err_context),
+            })?;
     let should_render = match update_return.get(0) {
         Some(Value::I32(n)) => *n == 1,
         _ => false,
@@ -741,11 +792,7 @@ pub fn apply_event_to_plugin(plugin_id: u32, client_id: ClientId, instance: &Ins
             })
             .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
             .with_context(err_context)?;
-        plugin_bytes.push((
-            plugin_id,
-            client_id,
-            rendered_bytes.as_bytes().to_vec(),
-        ));
+        plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
     }
     Ok(())
 }

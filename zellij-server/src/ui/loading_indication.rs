@@ -102,50 +102,41 @@ impl LoadingIndication {
         self.error = Some(error_text);
     }
     fn started_loading(&self) -> bool {
-        self.loading_from_memory.is_some() ||
-        self.loading_from_hd_cache.is_some() ||
-        self.compiling.is_some() ||
-        self.starting_plugin.is_some() ||
-        self.writing_plugin_to_cache.is_some() ||
-        self.cloning_plugin_for_other_clients.is_some()
+        self.loading_from_memory.is_some()
+            || self.loading_from_hd_cache.is_some()
+            || self.compiling.is_some()
+            || self.starting_plugin.is_some()
+            || self.writing_plugin_to_cache.is_some()
+            || self.cloning_plugin_for_other_clients.is_some()
     }
 }
 
 macro_rules! style {
     ($fg:expr) => {
-        ansi_term::Style::new()
-            .fg(match $fg {
-                PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
-                PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
-            })
+        ansi_term::Style::new().fg(match $fg {
+            PaletteColor::Rgb((r, g, b)) => ansi_term::Color::RGB(r, g, b),
+            PaletteColor::EightBit(color) => ansi_term::Color::Fixed(color),
+        })
     };
 }
 
 impl Display for LoadingIndication {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         let cyan = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.cyan).bold()
-            },
-            None => ansi_term::Style::new()
+            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.cyan).bold(),
+            None => ansi_term::Style::new(),
         };
         let green = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.green).bold()
-            },
-            None => ansi_term::Style::new()
+            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.green).bold(),
+            None => ansi_term::Style::new(),
         };
         let yellow = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.yellow).bold()
-            },
-            None => ansi_term::Style::new()
+            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.yellow).bold(),
+            None => ansi_term::Style::new(),
         };
         let red = match self.terminal_emulator_colors {
-            Some(terminal_emulator_colors) => {
-                style!(terminal_emulator_colors.red).bold()
-            },
-            None => ansi_term::Style::new()
+            Some(terminal_emulator_colors) => style!(terminal_emulator_colors.red).bold(),
+            None => ansi_term::Style::new(),
         };
         let bold = ansi_term::Style::new().bold().italic();
         let plugin_name = &self.plugin_name;
@@ -169,86 +160,97 @@ impl Display for LoadingIndication {
         if self.started_loading() {
             stringified.push_str(&format!("{} {}...", loading_text, cyan.paint(plugin_name)));
         } else {
-            stringified.push_str(&format!("{} {}", bold.paint(loading_text), cyan.italic().paint(plugin_name)));
+            stringified.push_str(&format!(
+                "{} {}",
+                bold.paint(loading_text),
+                cyan.italic().paint(plugin_name)
+            ));
             add_dots(&mut stringified);
         }
         match self.loading_from_memory {
             Some(LoadingStatus::InProgress) => {
                 stringified.push_str(&format!("\n\r{}", bold.paint(loading_from_memory_text)));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
                 stringified.push_str(&format!("\n\r{loading_from_memory_text}... {success}"));
-            }
+            },
             Some(LoadingStatus::NotFound) => {
                 stringified.push_str(&format!("\n\r{loading_from_memory_text}... {not_found}"));
-            }
-            None => {}
+            },
+            None => {},
         }
         match self.loading_from_hd_cache {
             Some(LoadingStatus::InProgress) => {
                 stringified.push_str(&format!("\n\r{}", bold.paint(loading_from_hd_cache_text)));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
                 stringified.push_str(&format!("\n\r{loading_from_hd_cache_text}... {success}"));
-            }
+            },
             Some(LoadingStatus::NotFound) => {
                 stringified.push_str(&format!("\n\r{loading_from_hd_cache_text}... {not_found}"));
-            }
-            None => {}
+            },
+            None => {},
         }
         match self.compiling {
             Some(LoadingStatus::InProgress) => {
                 stringified.push_str(&format!("\n\r{}", bold.paint(compiling_text)));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
                 stringified.push_str(&format!("\n\r{compiling_text}... {success}"));
-            }
+            },
             Some(LoadingStatus::NotFound) => {
                 stringified.push_str(&format!("\n\r{compiling_text}... {failure}"));
-            }
-            None => {}
+            },
+            None => {},
         }
         match self.starting_plugin {
             Some(LoadingStatus::InProgress) => {
                 stringified.push_str(&format!("\n\r{}", bold.paint(starting_plugin_text)));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
                 stringified.push_str(&format!("\n\r{starting_plugin_text}... {success}"));
-            }
+            },
             Some(LoadingStatus::NotFound) => {
                 stringified.push_str(&format!("\n\r{starting_plugin_text}... {failure}"));
-            }
-            None => {}
+            },
+            None => {},
         }
         match self.writing_plugin_to_cache {
             Some(LoadingStatus::InProgress) => {
                 stringified.push_str(&format!("\n\r{}", bold.paint(writing_plugin_to_cache_text)));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
                 stringified.push_str(&format!("\n\r{writing_plugin_to_cache_text}... {success}"));
-            }
+            },
             Some(LoadingStatus::NotFound) => {
                 stringified.push_str(&format!("\n\r{writing_plugin_to_cache_text}... {failure}"));
-            }
-            None => {}
+            },
+            None => {},
         }
         match self.cloning_plugin_for_other_clients {
             Some(LoadingStatus::InProgress) => {
-                stringified.push_str(&format!("\n\r{}", bold.paint(cloning_plugin_for_other_clients_text)));
+                stringified.push_str(&format!(
+                    "\n\r{}",
+                    bold.paint(cloning_plugin_for_other_clients_text)
+                ));
                 add_dots(&mut stringified);
-            }
+            },
             Some(LoadingStatus::Success) => {
-                stringified.push_str(&format!("\n\r{cloning_plugin_for_other_clients_text}... {success}"));
-            }
+                stringified.push_str(&format!(
+                    "\n\r{cloning_plugin_for_other_clients_text}... {success}"
+                ));
+            },
             Some(LoadingStatus::NotFound) => {
-                stringified.push_str(&format!("\n\r{cloning_plugin_for_other_clients_text}... {failure}"));
-            }
-            None => {}
+                stringified.push_str(&format!(
+                    "\n\r{cloning_plugin_for_other_clients_text}... {failure}"
+                ));
+            },
+            None => {},
         }
         if let Some(error_text) = &self.error {
             stringified.push_str(&format!("\n\r{} {error_text}", red.bold().paint("ERROR:")));

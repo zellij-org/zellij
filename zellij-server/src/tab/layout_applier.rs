@@ -144,7 +144,7 @@ impl<'a> LayoutApplier<'a> {
                         },
                         None => {
                             positions_left.push((layout, position_and_size));
-                        }
+                        },
                     }
                 }
                 for (layout, position_and_size) in positions_left {

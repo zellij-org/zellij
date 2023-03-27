@@ -2,8 +2,11 @@ use zellij_utils::async_std::task;
 use zellij_utils::errors::{prelude::*, BackgroundJobContext, ContextType};
 
 use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 use crate::panes::PaneId;
 use crate::screen::ScreenInstruction;
@@ -12,7 +15,7 @@ use crate::thread_bus::Bus;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum BackgroundJob {
     DisplayPaneError(Vec<PaneId>, String),
-    AnimatePluginLoading(u32), // u32 - plugin_id
+    AnimatePluginLoading(u32),       // u32 - plugin_id
     StopPluginLoadingAnimation(u32), // u32 - plugin_id
     Exit,
 }
@@ -22,7 +25,9 @@ impl From<&BackgroundJob> for BackgroundJobContext {
         match *background_job {
             BackgroundJob::DisplayPaneError(..) => BackgroundJobContext::DisplayPaneError,
             BackgroundJob::AnimatePluginLoading(..) => BackgroundJobContext::AnimatePluginLoading,
-            BackgroundJob::StopPluginLoadingAnimation(..) => BackgroundJobContext::StopPluginLoadingAnimation,
+            BackgroundJob::StopPluginLoadingAnimation(..) => {
+                BackgroundJobContext::StopPluginLoadingAnimation
+            },
             BackgroundJob::Exit => BackgroundJobContext::Exit,
         }
     }
@@ -71,18 +76,23 @@ pub(crate) fn background_jobs_main(bus: Bus<BackgroundJob>) -> Result<()> {
                     let loading_plugin = loading_plugin.clone();
                     async move {
                         while loading_plugin.load(Ordering::SeqCst) {
-                            let _ = senders.send_to_screen(ScreenInstruction::ProgressPluginLoadingOffset(pid));
-                            task::sleep(std::time::Duration::from_millis(PLUGIN_ANIMATION_OFFSET_DURATION_MD)).await;
+                            let _ = senders.send_to_screen(
+                                ScreenInstruction::ProgressPluginLoadingOffset(pid),
+                            );
+                            task::sleep(std::time::Duration::from_millis(
+                                PLUGIN_ANIMATION_OFFSET_DURATION_MD,
+                            ))
+                            .await;
                         }
                     }
                 });
                 loading_plugins.insert(pid, loading_plugin);
-            }
+            },
             BackgroundJob::StopPluginLoadingAnimation(pid) => {
                 if let Some(loading_plugin) = loading_plugins.remove(&pid) {
                     loading_plugin.store(false, Ordering::SeqCst);
                 }
-            }
+            },
             BackgroundJob::Exit => {
                 for loading_plugin in loading_plugins.values() {
                     loading_plugin.store(false, Ordering::SeqCst);
