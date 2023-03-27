@@ -1,4 +1,5 @@
 mod wasm_bridge;
+mod start_plugin;
 use log::info;
 use std::{collections::HashMap, fs, path::PathBuf};
 use wasmer::Store;
@@ -74,7 +75,7 @@ pub(crate) fn plugin_thread_main(
         match event {
             PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
                 let plugin_id = wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
-                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(should_float, run, pane_title, tab_index, plugin_id, client_id)));
+                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(should_float, run, pane_title, tab_index, plugin_id)));
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates)?;

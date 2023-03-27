@@ -18,7 +18,7 @@ use zellij_utils::{position::Position, serde};
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
-use crate::ui::pane_boundaries_frame::FrameParams;
+use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
 
@@ -27,7 +27,7 @@ use crate::{
     os_input_output::ServerOsApi,
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
-    panes::{FloatingPanes, TiledPanes, LoadingIndication},
+    panes::{FloatingPanes, TiledPanes},
     panes::{LinkHandler, PaneId, TerminalPane, PluginPane},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},

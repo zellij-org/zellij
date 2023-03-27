@@ -24,12 +24,12 @@ use crate::panes::terminal_character::AnsiCode;
 use crate::{
     output::Output,
     panes::sixel::SixelImageStore,
-    panes::{PaneId, LoadingIndication},
+    panes::PaneId,
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
-    ui::overlay::{Overlay, OverlayWindow, Overlayable},
+    ui::{loading_indication::LoadingIndication, overlay::{Overlay, OverlayWindow, Overlayable}},
     ClientId, ServerInstruction
 };
 use zellij_utils::{
@@ -259,9 +259,8 @@ pub enum ScreenInstruction {
         Option<String>, // pane title
         usize, // tab index
         u32, // plugin id
-        ClientId
     ),
-    UpdatePluginLoadingStage(u32, ClientId, LoadingIndication), // u32 - plugin_id
+    UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32), // u32 - plugin id
 }
 
@@ -2474,7 +2473,7 @@ pub(crate) fn screen_thread_main(
                     .senders
                     .send_to_plugin(PluginInstruction::Load(should_float, pane_title, run_plugin, *tab_index, client_id, size))?;
             }
-            ScreenInstruction::AddPlugin(should_float, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
+            ScreenInstruction::AddPlugin(should_float, run_plugin_location, pane_title, tab_index, plugin_id) => {
                 let pane_title = pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
                 let run_plugin = Run::Plugin(run_plugin_location);
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
@@ -2484,7 +2483,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.unblock_input()?;
             }
-            ScreenInstruction::UpdatePluginLoadingStage(pid, client_id, loading_indication) => {
+            ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     if tab.has_plugin(pid) {
