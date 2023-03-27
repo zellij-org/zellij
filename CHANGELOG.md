@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: adding panes to lone stack (https://github.com/zellij-org/zellij/pull/2298)
 * fix: closing a stacked pane now properly moves to the previous swap layout if appropriate (https://github.com/zellij-org/zellij/pull/2312)
 * deps: update interprocess: fix crash and reduce memory usage by not leaking socket file descriptors on client attach (https://github.com/zellij-org/zellij/pull/2322)
+* feat: load plugins asynchronously (https://github.com/zellij-org/zellij/pull/2327)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
