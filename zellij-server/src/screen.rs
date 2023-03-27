@@ -2475,6 +2475,7 @@ pub(crate) fn screen_thread_main(
                     .send_to_plugin(PluginInstruction::Load(should_float, pane_title, run_plugin, *tab_index, client_id, size))?;
             }
             ScreenInstruction::AddPlugin(should_float, run_plugin_location, pane_title, tab_index, plugin_id, client_id) => {
+                let pane_title = pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
                 let run_plugin = Run::Plugin(run_plugin_location);
                 if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
                     active_tab.new_plugin_pane(PaneId::Plugin(plugin_id), pane_title, should_float, run_plugin, None)?;

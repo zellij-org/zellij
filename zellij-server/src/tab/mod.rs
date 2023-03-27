@@ -1112,7 +1112,7 @@ impl Tab {
     pub fn new_plugin_pane(
         &mut self,
         pid: PaneId,
-        initial_pane_title: Option<String>,
+        initial_pane_title: String,
         should_float: Option<bool>,
         run_plugin: Run,
         client_id: Option<ClientId>,
@@ -1135,7 +1135,7 @@ impl Tab {
                             .as_ref()
                             .with_context(err_context)?
                             .clone(),
-                        initial_pane_title.unwrap_or_default(),
+                        initial_pane_title,
                         String::new(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
@@ -1181,7 +1181,7 @@ impl Tab {
                             .as_ref()
                             .with_context(err_context)?
                             .clone(),
-                        initial_pane_title.unwrap_or_default(),
+                        initial_pane_title,
                         String::new(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
