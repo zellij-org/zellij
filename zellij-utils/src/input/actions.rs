@@ -226,7 +226,7 @@ pub enum Action {
     /// Query all tab names
     QueryTabNames,
     /// Open a new tiled (embedded, non-floating) plugin pane
-    NewTiledPluginPane(Option<Direction>, RunPluginLocation, Option<String>), // String is an optional name
+    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
 }
 
@@ -293,8 +293,15 @@ impl Action {
                         let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
                                                                                  // error, no
                                                                                  // unwrap
+                        // it is intentional that a new tiled plugin pane cannot include a
+                        // direction
+                        // this is because the cli client opening a tiled plugin pane is a
+                        // different client than the one opening the pane, and this can potentially
+                        // create very confusing races if the client changes focus while the plugin
+                        // is being loaded
+                        // this is not the case with terminal panes for historical reasons of
+                        // backwards compatibility to a time before we had auto layouts
                         Ok(vec![Action::NewTiledPluginPane(
-                            direction,
                             plugin,
                             name,
                         )])

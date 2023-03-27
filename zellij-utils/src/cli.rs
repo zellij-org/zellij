@@ -254,7 +254,7 @@ pub enum CliAction {
         #[clap(last(true))]
         command: Vec<String>,
 
-        #[clap(short, long, conflicts_with("command"))]
+        #[clap(short, long, conflicts_with("command"), conflicts_with("direction"))]
         plugin: Option<String>,
 
         /// Change the working directory of the new pane

@@ -667,10 +667,10 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
                 .with_context(err_context)?;
         },
-        Action::NewTiledPluginPane(direction, run_plugin, name) => {
+        Action::NewTiledPluginPane(run_plugin, name) => {
             session
                 .senders
-                .send_to_screen(ScreenInstruction::NewTiledPluginPane(direction, run_plugin, name, client_id))
+                .send_to_screen(ScreenInstruction::NewTiledPluginPane(run_plugin, name, client_id))
                 .with_context(err_context)?;
         }
         Action::NewFloatingPluginPane(run_plugin, name) => {

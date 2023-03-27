@@ -9,7 +9,7 @@ use crate::screen::ScreenInstruction;
 use wasm_bridge::WasmBridge;
 
 use zellij_utils::{
-    data::{Direction, Event},
+    data::Event,
     errors::{prelude::*, ContextType, PluginContext},
     input::{
         command::TerminalAction,
@@ -21,7 +21,7 @@ use zellij_utils::{
 
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
-    Load(Option<Direction>, Option<bool>, Option<String>, RunPlugin, usize, ClientId, Size), // Option<String> is the pane title, should_float, plugin metadata, tab_index, client_ids
+    Load(Option<bool>, Option<String>, RunPlugin, usize, ClientId, Size), // Option<String> is the pane title, should_float, plugin metadata, tab_index, client_ids
     Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(u32),                                         // plugin_id
     Resize(u32, usize, usize),                           // plugin_id, columns, rows
@@ -72,11 +72,9 @@ pub(crate) fn plugin_thread_main(
         let (event, mut err_ctx) = bus.recv().expect("failed to receive event on channel");
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
-            PluginInstruction::Load(direction, should_float, pane_title, run, tab_index, client_id, size) => {
-                // TODO: this was the original... is it still around somewhere?
-                // wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
+            PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
                 let plugin_id = wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
-                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(direction, should_float, run, pane_title, tab_index, plugin_id, client_id)));
+                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(should_float, run, pane_title, tab_index, plugin_id, client_id)));
             },
             PluginInstruction::Update(updates) => {
                 wasm_bridge.update_plugins(updates)?;

@@ -1114,6 +1114,7 @@ impl Tab {
         pid: PaneId,
         initial_pane_title: Option<String>,
         should_float: Option<bool>,
+        run_plugin: Run,
         client_id: Option<ClientId>,
     ) -> Result<()> {
         let err_context = || format!("failed to create new pane with id {pid:?}");
@@ -1125,7 +1126,6 @@ impl Tab {
         };
         if self.floating_panes.panes_are_visible() {
             if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
-                // let next_terminal_position = self.get_next_terminal_position();
                 if let PaneId::Plugin(plugin_pid) = pid {
                     let mut new_pane = PluginPane::new(
                         plugin_pid,
@@ -1135,9 +1135,8 @@ impl Tab {
                             .as_ref()
                             .with_context(err_context)?
                             .clone(),
-                        initial_pane_title.unwrap_or_default(), // TODO: default title? next
-                                                                // terminal position?
-                        String::new(), // TODO: pane name?
+                        initial_pane_title.unwrap_or_default(),
+                        String::new(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
@@ -1145,7 +1144,7 @@ impl Tab {
                         self.character_cell_size.clone(),
                         self.connected_clients.borrow().iter().copied().collect(),
                         self.style,
-                        None, // TODO: add Run<RunPlugin> here for the invoked_with
+                        Some(run_plugin),
                     );
                     new_pane.set_active_at(Instant::now());
                     new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
@@ -1182,9 +1181,8 @@ impl Tab {
                             .as_ref()
                             .with_context(err_context)?
                             .clone(),
-                        initial_pane_title.unwrap_or_default(), // TODO: default title? next
-                                                                // terminal position?
-                        String::new(), // TODO: pane name?
+                        initial_pane_title.unwrap_or_default(),
+                        String::new(),
                         self.sixel_image_store.clone(),
                         self.terminal_emulator_colors.clone(),
                         self.terminal_emulator_color_codes.clone(),
@@ -1192,7 +1190,7 @@ impl Tab {
                         self.character_cell_size.clone(),
                         self.connected_clients.borrow().iter().copied().collect(),
                         self.style,
-                        None, // TODO: add Run<RunPlugin> here for the invoked_with
+                        Some(run_plugin),
                     );
                     new_pane.set_active_at(Instant::now());
                     if should_auto_layout {
