@@ -193,8 +193,7 @@ impl WasmBridge {
             .plugins
             .get(run)
             .with_context(|| format!("failed to resolve plugin {run:?}"))
-            .with_context(err_context)
-            .fatal();
+            .with_context(err_context)?;
         let plugin_name = run.location.to_string();
 
         self.next_plugin_id += 1;

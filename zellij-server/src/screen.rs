@@ -2452,10 +2452,8 @@ pub(crate) fn screen_thread_main(
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
             },
             ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
-                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
-                                                                                    // unwrap and
-                                                                                    // better
-                let size = Size::default(); // TODO: ???
+                let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let size = Size::default();
                 let should_float = Some(false);
                 let run_plugin = RunPlugin {
                     _allow_exec_host_cmd: false,

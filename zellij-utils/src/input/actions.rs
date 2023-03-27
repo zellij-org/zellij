@@ -283,22 +283,22 @@ impl Action {
             } => {
                 if let Some(plugin) = plugin {
                     if floating {
-                        let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
-                                                                                 // error, no
-                                                                                 // unwrap
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin loction {plugin}: {}", e)
+                        })?;
                         Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
                     } else {
-                        let plugin = RunPluginLocation::parse(&plugin).unwrap(); // TODO: convert
-                                                                                 // error, no
-                                                                                 // unwrap
-                                                                                 // it is intentional that a new tiled plugin pane cannot include a
-                                                                                 // direction
-                                                                                 // this is because the cli client opening a tiled plugin pane is a
-                                                                                 // different client than the one opening the pane, and this can potentially
-                                                                                 // create very confusing races if the client changes focus while the plugin
-                                                                                 // is being loaded
-                                                                                 // this is not the case with terminal panes for historical reasons of
-                                                                                 // backwards compatibility to a time before we had auto layouts
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin location {plugin}: {}", e)
+                        })?;
+                        // it is intentional that a new tiled plugin pane cannot include a
+                        // direction
+                        // this is because the cli client opening a tiled plugin pane is a
+                        // different client than the one opening the pane, and this can potentially
+                        // create very confusing races if the client changes focus while the plugin
+                        // is being loaded
+                        // this is not the case with terminal panes for historical reasons of
+                        // backwards compatibility to a time before we had auto layouts
                         Ok(vec![Action::NewTiledPluginPane(plugin, name)])
                     }
                 } else if !command.is_empty() {
