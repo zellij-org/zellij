@@ -133,7 +133,10 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
                 wasm_bridge.apply_cached_events(plugin_id)?;
             }
-            PluginInstruction::Exit => break,
+            PluginInstruction::Exit => {
+                wasm_bridge.cleanup();
+                break;
+            }
         }
     }
     info!("wasm main thread exits");

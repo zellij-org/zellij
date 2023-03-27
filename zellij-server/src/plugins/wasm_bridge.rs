@@ -152,6 +152,7 @@ pub struct WasmBridge {
     next_plugin_id: u32,
     cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
     cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
+    loading_plugins: HashMap<u32, JoinHandle<()>>, // plugin_id to join-handle
 }
 
 impl WasmBridge {
@@ -175,6 +176,7 @@ impl WasmBridge {
             next_plugin_id: 0,
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
+            loading_plugins: HashMap::new(),
         }
     }
     pub fn load_plugin(
@@ -201,7 +203,7 @@ impl WasmBridge {
         self.cached_events_for_pending_plugins.insert(plugin_id, vec![]);
         self.cached_resizes_for_pending_plugins.insert(plugin_id, (0, 0));
 
-        task::spawn({
+        let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
             let plugin_cache = self.plugin_cache.clone();
             let senders = self.senders.clone();
@@ -242,6 +244,7 @@ impl WasmBridge {
                 }
             }
         });
+        self.loading_plugins.insert(plugin_id, load_plugin_task);
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
@@ -405,10 +408,17 @@ impl WasmBridge {
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows)?;
         }
+        self.loading_plugins.remove(&plugin_id);
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {
         self.connected_clients.lock().unwrap().retain(|c| c != &client_id);
+    }
+    pub fn cleanup(&mut self) {
+        for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
+            drop(loading_plugin_task.cancel());
+        }
+
     }
 }
 
