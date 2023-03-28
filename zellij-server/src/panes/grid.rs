@@ -1115,9 +1115,11 @@ impl Grid {
             log::warn!("Tried to clear pane with alternate_screen_state");
             return;
         }
-        self.lines_above = Default::default();
-        self.lines_below = Default::default();
-        self.viewport = Default::default();
+        if let Some(title) = &self.title {
+            log::info!("Clear all buffers for pane: {}", title);
+        }
+        self.reset_terminal_state();
+        self.mark_for_rerender();
     }
     /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
