@@ -908,8 +908,8 @@ impl TiledPanes {
         self.focus_pane(next_index, client_id);
         self.set_pane_active_at(next_index);
     }
-    
-    pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
+
+    pub fn move_focus_left(&mut self, client_id: ClientId, wrap_around: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let pane_grid = TiledPaneGrid::new(
