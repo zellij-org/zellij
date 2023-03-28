@@ -2,7 +2,7 @@ use super::{Output, Tab};
 use crate::panes::sixel::SixelImageStore;
 use crate::screen::CopyOptions;
 use crate::Arc;
-use crate::Mutex;
+
 use crate::{
     os_input_output::{AsyncReader, Pid, ServerOsApi},
     panes::PaneId,
@@ -11,6 +11,8 @@ use crate::{
     ClientId,
 };
 use std::path::PathBuf;
+use std::sync::Mutex;
+
 use zellij_utils::channels::Receiver;
 use zellij_utils::data::Direction;
 use zellij_utils::data::Resize;
