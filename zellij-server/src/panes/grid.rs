@@ -1115,9 +1115,6 @@ impl Grid {
             log::warn!("Tried to clear pane with alternate_screen_state");
             return;
         }
-        if let Some(title) = &self.title {
-            log::info!("Clear all buffers for pane: {}", title);
-        }
         self.reset_terminal_state();
         self.mark_for_rerender();
     }
