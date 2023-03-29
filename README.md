@@ -55,13 +55,9 @@ bash/zsh:
 ```bash
 bash <(curl -L zellij.dev/launch)
 ```
-fish:
-```fish
-bash (curl -L zellij.dev/launch | psub)
-```
-xonsh:
-```xsh
-bash -c $(curl -sL zellij.dev/launch)
+fish/xonsh:
+```bash
+bash -c 'bash <(curl -L zellij.dev/launch)'
 ```
 
 ## How do I get involved?
