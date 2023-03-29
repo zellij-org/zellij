@@ -709,6 +709,35 @@ fn dump_screen() {
 }
 
 #[test]
+fn clear_screen() {
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab(size, ModeInfo::default());
+    let map = Arc::new(Mutex::new(HashMap::new()));
+    tab.os_api = Box::new(FakeInputOutput {
+        file_dumps: map.clone(),
+        ..Default::default()
+    });
+    let new_pane_id = PaneId::Terminal(2);
+    tab.new_pane(new_pane_id, None, None, Some(client_id))
+        .unwrap();
+    tab.handle_pty_bytes(2, Vec::from("scratch".as_bytes()))
+        .unwrap();
+    let file = "/tmp/log-clear-screen.sh";
+    tab.clear_active_terminal_screen(client_id).unwrap();
+    tab.dump_active_terminal_screen(Some(file.to_string()), client_id, false)
+        .unwrap();
+    assert_eq!(
+        map.lock().unwrap().get(file).unwrap(),
+        "",
+        "screen was cleared properly"
+    );
+}
+
+#[test]
 fn new_floating_pane() {
     let size = Size {
         cols: 121,

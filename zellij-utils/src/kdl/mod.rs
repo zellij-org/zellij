@@ -68,6 +68,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
+                "Clear" => Ok(Action::ClearScreen),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -689,6 +690,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),

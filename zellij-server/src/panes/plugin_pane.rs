@@ -433,6 +433,9 @@ impl Pane for PluginPane {
             )]))
             .unwrap();
     }
+    fn clear_screen(&mut self) {
+        // do nothing
+    }
     fn clear_scroll(&mut self) {
         // noop
     }

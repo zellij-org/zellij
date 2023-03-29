@@ -1109,7 +1109,16 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-
+    /// Clears all buffers with text for a current screen
+    pub fn clear_screen(&mut self) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear pane with alternate_screen_state");
+            return;
+        }
+        self.reset_terminal_state();
+        self.mark_for_rerender();
+    }
+    /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
