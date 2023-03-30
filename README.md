@@ -52,12 +52,12 @@ cargo install --locked zellij
 #### Try Zellij without installing
 
 bash/zsh:
-```
+```bash
 bash <(curl -L zellij.dev/launch)
 ```
-fish:
-```
-bash (curl -L zellij.dev/launch | psub)
+fish/xonsh:
+```bash
+bash -c 'bash <(curl -L zellij.dev/launch)'
 ```
 
 ## How do I get involved?
