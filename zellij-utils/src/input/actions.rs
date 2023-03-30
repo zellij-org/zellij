@@ -440,16 +440,8 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_tiled_layouts.clone())
-                        };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_floating_layouts.clone())
-                        };
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (tab_name, layout, floating_panes_layout) =
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
@@ -461,16 +453,8 @@ impl Action {
                             name,
                         )])
                     } else {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_tiled_layouts.clone())
-                        };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_floating_layouts.clone())
-                        };
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
                             Some(layout),
