@@ -569,6 +569,13 @@ impl TiledPaneLayout {
         // if max_panes is 1, it means there's only enough panes for this node,
         // if max_panes is 0, this is probably the root layout being called with 0 max panes
         if max_panes <= 1 {
+            while !self.children.is_empty() {
+                // this is a special case: we're truncating a pane that was previously a logical
+                // container but now should be an actual pane - so here we'd like to use its
+                // deepest "non-logical" child in order to get all its attributes (eg. borderless)
+                let first_child = self.children.remove(0);
+                drop(std::mem::replace(self, first_child));
+            }
             self.children.clear();
         } else if max_panes <= self.children.len() {
             self.children.truncate(max_panes);
