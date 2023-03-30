@@ -167,6 +167,7 @@ pub fn start_client(
         style: Style {
             colors: palette,
             rounded_corners: config.ui.pane_frames.rounded_corners,
+            hide_session_name: config.ui.pane_frames.hide_session_name,
         },
         keybinds: config.keybinds.clone(),
     };

@@ -1,6 +1,5 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
-assertion_line: 2672
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -136,6 +135,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                                 ),
                             },
                             rounded_corners: false,
+                            hide_session_name: false,
                         },
                         capabilities: PluginCapabilities {
                             arrow_fonts: false,
@@ -292,6 +292,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                                 ),
                             },
                             rounded_corners: false,
+                            hide_session_name: false,
                         },
                         capabilities: PluginCapabilities {
                             arrow_fonts: false,
