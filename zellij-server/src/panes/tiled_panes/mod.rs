@@ -921,21 +921,31 @@ impl TiledPanes {
                 let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
 
                 if next_index.is_none() && wrap_around {
-                    let pane_grid = TiledPaneGrid::new(
-                        &mut self.panes,
-                        &self.panes_to_hide,
-                        *self.display_area.borrow(),
-                        *self.viewport.borrow(),
-                    );
+                    let max_x = self
+                        .panes
+                        .iter()
+                        .filter(|(_, pane)| pane.selectable())
+                        .max_by_key(|(_, pane)| pane.x())
+                        .map(|(_, pane)| pane.x());
 
-                    // While loop to find the rightmost pane
-                    let mut candidate_right_pane_id = active_pane_id;
-                    while let Some(next_pane_id) =
-                        pane_grid.next_selectable_pane_id_to_the_right(&candidate_right_pane_id)
-                    {
-                        candidate_right_pane_id = next_pane_id;
+                    next_index = if let Some(max_x) = max_x {
+                        let candidates = self
+                            .panes
+                            .values()
+                            .filter(|pane| pane.x() == max_x && pane.selectable())
+                            .collect::<Vec<_>>();
+
+                        let rightmost = candidates.iter().min_by_key(|pane| {
+                            (pane.y() as isize - self.panes[&active_pane_id].y() as isize).abs()
+                        });
+                        Some(
+                            rightmost
+                                .expect("Rightmost candidate should not be empty")
+                                .pid(),
+                        )
+                    } else {
+                        None
                     }
-                    next_index = Some(candidate_right_pane_id);
                 }
                 match next_index {
                     Some(p) => {
@@ -1089,21 +1099,31 @@ impl TiledPanes {
                     pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
 
                 if next_index.is_none() && single_tab_wraparoud {
-                    let pane_grid = TiledPaneGrid::new(
-                        &mut self.panes,
-                        &self.panes_to_hide,
-                        *self.display_area.borrow(),
-                        *self.viewport.borrow(),
-                    );
+                    let min_x = self
+                        .panes
+                        .iter()
+                        .filter(|(_, pane)| pane.selectable())
+                        .min_by_key(|(_, pane)| pane.x())
+                        .map(|(_, pane)| pane.x());
 
-                    // While loop to find the leftmost pane
-                    let mut candidate_left_pane_id = active_pane_id;
-                    while let Some(next_pane_id) =
-                        pane_grid.next_selectable_pane_id_to_the_left(&candidate_left_pane_id)
-                    {
-                        candidate_left_pane_id = next_pane_id;
+                    next_index = if let Some(min_x) = min_x {
+                        let candidates = self
+                            .panes
+                            .values()
+                            .filter(|pane| pane.x() == min_x && pane.selectable())
+                            .collect::<Vec<_>>();
+
+                        let leftmost = candidates.iter().min_by_key(|pane| {
+                            (pane.y() as isize - self.panes[&active_pane_id].y() as isize).abs()
+                        });
+                        Some(
+                            leftmost
+                                .expect("Leftmost candidate should not be empty")
+                                .pid(),
+                        )
+                    } else {
+                        None
                     }
-                    next_index = Some(candidate_left_pane_id);
                 }
                 match next_index {
                     Some(p) => {
