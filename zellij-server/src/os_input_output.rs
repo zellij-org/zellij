@@ -245,18 +245,21 @@ fn handle_terminal(
 // this is a utility method to separate the arguments from a pathbuf before we turn it into a
 // Command. eg. "/usr/bin/vim -e" ==> "/usr/bin/vim" + "-e" (the latter will be pushed to args)
 fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
-    if let Some(file_name) = command
-        .file_name()
-        .and_then(|f_n| f_n.to_str())
-        .map(|f_n| f_n.to_string())
-    {
-        let mut file_name_parts = file_name.split_ascii_whitespace();
-        if let Some(first_part) = file_name_parts.next() {
-            command.set_file_name(first_part);
-            for part in file_name_parts {
-                args.push(String::from(part));
-            }
+    let mut parts = vec![];
+    let mut current_part = String::new();
+    for part in command.display().to_string().split_ascii_whitespace() {
+        current_part.push_str(part);
+        if current_part.ends_with('\\') {
+            drop(current_part.pop());
+            current_part.push(' ');
+        } else {
+            let current_part = std::mem::replace(&mut current_part, String::new());
+            parts.push(current_part);
         }
+    }
+    if !parts.is_empty() {
+        *command = PathBuf::from(parts.remove(0));
+        args.append(&mut parts);
     }
 }
 
