@@ -1340,7 +1340,7 @@ fn close_on_exit_added_to_close_on_exit_in_template() {
 }
 
 #[test]
-fn cwd_default_cwd_in_template() {
+fn cwd_override_cwd_in_template() {
     let kdl_layout = r#"
         layout {
             pane_template name="tail" {
