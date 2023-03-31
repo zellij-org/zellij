@@ -2157,12 +2157,17 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 match client_id_to_switch {
-                    Some(client_id) => {
+                    // we must make sure pending_tab_ids is empty because otherwise we cannot be
+                    // sure this instruction is applied at the right time (eg. we might have a
+                    // pending tab that will become not-pending after this instruction and change
+                    // the client focus, which should have happened before this instruction and not
+                    // after)
+                    Some(client_id) if pending_tab_ids.is_empty() => {
                         screen.go_to_tab(tab_index as usize, client_id)?;
                         screen.unblock_input()?;
                         screen.render()?;
                     },
-                    None => {
+                    _ => {
                         if let Some(client_id) = client_id {
                             pending_tab_switches.insert((tab_index as usize, client_id));
                         }
