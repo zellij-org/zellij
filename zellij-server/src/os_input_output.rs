@@ -250,7 +250,7 @@ fn separate_command_arguments(command: &mut PathBuf, args: &mut Vec<String>) {
     for part in command.display().to_string().split_ascii_whitespace() {
         current_part.push_str(part);
         if current_part.ends_with('\\') {
-            drop(current_part.pop());
+            let _ = current_part.pop();
             current_part.push(' ');
         } else {
             let current_part = std::mem::replace(&mut current_part, String::new());
