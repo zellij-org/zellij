@@ -202,7 +202,7 @@ plugins {
 
 // Choose the path to override cwd that zellij will use for opening new panes
 //
-// override_cwd ""
+// default_cwd ""
 
 // Toggle between having pane frames around the panes
 // Options:
