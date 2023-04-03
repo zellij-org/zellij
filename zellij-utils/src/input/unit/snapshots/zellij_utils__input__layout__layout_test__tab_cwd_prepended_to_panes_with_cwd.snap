@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1686
+assertion_line: 1744
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -25,6 +25,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -48,6 +49,7 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                 ],
                 split_size: None,
@@ -60,6 +62,7 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
             },
             [],
         ),
@@ -77,6 +80,7 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
             },
             [],
         ),

@@ -6793,3 +6793,35 @@ fn when_applying_a_truncated_swap_layout_child_attributes_are_not_ignored() {
     );
     assert_snapshot!(snapshot);
 }
+
+#[test]
+fn can_define_expanded_pane_in_stack() {
+    let layout = r#"
+        layout {
+            pane split_direction="Vertical" {
+                pane
+                pane stacked=true {
+                    pane
+                    pane expanded=true
+                    pane
+                    pane
+                }
+            }
+        }
+    "#;
+    let size = Size {
+        cols: 121,
+        rows: 20,
+    };
+    let client_id = 1;
+    let mut tab = create_new_tab_with_layout(size, ModeInfo::default(), layout);
+    let mut output = Output::default();
+    tab.render(&mut output, None).unwrap();
+    let snapshot = take_snapshot(
+        output.serialize().unwrap().get(&client_id).unwrap(),
+        size.rows,
+        size.cols,
+        Palette::default(),
+    );
+    assert_snapshot!(snapshot);
+}
