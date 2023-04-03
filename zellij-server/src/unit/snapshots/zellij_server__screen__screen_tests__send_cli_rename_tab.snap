@@ -1,5 +1,6 @@
 ---
 source: zellij-server/src/./unit/screen_tests.rs
+assertion_line: 2632
 expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
 ---
 [
@@ -42,6 +43,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -53,6 +55,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                 ],
                 split_size: None,
@@ -61,6 +64,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
             },
         ),
         [],
@@ -196,6 +200,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -207,6 +212,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
                     },
                 ],
                 split_size: None,
@@ -215,6 +221,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
             },
         ),
         [],

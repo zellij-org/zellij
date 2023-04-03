@@ -138,6 +138,8 @@ impl<'a> LayoutApplier<'a> {
                                 Some(position_and_size),
                             );
                             pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
+                            pane_focuser
+                                .set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
                             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                             self.tiled_panes
                                 .add_pane_with_existing_geom(pane.pid(), pane);
@@ -161,6 +163,7 @@ impl<'a> LayoutApplier<'a> {
                             Some(position_and_size),
                         );
                         pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
+                        pane_focuser.set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
                         resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                         self.tiled_panes
                             .add_pane_with_existing_geom(pane.pid(), pane);
@@ -744,6 +747,7 @@ impl ExistingTabState {
 struct PaneFocuser {
     refocus_pane: bool,
     pane_id_in_focused_location: Option<PaneId>,
+    expanded_stacked_pane_ids: Vec<PaneId>,
 }
 
 impl PaneFocuser {
@@ -762,12 +766,24 @@ impl PaneFocuser {
             self.pane_id_in_focused_location = Some(pane.pid());
         }
     }
+    pub fn set_expanded_stacked_pane(&mut self, is_expanded_in_stack: bool, pane: &Box<dyn Pane>) {
+        if is_expanded_in_stack && pane.selectable() {
+            self.expanded_stacked_pane_ids.push(pane.pid());
+        }
+    }
     pub fn focus_tiled_pane(&self, tiled_panes: &mut TiledPanes) {
+        let mut panes_in_stack = vec![];
+        for pane_id in &self.expanded_stacked_pane_ids {
+            panes_in_stack.append(&mut tiled_panes.expand_pane_in_stack(*pane_id));
+        }
         match self.pane_id_in_focused_location {
             Some(pane_id_in_focused_location) => {
                 if self.refocus_pane {
                     tiled_panes.reapply_pane_focus();
-                    tiled_panes.switch_active_pane_with(pane_id_in_focused_location);
+                    if !panes_in_stack.contains(&pane_id_in_focused_location) {
+                        // we do not change stacked panes locations because this has already been done above
+                        tiled_panes.switch_active_pane_with(pane_id_in_focused_location);
+                    }
                 } else {
                     tiled_panes.reapply_pane_focus();
                 }
@@ -775,6 +791,9 @@ impl PaneFocuser {
             None => {
                 tiled_panes.reapply_pane_focus();
             },
+        }
+        for pane_id in &self.expanded_stacked_pane_ids {
+            tiled_panes.expand_pane_in_stack(*pane_id);
         }
     }
     pub fn focus_floating_pane(

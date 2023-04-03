@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 1881
+assertion_line: 1896
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -19,39 +19,38 @@ Layout {
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
                                 name: None,
-                                children: [
-                                    TiledPaneLayout {
-                                        children_split_direction: Horizontal,
-                                        name: None,
-                                        children: [],
-                                        split_size: None,
-                                        run: None,
-                                        borderless: false,
-                                        focus: None,
-                                        external_children_index: None,
-                                        children_are_stacked: false,
-                                        is_expanded_in_stack: false,
-                                    },
-                                    TiledPaneLayout {
-                                        children_split_direction: Horizontal,
-                                        name: None,
-                                        children: [],
-                                        split_size: None,
-                                        run: None,
-                                        borderless: false,
-                                        focus: None,
-                                        external_children_index: None,
-                                        children_are_stacked: false,
-                                        is_expanded_in_stack: false,
-                                    },
-                                ],
+                                children: [],
                                 split_size: None,
                                 run: None,
                                 borderless: false,
                                 focus: None,
                                 external_children_index: None,
-                                children_are_stacked: true,
+                                children_are_stacked: false,
+                                is_expanded_in_stack: false,
+                            },
+                            TiledPaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                                children_are_stacked: false,
                                 is_expanded_in_stack: true,
+                            },
+                            TiledPaneLayout {
+                                children_split_direction: Horizontal,
+                                name: None,
+                                children: [],
+                                split_size: None,
+                                run: None,
+                                borderless: false,
+                                focus: None,
+                                external_children_index: None,
+                                children_are_stacked: false,
+                                is_expanded_in_stack: false,
                             },
                         ],
                         split_size: None,

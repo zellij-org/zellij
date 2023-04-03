@@ -91,6 +91,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "pane"
             || property_name == "children"
             || property_name == "stacked"
+            || property_name == "expanded"
     }
     fn is_a_valid_floating_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -438,6 +439,8 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_pane_properties(kdl_node)?;
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked").unwrap_or(false);
+        let is_expanded_in_stack =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded").unwrap_or(false);
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
@@ -464,6 +467,12 @@ impl<'a> KdlLayoutParser<'a> {
                 kdl_node.span().offset(),
                 kdl_node.span().len(),
             ));
+        } else if is_expanded_in_stack && !is_part_of_stack {
+            return Err(ConfigError::new_layout_kdl_error(
+                format!("An expanded pane must be part of a stack"),
+                kdl_node.span().offset(),
+                kdl_node.span().len(),
+            ));
         }
         self.assert_no_mixed_children_and_properties(kdl_node)?;
         Ok(TiledPaneLayout {
@@ -476,6 +485,7 @@ impl<'a> KdlLayoutParser<'a> {
             external_children_index,
             children,
             children_are_stacked,
+            is_expanded_in_stack,
             ..Default::default()
         })
     }
@@ -513,6 +523,9 @@ impl<'a> KdlLayoutParser<'a> {
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                 .unwrap_or(pane_template.children_are_stacked);
+        let is_expanded_in_stack =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded")
+                .unwrap_or(pane_template.children_are_stacked);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
             Some(children) => {
@@ -526,6 +539,7 @@ impl<'a> KdlLayoutParser<'a> {
                 children: pane_parts,
                 external_children_index,
                 children_are_stacked,
+                is_expanded_in_stack,
                 ..Default::default()
             };
             self.assert_one_children_block(&pane_template, pane_template_kdl_node)?;
@@ -582,6 +596,8 @@ impl<'a> KdlLayoutParser<'a> {
                     .map(|name| name.to_string());
                 let children_are_stacked =
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
+                let is_expanded_in_stack =
+                    kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded");
                 let args = self.parse_args(kdl_node)?;
                 let close_on_exit =
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "close_on_exit");
@@ -639,6 +655,9 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 if let Some(children_are_stacked) = children_are_stacked {
                     pane_template.children_are_stacked = children_are_stacked;
+                }
+                if let Some(is_expanded_in_stack) = is_expanded_in_stack {
+                    pane_template.is_expanded_in_stack = is_expanded_in_stack;
                 }
                 pane_template.external_children_index = external_children_index;
                 Ok(pane_template)
@@ -803,6 +822,8 @@ impl<'a> KdlLayoutParser<'a> {
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
+        let is_expanded_in_stack =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded");
         let split_size = self.parse_split_size(kdl_node)?;
         let split_direction =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction");
@@ -818,6 +839,7 @@ impl<'a> KdlLayoutParser<'a> {
             || split_size.is_some()
             || split_direction.is_some()
             || children_are_stacked.is_some()
+            || is_expanded_in_stack.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
             height.is_some() || width.is_some() || x.is_some() || y.is_some();
@@ -837,6 +859,8 @@ impl<'a> KdlLayoutParser<'a> {
         let borderless = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless");
         let children_are_stacked =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked");
+        let is_expanded_in_stack =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded");
         let split_size = self.parse_split_size(kdl_node)?;
         let split_direction =
             kdl_get_string_property_or_child_value_with_error!(kdl_node, "split_direction");
@@ -852,6 +876,7 @@ impl<'a> KdlLayoutParser<'a> {
             || split_size.is_some()
             || split_direction.is_some()
             || children_are_stacked.is_some()
+            || is_expanded_in_stack.is_some()
             || has_children_nodes;
         let has_floating_pane_properties =
             height.is_some() || width.is_some() || x.is_some() || y.is_some();
@@ -863,6 +888,9 @@ impl<'a> KdlLayoutParser<'a> {
             }
             if children_are_stacked.is_some() {
                 pane_properties.push("stacked");
+            }
+            if is_expanded_in_stack.is_some() {
+                pane_properties.push("expanded");
             }
             if split_size.is_some() {
                 pane_properties.push("split_size");
@@ -960,6 +988,9 @@ impl<'a> KdlLayoutParser<'a> {
             let children_are_stacked =
                 kdl_get_bool_property_or_child_value_with_error!(kdl_node, "stacked")
                     .unwrap_or(false);
+            let is_expanded_in_stack =
+                kdl_get_bool_property_or_child_value_with_error!(kdl_node, "expanded")
+                    .unwrap_or(false);
             let split_size = self.parse_split_size(kdl_node)?;
             let children_split_direction = self.parse_split_direction(kdl_node)?;
             let (external_children_index, pane_parts) = match kdl_children_nodes!(kdl_node) {
@@ -981,6 +1012,7 @@ impl<'a> KdlLayoutParser<'a> {
                         external_children_index,
                         children: pane_parts,
                         children_are_stacked,
+                        is_expanded_in_stack,
                         ..Default::default()
                     }),
                     kdl_node.clone(),
