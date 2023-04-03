@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: properly truncate panes with attributes when applying swap layouts (https://github.com/zellij-org/zellij/pull/2337)
 * fix: support spaces in scrollback_editor (https://github.com/zellij-org/zellij/pull/2339)
 * fix: tab focus race condition when applying layout (https://github.com/zellij-org/zellij/pull/2340)
+* feat: allow specifying an "expanded" pane in a stack when defining layouts (https://github.com/zellij-org/zellij/pull/2343)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
