@@ -1434,6 +1434,10 @@ impl TiledPanes {
             .iter()
             .map(|(cid, pid)| (*cid, *pid))
             .collect();
+        let clients_need_to_be_moved = active_panes.iter().any(|(_c_id, p_id)| *p_id == pane_id);
+        if !clients_need_to_be_moved {
+            return;
+        }
 
         // find the most recently active pane
         let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
@@ -1456,9 +1460,7 @@ impl TiledPanes {
                     .map(|p| p.current_geom().is_stacked)
                     .unwrap_or(false)
                 {
-                    let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                        .expand_pane(&next_active_pane_id);
-                    self.reapply_pane_frames();
+                    self.expand_pane_in_stack(next_active_pane_id);
                 }
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {
