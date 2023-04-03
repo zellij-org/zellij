@@ -479,7 +479,9 @@ impl TiledPanes {
     }
     pub fn expand_pane_in_stack(&mut self, pane_id: PaneId) -> Vec<PaneId> {
         // returns all pane ids in stack
-        match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide).expand_pane(&pane_id) {
+        match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .expand_pane(&pane_id)
+        {
             Ok(all_panes_in_stack) => {
                 let connected_clients: Vec<ClientId> =
                     self.connected_clients.borrow().iter().copied().collect();
@@ -499,7 +501,7 @@ impl TiledPanes {
             Err(e) => {
                 log::error!("Failed to expand pane in stack: {:?}", e);
                 vec![]
-            }
+            },
         }
     }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {

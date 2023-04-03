@@ -138,7 +138,8 @@ impl<'a> LayoutApplier<'a> {
                                 Some(position_and_size),
                             );
                             pane_focuser.set_pane_id_in_focused_location(layout.focus, &pane);
-                            pane_focuser.set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
+                            pane_focuser
+                                .set_expanded_stacked_pane(layout.is_expanded_in_stack, &pane);
                             resize_pty!(pane, self.os_api, self.senders, self.character_cell_size)?;
                             self.tiled_panes
                                 .add_pane_with_existing_geom(pane.pid(), pane);
@@ -765,11 +766,7 @@ impl PaneFocuser {
             self.pane_id_in_focused_location = Some(pane.pid());
         }
     }
-    pub fn set_expanded_stacked_pane(
-        &mut self,
-        is_expanded_in_stack: bool,
-        pane: &Box<dyn Pane>,
-    ) {
+    pub fn set_expanded_stacked_pane(&mut self, is_expanded_in_stack: bool, pane: &Box<dyn Pane>) {
         if is_expanded_in_stack && pane.selectable() {
             self.expanded_stacked_pane_ids.push(pane.pid());
         }

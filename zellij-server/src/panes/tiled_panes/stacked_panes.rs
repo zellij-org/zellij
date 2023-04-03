@@ -157,7 +157,10 @@ impl<'a> StackedPanes<'a> {
                 }
             }
         }
-        Ok(all_stacked_pane_positions.iter().map(|(pane_id, _pane_position)| *pane_id).collect())
+        Ok(all_stacked_pane_positions
+            .iter()
+            .map(|(pane_id, _pane_position)| *pane_id)
+            .collect())
     }
     pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
         let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
