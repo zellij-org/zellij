@@ -1561,7 +1561,11 @@ impl Tab {
         Ok(())
     }
 
-    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>, client_id: ClientId) -> Result<bool> {
+    pub fn write_to_terminals_on_current_tab(
+        &mut self,
+        input_bytes: Vec<u8>,
+        client_id: ClientId,
+    ) -> Result<bool> {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
         // ctrl-c)
         let mut should_trigger_ui_change = false;
@@ -1615,7 +1619,7 @@ impl Tab {
         &mut self,
         input_bytes: Vec<u8>,
         position: &Position,
-        client_id: ClientId
+        client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to write to terminal at position {position:?}");
 
@@ -1642,7 +1646,12 @@ impl Tab {
         Ok(())
     }
 
-    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<bool> {
+    pub fn write_to_pane_id(
+        &mut self,
+        input_bytes: Vec<u8>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
