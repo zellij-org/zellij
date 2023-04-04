@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix: tab focus race condition when applying layout (https://github.com/zellij-org/zellij/pull/2340)
 * feat: allow specifying an "expanded" pane in a stack when defining layouts (https://github.com/zellij-org/zellij/pull/2343)
 * fix: stacked pane focus glitches in layout (https://github.com/zellij-org/zellij/pull/2344)
+* fix: strider now no longer opens one pane per client when editing files (https://github.com/zellij-org/zellij/pull/2346)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)
