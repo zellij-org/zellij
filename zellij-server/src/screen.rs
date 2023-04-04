@@ -1664,7 +1664,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| {
                         let write_result = match tab.is_sync_panes_active() {
-                            true => tab.write_to_terminals_on_current_tab(bytes),
+                            true => tab.write_to_terminals_on_current_tab(bytes, client_id),
                             false => tab.write_to_active_terminal(bytes, client_id),
                         };
                         if let Ok(true) = write_result {

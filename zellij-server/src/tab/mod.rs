@@ -1550,7 +1550,7 @@ impl Tab {
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
             for message in messages_to_pty {
-                self.write_to_pane_id(message, PaneId::Terminal(pid))
+                self.write_to_pane_id(message, PaneId::Terminal(pid), None)
                     .with_context(err_context)?;
             }
             if let Some(string) = clipboard_update {
@@ -1561,14 +1561,14 @@ impl Tab {
         Ok(())
     }
 
-    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) -> Result<bool> {
+    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>, client_id: ClientId) -> Result<bool> {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
         // ctrl-c)
         let mut should_trigger_ui_change = false;
         let pane_ids = self.get_static_and_floating_pane_ids();
         for pane_id in pane_ids {
             let ui_change_triggered = self
-                .write_to_pane_id(input_bytes.clone(), pane_id)
+                .write_to_pane_id(input_bytes.clone(), pane_id, Some(client_id))
                 .context("failed to write to terminals on current tab")?;
             if ui_change_triggered {
                 should_trigger_ui_change = true;
@@ -1607,7 +1607,7 @@ impl Tab {
                 .with_context(err_context)?
         };
         // Can't use 'err_context' here since it borrows 'input_bytes'
-        self.write_to_pane_id(input_bytes, pane_id)
+        self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
             .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
 
@@ -1615,6 +1615,7 @@ impl Tab {
         &mut self,
         input_bytes: Vec<u8>,
         position: &Position,
+        client_id: ClientId
     ) -> Result<()> {
         let err_context = || format!("failed to write to terminal at position {position:?}");
 
@@ -1624,7 +1625,7 @@ impl Tab {
                 .get_pane_id_at(position, false)
                 .with_context(err_context)?;
             if let Some(pane_id) = pane_id {
-                self.write_to_pane_id(input_bytes, pane_id)
+                self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
                     .with_context(err_context)?;
                 return Ok(());
             }
@@ -1634,14 +1635,14 @@ impl Tab {
             .get_pane_id_at(position, false)
             .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            self.write_to_pane_id(input_bytes, pane_id)
+            self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
                 .with_context(err_context)?;
             return Ok(());
         }
         Ok(())
     }
 
-    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) -> Result<bool> {
+    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId, client_id: Option<ClientId>) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
@@ -1683,7 +1684,7 @@ impl Tab {
             PaneId::Plugin(pid) => {
                 let mut plugin_updates = vec![];
                 for key in parse_keys(&input_bytes) {
-                    plugin_updates.push((Some(pid), None, Event::Key(key)));
+                    plugin_updates.push((Some(pid), client_id, Event::Key(key)));
                 }
                 self.senders
                     .send_to_plugin(PluginInstruction::Update(plugin_updates))
@@ -2592,13 +2593,13 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send UP n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point)
+                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point, client_id)
                         .with_context(err_context)?;
                 }
             } else {
@@ -2623,13 +2624,13 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send DOWN n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point)
+                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point, client_id)
                         .with_context(err_context)?;
                 }
             } else {
