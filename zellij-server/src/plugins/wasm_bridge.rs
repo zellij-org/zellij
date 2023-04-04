@@ -449,13 +449,6 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
-        let mut plugin_map = self.plugin_map.lock().unwrap();
-        let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
-        for (p_id, c_id) in ids_in_plugin_map {
-            if c_id == client_id {
-                drop(plugin_map.remove(&(p_id, c_id)));
-            }
-        }
     }
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
