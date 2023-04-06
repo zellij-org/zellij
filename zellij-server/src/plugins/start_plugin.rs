@@ -193,7 +193,7 @@ pub fn start_plugin(
                 loading_indication.clone(),
             ));
 
-            let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin, &plugin_dir);
+            let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin, &plugin_dir)?;
             let timer = std::time::Instant::now();
             match load_module_from_hd_cache(&mut store, &plugin.path, &timer, &cached_path) {
                 Ok(module) => {
@@ -363,8 +363,7 @@ fn load_module_from_hd_cache(
     Ok(module)
 }
 
-fn plugin_bytes_and_cache_path(plugin: &PluginConfig, plugin_dir: &PathBuf) -> (Vec<u8>, PathBuf) {
-    let err_context = || "failed to get plugin bytes and cached path";
+fn plugin_bytes_and_cache_path(plugin: &PluginConfig, plugin_dir: &PathBuf) -> Result<(Vec<u8>, PathBuf)> {
     // Populate plugin module cache for this plugin!
     // Is it in the cache folder already?
     if plugin._allow_exec_host_cmd {
@@ -374,17 +373,14 @@ fn plugin_bytes_and_cache_path(plugin: &PluginConfig, plugin_dir: &PathBuf) -> (
         );
     }
     // The plugins blob as stored on the filesystem
-    let wasm_bytes = plugin
-        .resolve_wasm_bytes(&plugin_dir)
-        .with_context(err_context)
-        .fatal();
+    let wasm_bytes = plugin.resolve_wasm_bytes(&plugin_dir)?;
     let hash: String = PortableHash::default()
         .hash256(&wasm_bytes)
         .iter()
         .map(ToString::to_string)
         .collect();
     let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
-    (wasm_bytes, cached_path)
+    Ok((wasm_bytes, cached_path))
 }
 
 fn load_module_from_memory(
