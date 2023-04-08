@@ -18,7 +18,7 @@ use zellij_utils::{position::Position, serde};
 use crate::background_jobs::BackgroundJob;
 use crate::pty_writer::PtyWriteInstruction;
 use crate::screen::CopyOptions;
-use crate::ui::pane_boundaries_frame::FrameParams;
+use crate::ui::{loading_indication::LoadingIndication, pane_boundaries_frame::FrameParams};
 use layout_applier::LayoutApplier;
 use swap_layouts::SwapLayouts;
 
@@ -28,7 +28,7 @@ use crate::{
     output::{CharacterChunk, Output, SixelImageChunk},
     panes::sixel::SixelImageStore,
     panes::{FloatingPanes, TiledPanes},
-    panes::{LinkHandler, PaneId, TerminalPane},
+    panes::{LinkHandler, PaneId, PluginPane, TerminalPane},
     plugins::PluginInstruction,
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     thread_bus::ThreadSenders,
@@ -235,6 +235,7 @@ pub trait Pane {
     fn push_right(&mut self, count: usize);
     fn pull_left(&mut self, count: usize);
     fn pull_up(&mut self, count: usize);
+    fn clear_screen(&mut self);
     fn dump_screen(&mut self, _client_id: ClientId, _full: bool) -> String {
         "".to_owned()
     }
@@ -438,6 +439,8 @@ pub trait Pane {
     fn frame_color_override(&self) -> Option<PaletteColor>;
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
+    fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
+    fn progress_animation_offset(&mut self) {} // only relevant for plugins
 }
 
 #[derive(Clone, Debug)]
@@ -599,6 +602,7 @@ impl Tab {
             &self.terminal_emulator_colors,
             &self.terminal_emulator_color_codes,
             &self.character_cell_size,
+            &self.connected_clients,
             &self.style,
             &self.display_area,
             &mut self.tiled_panes,
@@ -657,6 +661,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
+                &self.connected_clients,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -709,6 +714,7 @@ impl Tab {
                 &self.terminal_emulator_colors,
                 &self.terminal_emulator_color_codes,
                 &self.character_cell_size,
+                &self.connected_clients,
                 &self.style,
                 &self.display_area,
                 &mut self.tiled_panes,
@@ -1104,6 +1110,114 @@ impl Tab {
         }
         Ok(())
     }
+    pub fn new_plugin_pane(
+        &mut self,
+        pid: PaneId,
+        initial_pane_title: String,
+        should_float: Option<bool>,
+        run_plugin: Run,
+        client_id: Option<ClientId>,
+    ) -> Result<()> {
+        let err_context = || format!("failed to create new pane with id {pid:?}");
+
+        match should_float {
+            Some(true) => self.show_floating_panes(),
+            Some(false) => self.hide_floating_panes(),
+            None => {},
+        };
+        if self.floating_panes.panes_are_visible() {
+            if let Some(new_pane_geom) = self.floating_panes.find_room_for_new_pane() {
+                if let PaneId::Plugin(plugin_pid) = pid {
+                    let mut new_pane = PluginPane::new(
+                        plugin_pid,
+                        new_pane_geom,
+                        self.senders
+                            .to_plugin
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone(),
+                        initial_pane_title,
+                        String::new(),
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.connected_clients.borrow().iter().copied().collect(),
+                        self.style,
+                        Some(run_plugin),
+                    );
+                    new_pane.set_active_at(Instant::now());
+                    new_pane.set_content_offset(Offset::frame(1)); // floating panes always have a frame
+                    resize_pty!(
+                        new_pane,
+                        self.os_api,
+                        self.senders,
+                        self.character_cell_size
+                    )
+                    .with_context(err_context)?;
+                    self.floating_panes.add_pane(pid, Box::new(new_pane));
+                    self.floating_panes.focus_pane_for_all_clients(pid);
+                }
+                if self.auto_layout && !self.swap_layouts.is_floating_damaged() {
+                    // only do this if we're already in this layout, otherwise it might be
+                    // confusing and not what the user intends
+                    self.swap_layouts.set_is_floating_damaged(); // we do this so that we won't skip to the
+                                                                 // next layout
+                    self.next_swap_layout(client_id, true)?;
+                }
+            }
+        } else {
+            if self.tiled_panes.fullscreen_is_active() {
+                self.tiled_panes.unset_fullscreen();
+            }
+            let should_auto_layout = self.auto_layout && !self.swap_layouts.is_tiled_damaged();
+            if self.tiled_panes.has_room_for_new_pane() {
+                if let PaneId::Plugin(plugin_pid) = pid {
+                    let mut new_pane = PluginPane::new(
+                        plugin_pid,
+                        PaneGeom::default(), // the initial size will be set later
+                        self.senders
+                            .to_plugin
+                            .as_ref()
+                            .with_context(err_context)?
+                            .clone(),
+                        initial_pane_title,
+                        String::new(),
+                        self.sixel_image_store.clone(),
+                        self.terminal_emulator_colors.clone(),
+                        self.terminal_emulator_color_codes.clone(),
+                        self.link_handler.clone(),
+                        self.character_cell_size.clone(),
+                        self.connected_clients.borrow().iter().copied().collect(),
+                        self.style,
+                        Some(run_plugin),
+                    );
+                    new_pane.set_active_at(Instant::now());
+                    if should_auto_layout {
+                        // no need to relayout here, we'll do it when reapplying the swap layout
+                        // below
+                        self.tiled_panes
+                            .insert_pane_without_relayout(pid, Box::new(new_pane));
+                    } else {
+                        self.tiled_panes.insert_pane(pid, Box::new(new_pane));
+                    }
+                    self.should_clear_display_before_rendering = true;
+                    if let Some(client_id) = client_id {
+                        self.tiled_panes.focus_pane(pid, client_id);
+                    }
+                }
+            }
+            if should_auto_layout {
+                // only do this if we're already in this layout, otherwise it might be
+                // confusing and not what the user intends
+                self.swap_layouts.set_is_tiled_damaged(); // we do this so that we won't skip to the
+                                                          // next layout
+                self.next_swap_layout(client_id, true)?;
+            }
+        }
+        Ok(())
+    }
     pub fn suppress_active_pane(&mut self, pid: PaneId, client_id: ClientId) -> Result<()> {
         // this method creates a new pane from pid and replaces it with the active pane
         // the active pane is then suppressed (hidden and not rendered) until the current
@@ -1436,7 +1550,7 @@ impl Tab {
             let messages_to_pty = terminal_output.drain_messages_to_pty();
             let clipboard_update = terminal_output.drain_clipboard_update();
             for message in messages_to_pty {
-                self.write_to_pane_id(message, PaneId::Terminal(pid))
+                self.write_to_pane_id(message, PaneId::Terminal(pid), None)
                     .with_context(err_context)?;
             }
             if let Some(string) = clipboard_update {
@@ -1447,14 +1561,18 @@ impl Tab {
         Ok(())
     }
 
-    pub fn write_to_terminals_on_current_tab(&mut self, input_bytes: Vec<u8>) -> Result<bool> {
+    pub fn write_to_terminals_on_current_tab(
+        &mut self,
+        input_bytes: Vec<u8>,
+        client_id: ClientId,
+    ) -> Result<bool> {
         // returns true if a UI update should be triggered (eg. when closing a command pane with
         // ctrl-c)
         let mut should_trigger_ui_change = false;
         let pane_ids = self.get_static_and_floating_pane_ids();
         for pane_id in pane_ids {
             let ui_change_triggered = self
-                .write_to_pane_id(input_bytes.clone(), pane_id)
+                .write_to_pane_id(input_bytes.clone(), pane_id, Some(client_id))
                 .context("failed to write to terminals on current tab")?;
             if ui_change_triggered {
                 should_trigger_ui_change = true;
@@ -1493,7 +1611,7 @@ impl Tab {
                 .with_context(err_context)?
         };
         // Can't use 'err_context' here since it borrows 'input_bytes'
-        self.write_to_pane_id(input_bytes, pane_id)
+        self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
             .with_context(|| format!("failed to write to active terminal for client {client_id}"))
     }
 
@@ -1501,6 +1619,7 @@ impl Tab {
         &mut self,
         input_bytes: Vec<u8>,
         position: &Position,
+        client_id: ClientId,
     ) -> Result<()> {
         let err_context = || format!("failed to write to terminal at position {position:?}");
 
@@ -1510,7 +1629,7 @@ impl Tab {
                 .get_pane_id_at(position, false)
                 .with_context(err_context)?;
             if let Some(pane_id) = pane_id {
-                self.write_to_pane_id(input_bytes, pane_id)
+                self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
                     .with_context(err_context)?;
                 return Ok(());
             }
@@ -1520,14 +1639,19 @@ impl Tab {
             .get_pane_id_at(position, false)
             .with_context(err_context)?;
         if let Some(pane_id) = pane_id {
-            self.write_to_pane_id(input_bytes, pane_id)
+            self.write_to_pane_id(input_bytes, pane_id, Some(client_id))
                 .with_context(err_context)?;
             return Ok(());
         }
         Ok(())
     }
 
-    pub fn write_to_pane_id(&mut self, input_bytes: Vec<u8>, pane_id: PaneId) -> Result<bool> {
+    pub fn write_to_pane_id(
+        &mut self,
+        input_bytes: Vec<u8>,
+        pane_id: PaneId,
+        client_id: Option<ClientId>,
+    ) -> Result<bool> {
         // returns true if we need to update the UI (eg. when a command pane is closed with ctrl-c)
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
@@ -1569,7 +1693,7 @@ impl Tab {
             PaneId::Plugin(pid) => {
                 let mut plugin_updates = vec![];
                 for key in parse_keys(&input_bytes) {
-                    plugin_updates.push((Some(pid), None, Event::Key(key)));
+                    plugin_updates.push((Some(pid), client_id, Event::Key(key)));
                 }
                 self.senders
                     .send_to_plugin(PluginInstruction::Update(plugin_updates))
@@ -2202,12 +2326,7 @@ impl Tab {
             let closed_pane = self.tiled_panes.remove_pane(id);
             self.set_force_render();
             self.tiled_panes.set_force_render();
-            let closed_pane_is_stacked = closed_pane
-                .as_ref()
-                .map(|p| p.position_and_size().is_stacked)
-                .unwrap_or(false);
-            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() && !closed_pane_is_stacked
-            {
+            if self.auto_layout && !self.swap_layouts.is_tiled_damaged() {
                 self.swap_layouts.set_is_tiled_damaged();
                 // only relayout if the user is already "in" a layout, otherwise this might be
                 // confusing
@@ -2308,6 +2427,12 @@ impl Tab {
             self.senders
                 .send_to_pty(PtyInstruction::ClosePane(active_pane_id))
                 .with_context(|| err_context(active_pane_id))?;
+        }
+        Ok(())
+    }
+    pub fn clear_active_terminal_screen(&mut self, client_id: ClientId) -> Result<()> {
+        if let Some(active_pane) = self.get_active_pane_or_floating_pane_mut(client_id) {
+            active_pane.clear_screen();
         }
         Ok(())
     }
@@ -2477,13 +2602,13 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_up(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send UP n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point)
+                    self.write_to_terminal_at("\u{1b}[A".as_bytes().to_owned(), point, client_id)
                         .with_context(err_context)?;
                 }
             } else {
@@ -2508,13 +2633,13 @@ impl Tab {
         if let Some(pane) = self.get_pane_at(point, false).with_context(err_context)? {
             let relative_position = pane.relative_position(point);
             if let Some(mouse_event) = pane.mouse_scroll_down(&relative_position) {
-                self.write_to_terminal_at(mouse_event.into_bytes(), point)
+                self.write_to_terminal_at(mouse_event.into_bytes(), point, client_id)
                     .with_context(err_context)?;
             } else if pane.is_alternate_mode_active() {
                 // faux scrolling, send DOWN n times
                 // do n separate writes to make sure the sequence gets adjusted for cursor keys mode
                 for _ in 0..lines {
-                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point)
+                    self.write_to_terminal_at("\u{1b}[B".as_bytes().to_owned(), point, client_id)
                         .with_context(err_context)?;
                 }
             } else {
@@ -3225,7 +3350,34 @@ impl Tab {
             pane.clear_pane_frame_color_override();
         }
     }
-
+    pub fn update_plugin_loading_stage(&mut self, pid: u32, loading_indication: LoadingIndication) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.update_loading_indication(loading_indication);
+        }
+    }
+    pub fn progress_plugin_loading_offset(&mut self, pid: u32) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.progress_animation_offset();
+        }
+    }
     fn show_floating_panes(&mut self) {
         // this function is to be preferred to directly invoking floating_panes.toggle_show_panes(true)
         self.floating_panes.toggle_show_panes(true);

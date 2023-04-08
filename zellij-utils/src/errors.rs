@@ -255,6 +255,7 @@ pub enum ScreenContext {
     MovePaneRight,
     MovePaneLeft,
     Exit,
+    ClearScreen,
     DumpScreen,
     EditScrollback,
     ScrollUp,
@@ -324,6 +325,11 @@ pub enum ScreenContext {
     PreviousSwapLayout,
     NextSwapLayout,
     QueryTabNames,
+    NewTiledPluginPane,
+    NewFloatingPluginPane,
+    AddPlugin,
+    UpdatePluginLoadingStage,
+    ProgressPluginLoadingOffset,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -354,6 +360,7 @@ pub enum PluginContext {
     AddClient,
     RemoveClient,
     NewTab,
+    ApplyCachedEvents,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.
@@ -399,6 +406,8 @@ pub enum PtyWriteContext {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BackgroundJobContext {
     DisplayPaneError,
+    AnimatePluginLoading,
+    StopPluginLoadingAnimation,
     Exit,
 }
 

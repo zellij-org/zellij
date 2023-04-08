@@ -207,7 +207,7 @@ pub(crate) fn assert_session_ne(name: &str) {
         process::exit(1);
     }
     if name.contains('/') {
-        eprintln!("Session name cannot contains '/'.");
+        eprintln!("Session name cannot contain '/'.");
         process::exit(1);
     }
 

@@ -13,7 +13,8 @@ use zellij_utils::pane_size::{Size, SizeInPixels};
 use zellij_utils::{
     input::command::TerminalAction,
     input::layout::{
-        FloatingPaneLayout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+        FloatingPaneLayout, Run, RunPlugin, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+        TiledPaneLayout,
     },
     position::Position,
 };
@@ -29,7 +30,10 @@ use crate::{
     pty::{ClientOrTabIndex, PtyInstruction, VteBytes},
     tab::Tab,
     thread_bus::Bus,
-    ui::overlay::{Overlay, OverlayWindow, Overlayable},
+    ui::{
+        loading_indication::LoadingIndication,
+        overlay::{Overlay, OverlayWindow, Overlayable},
+    },
     ClientId, ServerInstruction,
 };
 use zellij_utils::{
@@ -157,6 +161,7 @@ pub enum ScreenInstruction {
     MovePaneRight(ClientId),
     MovePaneLeft(ClientId),
     Exit,
+    ClearScreen(ClientId),
     DumpScreen(String, ClientId, bool),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
@@ -250,6 +255,18 @@ pub enum ScreenInstruction {
     PreviousSwapLayout(ClientId),
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
+    NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    // optional pane title
+    AddPlugin(
+        Option<bool>, // should_float
+        RunPlugin,
+        Option<String>, // pane title
+        usize,          // tab index
+        u32,            // plugin id
+    ),
+    UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
+    ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -311,6 +328,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneRight(..) => ScreenContext::MovePaneRight,
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
+            ScreenInstruction::ClearScreen(..) => ScreenContext::ClearScreen,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
@@ -393,6 +411,15 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::PreviousSwapLayout(..) => ScreenContext::PreviousSwapLayout,
             ScreenInstruction::NextSwapLayout(..) => ScreenContext::NextSwapLayout,
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
+            ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
+            ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
+            ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
+            ScreenInstruction::UpdatePluginLoadingStage(..) => {
+                ScreenContext::UpdatePluginLoadingStage
+            },
+            ScreenInstruction::ProgressPluginLoadingOffset(..) => {
+                ScreenContext::ProgressPluginLoadingOffset
+            },
         }
     }
 }
@@ -1637,7 +1664,7 @@ pub(crate) fn screen_thread_main(
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| {
                         let write_result = match tab.is_sync_panes_active() {
-                            true => tab.write_to_terminals_on_current_tab(bytes),
+                            true => tab.write_to_terminals_on_current_tab(bytes, client_id),
                             false => tab.write_to_active_terminal(bytes, client_id),
                         };
                         if let Ok(true) = write_result {
@@ -1734,6 +1761,18 @@ pub(crate) fn screen_thread_main(
                     screen,
                     client_id,
                     |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
+                    ?
+                );
+                screen.render()?;
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::ClearScreen(client_id) => {
+                active_tab_and_connected_client_id!(
+                    screen,
+                    client_id,
+                    |tab: &mut Tab, client_id: ClientId| tab.clear_active_terminal_screen(
+                        client_id,
+                    ),
                     ?
                 );
                 screen.render()?;
@@ -2118,12 +2157,17 @@ pub(crate) fn screen_thread_main(
                     screen.active_tab_indices.keys().next().copied()
                 };
                 match client_id_to_switch {
-                    Some(client_id) => {
+                    // we must make sure pending_tab_ids is empty because otherwise we cannot be
+                    // sure this instruction is applied at the right time (eg. we might have a
+                    // pending tab that will become not-pending after this instruction and change
+                    // the client focus, which should have happened before this instruction and not
+                    // after)
+                    Some(client_id) if pending_tab_ids.is_empty() => {
                         screen.go_to_tab(tab_index as usize, client_id)?;
                         screen.unblock_input()?;
                         screen.render()?;
                     },
-                    None => {
+                    _ => {
                         if let Some(client_id) = client_id {
                             pending_tab_switches.insert((tab_index as usize, client_id));
                         }
@@ -2425,6 +2469,89 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_server(ServerInstruction::Log(tab_names, client_id))?;
+            },
+            ScreenInstruction::NewTiledPluginPane(run_plugin_location, pane_title, client_id) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let size = Size::default();
+                let should_float = Some(false);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location,
+                };
+                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    pane_title,
+                    run_plugin,
+                    *tab_index,
+                    client_id,
+                    size,
+                ))?;
+            },
+            ScreenInstruction::NewFloatingPluginPane(
+                run_plugin_location,
+                pane_title,
+                client_id,
+            ) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap(); // TODO: no
+                                                                                    // unwrap and
+                                                                                    // better
+                let size = Size::default(); // TODO: ???
+                let should_float = Some(true);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location,
+                };
+                screen.bus.senders.send_to_plugin(PluginInstruction::Load(
+                    should_float,
+                    pane_title,
+                    run_plugin,
+                    *tab_index,
+                    client_id,
+                    size,
+                ))?;
+            },
+            ScreenInstruction::AddPlugin(
+                should_float,
+                run_plugin_location,
+                pane_title,
+                tab_index,
+                plugin_id,
+            ) => {
+                let pane_title =
+                    pane_title.unwrap_or_else(|| run_plugin_location.location.to_string());
+                let run_plugin = Run::Plugin(run_plugin_location);
+                if let Some(active_tab) = screen.tabs.get_mut(&tab_index) {
+                    active_tab.new_plugin_pane(
+                        PaneId::Plugin(plugin_id),
+                        pane_title,
+                        should_float,
+                        run_plugin,
+                        None,
+                    )?;
+                } else {
+                    log::error!("Tab index not found: {:?}", tab_index);
+                }
+                screen.unblock_input()?;
+            },
+            ScreenInstruction::UpdatePluginLoadingStage(pid, loading_indication) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.update_plugin_loading_stage(pid, loading_indication);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
+            ScreenInstruction::ProgressPluginLoadingOffset(pid) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.progress_plugin_loading_offset(pid);
+                        break;
+                    }
+                }
+                screen.render()?;
             },
         }
     }

@@ -223,6 +223,7 @@ pub fn tab_line(
     cols: usize,
     palette: Palette,
     capabilities: PluginCapabilities,
+    hide_session_name: bool,
 ) -> Vec<LinePart> {
     let mut tabs_after_active = all_tabs.split_off(active_tab_index);
     let mut tabs_before_active = all_tabs;
@@ -231,7 +232,10 @@ pub fn tab_line(
     } else {
         tabs_before_active.pop().unwrap()
     };
-    let mut prefix = tab_line_prefix(session_name, palette, cols);
+    let mut prefix = match hide_session_name {
+        true => tab_line_prefix(None, palette, cols),
+        false => tab_line_prefix(session_name, palette, cols),
+    };
     let prefix_len = get_current_title_len(&prefix);
 
     // if active tab alone won't fit in cols, don't draw any tabs

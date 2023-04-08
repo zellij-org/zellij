@@ -212,6 +212,8 @@ pub enum CliAction {
     },
     /// Rotate the location of the previous pane backwards
     MovePaneBackwards,
+    /// Clear all buffers for a focused pane
+    Clear,
     /// Dump the focused pane to a file
     DumpScreen {
         path: PathBuf,
@@ -253,6 +255,9 @@ pub enum CliAction {
 
         #[clap(last(true))]
         command: Vec<String>,
+
+        #[clap(short, long, conflicts_with("command"), conflicts_with("direction"))]
+        plugin: Option<String>,
 
         /// Change the working directory of the new pane
         #[clap(long, value_parser)]

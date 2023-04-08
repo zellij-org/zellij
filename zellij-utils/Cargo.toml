@@ -44,7 +44,7 @@ kdl = { version = "4.5.0", features = ["span"] }
 termwiz = "0.20.0"
 log4rs = "1.2.0"
 signal-hook = "0.3"
-interprocess = "1.1.1"
+interprocess = "1.2.1"
 async-std = { version = "1.3.0", features = ["unstable"] }
 
 [dev-dependencies]

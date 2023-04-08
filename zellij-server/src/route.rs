@@ -172,6 +172,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::MovePaneBackwards(client_id))
                 .with_context(err_context)?;
         },
+        Action::ClearScreen => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::ClearScreen(client_id))
+                .with_context(err_context)?;
+        },
         Action::DumpScreen(val, full) => {
             session
                 .senders
@@ -665,6 +671,22 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::QueryTabNames(client_id))
+                .with_context(err_context)?;
+        },
+        Action::NewTiledPluginPane(run_plugin, name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NewTiledPluginPane(
+                    run_plugin, name, client_id,
+                ))
+                .with_context(err_context)?;
+        },
+        Action::NewFloatingPluginPane(run_plugin, name) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::NewFloatingPluginPane(
+                    run_plugin, name, client_id,
+                ))
                 .with_context(err_context)?;
         },
     }

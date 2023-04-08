@@ -102,9 +102,8 @@ impl<'a> StackedPanes<'a> {
         }
         Ok(())
     }
-    pub fn focus_pane(&mut self, pane_id: &PaneId) -> Result<()> {
-        // this function doesn't actually change the focus (since it is controlled elsewhere)
-        // but rather makes sure pane_id is flexible if it were a one-liner before
+    pub fn expand_pane(&mut self, pane_id: &PaneId) -> Result<Vec<PaneId>> {
+        // returns all the pane ids in the stack
         let err_context = || format!("Failed to focus stacked pane");
         let all_stacked_pane_positions =
             self.positions_in_stack(pane_id).with_context(err_context)?;
@@ -158,7 +157,10 @@ impl<'a> StackedPanes<'a> {
                 }
             }
         }
-        Ok(())
+        Ok(all_stacked_pane_positions
+            .iter()
+            .map(|(pane_id, _pane_position)| *pane_id)
+            .collect())
     }
     pub fn flexible_pane_id_in_stack(&self, pane_id_in_stack: &PaneId) -> Option<PaneId> {
         let all_stacked_pane_positions = self.positions_in_stack(pane_id_in_stack).ok()?;
