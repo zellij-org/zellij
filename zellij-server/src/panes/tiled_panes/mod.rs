@@ -921,32 +921,34 @@ impl TiledPanes {
                 let mut next_index = pane_grid.next_selectable_pane_id_to_the_left(&active_pane_id);
 
                 if next_index.is_none() && wrap_around {
-                    let max_x = self
+                    next_index = self
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
                         .max_by_key(|(_, pane)| pane.x())
-                        .map(|(_, pane)| pane.x());
+                        .and_then(|(_, pane)| {
+                            let max_x = pane.x();
+                            let candidates = self
+                                .panes
+                                .values()
+                                .filter(|pane| pane.x() == max_x && pane.selectable())
+                                .collect::<Vec<_>>();
 
-                    next_index = if let Some(max_x) = max_x {
-                        let candidates = self
-                            .panes
-                            .values()
-                            .filter(|pane| pane.x() == max_x && pane.selectable())
-                            .collect::<Vec<_>>();
-
-                        let rightmost = candidates.iter().min_by_key(|pane| {
-                            (pane.y() as isize - self.panes[&active_pane_id].y() as isize).abs()
+                            candidates
+                                .iter()
+                                .min_by_key(|pane| {
+                                    (pane.y() as isize
+                                        - self
+                                            .panes
+                                            .get(&active_pane_id)
+                                            .expect("Failed to get pane")
+                                            .y() as isize)
+                                        .abs()
+                                })
+                                .map(|pane| pane.pid())
                         });
-                        Some(
-                            rightmost
-                                .expect("Rightmost candidate should not be empty")
-                                .pid(),
-                        )
-                    } else {
-                        None
-                    }
                 }
+
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -978,7 +980,7 @@ impl TiledPanes {
             None => false,
         }
     }
-    pub fn move_focus_down(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_down(&mut self, client_id: ClientId, single_tab_wraparoud: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let mut pane_grid = TiledPaneGrid::new(
@@ -987,9 +989,39 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid
+                let mut next_index = pane_grid
                     .next_selectable_pane_id_below(&active_pane_id)
                     .or_else(|| pane_grid.progress_stack_down_if_in_stack(&active_pane_id));
+
+                if next_index.is_none() && single_tab_wraparoud {
+                    next_index = self
+                        .panes
+                        .iter()
+                        .filter(|(_, pane)| pane.selectable())
+                        .min_by_key(|(_, pane)| pane.y())
+                        .and_then(|(_, pane)| {
+                            let min_y = pane.y();
+                            let candidates = self
+                                .panes
+                                .values()
+                                .filter(|pane| pane.y() == min_y && pane.selectable())
+                                .collect::<Vec<_>>();
+
+                            candidates
+                                .iter()
+                                .min_by_key(|pane| {
+                                    (pane.x() as isize
+                                        - self
+                                            .panes
+                                            .get(&active_pane_id)
+                                            .expect("Failed to get pane")
+                                            .x() as isize)
+                                        .abs()
+                                })
+                                .map(|pane| pane.pid())
+                        });
+                }
+
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1032,7 +1064,7 @@ impl TiledPanes {
             None => false,
         }
     }
-    pub fn move_focus_up(&mut self, client_id: ClientId) -> bool {
+    pub fn move_focus_up(&mut self, client_id: ClientId, single_tab_wraparoud: bool) -> bool {
         match self.get_active_pane_id(client_id) {
             Some(active_pane_id) => {
                 let mut pane_grid = TiledPaneGrid::new(
@@ -1041,9 +1073,39 @@ impl TiledPanes {
                     *self.display_area.borrow(),
                     *self.viewport.borrow(),
                 );
-                let next_index = pane_grid
+                let mut next_index = pane_grid
                     .next_selectable_pane_id_above(&active_pane_id)
                     .or_else(|| pane_grid.progress_stack_up_if_in_stack(&active_pane_id));
+
+                if next_index.is_none() && single_tab_wraparoud {
+                    next_index = self
+                        .panes
+                        .iter()
+                        .filter(|(_, pane)| pane.selectable())
+                        .max_by_key(|(_, pane)| pane.y())
+                        .and_then(|(_, pane)| {
+                            let max_y = pane.y();
+                            let candidates = self
+                                .panes
+                                .values()
+                                .filter(|pane| pane.y() == max_y && pane.selectable())
+                                .collect::<Vec<_>>();
+
+                            candidates
+                                .iter()
+                                .min_by_key(|pane| {
+                                    (pane.x() as isize
+                                        - self
+                                            .panes
+                                            .get(&active_pane_id)
+                                            .expect("Failed to get pane")
+                                            .x() as isize)
+                                        .abs()
+                                })
+                                .map(|pane| pane.pid())
+                        });
+                }
+
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1099,32 +1161,34 @@ impl TiledPanes {
                     pane_grid.next_selectable_pane_id_to_the_right(&active_pane_id);
 
                 if next_index.is_none() && single_tab_wraparoud {
-                    let min_x = self
+                    next_index = self
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
                         .min_by_key(|(_, pane)| pane.x())
-                        .map(|(_, pane)| pane.x());
+                        .and_then(|(_, pane)| {
+                            let min_x = pane.x();
+                            let candidates = self
+                                .panes
+                                .values()
+                                .filter(|pane| pane.x() == min_x && pane.selectable())
+                                .collect::<Vec<_>>();
 
-                    next_index = if let Some(min_x) = min_x {
-                        let candidates = self
-                            .panes
-                            .values()
-                            .filter(|pane| pane.x() == min_x && pane.selectable())
-                            .collect::<Vec<_>>();
-
-                        let leftmost = candidates.iter().min_by_key(|pane| {
-                            (pane.y() as isize - self.panes[&active_pane_id].y() as isize).abs()
+                            candidates
+                                .iter()
+                                .min_by_key(|pane| {
+                                    (pane.y() as isize
+                                        - self
+                                            .panes
+                                            .get(&active_pane_id)
+                                            .expect("Failed to find pane")
+                                            .y() as isize)
+                                        .abs()
+                                })
+                                .map(|pane| pane.pid())
                         });
-                        Some(
-                            leftmost
-                                .expect("Leftmost candidate should not be empty")
-                                .pid(),
-                        )
-                    } else {
-                        None
-                    }
                 }
+
                 match next_index {
                     Some(p) => {
                         // render previously active pane so that its frame does not remain actively
@@ -1650,15 +1714,15 @@ impl TiledPanes {
         self.toggle_active_pane_fullscreen(client_id);
     }
 
-    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_up_fullscreen(&mut self, client_id: ClientId, single_tab_wraparoud: bool) {
         self.unset_fullscreen();
-        self.move_focus_up(client_id);
+        self.move_focus_up(client_id, single_tab_wraparoud);
         self.toggle_active_pane_fullscreen(client_id);
     }
 
-    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId) {
+    pub fn focus_pane_down_fullscreen(&mut self, client_id: ClientId, single_tab_wraparoud: bool) {
         self.unset_fullscreen();
-        self.move_focus_down(client_id);
+        self.move_focus_down(client_id, single_tab_wraparoud);
         self.toggle_active_pane_fullscreen(client_id);
     }
 

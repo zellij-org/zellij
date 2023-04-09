@@ -1352,7 +1352,7 @@ impl Screen {
         } else {
             self.get_first_client_id()
         };
-        let wrap_around_flag = if self.tabs.len() == 1 { true } else { false };
+        let wrap_around_flag = self.tabs.len() == 1;
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
                 Ok(active_tab) => {
@@ -1387,7 +1387,7 @@ impl Screen {
             self.get_first_client_id()
         };
 
-        let wrap_around_flag = if self.tabs.len() == 1 { true } else { false };
+        let wrap_around_flag = self.tabs.len() == 1;
 
         if let Some(client_id) = client_id {
             match self.get_active_tab_mut(client_id) {
@@ -1696,7 +1696,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id, false),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_left(client_id, true),
                     ?
                 );
                 screen.render()?;
@@ -1711,7 +1711,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_down(client_id, true),
                     ?
                 );
                 screen.render()?;
@@ -1721,7 +1721,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, false),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_right(client_id, true),
                     ?
                 );
                 screen.render()?;
@@ -1736,7 +1736,7 @@ pub(crate) fn screen_thread_main(
                 active_tab_and_connected_client_id!(
                     screen,
                     client_id,
-                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id),
+                    |tab: &mut Tab, client_id: ClientId| tab.move_focus_up(client_id,true),
                     ?
                 );
                 screen.render()?;
