@@ -349,6 +349,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         ..Default::default()
                     })
                 });
+                let cwd = config_options.default_cwd;
 
                 let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
@@ -358,6 +359,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(
+                            cwd.clone(),
                             default_shell.clone(),
                             tab_layout,
                             floating_panes_layout,

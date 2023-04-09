@@ -27,6 +27,7 @@ pub enum PluginInstruction {
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -88,6 +89,7 @@ pub(crate) fn plugin_thread_main(
                 wasm_bridge.remove_client(client_id);
             },
             PluginInstruction::NewTab(
+                cwd,
                 terminal_action,
                 tab_layout,
                 floating_panes_layout,
@@ -118,6 +120,7 @@ pub(crate) fn plugin_thread_main(
                     }
                 }
                 drop(bus.senders.send_to_pty(PtyInstruction::NewTab(
+                    cwd,
                     terminal_action,
                     tab_layout,
                     floating_panes_layout,

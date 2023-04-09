@@ -299,6 +299,7 @@ impl MockScreen {
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
             default_shell,
             Some(pane_layout.clone()),
             vec![], // floating_panes_layout
@@ -329,6 +330,7 @@ impl MockScreen {
             pane_ids.push((i as u32, None));
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
             default_shell,
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout

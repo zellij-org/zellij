@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
@@ -185,6 +186,7 @@ pub enum ScreenInstruction {
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -2019,6 +2021,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::NewTab(
+                cwd,
                 default_shell,
                 layout,
                 floating_panes_layout,
@@ -2033,6 +2036,7 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::NewTab(
+                        cwd,
                         default_shell,
                         layout,
                         floating_panes_layout,
@@ -2119,6 +2123,7 @@ pub(crate) fn screen_thread_main(
                                 .bus
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
+                                    None,
                                     default_shell,
                                     None,
                                     vec![],

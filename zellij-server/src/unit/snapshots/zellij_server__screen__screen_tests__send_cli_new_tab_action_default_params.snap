@@ -6,6 +6,7 @@ expression: "format!(\"{:#?}\", new_tab_action)"
 Some(
     NewTab(
         None,
+        None,
         Some(
             TiledPaneLayout {
                 children_split_direction: Vertical,
