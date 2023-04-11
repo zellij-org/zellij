@@ -20,6 +20,6 @@ pub mod logging; // Requires log4rs
 
 #[cfg(not(target_family = "wasm"))]
 pub use ::{
-    anyhow, async_std, clap, interprocess, lazy_static, libc, nix, regex, serde, signal_hook,
-    tempfile, termwiz, vte,
+    anyhow, async_std, clap, interprocess, lazy_static, libc, miette, nix, regex, serde,
+    signal_hook, tempfile, termwiz, vte,
 };

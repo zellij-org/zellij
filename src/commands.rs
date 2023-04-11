@@ -1,5 +1,4 @@
 use dialoguer::Confirm;
-use miette::{Report, Result};
 use std::{fs::File, io::prelude::*, path::PathBuf, process};
 
 use crate::sessions::{
@@ -23,6 +22,7 @@ use zellij_utils::{
         config::{Config, ConfigError},
         options::Options,
     },
+    miette::{Report, Result},
     nix,
     setup::Setup,
 };

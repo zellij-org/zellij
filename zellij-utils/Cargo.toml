@@ -34,7 +34,7 @@ url = { version = "2.2.2", features = ["serde"] }
 vte = { version = "0.11.0", default-features = false }
 log = "0.4.17"
 unicode-width = "0.1.8"
-miette = { version = "3.3.0", features = ["fancy"] }
+miette = { version = "5.7.0", features = ["fancy"] }
 regex = "1.5.5"
 tempfile = "3.2.0"
 kdl = { version = "4.5.0", features = ["span"] }
