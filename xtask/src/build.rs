@@ -69,9 +69,7 @@ fn move_plugin_to_assets(sh: &Shell, plugin_name: &str) -> anyhow::Result<()> {
     let err_context = || format!("failed to move plugin '{plugin_name}' to assets folder");
 
     // Get asset path
-    let asset_name = crate::project_root()
-        .join("zellij-utils")
-        .join("assets")
+    let asset_name = crate::asset_dir()
         .join("plugins")
         .join(plugin_name)
         .with_extension("wasm");
