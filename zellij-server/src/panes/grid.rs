@@ -1,4 +1,7 @@
-use super::sixel::{PixelRect, SixelGrid, SixelImageStore};
+use super::{
+    sixel::{PixelRect, SixelGrid, SixelImageStore},
+    LinkAnchor,
+};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -119,6 +122,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     lines_above: &mut VecDeque<Row>,
     viewport: &mut Vec<Row>,
     sixel_grid: &mut SixelGrid,
+    link_handler: &mut LinkHandler,
     count: usize,
     max_viewport_width: usize,
 ) -> usize {
@@ -150,7 +154,7 @@ fn transfer_rows_from_lines_above_to_viewport(
     }
     if !next_lines.is_empty() {
         let excess_row = Row::from_rows(next_lines, 0);
-        bounded_push(lines_above, sixel_grid, excess_row);
+        bounded_push(lines_above, sixel_grid, link_handler, excess_row);
     }
     match usize::try_from(lines_added_to_viewport) {
         Ok(n) => n,
@@ -162,6 +166,7 @@ fn transfer_rows_from_viewport_to_lines_above(
     viewport: &mut Vec<Row>,
     lines_above: &mut VecDeque<Row>,
     sixel_grid: &mut SixelGrid,
+    link_handler: &mut LinkHandler,
     count: usize,
     max_viewport_width: usize,
 ) -> isize {
@@ -184,7 +189,8 @@ fn transfer_rows_from_viewport_to_lines_above(
                 break; // no more rows
             }
         }
-        let dropped_line_width = bounded_push(lines_above, sixel_grid, next_lines.remove(0));
+        let dropped_line_width =
+            bounded_push(lines_above, sixel_grid, link_handler, next_lines.remove(0));
         if let Some(width) = dropped_line_width {
             transferred_rows_count -=
                 calculate_row_display_height(width, max_viewport_width) as isize;
@@ -240,17 +246,35 @@ fn transfer_rows_from_lines_below_to_viewport(
     }
 }
 
-fn bounded_push(vec: &mut VecDeque<Row>, sixel_grid: &mut SixelGrid, value: Row) -> Option<usize> {
+fn bounded_push(
+    vec: &mut VecDeque<Row>,
+    sixel_grid: &mut SixelGrid,
+    link_handler: &mut LinkHandler,
+    value: Row,
+) -> Option<usize> {
     let mut dropped_line_width = None;
     if vec.len() >= *SCROLL_BUFFER_SIZE.get().unwrap() {
         let line = vec.pop_front();
         if let Some(line) = line {
             sixel_grid.offset_grid_top();
             dropped_line_width = Some(line.width());
+
+            let link_ids_to_drop: Vec<_> = collect_link_ids_to_drop(&line);
+            link_handler.remove(&link_ids_to_drop);
         }
     }
     vec.push_back(value);
     dropped_line_width
+}
+
+fn collect_link_ids_to_drop(row: &Row) -> Vec<u16> {
+    row.columns
+        .iter()
+        .filter_map(|c| match c.styles.link_anchor {
+            Some(LinkAnchor::End(id)) => Some(id),
+            _ => None,
+        })
+        .collect()
 }
 
 pub fn create_horizontal_tabstops(columns: usize) -> BTreeSet<usize> {
@@ -673,6 +697,7 @@ impl Grid {
                 &mut self.lines_above,
                 &mut self.viewport,
                 &mut self.sixel_grid,
+                &mut self.link_handler.borrow_mut(),
                 1,
                 self.width,
             );
@@ -705,8 +730,12 @@ impl Grid {
                 last_line_above
             };
 
-            let dropped_line_width =
-                bounded_push(&mut self.lines_above, &mut self.sixel_grid, line_to_push_up);
+            let dropped_line_width = bounded_push(
+                &mut self.lines_above,
+                &mut self.sixel_grid,
+                &mut self.link_handler.borrow_mut(),
+                line_to_push_up,
+            );
             if let Some(width) = dropped_line_width {
                 let dropped_line_height = calculate_row_display_height(width, self.width);
 
@@ -867,6 +896,7 @@ impl Grid {
                         &mut self.lines_above,
                         &mut self.viewport,
                         &mut self.sixel_grid,
+                        &mut self.link_handler.borrow_mut(),
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -894,6 +924,7 @@ impl Grid {
                         &mut self.viewport,
                         &mut self.lines_above,
                         &mut self.sixel_grid,
+                        &mut self.link_handler.borrow_mut(),
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -932,6 +963,7 @@ impl Grid {
                         &mut self.lines_above,
                         &mut self.viewport,
                         &mut self.sixel_grid,
+                        &mut self.link_handler.borrow_mut(),
                         row_count_to_transfer,
                         new_columns,
                     );
@@ -961,6 +993,7 @@ impl Grid {
                             &mut self.viewport,
                             &mut self.lines_above,
                             &mut self.sixel_grid,
+                            &mut self.link_handler.borrow_mut(),
                             row_count_to_transfer,
                             new_columns,
                         );
@@ -1824,6 +1857,7 @@ impl Grid {
             &mut self.viewport,
             &mut self.lines_above,
             &mut self.sixel_grid,
+            &mut self.link_handler.borrow_mut(),
             count,
             self.width,
         );
@@ -2123,6 +2157,11 @@ impl Perform for Grid {
             width: c.width().unwrap_or(0),
             styles: self.cursor.pending_styles,
         };
+        // Ensure LinkAnchor::End is only used once so that it can be disposed off
+        if let Some(LinkAnchor::End(_)) = self.cursor.pending_styles.link_anchor {
+            self.cursor.pending_styles.link_anchor = Some(super::LinkAnchor::Reset)
+        }
+
         self.set_preceding_character(terminal_character);
         self.add_character(terminal_character);
     }

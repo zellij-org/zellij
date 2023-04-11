@@ -30,7 +30,7 @@ pub const RESET_STYLES: CharacterStyles = CharacterStyles {
     bold: Some(AnsiCode::Reset),
     dim: Some(AnsiCode::Reset),
     italic: Some(AnsiCode::Reset),
-    link_anchor: Some(LinkAnchor::End),
+    link_anchor: Some(LinkAnchor::Reset),
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -251,7 +251,12 @@ impl CharacterStyles {
             diff.italic = new_styles.italic;
         }
         if self.link_anchor != new_styles.link_anchor {
-            diff.link_anchor = new_styles.link_anchor;
+            match (self.link_anchor, new_styles.link_anchor) {
+                // treat End and Reset as if they were the same to avoid outputting unnecessary escapes
+                (Some(LinkAnchor::End(_)), Some(LinkAnchor::Reset)) => {},
+                (Some(LinkAnchor::Reset), Some(LinkAnchor::End(_))) => {},
+                _ => diff.link_anchor = new_styles.link_anchor,
+            }
         }
 
         // apply new styles
@@ -572,7 +577,8 @@ impl Display for CharacterStyles {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LinkAnchor {
     Start(u16),
-    End,
+    End(u16),
+    Reset,
 }
 
 #[derive(Clone, Copy, Debug)]
