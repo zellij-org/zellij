@@ -440,6 +440,7 @@ pub trait Pane {
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
+    fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
 }
 
@@ -3362,6 +3363,20 @@ impl Tab {
             })
         {
             plugin_pane.update_loading_indication(loading_indication);
+        }
+    }
+    pub fn start_plugin_loading_indication(&mut self, pid: u32, loading_indication: LoadingIndication) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.start_loading_indication(loading_indication);
         }
     }
     pub fn progress_plugin_loading_offset(&mut self, pid: u32) {

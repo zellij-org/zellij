@@ -1,5 +1,5 @@
 use super::PluginInstruction;
-use crate::plugins::start_plugin::start_plugin;
+use crate::plugins::start_plugin::{start_plugin, reload_plugin};
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -35,12 +35,14 @@ use zellij_utils::{
     errors::prelude::*,
     input::{
         command::TerminalAction,
-        layout::RunPlugin,
+        layout::{RunPlugin, RunPluginLocation},
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
     pane_size::Size,
     serde,
 };
+
+use url::Url;
 
 /// Custom error for plugin version mismatch.
 ///
@@ -196,8 +198,6 @@ impl WasmBridge {
             .with_context(err_context)?;
         let plugin_name = run.location.to_string();
 
-        self.next_plugin_id += 1;
-
         self.cached_events_for_pending_plugins
             .insert(plugin_id, vec![]);
         self.cached_resizes_for_pending_plugins
@@ -265,6 +265,118 @@ impl WasmBridge {
                 drop(plugin_map.remove(&(plugin_id, client_id)));
             }
         }
+        Ok(())
+    }
+    pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+        let err_context = || "Failed to reload plugin";
+        // TODO: CONTINUE HERE (09/04) - handle race conditions (eg. coming here when th eplugin is
+        // already loading or being reloaded)
+        // to test: start zellij, and do: target/debug/zellij action reload-plugin zellij:strider
+        // (twice)
+        let plugin_id = self.plugin_map.lock().unwrap().iter().find(|((plugin_id, client_id), (instance, plugin_env, size))| {
+            plugin_env.plugin.location == run_plugin.location
+
+// #[derive(WasmerEnv, Clone)]
+// pub struct PluginEnv {
+//     pub plugin_id: u32,
+//     pub plugin: PluginConfig,
+//     pub senders: ThreadSenders,
+//     pub wasi_env: WasiEnv,
+//     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+//     pub tab_index: usize,
+//     pub client_id: ClientId,
+//     #[allow(dead_code)]
+//     pub plugin_own_data_dir: PathBuf,
+// }
+// #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
+// pub struct PluginConfig {
+//     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
+//     pub path: PathBuf,
+//     /// Plugin type
+//     pub run: PluginType,
+//     /// Allow command execution from plugin
+//     pub _allow_exec_host_cmd: bool,
+//     /// Original location of the
+//     pub location: RunPluginLocation,
+// }
+// impl From<&RunPluginLocation> for Url {
+        })
+        .map(|((plugin_id, _client_id), _)| *plugin_id)
+        .with_context(err_context)?;
+//             let mut plugin_map = self.plugin_map.lock().unwrap();
+//             let first_client_id = connected_clients.remove(0); // TODO combine with error above
+//             log::info!("plugin_map: {:?}", plugin_map.keys());
+//             let (old_instance, old_user_env, (rows, cols)) = plugin_map.remove(&(plugin_id, first_client_id)).unwrap(); // TODO: proper error
+//             let tab_index = old_user_env.tab_index;
+//             let size = Size { rows, cols };
+//             let plugin_config = old_user_env.plugin.clone();
+//             (first_client_id, tab_index, size, plugin_config)
+//         };
+        let load_plugin_task = task::spawn({
+            let plugin_dir = self.plugin_dir.clone();
+            let plugin_cache = self.plugin_cache.clone();
+            let senders = self.senders.clone();
+            let store = self.store.clone();
+            let plugin_map = self.plugin_map.clone();
+            let connected_clients = self.connected_clients.clone();
+            async move {
+                let mut loading_indication = LoadingIndication::new("".into());
+                let _ =
+                    senders.send_to_screen(ScreenInstruction::StartPluginLoadingIndication(plugin_id, loading_indication.clone()));
+                let _ =
+                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                // the plugin name will be set inside the reload_plugin function
+                match reload_plugin(
+                    plugin_id,
+                    plugin_dir,
+                    plugin_cache,
+                    senders.clone(),
+                    store,
+                    plugin_map,
+                    connected_clients.clone(),
+                    &mut loading_indication,
+                ) {
+                    Ok(_) => {
+                        let _ = senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
+                        );
+                        let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugin(plugin_id));
+                        let _ =
+                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
+                    },
+                    Err(e) => {
+                        let _ = senders.send_to_background_jobs(
+                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
+                        );
+                        let _ =
+                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
+                        loading_indication.indicate_loading_error(e.to_string());
+                        let _ =
+                            senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+                                plugin_id,
+                                loading_indication.clone(),
+                            ));
+                    },
+                }
+            }
+        });
+        self.loading_plugins.insert(plugin_id, load_plugin_task);
+
+
+
+
+
+        // TODO: CONTINUE HERE - implement this by copying the call to the async function and
+        // telling to skip cache
+//         info!("Bye from plugin {}", &pid);
+//         // TODO: remove plugin's own data directory
+//         let mut plugin_map = self.plugin_map.lock().unwrap();
+//         let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
+//         for (plugin_id, client_id) in ids_in_plugin_map {
+//             if pid == plugin_id {
+//                 drop(plugin_map.remove(&(plugin_id, client_id)));
+//             }
+//         }
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {

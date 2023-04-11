@@ -7,6 +7,7 @@ use crate::{
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use url::Url;
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
@@ -373,4 +374,9 @@ pub enum CliAction {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    ReloadPlugin {
+        // TODO: CONTINUE HERE (07/04) - change this to accept plugin path thingy which it should
+        // start if it is not loaded, or reload all instances of if it is
+        url: Url,
+    }
 }

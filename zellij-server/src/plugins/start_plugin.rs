@@ -1,4 +1,4 @@
-use crate::plugins::wasm_bridge::{wasi_read_string, zellij_exports, PluginEnv, PluginMap};
+use crate::plugins::{PluginInstruction, wasm_bridge::{wasi_read_string, zellij_exports, PluginEnv, PluginMap}};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use semver::Version;
@@ -303,6 +303,145 @@ pub fn start_plugin(
     let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
         plugin_id,
         loading_indication.clone(),
+    ));
+    Ok(())
+}
+
+pub fn reload_plugin(
+    plugin_id: u32,
+    plugin_dir: PathBuf,
+    plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+    senders: ThreadSenders,
+    mut store: Store,
+    plugin_map: Arc<Mutex<PluginMap>>,
+    connected_clients: Arc<Mutex<Vec<ClientId>>>,
+    loading_indication: &mut LoadingIndication,
+) -> Result<()> {
+    // TODO: reset cache??
+    let err_context = || format!("failed to reload plugin id {plugin_id}");
+
+    let mut connected_clients: Vec<ClientId> =
+        connected_clients.lock().unwrap().iter().copied().collect();
+    if connected_clients.is_empty() {
+        return Err(anyhow!("No connected clients, cannot reload plugin"));
+    }
+    let (client_id, tab_index, size, plugin_config) = {
+        let mut plugin_map = plugin_map.lock().unwrap();
+        let first_client_id = connected_clients.remove(0); // TODO combine with error above
+        log::info!("plugin_map: {:?}", plugin_map.keys());
+        let (old_instance, old_user_env, (rows, cols)) = plugin_map.remove(&(plugin_id, first_client_id)).unwrap(); // TODO: proper error
+        let tab_index = old_user_env.tab_index;
+        let size = Size { rows, cols };
+        let plugin_config = old_user_env.plugin.clone();
+        loading_indication.set_name(old_user_env.name());
+        (first_client_id, tab_index, size, plugin_config)
+//         let mut plugin_map = plugin_map.lock().unwrap();
+//         plugin_map.insert(
+//             (plugin_id, client_id),
+//             (main_user_instance, main_user_env, (size.rows, size.cols)),
+//         );
+    };
+
+
+    let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin_config.location).to_string());
+    let (wasm_bytes, cached_path) = plugin_bytes_and_cache_path(&plugin_config, &plugin_dir)?;
+    let timer = std::time::Instant::now();
+    loading_indication.indicate_compiling_plugin();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+    let module =
+        compile_module(&mut store, &plugin_config.path, &timer, &cached_path, wasm_bytes)?;
+    loading_indication.indicate_compiling_plugin_success();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+
+
+    let (instance, plugin_env) = create_plugin_instance_and_environment(
+        plugin_id,
+        client_id,
+        &plugin_config,
+        &module,
+        tab_index,
+        plugin_own_data_dir,
+        senders.clone(),
+        &mut store,
+    )?;
+
+    assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+
+    // Only do an insert when everything went well!
+    let cloned_plugin = plugin_config.clone();
+    {
+        let mut plugin_cache = plugin_cache.lock().unwrap();
+        plugin_cache.insert(cloned_plugin.path, module);
+    }
+
+    let mut main_user_instance = instance.clone();
+    let main_user_env = plugin_env.clone();
+    loading_indication.indicate_starting_plugin();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+    load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
+    loading_indication.indicate_starting_plugin_success();
+    loading_indication.indicate_writing_plugin_to_cache();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+
+    {
+        let mut plugin_map = plugin_map.lock().unwrap();
+        plugin_map.insert(
+            (plugin_id, client_id),
+            (main_user_instance, main_user_env, (size.rows, size.cols)),
+        );
+    }
+
+    loading_indication.indicate_writing_plugin_to_cache_success();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+
+//     let connected_clients: Vec<ClientId> =
+//         connected_clients.lock().unwrap().iter().copied().collect();
+    if !connected_clients.is_empty() {
+        loading_indication.indicate_cloning_plugin_for_other_clients();
+        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+            plugin_id,
+            loading_indication.clone(),
+        ));
+        let mut plugin_map = plugin_map.lock().unwrap();
+        for client_id in connected_clients {
+            let (instance, new_plugin_env) =
+                clone_plugin_for_client(&plugin_env, client_id, &instance, &mut store)?;
+            plugin_map.remove(&(plugin_id, client_id)); // TODO: is this safe?
+            plugin_map.insert(
+                (plugin_id, client_id),
+                (instance, new_plugin_env, (size.rows, size.cols)),
+            );
+        }
+        loading_indication.indicate_cloning_plugin_for_other_clients_success();
+        let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+            plugin_id,
+            loading_indication.clone(),
+        ));
+    }
+    loading_indication.end();
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
+    let _ = senders.send_to_plugin(PluginInstruction::Resize(
+        plugin_id,
+        size.cols,
+        size.rows,
     ));
     Ok(())
 }

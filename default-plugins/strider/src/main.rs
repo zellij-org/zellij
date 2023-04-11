@@ -122,7 +122,7 @@ impl ZellijPlugin for State {
             let is_last_row = i == rows.saturating_sub(1);
             let i = self.scroll() + i;
             if let Some(entry) = self.files.get(i) {
-                let mut path = entry.as_line(cols).normal();
+                let mut path = entry.as_line(cols).normal().green();
 
                 if let FsEntry::Dir(..) = entry {
                     path = path.dimmed().bold();

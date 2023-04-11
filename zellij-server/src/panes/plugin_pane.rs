@@ -537,6 +537,12 @@ impl Pane for PluginPane {
             self.loading_indication.to_string().as_bytes().to_vec(),
         );
     }
+    fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
     fn progress_animation_offset(&mut self) {
         if self.loading_indication.ended {
             return;

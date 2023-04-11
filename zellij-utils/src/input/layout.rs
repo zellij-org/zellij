@@ -262,6 +262,19 @@ impl From<&RunPluginLocation> for Url {
     }
 }
 
+// impl TryFrom<&RunPluginLocation> for Url {
+//     fn try_from(location: &RunPluginLocation) -> Result<Self, PluginsConfigError> {
+//         let url = match location {
+//             RunPluginLocation::File(path) => format!(
+//                 "file:{}",
+//                 path.clone().into_os_string().into_string().unwrap()
+//             ),
+//             RunPluginLocation::Zellij(tag) => format!("zellij:{}", tag),
+//         };
+//         Self::parse(&url)
+//     }
+// }
+
 impl fmt::Display for RunPluginLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match self {

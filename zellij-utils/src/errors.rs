@@ -326,10 +326,13 @@ pub enum ScreenContext {
     NextSwapLayout,
     QueryTabNames,
     NewTiledPluginPane,
+    ReloadPluginPane,
     NewFloatingPluginPane,
     AddPlugin,
     UpdatePluginLoadingStage,
     ProgressPluginLoadingOffset,
+    StartPluginLoadingIndication,
+    RequestStateUpdateForPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -355,6 +358,7 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    Reload,
     Resize,
     Exit,
     AddClient,
