@@ -158,6 +158,7 @@ pub enum ScreenInstruction {
     MovePaneLeft(ClientId),
     Exit,
     DumpScreen(String, ClientId, bool),
+    DumpLayout(ClientId, Option<String>),
     EditScrollback(ClientId),
     ScrollUp(ClientId),
     ScrollUpAt(Position, ClientId),
@@ -312,6 +313,7 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::MovePaneLeft(..) => ScreenContext::MovePaneLeft,
             ScreenInstruction::Exit => ScreenContext::Exit,
             ScreenInstruction::DumpScreen(..) => ScreenContext::DumpScreen,
+            ScreenInstruction::DumpLayout(..) => ScreenContext::DumpLayout,
             ScreenInstruction::EditScrollback(..) => ScreenContext::EditScrollback,
             ScreenInstruction::ScrollUp(..) => ScreenContext::ScrollUp,
             ScreenInstruction::ScrollDown(..) => ScreenContext::ScrollDown,
@@ -2064,6 +2066,18 @@ pub(crate) fn screen_thread_main(
                         screen.go_to_tab(tab_index as usize, client_id)?;
                     }
                 }
+                screen.unblock_input()?;
+                screen.render()?;
+            },
+            ScreenInstruction::DumpLayout(client_id, layout) => {
+                let layout_ids: Vec<(Tab, Vec<PaneId>)> = screen
+                    .tabs
+                    .values()
+                    .cloned()
+                    .map(|t| (t.1, t.get_all_pane_ids()))
+                    .collect();
+                let pane_ids = tab.get_all_pane_ids();
+                println!("TABS: {:?}", clients);
                 screen.unblock_input()?;
                 screen.render()?;
             },

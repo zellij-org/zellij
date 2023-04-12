@@ -178,6 +178,12 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::DumpScreen(val, client_id, full))
                 .with_context(err_context)?;
         },
+        Action::DumpLayout(layout) => {
+            session
+                .senders
+                .send_to_screen(ScreenInstruction::DumpLayout(client_id, layout))
+                .with_context(err_context)?;
+        },
         Action::EditScrollback => {
             session
                 .senders
