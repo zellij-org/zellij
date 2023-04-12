@@ -114,24 +114,32 @@ pub(crate) fn plugin_thread_main(
             PluginInstruction::Reload(should_float, pane_title, run, tab_index, client_id, size) => {
                 match wasm_bridge.reload_plugin(&run) {
                     Ok(_) => { let _ = bus.senders.send_to_server(ServerInstruction::UnblockInputThread); },
-                    Err(_) => {
-                        // TODO: only if plugin not found
-                        log::warn!("Plugin {} not found, starting it instead", run.location);
-                        match wasm_bridge.load_plugin(&run, tab_index, size, client_id) {
-                            Ok(plugin_id) => {
-                                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
-                                    should_float,
-                                    run,
-                                    pane_title,
-                                    tab_index,
-                                    plugin_id,
-                                )));
-                            },
-                            Err(e) => {
-                                log::error!("Failed to load plugin: {e}");
-                            },
-                        };
-                    }
+                    Err(err) => match err.downcast_ref::<ZellijError>() {
+                        Some(ZellijError::PluginDoesNotExist) => {
+                            log::warn!("Plugin {} not found, starting it instead", run.location);
+                            match wasm_bridge.load_plugin(&run, tab_index, size, client_id) {
+                                Ok(plugin_id) => {
+                                    drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                                        should_float,
+                                        run,
+                                        pane_title,
+                                        tab_index,
+                                        plugin_id,
+                                    )));
+                                },
+                                Err(e) => {
+                                    log::error!("Failed to load plugin: {e}");
+                                },
+                            };
+                        },
+//                         Some(ZellijError::PluginCurrentlyLoading) => {
+//
+//                         }
+                        _ => {
+                            return Err(err);
+                        }
+                        // _ => Err::<(), _>(err).non_fatal(),
+                    },
                 }
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {

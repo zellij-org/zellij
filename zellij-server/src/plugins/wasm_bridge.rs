@@ -5,6 +5,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
+    fmt::Display,
     path::PathBuf,
     process,
     str::FromStr,
@@ -33,6 +34,7 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
+    errors::ZellijError,
     input::{
         command::TerminalAction,
         layout::{RunPlugin, RunPluginLocation},
@@ -58,7 +60,41 @@ pub struct VersionMismatchError {
     builtin: bool,
 }
 
+// use thiserror::Error;
+#[derive(Debug)]
+pub enum PluginLoadError {
+    CurrentlyLoading,
+    DoesNotExist,
+//     // Deserialization error
+//     #[error("Deserialization error: {0}")]
+//     KdlDeserializationError(#[from] kdl::KdlError),
+//     #[error("KdlDeserialization error: {0}")]
+//     KdlError(KdlError), // TODO: consolidate these
+//     // Io error
+//     #[error("IoError: {0}")]
+//     Io(#[from] io::Error),
+//     #[error("Config error: {0}")]
+//     Std(#[from] Box<dyn std::error::Error>),
+//     // Io error with path context
+//     #[error("IoError: {0}, File: {1}")]
+//     IoPath(io::Error, PathBuf),
+//     // Internal Deserialization Error
+//     #[error("FromUtf8Error: {0}")]
+//     FromUtf8(#[from] std::string::FromUtf8Error),
+//     // Plugins have a semantic error, usually trying to parse two of the same tag
+//     #[error("PluginsError: {0}")]
+//     PluginsError(#[from] PluginsConfigError),
+//     #[error("{0}")]
+//     ConversionError(#[from] ConversionError),
+}
+impl fmt::Display for PluginLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl std::error::Error for VersionMismatchError {}
+impl std::error::Error for PluginLoadError {}
 
 impl VersionMismatchError {
     pub fn new(
@@ -152,7 +188,8 @@ pub struct WasmBridge {
     next_plugin_id: u32,
     cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
     cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
-    loading_plugins: HashMap<u32, JoinHandle<()>>,               // plugin_id to join-handle
+    loading_plugins: HashMap<(u32, RunPluginLocation), JoinHandle<()>>,               // plugin_id to join-handle
+    pending_plugin_reloads: HashSet<RunPlugin>,
 }
 
 impl WasmBridge {
@@ -178,6 +215,7 @@ impl WasmBridge {
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             loading_plugins: HashMap::new(),
+            pending_plugin_reloads: HashSet::new(),
         }
     }
     pub fn load_plugin(
@@ -251,7 +289,7 @@ impl WasmBridge {
                 }
             }
         });
-        self.loading_plugins.insert(plugin_id, load_plugin_task);
+        self.loading_plugins.insert((plugin_id, run.location.clone()), load_plugin_task);
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
@@ -268,50 +306,24 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+        // TODO: CONTINUE HERE - test with watchexec and strider (also in release)
+        // then if all is well, make tests pass and clean stuff up
         let err_context = || "Failed to reload plugin";
-        // TODO: CONTINUE HERE (09/04) - handle race conditions (eg. coming here when th eplugin is
-        // already loading or being reloaded)
-        // to test: start zellij, and do: target/debug/zellij action reload-plugin zellij:strider
-        // (twice)
+        let plugin_is_currently_being_loaded = self.loading_plugins.iter().find(|((_plugin_id, run_plugin_location), _)| {
+            run_plugin_location == &run_plugin.location
+        }).is_some();
+        log::info!("plugin_is_currently_being_loaded: {:?}", plugin_is_currently_being_loaded);
+        if plugin_is_currently_being_loaded {
+            self.pending_plugin_reloads.insert(run_plugin.clone());
+            return Ok(());
+            // return Err(ZellijError::PluginCurrentlyLoading).with_context(err_context);
+        }
         let plugin_id = self.plugin_map.lock().unwrap().iter().find(|((plugin_id, client_id), (instance, plugin_env, size))| {
             plugin_env.plugin.location == run_plugin.location
-
-// #[derive(WasmerEnv, Clone)]
-// pub struct PluginEnv {
-//     pub plugin_id: u32,
-//     pub plugin: PluginConfig,
-//     pub senders: ThreadSenders,
-//     pub wasi_env: WasiEnv,
-//     pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
-//     pub tab_index: usize,
-//     pub client_id: ClientId,
-//     #[allow(dead_code)]
-//     pub plugin_own_data_dir: PathBuf,
-// }
-// #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-// pub struct PluginConfig {
-//     /// Path of the plugin, see resolve_wasm_bytes for resolution semantics
-//     pub path: PathBuf,
-//     /// Plugin type
-//     pub run: PluginType,
-//     /// Allow command execution from plugin
-//     pub _allow_exec_host_cmd: bool,
-//     /// Original location of the
-//     pub location: RunPluginLocation,
-// }
-// impl From<&RunPluginLocation> for Url {
         })
         .map(|((plugin_id, _client_id), _)| *plugin_id)
-        .with_context(err_context)?;
-//             let mut plugin_map = self.plugin_map.lock().unwrap();
-//             let first_client_id = connected_clients.remove(0); // TODO combine with error above
-//             log::info!("plugin_map: {:?}", plugin_map.keys());
-//             let (old_instance, old_user_env, (rows, cols)) = plugin_map.remove(&(plugin_id, first_client_id)).unwrap(); // TODO: proper error
-//             let tab_index = old_user_env.tab_index;
-//             let size = Size { rows, cols };
-//             let plugin_config = old_user_env.plugin.clone();
-//             (first_client_id, tab_index, size, plugin_config)
-//         };
+        .ok_or(ZellijError::PluginDoesNotExist)?;
+
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
             let plugin_cache = self.plugin_cache.clone();
@@ -360,7 +372,7 @@ impl WasmBridge {
                 }
             }
         });
-        self.loading_plugins.insert(plugin_id, load_plugin_task);
+        self.loading_plugins.insert((plugin_id, run_plugin.location.clone()), load_plugin_task);
 
 
 
@@ -553,7 +565,17 @@ impl WasmBridge {
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows)?;
         }
-        self.loading_plugins.remove(&plugin_id);
+        let run_plugin_location = self.loading_plugins.iter().find(|((p_id, run_plugin), _)| p_id == &plugin_id).map(|((p_id, run_plugin), _)| run_plugin.clone());
+        self.loading_plugins.retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
+        if let Some(run_plugin_location) = run_plugin_location {
+            let run_plugin = RunPlugin {
+                _allow_exec_host_cmd: false,
+                location: run_plugin_location
+            };
+            if self.pending_plugin_reloads.remove(&run_plugin) {
+                let _ = self.reload_plugin(&run_plugin);
+            }
+        }
         Ok(())
     }
     pub fn remove_client(&mut self, client_id: ClientId) {

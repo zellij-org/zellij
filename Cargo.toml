@@ -74,3 +74,6 @@ default = [ "zellij-utils/plugins_from_target" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
 singlepass = [ "zellij-server/singlepass" ]
+
+[profile.dev.package."*"]
+opt-level = 3

@@ -493,6 +493,12 @@ open an issue on GitHub:
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
     ClientTooSlow { client_id: u16 },
+
+//     #[error("The plugin is already loading")]
+//     PluginCurrentlyLoading,
+
+    #[error("The plugin does not exist")]
+    PluginDoesNotExist,
 }
 
 #[cfg(not(target_family = "wasm"))]
