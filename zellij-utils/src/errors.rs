@@ -23,6 +23,7 @@ pub mod prelude {
     #[cfg(not(target_family = "wasm"))]
     pub use super::ToAnyhow;
     pub use super::ZellijError;
+    //pub use crate::match_error;
     pub use anyhow::anyhow;
     pub use anyhow::bail;
     pub use anyhow::Context;
@@ -732,6 +733,36 @@ mod not_wasm {
                         Err(crate::anyhow::anyhow!("cannot acquire poisoned lock"))
                     }
                 },
+            }
+        }
+    }
+
+    /// Conveniently match on error variants.
+    ///
+    /// Downcasts a given error to a selection of variants and executes a code block if there
+    /// is a match. Unless a default behavior is defined with a trailing '_ => { ... }' block,
+    /// any unhandled error will cause a panic.
+    ///
+    /// All error handling is tried in order, and the first match is executed. There is no
+    /// fallthrough: Exactly one of the given blocks (or the default) will match, and no other.
+    ///
+    /// By default, the macro will not return a value. You can override this behavior by having
+    /// each of your blocks (including the default block) return whatever type you need.
+    #[macro_export]
+    macro_rules! match_error {
+        // Default behavior for unhandled errors is to panic
+        ($err:ident, $( ($err_type:ty, $variant:pat) => $body:tt ),+) => {
+            match_error!($err, $( ($err_type, $variant) => $body ),+,
+                         _ => $err.expect("an unhandled error occured"))
+        };
+        ($err:ident, $( ($err_type:ty, $variant:pat) => $body:expr ),+, _ => $default:expr ) => {
+            $(
+                if let Some($variant) = $err.downcast_ref::<$err_type>() {
+                    $body
+                } else
+            )+
+            {
+                $default
             }
         }
     }
