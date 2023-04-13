@@ -17,6 +17,7 @@ use zellij_utils::{
         command::{RunCommand, TerminalAction},
         layout::{FloatingPaneLayout, Layout, Run, RunPluginLocation, TiledPaneLayout},
     },
+    match_error,
 };
 
 pub type VteBytes = Vec<u8>;
@@ -128,36 +129,42 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                             ))
                             .with_context(err_context)?;
                     },
-                    Err(err) => match err.downcast_ref::<ZellijError>() {
-                        Some(ZellijError::CommandNotFound { terminal_id, .. }) => {
-                            if hold_on_close {
-                                let hold_for_command = None; // we do not hold an "error" pane
-                                pty.bus
-                                    .senders
-                                    .send_to_screen(ScreenInstruction::NewPane(
-                                        PaneId::Terminal(*terminal_id),
-                                        pane_title,
-                                        should_float,
-                                        hold_for_command,
-                                        client_or_tab_index,
-                                    ))
-                                    .with_context(err_context)?;
-                                if let Some(run_command) = run_command {
-                                    send_command_not_found_to_screen(
-                                        pty.bus.senders.clone(),
-                                        *terminal_id,
-                                        run_command.clone(),
-                                        None,
-                                    )
-                                    .with_context(err_context)?;
+                    Err(err) => {
+                        use ZellijError::CommandNotFound;
+
+                        match_error!(err,
+                        (ZellijError, CommandNotFound { terminal_id, .. }) => {
+                                if hold_on_close {
+                                    let hold_for_command = None; // we do not hold an "error" pane
+                                    pty.bus
+                                        .senders
+                                        .send_to_screen(ScreenInstruction::NewPane(
+                                            PaneId::Terminal(*terminal_id),
+                                            pane_title,
+                                            should_float,
+                                            hold_for_command,
+                                            client_or_tab_index,
+                                        ))
+                                        .with_context(err_context)?;
+                                    if let Some(run_command) = run_command {
+                                        send_command_not_found_to_screen(
+                                            pty.bus.senders.clone(),
+                                            *terminal_id,
+                                            run_command.clone(),
+                                            None,
+                                        )
+                                        .with_context(err_context)?;
+                                    }
+                                } else {
+                                    log::error!("Failed to spawn terminal: {:?}", err);
+                                    pty.close_pane(PaneId::Terminal(*terminal_id))
+                                        .with_context(err_context)?;
                                 }
-                            } else {
-                                log::error!("Failed to spawn terminal: {:?}", err);
-                                pty.close_pane(PaneId::Terminal(*terminal_id))
-                                    .with_context(err_context)?;
-                            }
-                        },
-                        _ => Err::<(), _>(err).non_fatal(),
+                            },
+                        _ => {
+                            Err::<(), _>(err).non_fatal();
+                        }
+                        );
                     },
                 }
             },
