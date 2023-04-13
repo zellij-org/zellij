@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+
+## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
 * fix: adding panes to lone stack (https://github.com/zellij-org/zellij/pull/2298)
 * fix: closing a stacked pane now properly moves to the previous swap layout if appropriate (https://github.com/zellij-org/zellij/pull/2312)
