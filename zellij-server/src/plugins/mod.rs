@@ -50,7 +50,7 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
-    ApplyCachedEvents(u32), // u32 is the plugin id
+    ApplyCachedEvents(Vec<u32>), // a list of plugin id
     Exit,
 }
 
@@ -132,13 +132,9 @@ pub(crate) fn plugin_thread_main(
                                 },
                             };
                         },
-//                         Some(ZellijError::PluginCurrentlyLoading) => {
-//
-//                         }
                         _ => {
                             return Err(err);
                         }
-                        // _ => Err::<(), _>(err).non_fatal(),
                     },
                 }
             },

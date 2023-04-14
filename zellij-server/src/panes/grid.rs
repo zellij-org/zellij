@@ -1254,7 +1254,7 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.scroll_region.is_none() {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1406,7 +1406,7 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {
