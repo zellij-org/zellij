@@ -291,6 +291,7 @@ impl <'a> PluginLoader <'a>{
                 plugin_loader.load_plugin_instance(&instance, &plugin_env)?;
                 plugin_loader.clone_instance_for_other_clients(&instance, &plugin_env, &connected_clients)
             })
+            .map(|_| plugin_loader.apply_plugin_size())
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
