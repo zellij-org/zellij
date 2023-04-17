@@ -1,4 +1,4 @@
-mod start_plugin;
+mod plugin_loader;
 mod wasm_bridge;
 use log::info;
 use std::{collections::HashMap, fs, path::PathBuf};

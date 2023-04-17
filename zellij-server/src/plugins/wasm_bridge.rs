@@ -1,11 +1,10 @@
 use super::PluginInstruction;
-use crate::plugins::start_plugin::{start_plugin, reload_plugin, reload_plugin_from_memory};
+use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     fmt,
-    fmt::Display,
     path::PathBuf,
     process,
     str::FromStr,
@@ -43,109 +42,6 @@ use zellij_utils::{
     pane_size::Size,
     serde,
 };
-
-use url::Url;
-
-/// Custom error for plugin version mismatch.
-///
-/// This is thrown when, during starting a plugin, it is detected that the plugin version doesn't
-/// match the zellij version. This is treated as a fatal error and leads to instantaneous
-/// termination.
-#[derive(Debug)]
-pub struct VersionMismatchError {
-    zellij_version: String,
-    plugin_version: String,
-    plugin_path: PathBuf,
-    // true for builtin plugins
-    builtin: bool,
-}
-
-// use thiserror::Error;
-#[derive(Debug)]
-pub enum PluginLoadError {
-    CurrentlyLoading,
-    DoesNotExist,
-//     // Deserialization error
-//     #[error("Deserialization error: {0}")]
-//     KdlDeserializationError(#[from] kdl::KdlError),
-//     #[error("KdlDeserialization error: {0}")]
-//     KdlError(KdlError), // TODO: consolidate these
-//     // Io error
-//     #[error("IoError: {0}")]
-//     Io(#[from] io::Error),
-//     #[error("Config error: {0}")]
-//     Std(#[from] Box<dyn std::error::Error>),
-//     // Io error with path context
-//     #[error("IoError: {0}, File: {1}")]
-//     IoPath(io::Error, PathBuf),
-//     // Internal Deserialization Error
-//     #[error("FromUtf8Error: {0}")]
-//     FromUtf8(#[from] std::string::FromUtf8Error),
-//     // Plugins have a semantic error, usually trying to parse two of the same tag
-//     #[error("PluginsError: {0}")]
-//     PluginsError(#[from] PluginsConfigError),
-//     #[error("{0}")]
-//     ConversionError(#[from] ConversionError),
-}
-impl fmt::Display for PluginLoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl std::error::Error for VersionMismatchError {}
-impl std::error::Error for PluginLoadError {}
-
-impl VersionMismatchError {
-    pub fn new(
-        zellij_version: &str,
-        plugin_version: &str,
-        plugin_path: &PathBuf,
-        builtin: bool,
-    ) -> Self {
-        VersionMismatchError {
-            zellij_version: zellij_version.to_owned(),
-            plugin_version: plugin_version.to_owned(),
-            plugin_path: plugin_path.to_owned(),
-            builtin,
-        }
-    }
-}
-
-impl fmt::Display for VersionMismatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let first_line = if self.builtin {
-            "It seems your version of zellij was built with outdated core plugins."
-        } else {
-            "If you're seeing this error a plugin version doesn't match the current
-zellij version."
-        };
-
-        write!(
-            f,
-            "{}
-Detected versions:
-
-- Plugin version: {}
-- Zellij version: {}
-- Offending plugin: {}
-
-If you're a user:
-    Please contact the distributor of your zellij version and report this error
-    to them.
-
-If you're a developer:
-    Please run zellij with updated plugins. The easiest way to achieve this
-    is to build zellij with `cargo xtask install`. Also refer to the docs:
-    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-",
-            first_line,
-            self.plugin_version.trim_end(),
-            self.zellij_version.trim_end(),
-            self.plugin_path.display()
-        )
-    }
-}
 
 type PluginId = u32;
 
@@ -254,7 +150,7 @@ impl WasmBridge {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
-                match start_plugin(
+                match PluginLoader::start_plugin(
                     plugin_id,
                     client_id,
                     &plugin,
@@ -308,6 +204,8 @@ impl WasmBridge {
         Ok(())
     }
     pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+        // TODO: CONTINUE HERE - break down this function into smaller parts and combine with
+        // load_plugin
         let err_context = || "Failed to reload plugin";
         let plugin_is_currently_being_loaded = self.loading_plugins.iter().find(|((_plugin_id, run_plugin_location), _)| {
             run_plugin_location == &run_plugin.location
@@ -343,7 +241,7 @@ impl WasmBridge {
                         senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(*plugin_id));
                 }
                 // the plugin name will be set inside the reload_plugin function
-                match reload_plugin(
+                match PluginLoader::reload_plugin(
                     first_plugin_id,
                     plugin_dir.clone(),
                     plugin_cache.clone(),
@@ -361,7 +259,7 @@ impl WasmBridge {
                         let _ = plugin_ids.pop(); // remove the first plugin we just reloaded
                         for plugin_id in &plugin_ids {
                             let mut loading_indication = LoadingIndication::new("".into());
-                            match reload_plugin_from_memory(
+                            match PluginLoader::reload_plugin_from_memory(
                                 *plugin_id,
                                 plugin_dir.clone(),
                                 plugin_cache.clone(),
