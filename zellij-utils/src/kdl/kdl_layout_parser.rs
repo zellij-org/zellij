@@ -331,10 +331,14 @@ impl<'a> KdlLayoutParser<'a> {
             (None, None) => None,
         })
     }
-    fn parse_cwd(&self, kdl_node: &KdlNode) -> Result<Option<PathBuf>, ConfigError> {
-        match kdl_get_string_property_or_child_value_with_error!(kdl_node, "cwd") {
-            Some(cwd) => match shellexpand::full(cwd) {
-                Ok(cwd) => Ok(Some(PathBuf::from(cwd.as_ref()))),
+    fn parse_path(
+        &self,
+        kdl_node: &KdlNode,
+        name: &'static str,
+    ) -> Result<Option<PathBuf>, ConfigError> {
+        match kdl_get_string_property_or_child_value_with_error!(kdl_node, name) {
+            Some(s) => match shellexpand::full(s) {
+                Ok(s) => Ok(Some(PathBuf::from(s.as_ref()))),
                 Err(e) => Err(kdl_parsing_error!(e.to_string(), kdl_node)),
             },
             None => Ok(None),
@@ -345,11 +349,9 @@ impl<'a> KdlLayoutParser<'a> {
         pane_node: &KdlNode,
         is_template: bool,
     ) -> Result<Option<Run>, ConfigError> {
-        let command = kdl_get_string_property_or_child_value_with_error!(pane_node, "command")
-            .map(|c| PathBuf::from(c));
-        let edit = kdl_get_string_property_or_child_value_with_error!(pane_node, "edit")
-            .map(|c| PathBuf::from(c));
-        let cwd = self.parse_cwd(pane_node)?;
+        let command = self.parse_path(pane_node, "command")?;
+        let edit = self.parse_path(pane_node, "edit")?;
+        let cwd = self.parse_path(pane_node, "cwd")?;
         let args = self.parse_args(pane_node)?;
         let close_on_exit =
             kdl_get_bool_property_or_child_value_with_error!(pane_node, "close_on_exit");
@@ -1009,7 +1011,7 @@ impl<'a> KdlLayoutParser<'a> {
         self.assert_valid_tab_properties(kdl_node)?;
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
-        let tab_cwd = self.parse_cwd(kdl_node)?;
+        let tab_cwd = self.parse_path(kdl_node, "cwd")?;
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         let mut child_floating_panes = vec![];
@@ -1335,7 +1337,7 @@ impl<'a> KdlLayoutParser<'a> {
     ) -> Result<(), ConfigError> {
         let has_borderless_prop =
             kdl_get_bool_property_or_child_value_with_error!(kdl_node, "borderless").is_some();
-        let has_cwd_prop = self.parse_cwd(kdl_node)?.is_some();
+        let has_cwd_prop = self.parse_path(kdl_node, "cwd")?.is_some();
         let has_non_cwd_run_prop = self
             .parse_command_plugin_or_edit_block(kdl_node)?
             .map(|r| match r {
@@ -1405,7 +1407,7 @@ impl<'a> KdlLayoutParser<'a> {
         // (is_focused, Option<tab_name>, PaneLayout, Vec<FloatingPaneLayout>)
         let tab_name =
             kdl_get_string_property_or_child_value!(kdl_node, "name").map(|s| s.to_string());
-        let tab_cwd = self.parse_cwd(kdl_node)?;
+        let tab_cwd = self.parse_path(kdl_node, "cwd")?;
         let is_focused = kdl_get_bool_property_or_child_value!(kdl_node, "focus").unwrap_or(false);
         let children_split_direction = self.parse_split_direction(kdl_node)?;
         match kdl_children_nodes!(kdl_node) {
@@ -1638,7 +1640,7 @@ impl<'a> KdlLayoutParser<'a> {
     fn populate_global_cwd(&mut self, layout_node: &KdlNode) -> Result<(), ConfigError> {
         // we only populate global cwd from the layout file if another wasn't explicitly passed to us
         if self.global_cwd.is_none() {
-            self.global_cwd = self.parse_cwd(layout_node)?;
+            self.global_cwd = self.parse_path(layout_node, "cwd")?;
         }
         Ok(())
     }

@@ -2135,6 +2135,32 @@ fn env_tilde_cwd() {
 }
 
 #[test]
+fn env_command() {
+    env_test_helper(
+        r#"
+        layout {
+            pane command="~/backup/executable"  // -> /home/aram/backup/executable
+        }
+        "#,
+        vec![("HOME", "/home/aram")],
+        vec!["/home/aram/backup/executable"],
+    );
+}
+
+#[test]
+fn env_edit() {
+    env_test_helper(
+        r#"
+        layout {
+            pane edit="~/backup/foo.txt"  // -> /home/aram/backup/foo.txt
+        }
+        "#,
+        vec![("HOME", "/home/aram")],
+        vec!["/home/aram/backup/foo.txt"],
+    );
+}
+
+#[test]
 fn env_invalid_global_cwd() {
     std::env::remove_var("Z_INVALID_GLOBAL");
     let kdl_layout = r#"
