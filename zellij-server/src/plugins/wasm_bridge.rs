@@ -86,7 +86,7 @@ pub struct WasmBridge {
     next_plugin_id: u32,
     cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
     cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
-    loading_plugins: HashMap<(u32, RunPluginLocation), JoinHandle<()>>,               // plugin_id to join-handle
+    loading_plugins: HashMap<(u32, RunPlugin), JoinHandle<()>>,               // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
 }
 
@@ -170,7 +170,7 @@ impl WasmBridge {
                 let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(vec![plugin_id]));
             }
         });
-        self.loading_plugins.insert((plugin_id, run.location.clone()), load_plugin_task);
+        self.loading_plugins.insert((plugin_id, run.clone()), load_plugin_task);
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
@@ -246,7 +246,7 @@ impl WasmBridge {
                 let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_ids));
             }
         });
-        self.loading_plugins.insert((first_plugin_id, run_plugin.location.clone()), load_plugin_task);
+        self.loading_plugins.insert((first_plugin_id, run_plugin.clone()), load_plugin_task);
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -383,64 +383,15 @@ impl WasmBridge {
         Ok(())
     }
     pub fn apply_cached_events(&mut self, plugin_ids: Vec<u32>) -> Result<()> {
-        let err_context = || format!("Failed to apply cached events to plugins" );
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
-            if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
-                let mut plugin_map = self.plugin_map.lock().unwrap();
-                let all_connected_clients: Vec<ClientId> = self
-                    .connected_clients
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .copied()
-                    .collect();
-                for client_id in all_connected_clients {
-                    let mut plugin_bytes = vec![];
-                    if let Some((instance, plugin_env, (rows, columns))) =
-                        plugin_map.get_mut(&(plugin_id, client_id))
-                    {
-                        let subs = plugin_env
-                            .subscriptions
-                            .lock()
-                            .to_anyhow()
-                            .with_context(err_context)?;
-                        for event in events.clone() {
-                            let event_type =
-                                EventType::from_str(&event.to_string()).with_context(err_context)?;
-                            if !subs.contains(&event_type) {
-                                continue;
-                            }
-                            apply_event_to_plugin(
-                                plugin_id,
-                                client_id,
-                                &instance,
-                                &plugin_env,
-                                &event,
-                                *rows,
-                                *columns,
-                                &mut plugin_bytes,
-                            )?;
-                        }
-                        let _ = self
-                            .senders
-                            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
-                    }
-                }
-            }
-            if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
-                self.resize_plugin(plugin_id, columns, rows)?;
-            }
-            if let Some(run_plugin_location) = self.loading_plugins.iter().find(|((p_id, run_plugin), _)| p_id == &plugin_id).map(|((p_id, run_plugin), _)| run_plugin) {
-                applied_plugin_paths.insert(run_plugin_location.clone());
+            self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
+            if let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id) {
+                applied_plugin_paths.insert(run_plugin.clone());
             }
             self.loading_plugins.retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
         }
-        for run_plugin_location in applied_plugin_paths.drain() {
-            let run_plugin = RunPlugin {
-                _allow_exec_host_cmd: false,
-                location: run_plugin_location
-            };
+        for run_plugin in applied_plugin_paths.drain() {
             if self.pending_plugin_reloads.remove(&run_plugin) {
                 let _ = self.reload_plugin(&run_plugin);
             }
@@ -458,9 +409,55 @@ impl WasmBridge {
             drop(loading_plugin_task.cancel());
         }
     }
+    fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
+        self.loading_plugins.iter().find(|((p_id, _run_plugin), _)| p_id == &plugin_id).map(|((_p_id, run_plugin), _)| run_plugin)
+    }
+    fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
+        let err_context = || format!("Failed to apply cached events to plugin");
+        if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            let all_connected_clients: Vec<ClientId> = self.connected_clients.lock().unwrap().iter().copied().collect();
+            for client_id in &all_connected_clients {
+                let mut plugin_bytes = vec![];
+                if let Some((instance, plugin_env, (rows, columns))) =
+                    plugin_map.get_mut(&(plugin_id, *client_id))
+                {
+                    let subs = plugin_env
+                        .subscriptions
+                        .lock()
+                        .to_anyhow()
+                        .with_context(err_context)?;
+                    for event in events.clone() {
+                        let event_type =
+                            EventType::from_str(&event.to_string()).with_context(err_context)?;
+                        if !subs.contains(&event_type) {
+                            continue;
+                        }
+                        apply_event_to_plugin(
+                            plugin_id,
+                            *client_id,
+                            &instance,
+                            &plugin_env,
+                            &event,
+                            *rows,
+                            *columns,
+                            &mut plugin_bytes,
+                        )?;
+                    }
+                    let _ = self
+                        .senders
+                        .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                }
+            }
+        }
+        if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
+            self.resize_plugin(plugin_id, columns, rows)?;
+        }
+        Ok(())
+    }
     fn plugin_is_currently_being_loaded(&self, plugin_location: &RunPluginLocation) -> bool {
-        self.loading_plugins.iter().find(|((_plugin_id, run_plugin_location), _)| {
-            run_plugin_location == plugin_location
+        self.loading_plugins.iter().find(|((_plugin_id, run_plugin), _)| {
+            &run_plugin.location == plugin_location
         }).is_some()
     }
     fn all_plugin_ids_for_plugin_location(&self, plugin_location: &RunPluginLocation) -> Result<Vec<PluginId>> {
