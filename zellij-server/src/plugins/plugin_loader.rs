@@ -208,7 +208,6 @@ impl <'a> PluginLoader <'a>{
                 plugin_loader.load_plugin_instance(&instance, &plugin_env)?;
                 plugin_loader.clone_instance_for_other_clients(&instance, &plugin_env, &connected_clients)
             })
-            .map(|_| plugin_loader.apply_plugin_size())
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -291,7 +290,6 @@ impl <'a> PluginLoader <'a>{
                 plugin_loader.load_plugin_instance(&instance, &plugin_env)?;
                 plugin_loader.clone_instance_for_other_clients(&instance, &plugin_env, &connected_clients)
             })
-            .map(|_| plugin_loader.apply_plugin_size())
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -493,13 +491,6 @@ impl <'a> PluginLoader <'a>{
             display_loading_stage!(indicate_cloning_plugin_for_other_clients_success, self.loading_indication, self.senders, self.plugin_id);
         }
         Ok(())
-    }
-    pub fn apply_plugin_size(&self) {
-        let _ = self.senders.send_to_plugin(PluginInstruction::Resize(
-            self.plugin_id,
-            self.size.cols,
-            self.size.rows,
-        ));
     }
     fn plugin_bytes_and_cache_path(&mut self) -> Result<(Vec<u8>, PathBuf)> {
         match self.wasm_blob_on_hd.as_ref() {

@@ -137,7 +137,7 @@ impl WasmBridge {
         self.cached_events_for_pending_plugins
             .insert(plugin_id, vec![]);
         self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (0, 0));
+            .insert(plugin_id, (size.rows, size.cols));
 
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
@@ -191,10 +191,19 @@ impl WasmBridge {
             self.pending_plugin_reloads.insert(run_plugin.clone());
             return Ok(());
         }
+
         let plugin_ids = self.all_plugin_ids_for_plugin_location(&run_plugin.location)?;
+        for plugin_id in &plugin_ids {
+            let (rows, columns) = self.size_of_plugin_id(*plugin_id).unwrap_or((0, 0));
+            self.cached_events_for_pending_plugins
+                .insert(*plugin_id, vec![]);
+            self.cached_resizes_for_pending_plugins
+                .insert(*plugin_id, (rows, columns));
+        }
+
         let first_plugin_id = *plugin_ids.get(0).unwrap(); // this is safe becaise the above
                                                            // methods always returns at least 1 id
-        let mut loading_indication = LoadingIndication::new("".into());
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
         self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
@@ -319,12 +328,12 @@ impl WasmBridge {
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
-        for (plugin_id, (current_rows, current_columns)) in
+        for (plugin_id, mut current_size) in
             self.cached_resizes_for_pending_plugins.iter_mut()
         {
             if *plugin_id == pid {
-                *current_rows = new_rows;
-                *current_columns = new_columns;
+                current_size.0 = new_rows;
+                current_size.1 = new_columns;
             }
         }
         let _ = self
@@ -471,6 +480,11 @@ impl WasmBridge {
             return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
         }
         Ok(plugin_ids)
+    }
+    fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> { // (rows/colums)
+        self.plugin_map.lock().unwrap().iter()
+            .find(|((p_id, _client_id), (_instance, _plugin_env, _size))| *p_id == plugin_id)
+            .map(|((_p_id, _client_id), (_instance, _plugin_env, size))| *size)
     }
     fn start_plugin_loading_indication(&self, plugin_ids: &[PluginId], loading_indication: &LoadingIndication) {
         for plugin_id in plugin_ids {
