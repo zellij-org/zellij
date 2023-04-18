@@ -25,5 +25,5 @@ expression: last_snapshot
 │                                                                                                                      │
 │                                                                                                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- <F1> LOCK  <F2> PANE  <F3> TAB  <F4> RESIZE  <F5> MOVE  <F6> SEARCH  <F7> SESSION  <F8> QUIT    BASE  
+ <F1> LOCK  <F2> PANE  <F3> TAB  <F4> RESIZE  <F5> MOVE  <F6> SEARCH  <F7> SESSION  <F8> QUIT            
  Tip: UNBOUND => open new pane. UNBOUND => navigate between panes. UNBOUND => increase/decrease pane size.              
