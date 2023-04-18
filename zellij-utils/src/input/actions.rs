@@ -232,7 +232,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
-    ReloadPlugin(Url),
+    StartOrReloadPlugin(Url),
 }
 
 impl Action {
@@ -473,7 +473,7 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
-            CliAction::ReloadPlugin { url } => Ok(vec![Action::ReloadPlugin(url)]),
+            CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
         }
     }
 }

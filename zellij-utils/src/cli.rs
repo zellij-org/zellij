@@ -374,9 +374,7 @@ pub enum CliAction {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
-    ReloadPlugin {
-        // TODO: CONTINUE HERE (07/04) - change this to accept plugin path thingy which it should
-        // start if it is not loaded, or reload all instances of if it is
+    StartOrReloadPlugin {
         url: Url,
     }
 }

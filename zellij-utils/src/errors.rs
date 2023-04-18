@@ -326,7 +326,7 @@ pub enum ScreenContext {
     NextSwapLayout,
     QueryTabNames,
     NewTiledPluginPane,
-    ReloadPluginPane,
+    StartOrReloadPluginPane,
     NewFloatingPluginPane,
     AddPlugin,
     UpdatePluginLoadingStage,

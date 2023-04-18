@@ -690,12 +690,11 @@ pub(crate) fn route_action(
                 ))
                 .with_context(err_context)?;
         },
-        Action::ReloadPlugin(url) => {
-    // ReloadPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+        Action::StartOrReloadPlugin(url) => {
             let run_plugin_location = RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
             session
                 .senders
-                .send_to_screen(ScreenInstruction::ReloadPluginPane(run_plugin_location, None, client_id))
+                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin_location, None, client_id))
                 .with_context(err_context)?;
         }
     }
