@@ -376,5 +376,5 @@ pub enum CliAction {
     QueryTabNames,
     StartOrReloadPlugin {
         url: Url,
-    }
+    },
 }

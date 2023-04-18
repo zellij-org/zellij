@@ -417,7 +417,9 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
-            ScreenInstruction::StartOrReloadPluginPane(..) => ScreenContext::StartOrReloadPluginPane,
+            ScreenInstruction::StartOrReloadPluginPane(..) => {
+                ScreenContext::StartOrReloadPluginPane
+            },
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
             ScreenInstruction::UpdatePluginLoadingStage(..) => {
                 ScreenContext::UpdatePluginLoadingStage
@@ -2521,7 +2523,11 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
-            ScreenInstruction::StartOrReloadPluginPane(run_plugin_location, pane_title, client_id) => {
+            ScreenInstruction::StartOrReloadPluginPane(
+                run_plugin_location,
+                pane_title,
+                client_id,
+            ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);
@@ -2529,14 +2535,17 @@ pub(crate) fn screen_thread_main(
                     _allow_exec_host_cmd: false,
                     location: run_plugin_location,
                 };
-                screen.bus.senders.send_to_plugin(PluginInstruction::Reload(
-                    should_float,
-                    pane_title,
-                    run_plugin,
-                    *tab_index,
-                    client_id,
-                    size,
-                ))?;
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Reload(
+                        should_float,
+                        pane_title,
+                        run_plugin,
+                        *tab_index,
+                        client_id,
+                        size,
+                    ))?;
             },
             ScreenInstruction::AddPlugin(
                 should_float,

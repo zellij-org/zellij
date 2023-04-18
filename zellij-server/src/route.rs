@@ -13,10 +13,10 @@ use zellij_utils::{
     data::{Direction, Event, ResizeStrategy},
     errors::prelude::*,
     input::{
-        layout::RunPluginLocation,
         actions::{Action, SearchDirection, SearchOption},
         command::TerminalAction,
         get_mode_info,
+        layout::RunPluginLocation,
     },
     ipc::{ClientToServerMsg, ExitReason, IpcReceiverWithContext, ServerToClientMsg},
 };
@@ -691,12 +691,17 @@ pub(crate) fn route_action(
                 .with_context(err_context)?;
         },
         Action::StartOrReloadPlugin(url) => {
-            let run_plugin_location = RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
+            let run_plugin_location =
+                RunPluginLocation::parse(url.as_str()).with_context(err_context)?;
             session
                 .senders
-                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(run_plugin_location, None, client_id))
+                .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
+                    run_plugin_location,
+                    None,
+                    client_id,
+                ))
                 .with_context(err_context)?;
-        }
+        },
     }
     Ok(should_break)
 }

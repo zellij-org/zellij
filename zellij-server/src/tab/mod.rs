@@ -3365,7 +3365,11 @@ impl Tab {
             plugin_pane.update_loading_indication(loading_indication);
         }
     }
-    pub fn start_plugin_loading_indication(&mut self, pid: u32, loading_indication: LoadingIndication) {
+    pub fn start_plugin_loading_indication(
+        &mut self,
+        pid: u32,
+        loading_indication: LoadingIndication,
+    ) {
         if let Some(plugin_pane) = self
             .tiled_panes
             .get_pane_mut(PaneId::Plugin(pid))
