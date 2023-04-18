@@ -20,7 +20,7 @@ use pty_writer::{pty_writer_main, PtyWriteInstruction};
 use std::collections::{HashMap, HashSet};
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     thread,
 };
 use zellij_utils::envs;
@@ -260,8 +260,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
         })
     });
 
-    let thread_handles = Arc::new(Mutex::new(Vec::new()));
-
     let _ = thread::Builder::new()
         .name("server_listener".to_string())
         .spawn({
@@ -274,7 +272,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
             let session_state = session_state.clone();
             let to_server = to_server.clone();
             let socket_path = socket_path.clone();
-            let thread_handles = thread_handles.clone();
             move || {
                 drop(std::fs::remove_file(&socket_path));
                 let listener = LocalSocketListener::bind(&*socket_path).unwrap();
@@ -291,22 +288,20 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                             let session_data = session_data.clone();
                             let session_state = session_state.clone();
                             let to_server = to_server.clone();
-                            thread_handles.lock().unwrap().push(
-                                thread::Builder::new()
-                                    .name("server_router".to_string())
-                                    .spawn(move || {
-                                        route_thread_main(
-                                            session_data,
-                                            session_state,
-                                            os_input,
-                                            to_server,
-                                            receiver,
-                                            client_id,
-                                        )
-                                        .fatal()
-                                    })
-                                    .unwrap(),
-                            );
+                            thread::Builder::new()
+                                .name("server_router".to_string())
+                                .spawn(move || {
+                                    route_thread_main(
+                                        session_data,
+                                        session_state,
+                                        os_input,
+                                        to_server,
+                                        receiver,
+                                        client_id,
+                                    )
+                                    .fatal()
+                                })
+                                .unwrap();
                         },
                         Err(err) => {
                             panic!("err {:?}", err);
@@ -642,11 +637,6 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
     // Drop cached session data before exit.
     *session_data.write().unwrap() = None;
 
-    thread_handles
-        .lock()
-        .unwrap()
-        .drain(..)
-        .for_each(|h| drop(h.join()));
     drop(std::fs::remove_file(&socket_path));
 }
 
