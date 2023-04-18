@@ -332,7 +332,7 @@ pub enum ScreenContext {
     UpdatePluginLoadingStage,
     ProgressPluginLoadingOffset,
     StartPluginLoadingIndication,
-    RequestStateUpdateForPlugin,
+    RequestStateUpdateForPlugins,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.

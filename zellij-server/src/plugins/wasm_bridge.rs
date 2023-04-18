@@ -500,7 +500,7 @@ fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId
     let _ = senders.send_to_background_jobs(
         BackgroundJob::StopPluginLoadingAnimation(plugin_id),
     );
-    let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugin(plugin_id));
+    let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
 }
 
 fn handle_plugin_loading_failure(senders: &ThreadSenders, plugin_id: PluginId, loading_indication: &mut LoadingIndication, error: impl Display) {

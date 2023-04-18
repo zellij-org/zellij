@@ -125,7 +125,7 @@ impl ZellijPlugin for State {
                 let mut path = entry.as_line(cols).normal();
 
                 if let FsEntry::Dir(..) = entry {
-                    path = path.dimmed().bold().green();
+                    path = path.dimmed().bold();
                 }
 
                 if i == self.selected() {

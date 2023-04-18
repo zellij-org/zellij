@@ -270,7 +270,7 @@ pub enum ScreenInstruction {
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
     StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
-    RequestStateUpdateForPlugin(u32),                 // u32 - plugin id
+    RequestStateUpdateForPlugins,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -428,8 +428,8 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::StartPluginLoadingIndication(..) => {
                 ScreenContext::StartPluginLoadingIndication
             },
-            ScreenInstruction::RequestStateUpdateForPlugin(..) => {
-                ScreenContext::RequestStateUpdateForPlugin
+            ScreenInstruction::RequestStateUpdateForPlugins => {
+                ScreenContext::RequestStateUpdateForPlugins
             },
         }
     }
@@ -2591,7 +2591,7 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render()?;
             },
-            ScreenInstruction::RequestStateUpdateForPlugin(pid) => {
+            ScreenInstruction::RequestStateUpdateForPlugins => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
                     tab.update_input_modes()?;
