@@ -464,6 +464,7 @@ pub(crate) fn route_action(
             session
                 .senders
                 .send_to_screen(ScreenInstruction::NewTab(
+                    None,
                     shell,
                     tab_layout,
                     floating_panes_layout,

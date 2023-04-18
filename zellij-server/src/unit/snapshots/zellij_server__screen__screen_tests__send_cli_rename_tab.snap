@@ -28,6 +28,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
     ),
     NewTab(
         None,
+        None,
         Some(
             TiledPaneLayout {
                 children_split_direction: Horizontal,
@@ -187,6 +188,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
         ],
     ),
     NewTab(
+        None,
         None,
         Some(
             TiledPaneLayout {
