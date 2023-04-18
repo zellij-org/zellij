@@ -92,6 +92,7 @@ impl<'a> KdlLayoutParser<'a> {
             || property_name == "children"
             || property_name == "stacked"
             || property_name == "expanded"
+            || property_name == "exclude_from_sync"
     }
     fn is_a_valid_floating_pane_property(&self, property_name: &str) -> bool {
         property_name == "borderless"
@@ -445,6 +446,8 @@ impl<'a> KdlLayoutParser<'a> {
         let focus = kdl_get_bool_property_or_child_value_with_error!(kdl_node, "focus");
         let name = kdl_get_string_property_or_child_value_with_error!(kdl_node, "name")
             .map(|name| name.to_string());
+        let exclude_from_sync =
+            kdl_get_bool_property_or_child_value_with_error!(kdl_node, "exclude_from_sync");
         let split_size = self.parse_split_size(kdl_node)?;
         let run = self.parse_command_plugin_or_edit_block(kdl_node)?;
         let children_split_direction = self.parse_split_direction(kdl_node)?;
@@ -483,6 +486,7 @@ impl<'a> KdlLayoutParser<'a> {
             run,
             children_split_direction,
             external_children_index,
+            exclude_from_sync,
             children,
             children_are_stacked,
             is_expanded_in_stack,
@@ -605,6 +609,8 @@ impl<'a> KdlLayoutParser<'a> {
                     kdl_get_bool_property_or_child_value_with_error!(kdl_node, "start_suspended");
                 let split_size = self.parse_split_size(kdl_node)?;
                 let run = self.parse_command_plugin_or_edit_block_for_template(kdl_node)?;
+                let exclude_from_sync =
+                    kdl_get_bool_property_or_child_value_with_error!(kdl_node, "exclude_from_sync");
 
                 let external_children_index = if should_mark_external_children_index {
                     self.populate_external_children_index(kdl_node)?
@@ -640,6 +646,9 @@ impl<'a> KdlLayoutParser<'a> {
                 }
                 if let Some(name) = name {
                     pane_template.name = Some(name);
+                }
+                if let Some(exclude_from_sync) = exclude_from_sync {
+                    pane_template.exclude_from_sync = Some(exclude_from_sync);
                 }
                 if let Some(split_size) = split_size {
                     pane_template.split_size = Some(split_size);
@@ -1971,7 +1980,7 @@ impl<'a> KdlLayoutParser<'a> {
             .unwrap_or_else(|| TiledPaneLayout::default());
 
         Ok(Layout {
-            tabs: tabs,
+            tabs,
             template: Some((template, vec![])),
             focused_tab_index,
             swap_tiled_layouts,

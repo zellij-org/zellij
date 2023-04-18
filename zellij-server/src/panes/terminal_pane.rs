@@ -105,6 +105,7 @@ pub struct TerminalPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    exclude_from_sync: bool,
     fake_cursor_locations: HashSet<(usize, usize)>, // (x, y) - these hold a record of previous fake cursors which we need to clear on render
     search_term: String,
     is_held: Option<(Option<i32>, IsFirstRun, RunCommand)>, // a "held" pane means that its command has either exited and the pane is waiting for a
@@ -602,6 +603,14 @@ impl Pane for TerminalPane {
         self.borderless
     }
 
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
+        self.exclude_from_sync = exclude_from_sync;
+    }
+
+    fn exclude_from_sync(&self) -> bool {
+        self.exclude_from_sync
+    }
+
     fn mouse_left_click(&self, position: &Position, is_held: bool) -> Option<String> {
         self.grid.mouse_left_click_signal(position, is_held)
     }
@@ -756,6 +765,7 @@ impl TerminalPane {
             pane_name: pane_name.clone(),
             prev_pane_name: pane_name,
             borderless: false,
+            exclude_from_sync: false,
             fake_cursor_locations: HashSet::new(),
             search_term: String::new(),
             is_held: None,
