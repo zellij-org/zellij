@@ -764,7 +764,7 @@ fn init_session(
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),
-                None,
+                Some(&to_server),
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 None,

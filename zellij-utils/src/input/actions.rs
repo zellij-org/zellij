@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use url::Url;
 
 use crate::position::Position;
 
@@ -231,6 +232,7 @@ pub enum Action {
     /// Open a new tiled (embedded, non-floating) plugin pane
     NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
     NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    StartOrReloadPlugin(Url),
 }
 
 impl Action {
@@ -471,6 +473,7 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
+            CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
         }
     }
 }

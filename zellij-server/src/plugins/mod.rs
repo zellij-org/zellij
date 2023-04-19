@@ -1,11 +1,11 @@
-mod start_plugin;
+mod plugin_loader;
 mod wasm_bridge;
 use log::info;
 use std::{collections::HashMap, fs, path::PathBuf};
 use wasmer::Store;
 
 use crate::screen::ScreenInstruction;
-use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId};
+use crate::{pty::PtyInstruction, thread_bus::Bus, ClientId, ServerInstruction};
 
 use wasm_bridge::WasmBridge;
 
@@ -32,7 +32,15 @@ pub enum PluginInstruction {
     ),
     Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
     Unload(u32),                                         // plugin_id
-    Resize(u32, usize, usize),                           // plugin_id, columns, rows
+    Reload(
+        Option<bool>,   // should float
+        Option<String>, // pane title
+        RunPlugin,
+        usize, // tab index
+        ClientId,
+        Size,
+    ),
+    Resize(u32, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
@@ -43,7 +51,7 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
-    ApplyCachedEvents(u32), // u32 is the plugin id
+    ApplyCachedEvents(Vec<u32>), // a list of plugin id
     Exit,
 }
 
@@ -53,6 +61,7 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::Load(..) => PluginContext::Load,
             PluginInstruction::Update(..) => PluginContext::Update,
             PluginInstruction::Unload(..) => PluginContext::Unload,
+            PluginInstruction::Reload(..) => PluginContext::Reload,
             PluginInstruction::Resize(..) => PluginContext::Resize,
             PluginInstruction::Exit => PluginContext::Exit,
             PluginInstruction::AddClient(_) => PluginContext::AddClient,
@@ -102,6 +111,42 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::Unload(pid) => {
                 wasm_bridge.unload_plugin(pid)?;
+            },
+            PluginInstruction::Reload(
+                should_float,
+                pane_title,
+                run,
+                tab_index,
+                client_id,
+                size,
+            ) => match wasm_bridge.reload_plugin(&run) {
+                Ok(_) => {
+                    let _ = bus
+                        .senders
+                        .send_to_server(ServerInstruction::UnblockInputThread);
+                },
+                Err(err) => match err.downcast_ref::<ZellijError>() {
+                    Some(ZellijError::PluginDoesNotExist) => {
+                        log::warn!("Plugin {} not found, starting it instead", run.location);
+                        match wasm_bridge.load_plugin(&run, tab_index, size, client_id) {
+                            Ok(plugin_id) => {
+                                drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
+                                    should_float,
+                                    run,
+                                    pane_title,
+                                    tab_index,
+                                    plugin_id,
+                                )));
+                            },
+                            Err(e) => {
+                                log::error!("Failed to load plugin: {e}");
+                            },
+                        };
+                    },
+                    _ => {
+                        return Err(err);
+                    },
+                },
             },
             PluginInstruction::Resize(pid, new_columns, new_rows) => {
                 wasm_bridge.resize_plugin(pid, new_columns, new_rows)?;

@@ -326,10 +326,13 @@ pub enum ScreenContext {
     NextSwapLayout,
     QueryTabNames,
     NewTiledPluginPane,
+    StartOrReloadPluginPane,
     NewFloatingPluginPane,
     AddPlugin,
     UpdatePluginLoadingStage,
     ProgressPluginLoadingOffset,
+    StartPluginLoadingIndication,
+    RequestStateUpdateForPlugins,
 }
 
 /// Stack call representations corresponding to the different types of [`PtyInstruction`]s.
@@ -355,6 +358,7 @@ pub enum PluginContext {
     Update,
     Render,
     Unload,
+    Reload,
     Resize,
     Exit,
     AddClient,
@@ -489,6 +493,9 @@ open an issue on GitHub:
 
     #[error("Client {client_id} is too slow to handle incoming messages")]
     ClientTooSlow { client_id: u16 },
+
+    #[error("The plugin does not exist")]
+    PluginDoesNotExist,
 }
 
 #[cfg(not(target_family = "wasm"))]
