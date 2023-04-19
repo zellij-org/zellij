@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
 * feat: allow excluding tabs from tab sync in layouts (https://github.com/zellij-org/zellij/pull/2314)
 * feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
+* feat: cli action to reload plugins at runtime for easier plugin development (https://github.com/zellij-org/zellij/pull/2372)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
