@@ -2032,154 +2032,57 @@ fn run_plugin_location_parsing() {
     assert_eq!(layout, expected_layout);
 }
 
-#[track_caller]
-fn env_test_helper(layout_str: &str, env_vars: Vec<(&str, &str)>, expected_output: Vec<&str>) {
-    for (key, value) in &env_vars {
-        std::env::set_var(key, value);
-    }
-    let layout = Layout::from_kdl(layout_str, "layout_file_name".into(), None, None).unwrap();
-    let layout = format!("{layout:#?}",);
-    for (key, value) in &env_vars {
-        assert!(
-            !layout.contains(&format!("${key}")) && layout.contains(value),
-            "environment variable `{key}={value}` was not properly expanded",
-        );
-    }
-    for s in expected_output {
-        assert!(layout.contains(s), "expected string `{s}` was not found");
-    }
-}
-
 #[test]
-fn env_valid_global_cwd() {
-    env_test_helper(
-        r#"
+fn env_var_expansion() {
+    let raw_layout = r#"
         layout {
-            cwd "$Z_VALID_GLOBAL"
-            pane cwd="relative"      // -> /abs/path/relative
+            // cwd tests + composition
+            cwd "$TEST_GLOBAL_CWD"
+            pane cwd="relative"  // -> /abs/path/relative
             pane cwd="/another/abs"  // -> /another/abs
-        }
-        "#,
-        vec![("Z_VALID_GLOBAL", "/abs/path")],
-        vec!["/abs/path/relative", "/another/abs"],
-    );
-}
+            pane cwd="$TEST_LOCAL_CWD"  // -> /another/abs
+            pane cwd="$TEST_RELATIVE"  // -> /abs/path/relative
+            pane command="ls" cwd="$TEST_ABSOLUTE"  // -> /somewhere
+            pane edit="file.rs" cwd="$TEST_ABSOLUTE"  // -> /somewhere/file.rs
+            pane edit="file.rs" cwd="~/backup"  // -> /home/aram/backup/file.rs
 
-#[test]
-fn env_valid_local_abs_cwd() {
-    env_test_helper(
-        r#"
-        layout {
-            cwd "/abs/path"
-            pane cwd="relative"        // -> /abs/path/relative
-            pane cwd="$Z_VALID_LOCAL"  // -> /another/abs
-        }
-        "#,
-        vec![("Z_VALID_LOCAL", "/another/abs")],
-        vec!["/abs/path/relative", "/another/abs"],
-    );
-}
-
-#[test]
-fn env_valid_local_relative_cwd() {
-    env_test_helper(
-        r#"
-        layout {
-            cwd "/abs/path"
-            pane cwd="relative"            // -> /abs/path/relative
-            pane cwd="$Z_VALID_LOCAL_REL"  // -> /abs/path/relative
-        }
-        "#,
-        vec![("Z_VALID_LOCAL_REL", "relative")],
-        vec!["/abs/path/relative"],
-    );
-}
-
-#[test]
-fn env_command_cwd() {
-    env_test_helper(
-        r#"
-        layout {
-            pane command="ls" cwd="$Z_COMMAND"  // -> some/path
-        }
-        "#,
-        vec![("Z_COMMAND", "some/path")],
-        vec!["some/path"],
-    );
-}
-
-#[test]
-fn env_edit_cwd() {
-    env_test_helper(
-        r#"
-        layout {
-            pane edit="file.rs" cwd="$Z_EDIT"  // -> some/path/file.rs
-        }
-        "#,
-        vec![("Z_EDIT", "some/path")],
-        vec!["some/path/file.rs"],
-    );
-}
-
-#[test]
-fn env_tilde_cwd() {
-    env_test_helper(
-        r#"
-        layout {
-            pane edit="file.rs" cwd="~/my/folder"  // -> /home/aram/my/folder/file.rs
-        }
-        "#,
-        vec![("HOME", "/home/aram")],
-        vec!["/home/aram/my/folder/file.rs"],
-    );
-}
-
-#[test]
-fn env_command() {
-    env_test_helper(
-        r#"
-        layout {
+            // other paths
             pane command="~/backup/executable"  // -> /home/aram/backup/executable
-        }
-        "#,
-        vec![("HOME", "/home/aram")],
-        vec!["/home/aram/backup/executable"],
-    );
-}
-
-#[test]
-fn env_edit() {
-    env_test_helper(
-        r#"
-        layout {
             pane edit="~/backup/foo.txt"  // -> /home/aram/backup/foo.txt
         }
-        "#,
-        vec![("HOME", "/home/aram")],
-        vec!["/home/aram/backup/foo.txt"],
-    );
-}
-
-#[test]
-fn env_invalid_global_cwd() {
-    std::env::remove_var("Z_INVALID_GLOBAL");
-    let kdl_layout = r#"
-        layout {
-            cwd "$Z_INVALID_GLOBAL"
-            pane cwd="relative"
-        }
     "#;
-    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
-    assert!(layout.is_err(), "invalid env var lookup should fail");
+    let env_vars = [
+        ("TEST_GLOBAL_CWD", "/abs/path"),
+        ("TEST_LOCAL_CWD", "/another/abs"),
+        ("TEST_RELATIVE", "relative"),
+        ("TEST_ABSOLUTE", "/somewhere"),
+        ("HOME", "/home/aram"),
+    ];
+    let mut old_vars = Vec::new();
+    // set environment variables for test, keeping track of existing values.
+    for (key, value) in env_vars {
+        old_vars.push((key, std::env::var(key).ok()));
+        std::env::set_var(key, value);
+    }
+    let layout = Layout::from_kdl(raw_layout, "layout_file_name".into(), None, None);
+    // restore environment.
+    for (key, opt) in old_vars {
+        match opt {
+            Some(value) => std::env::set_var(key, &value),
+            None => std::env::remove_var(key),
+        }
+    }
+    let layout = layout.unwrap();
+    assert_snapshot!(format!("{layout:#?}"));
 }
 
 #[test]
-fn env_invalid_local_cwd() {
-    std::env::remove_var("Z_INVALID_LOCAL");
+fn env_var_missing() {
+    std::env::remove_var("SOME_UNIQUE_VALUE");
     let kdl_layout = r#"
         layout {
-            cwd "/abs/path"
-            pane cwd="$Z_INVALID_LOCAL"
+            cwd "$SOME_UNIQUE_VALUE"
+            pane cwd="relative"
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
