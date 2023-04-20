@@ -13,6 +13,12 @@ The TerminalPane has two main roles:
   * Keeping track of the Scroll, which represents the buffer of lines in this terminal
   * Interpreting the ANSI/VT instructions coming from the pty in order to adjust the styling of characters, change the cursor position, etc.
 
+### Scroll (zellij-server/src/panes/terminal_pane.rs and zellij-server/src/panes/grid.rs)
+The Scroll holds the terminal buffer and is in charge of:
+  * Keeping track of the viewport (which part of it we see) this can change when we scroll up/down
+  * Keeping track of the cursor position
+  * Controlling line-wrapping
+
 ### Terminal Character (zellij-server/src/panes/terminal_character.rs)
 The `TerminalCharacter` represents a single character in the pane. It holds the char itself on the one hand, and an internal `CharacterStyles` struct representing the styling of this character.
 This struct derives the `Copy` trait for performance reasons, because it is moved around quite a bit (eg. when line wrapping).
