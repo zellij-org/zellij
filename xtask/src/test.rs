@@ -1,4 +1,4 @@
-use crate::{build, flags};
+use crate::{build, flags, WorkspaceMember};
 use anyhow::{anyhow, Context};
 use std::path::Path;
 use xshell::{cmd, Shell};
@@ -20,18 +20,23 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     )
     .context(err_context)?;
 
-    for subcrate in crate::WORKSPACE_MEMBERS.iter() {
-        let _pd = sh.push_dir(Path::new(subcrate));
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+        let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!("");
-        let msg = format!(">> Testing '{}'", subcrate);
+        let msg = format!(">> Testing '{}'", crate_name);
         crate::status(&msg);
         println!("{}", msg);
 
-        cmd!(sh, "{cargo} test --target {host_triple} --")
-            .args(&flags.args)
+        let cmd = if crate_name.contains("plugins") {
+            cmd!(sh, "{cargo} test --target {host_triple} --")
+        } else {
+            cmd!(sh, "{cargo} test --")
+        };
+
+        cmd.args(&flags.args)
             .run()
-            .with_context(|| format!("Failed to run tests for '{}'", subcrate))?;
+            .with_context(|| format!("Failed to run tests for '{}'", crate_name))?;
     }
     Ok(())
 }

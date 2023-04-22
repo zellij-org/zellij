@@ -4,7 +4,7 @@
 //!
 //! - [`build`]: Builds general cargo projects (i.e. zellij components) with `cargo build`
 //! - [`manpage`]: Builds the manpage with `mandown`
-use crate::flags;
+use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
@@ -22,10 +22,13 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         std::process::exit(1);
     }
 
-    for subcrate in crate::WORKSPACE_MEMBERS.iter() {
-        let err_context = || format!("failed to build '{subcrate}'");
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS
+        .iter()
+        .filter(|member| member.build)
+    {
+        let err_context = || format!("failed to build '{crate_name}'");
 
-        if subcrate.contains("plugins") {
+        if crate_name.contains("plugins") {
             if flags.no_plugins {
                 continue;
             }
@@ -35,10 +38,10 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
             }
         }
 
-        let _pd = sh.push_dir(Path::new(subcrate));
+        let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!();
-        let msg = format!(">> Building '{subcrate}'");
+        let msg = format!(">> Building '{crate_name}'");
         crate::status(&msg);
         println!("{}", msg);
 
@@ -48,8 +51,8 @@ pub fn build(sh: &Shell, flags: flags::Build) -> anyhow::Result<()> {
         }
         base_cmd.run().with_context(err_context)?;
 
-        if subcrate.contains("plugins") {
-            let (_, plugin_name) = subcrate
+        if crate_name.contains("plugins") {
+            let (_, plugin_name) = crate_name
                 .rsplit_once('/')
                 .context("Cannot determine plugin name from '{subcrate}'")?;
 
