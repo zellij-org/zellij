@@ -1575,9 +1575,11 @@ impl Keybinds {
                 Keybinds::input_mode_keybindings(mode, &mut keybinds_from_config)?;
             Keybinds::bind_keys_in_block(mode, &mut input_mode_keybinds, config_options)?;
         }
-        if let Some(global_unbind) = kdl_keybinds.children().and_then(|c| c.get("unbind")) {
-            Keybinds::unbind_keys_in_all_modes(global_unbind, &mut keybinds_from_config)?;
-        };
+        for unbind in kdl_children_nodes_or_error!(kdl_keybinds, "keybindings with no children") {
+            if kdl_name!(unbind) == "unbind" {
+                Keybinds::unbind_keys_in_all_modes(unbind, &mut keybinds_from_config)?;
+            }
+        }
         Ok(keybinds_from_config)
     }
     fn bind_actions_for_each_key(
