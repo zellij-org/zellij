@@ -1,11 +1,10 @@
 use super::PluginInstruction;
-use highway::{HighwayHash, PortableHash};
+use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
 use log::{debug, info, warn};
-use semver::Version;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fmt, fs,
+    fmt::Display,
     path::PathBuf,
     process,
     str::FromStr,
@@ -13,101 +12,38 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use url::Url;
 use wasmer::{
     imports, ChainableNamedResolver, Function, ImportObject, Instance, Module, Store, Value,
     WasmerEnv,
 };
-use wasmer_wasi::{Pipe, WasiEnv, WasiState};
+use wasmer_wasi::WasiEnv;
+use zellij_utils::async_std::task::{self, JoinHandle};
 
 use crate::{
-    logging_pipe::LoggingPipe,
+    background_jobs::BackgroundJob,
     panes::PaneId,
     pty::{ClientOrTabIndex, PtyInstruction},
     screen::ScreenInstruction,
     thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication,
     ClientId,
 };
 
 use zellij_utils::{
-    consts::{VERSION, ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR},
+    consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
+    errors::ZellijError,
     input::{
         command::TerminalAction,
-        layout::RunPlugin,
+        layout::{RunPlugin, RunPluginLocation},
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
     pane_size::Size,
     serde,
 };
 
-/// Custom error for plugin version mismatch.
-///
-/// This is thrown when, during starting a plugin, it is detected that the plugin version doesn't
-/// match the zellij version. This is treated as a fatal error and leads to instantaneous
-/// termination.
-#[derive(Debug)]
-pub struct VersionMismatchError {
-    zellij_version: String,
-    plugin_version: String,
-    plugin_path: PathBuf,
-    // true for builtin plugins
-    builtin: bool,
-}
-
-impl std::error::Error for VersionMismatchError {}
-
-impl VersionMismatchError {
-    pub fn new(
-        zellij_version: &str,
-        plugin_version: &str,
-        plugin_path: &PathBuf,
-        builtin: bool,
-    ) -> Self {
-        VersionMismatchError {
-            zellij_version: zellij_version.to_owned(),
-            plugin_version: plugin_version.to_owned(),
-            plugin_path: plugin_path.to_owned(),
-            builtin,
-        }
-    }
-}
-
-impl fmt::Display for VersionMismatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let first_line = if self.builtin {
-            "It seems your version of zellij was built with outdated core plugins."
-        } else {
-            "If you're seeing this error a plugin version doesn't match the current
-zellij version."
-        };
-
-        write!(
-            f,
-            "{}
-Detected versions:
-
-- Plugin version: {}
-- Zellij version: {}
-- Offending plugin: {}
-
-If you're a user:
-    Please contact the distributor of your zellij version and report this error
-    to them.
-
-If you're a developer:
-    Please run zellij with updated plugins. The easiest way to achieve this
-    is to build zellij with `cargo xtask install`. Also refer to the docs:
-    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-",
-            first_line,
-            self.plugin_version.trim_end(),
-            self.zellij_version.trim_end(),
-            self.plugin_path.display()
-        )
-    }
-}
+type PluginId = u32;
 
 #[derive(WasmerEnv, Clone)]
 pub struct PluginEnv {
@@ -119,7 +55,7 @@ pub struct PluginEnv {
     pub tab_index: usize,
     pub client_id: ClientId,
     #[allow(dead_code)]
-    plugin_own_data_dir: PathBuf,
+    pub plugin_own_data_dir: PathBuf,
 }
 
 impl PluginEnv {
@@ -133,21 +69,25 @@ impl PluginEnv {
     }
 }
 
-type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
-                                                                                  // plugin_id,
-                                                                                  // (usize, usize)
-                                                                                  // => (rows,
-                                                                                  // columns)
+pub type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
+                                                                                      // plugin_id,
+                                                                                      // (usize, usize)
+                                                                                      // => (rows,
+                                                                                      // columns)
 
 pub struct WasmBridge {
-    connected_clients: Vec<ClientId>,
+    connected_clients: Arc<Mutex<Vec<ClientId>>>,
     plugins: PluginsConfig,
     senders: ThreadSenders,
     store: Store,
     plugin_dir: PathBuf,
-    plugin_cache: HashMap<PathBuf, Module>,
-    plugin_map: PluginMap,
+    plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
+    plugin_map: Arc<Mutex<PluginMap>>,
     next_plugin_id: u32,
+    cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
+    cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
+    loading_plugins: HashMap<(u32, RunPlugin), JoinHandle<()>>,  // plugin_id to join-handle
+    pending_plugin_reloads: HashSet<RunPlugin>,
 }
 
 impl WasmBridge {
@@ -157,9 +97,10 @@ impl WasmBridge {
         store: Store,
         plugin_dir: PathBuf,
     ) -> Self {
-        let plugin_map = HashMap::new();
-        let connected_clients: Vec<ClientId> = vec![];
-        let plugin_cache: HashMap<PathBuf, Module> = HashMap::new();
+        let plugin_map = Arc::new(Mutex::new(HashMap::new()));
+        let connected_clients: Arc<Mutex<Vec<ClientId>>> = Arc::new(Mutex::new(vec![]));
+        let plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>> =
+            Arc::new(Mutex::new(HashMap::new()));
         WasmBridge {
             connected_clients,
             plugins,
@@ -169,6 +110,10 @@ impl WasmBridge {
             plugin_cache,
             plugin_map,
             next_plugin_id: 0,
+            cached_events_for_pending_plugins: HashMap::new(),
+            cached_resizes_for_pending_plugins: HashMap::new(),
+            loading_plugins: HashMap::new(),
+            pending_plugin_reloads: HashSet::new(),
         }
     }
     pub fn load_plugin(
@@ -179,210 +124,167 @@ impl WasmBridge {
         client_id: ClientId,
     ) -> Result<u32> {
         // returns the plugin id
-        let err_context = || format!("failed to load plugin for client {client_id}");
+        let err_context = move || format!("failed to load plugin for client {client_id}");
         let plugin_id = self.next_plugin_id;
 
         let plugin = self
             .plugins
             .get(run)
             .with_context(|| format!("failed to resolve plugin {run:?}"))
-            .with_context(err_context)
-            .fatal();
-
-        let (instance, plugin_env) = self
-            .start_plugin(plugin_id, client_id, &plugin, tab_index)
             .with_context(err_context)?;
+        let plugin_name = run.location.to_string();
 
-        let mut main_user_instance = instance.clone();
-        let main_user_env = plugin_env.clone();
-        load_plugin_instance(&mut main_user_instance).with_context(err_context)?;
+        self.cached_events_for_pending_plugins
+            .insert(plugin_id, vec![]);
+        self.cached_resizes_for_pending_plugins
+            .insert(plugin_id, (size.rows, size.cols));
 
-        self.plugin_map.insert(
-            (plugin_id, client_id),
-            (main_user_instance, main_user_env, (size.rows, size.cols)),
-        );
-
-        // clone plugins for the rest of the client ids if they exist
-        for client_id in self.connected_clients.iter() {
-            let mut new_plugin_env = plugin_env.clone();
-            new_plugin_env.client_id = *client_id;
-            let module = instance.module().clone();
-            let wasi = new_plugin_env
-                .wasi_env
-                .import_object(&module)
-                .with_context(err_context)?;
-            let zellij = zellij_exports(&self.store, &new_plugin_env);
-            let mut instance =
-                Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
-            load_plugin_instance(&mut instance).with_context(err_context)?;
-            self.plugin_map.insert(
-                (plugin_id, *client_id),
-                (instance, new_plugin_env, (size.rows, size.cols)),
-            );
-        }
+        let load_plugin_task = task::spawn({
+            let plugin_dir = self.plugin_dir.clone();
+            let plugin_cache = self.plugin_cache.clone();
+            let senders = self.senders.clone();
+            let store = self.store.clone();
+            let plugin_map = self.plugin_map.clone();
+            let connected_clients = self.connected_clients.clone();
+            async move {
+                let _ =
+                    senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
+                let mut loading_indication = LoadingIndication::new(plugin_name.clone());
+                match PluginLoader::start_plugin(
+                    plugin_id,
+                    client_id,
+                    &plugin,
+                    tab_index,
+                    plugin_dir,
+                    plugin_cache,
+                    senders.clone(),
+                    store,
+                    plugin_map,
+                    size,
+                    connected_clients.clone(),
+                    &mut loading_indication,
+                ) {
+                    Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
+                    Err(e) => handle_plugin_loading_failure(
+                        &senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        e,
+                    ),
+                }
+                let _ =
+                    senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(vec![plugin_id]));
+            }
+        });
+        self.loading_plugins
+            .insert((plugin_id, run.clone()), load_plugin_task);
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
     pub fn unload_plugin(&mut self, pid: u32) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         // TODO: remove plugin's own data directory
-        let ids_in_plugin_map: Vec<(u32, ClientId)> = self.plugin_map.keys().copied().collect();
+        let mut plugin_map = self.plugin_map.lock().unwrap();
+        let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
-                drop(self.plugin_map.remove(&(plugin_id, client_id)));
+                drop(plugin_map.remove(&(plugin_id, client_id)));
             }
         }
         Ok(())
     }
-    #[allow(clippy::too_many_arguments)]
-    pub fn start_plugin(
-        &mut self,
-        plugin_id: u32,
-        client_id: ClientId,
-        plugin: &PluginConfig,
-        tab_index: usize,
-    ) -> Result<(Instance, PluginEnv)> {
-        let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
-
-        let plugin_own_data_dir = ZELLIJ_CACHE_DIR.join(Url::from(&plugin.location).to_string());
-        let cache_hit = self.plugin_cache.contains_key(&plugin.path);
-
-        // Create filesystem entries mounted into WASM.
-        // We create them here to get expressive error messages in case they fail.
-        fs::create_dir_all(&plugin_own_data_dir)
-            .with_context(|| format!("failed to create datadir in {plugin_own_data_dir:?}"))
-            .with_context(err_context)?;
-        fs::create_dir_all(ZELLIJ_TMP_DIR.as_path())
-            .with_context(|| format!("failed to create tmpdir at {:?}", &ZELLIJ_TMP_DIR.as_path()))
-            .with_context(err_context)?;
-
-        // We remove the entry here and repopulate it at the very bottom, if everything went well.
-        // We must do that because a `get` will only give us a borrow of the Module. This suffices for
-        // the purpose of setting everything up, but we cannot return a &Module from the "None" match
-        // arm, because we create the Module from scratch there. Any reference passed outside would
-        // outlive the Module we create there. Hence, we remove the plugin here and reinsert it
-        // below...
-        let module = match self.plugin_cache.remove(&plugin.path) {
-            Some(module) => {
-                log::debug!(
-                    "Loaded plugin '{}' from plugin cache",
-                    plugin.path.display()
-                );
-                module
-            },
-            None => {
-                // Populate plugin module cache for this plugin!
-                // Is it in the cache folder already?
-                if plugin._allow_exec_host_cmd {
-                    info!(
-                        "Plugin({:?}) is able to run any host command, this may lead to some security issues!",
-                        plugin.path
-                    );
-                }
-
-                // The plugins blob as stored on the filesystem
-                let wasm_bytes = plugin
-                    .resolve_wasm_bytes(&self.plugin_dir)
-                    .with_context(err_context)
-                    .fatal();
-
-                let hash: String = PortableHash::default()
-                    .hash256(&wasm_bytes)
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect();
-                let cached_path = ZELLIJ_CACHE_DIR.join(&hash);
-
-                let timer = std::time::Instant::now();
-                unsafe {
-                    match Module::deserialize_from_file(&self.store, &cached_path) {
-                        Ok(m) => {
-                            log::info!(
-                                "Loaded plugin '{}' from cache folder at '{}' in {:?}",
-                                plugin.path.display(),
-                                ZELLIJ_CACHE_DIR.display(),
-                                timer.elapsed(),
-                            );
-                            m
-                        },
-                        Err(e) => {
-                            let inner_context = || format!("failed to recover from {e:?}");
-
-                            fs::create_dir_all(ZELLIJ_CACHE_DIR.to_owned())
-                                .map_err(anyError::new)
-                                .and_then(|_| {
-                                    Module::new(&self.store, &wasm_bytes).map_err(anyError::new)
-                                })
-                                .and_then(|m| {
-                                    m.serialize_to_file(&cached_path).map_err(anyError::new)?;
-                                    log::info!(
-                                        "Compiled plugin '{}' in {:?}",
-                                        plugin.path.display(),
-                                        timer.elapsed()
-                                    );
-                                    Ok(m)
-                                })
-                                .with_context(inner_context)
-                                .with_context(err_context)?
-                        },
-                    }
-                }
-            },
-        };
-
-        let mut wasi_env = WasiState::new("Zellij")
-            .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", ".")
-            .and_then(|wasi| wasi.map_dir("/data", &plugin_own_data_dir))
-            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
-            .and_then(|wasi| {
-                wasi.stdin(Box::new(Pipe::new()))
-                    .stdout(Box::new(Pipe::new()))
-                    .stderr(Box::new(LoggingPipe::new(
-                        &plugin.location.to_string(),
-                        plugin_id,
-                    )))
-                    .finalize()
-            })
-            .with_context(err_context)?;
-        let wasi = wasi_env.import_object(&module).with_context(err_context)?;
-
-        let mut mut_plugin = plugin.clone();
-        mut_plugin.set_tab_index(tab_index);
-        let plugin_env = PluginEnv {
-            plugin_id,
-            client_id,
-            plugin: mut_plugin,
-            senders: self.senders.clone(),
-            wasi_env,
-            subscriptions: Arc::new(Mutex::new(HashSet::new())),
-            plugin_own_data_dir,
-            tab_index,
-        };
-
-        let zellij = zellij_exports(&self.store, &plugin_env);
-        let instance =
-            Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
-
-        if !cache_hit {
-            // Check plugin version
-            assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+    pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+        if self.plugin_is_currently_being_loaded(&run_plugin.location) {
+            self.pending_plugin_reloads.insert(run_plugin.clone());
+            return Ok(());
         }
 
-        // Only do an insert when everything went well!
-        let cloned_plugin = plugin.clone();
-        self.plugin_cache.insert(cloned_plugin.path, module);
+        let plugin_ids = self.all_plugin_ids_for_plugin_location(&run_plugin.location)?;
+        for plugin_id in &plugin_ids {
+            let (rows, columns) = self.size_of_plugin_id(*plugin_id).unwrap_or((0, 0));
+            self.cached_events_for_pending_plugins
+                .insert(*plugin_id, vec![]);
+            self.cached_resizes_for_pending_plugins
+                .insert(*plugin_id, (rows, columns));
+        }
 
-        Ok((instance, plugin_env))
+        let first_plugin_id = *plugin_ids.get(0).unwrap(); // this is safe becaise the above
+                                                           // methods always returns at least 1 id
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
+        let load_plugin_task = task::spawn({
+            let plugin_dir = self.plugin_dir.clone();
+            let plugin_cache = self.plugin_cache.clone();
+            let senders = self.senders.clone();
+            let store = self.store.clone();
+            let plugin_map = self.plugin_map.clone();
+            let connected_clients = self.connected_clients.clone();
+            async move {
+                match PluginLoader::reload_plugin(
+                    first_plugin_id,
+                    plugin_dir.clone(),
+                    plugin_cache.clone(),
+                    senders.clone(),
+                    store.clone(),
+                    plugin_map.clone(),
+                    connected_clients.clone(),
+                    &mut loading_indication,
+                ) {
+                    Ok(_) => {
+                        handle_plugin_successful_loading(&senders, first_plugin_id);
+                        for plugin_id in &plugin_ids {
+                            if plugin_id == &first_plugin_id {
+                                // no need to reload the plugin we just reloaded
+                                continue;
+                            }
+                            let mut loading_indication = LoadingIndication::new("".into());
+                            match PluginLoader::reload_plugin_from_memory(
+                                *plugin_id,
+                                plugin_dir.clone(),
+                                plugin_cache.clone(),
+                                senders.clone(),
+                                store.clone(),
+                                plugin_map.clone(),
+                                connected_clients.clone(),
+                                &mut loading_indication,
+                            ) {
+                                Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
+                                Err(e) => handle_plugin_loading_failure(
+                                    &senders,
+                                    *plugin_id,
+                                    &mut loading_indication,
+                                    e,
+                                ),
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        for plugin_id in &plugin_ids {
+                            handle_plugin_loading_failure(
+                                &senders,
+                                *plugin_id,
+                                &mut loading_indication,
+                                &e,
+                            );
+                        }
+                    },
+                }
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_ids));
+            }
+        });
+        self.loading_plugins
+            .insert((first_plugin_id, run_plugin.clone()), load_plugin_task);
+        Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
         let err_context = || format!("failed to add plugins for client {client_id}");
 
-        self.connected_clients.push(client_id);
+        self.connected_clients.lock().unwrap().push(client_id);
 
         let mut seen = HashSet::new();
         let mut new_plugins = HashMap::new();
-        for (&(plugin_id, _), (instance, plugin_env, (rows, columns))) in &self.plugin_map {
+        let mut plugin_map = self.plugin_map.lock().unwrap();
+        for (&(plugin_id, _), (instance, plugin_env, (rows, columns))) in &*plugin_map {
             if seen.contains(&plugin_id) {
                 continue;
             }
@@ -404,7 +306,7 @@ impl WasmBridge {
             let mut instance =
                 Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
             load_plugin_instance(&mut instance).with_context(err_context)?;
-            self.plugin_map.insert(
+            plugin_map.insert(
                 (plugin_id, client_id),
                 (instance, new_plugin_env, (rows, columns)),
             );
@@ -414,9 +316,16 @@ impl WasmBridge {
     pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = || format!("failed to resize plugin {pid}");
         let mut plugin_bytes = vec![];
+        let mut plugin_map = self.plugin_map.lock().unwrap();
         for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
-            self.plugin_map.iter_mut()
+            plugin_map.iter_mut()
         {
+            if self
+                .cached_resizes_for_pending_plugins
+                .contains_key(&plugin_id)
+            {
+                continue;
+            }
             if *plugin_id == pid {
                 *current_rows = new_rows;
                 *current_columns = new_columns;
@@ -440,6 +349,12 @@ impl WasmBridge {
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
+        for (plugin_id, mut current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
+            if *plugin_id == pid {
+                current_size.0 = new_rows;
+                current_size.1 = new_columns;
+            }
+        }
         let _ = self
             .senders
             .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
@@ -451,11 +366,16 @@ impl WasmBridge {
     ) -> Result<()> {
         let err_context = || "failed to update plugin state".to_string();
 
+        let plugin_map = self.plugin_map.lock().unwrap();
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in
-                &self.plugin_map
-            {
+            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
+                if self
+                    .cached_events_for_pending_plugins
+                    .contains_key(&plugin_id)
+                {
+                    continue;
+                }
                 let subs = plugin_env
                     .subscriptions
                     .lock()
@@ -470,48 +390,21 @@ impl WasmBridge {
                         || (cid.is_none() && pid == Some(plugin_id))
                         || (cid == Some(client_id) && pid == Some(plugin_id)))
                 {
-                    let update = instance
-                        .exports
-                        .get_function("update")
-                        .with_context(err_context)?;
-                    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
-                    let update_return = update.call(&[]).or_else::<anyError, _>(|e| {
-                        match e.downcast::<serde_json::Error>() {
-                            Ok(_) => panic!(
-                                "{}",
-                                anyError::new(VersionMismatchError::new(
-                                    VERSION,
-                                    "Unavailable",
-                                    &plugin_env.plugin.path,
-                                    plugin_env.plugin.is_builtin(),
-                                ))
-                            ),
-                            Err(e) => Err(e).with_context(err_context),
-                        }
-                    })?;
-                    let should_render = match update_return.get(0) {
-                        Some(Value::I32(n)) => *n == 1,
-                        _ => false,
-                    };
-
-                    if *rows > 0 && *columns > 0 && should_render {
-                        let rendered_bytes = instance
-                            .exports
-                            .get_function("render")
-                            .map_err(anyError::new)
-                            .and_then(|render| {
-                                render
-                                    .call(&[Value::I32(*rows as i32), Value::I32(*columns as i32)])
-                                    .map_err(anyError::new)
-                            })
-                            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-                            .with_context(err_context)?;
-                        plugin_bytes.push((
-                            plugin_id,
-                            client_id,
-                            rendered_bytes.as_bytes().to_vec(),
-                        ));
-                    }
+                    apply_event_to_plugin(
+                        plugin_id,
+                        client_id,
+                        &instance,
+                        &plugin_env,
+                        &event,
+                        *rows,
+                        *columns,
+                        &mut plugin_bytes,
+                    )?;
+                }
+            }
+            for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
+                if pid.is_none() || pid.as_ref() == Some(plugin_id) {
+                    cached_events.push(event.clone());
                 }
             }
         }
@@ -520,52 +413,162 @@ impl WasmBridge {
             .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
+    pub fn apply_cached_events(&mut self, plugin_ids: Vec<u32>) -> Result<()> {
+        let mut applied_plugin_paths = HashSet::new();
+        for plugin_id in plugin_ids {
+            self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
+            if let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id) {
+                applied_plugin_paths.insert(run_plugin.clone());
+            }
+            self.loading_plugins
+                .retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
+        }
+        for run_plugin in applied_plugin_paths.drain() {
+            if self.pending_plugin_reloads.remove(&run_plugin) {
+                let _ = self.reload_plugin(&run_plugin);
+            }
+        }
+        Ok(())
+    }
     pub fn remove_client(&mut self, client_id: ClientId) {
-        self.connected_clients.retain(|c| c != &client_id);
+        self.connected_clients
+            .lock()
+            .unwrap()
+            .retain(|c| c != &client_id);
+    }
+    pub fn cleanup(&mut self) {
+        for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
+            drop(loading_plugin_task.cancel());
+        }
+    }
+    fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
+        self.loading_plugins
+            .iter()
+            .find(|((p_id, _run_plugin), _)| p_id == &plugin_id)
+            .map(|((_p_id, run_plugin), _)| run_plugin)
+    }
+    fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
+        let err_context = || format!("Failed to apply cached events to plugin");
+        if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            let all_connected_clients: Vec<ClientId> = self
+                .connected_clients
+                .lock()
+                .unwrap()
+                .iter()
+                .copied()
+                .collect();
+            for client_id in &all_connected_clients {
+                let mut plugin_bytes = vec![];
+                if let Some((instance, plugin_env, (rows, columns))) =
+                    plugin_map.get_mut(&(plugin_id, *client_id))
+                {
+                    let subs = plugin_env
+                        .subscriptions
+                        .lock()
+                        .to_anyhow()
+                        .with_context(err_context)?;
+                    for event in events.clone() {
+                        let event_type =
+                            EventType::from_str(&event.to_string()).with_context(err_context)?;
+                        if !subs.contains(&event_type) {
+                            continue;
+                        }
+                        apply_event_to_plugin(
+                            plugin_id,
+                            *client_id,
+                            &instance,
+                            &plugin_env,
+                            &event,
+                            *rows,
+                            *columns,
+                            &mut plugin_bytes,
+                        )?;
+                    }
+                    let _ = self
+                        .senders
+                        .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                }
+            }
+        }
+        if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
+            self.resize_plugin(plugin_id, columns, rows)?;
+        }
+        Ok(())
+    }
+    fn plugin_is_currently_being_loaded(&self, plugin_location: &RunPluginLocation) -> bool {
+        self.loading_plugins
+            .iter()
+            .find(|((_plugin_id, run_plugin), _)| &run_plugin.location == plugin_location)
+            .is_some()
+    }
+    fn all_plugin_ids_for_plugin_location(
+        &self,
+        plugin_location: &RunPluginLocation,
+    ) -> Result<Vec<PluginId>> {
+        let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
+        let plugin_ids: Vec<PluginId> = self
+            .plugin_map
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(
+                |((_plugin_id, _client_id), (_instance, plugin_env, _size))| {
+                    &plugin_env.plugin.location == plugin_location
+                },
+            )
+            .map(|((plugin_id, _client_id), _)| *plugin_id)
+            .collect();
+        if plugin_ids.is_empty() {
+            return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
+        }
+        Ok(plugin_ids)
+    }
+    fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> {
+        // (rows/colums)
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|((p_id, _client_id), (_instance, _plugin_env, _size))| *p_id == plugin_id)
+            .map(|((_p_id, _client_id), (_instance, _plugin_env, size))| *size)
+    }
+    fn start_plugin_loading_indication(
+        &self,
+        plugin_ids: &[PluginId],
+        loading_indication: &LoadingIndication,
+    ) {
+        for plugin_id in plugin_ids {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::StartPluginLoadingIndication(
+                    *plugin_id,
+                    loading_indication.clone(),
+                ));
+            let _ = self
+                .senders
+                .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(*plugin_id));
+        }
     }
 }
 
-// Returns `Ok` if the plugin version matches the zellij version.
-// Returns an `Err` otherwise.
-fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<()> {
-    let err_context = || {
-        format!(
-            "failed to determine plugin version for plugin {}",
-            plugin_env.plugin.path.display()
-        )
-    };
+fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
+    let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
+    let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+}
 
-    let plugin_version_func = match instance.exports.get_function("plugin_version") {
-        Ok(val) => val,
-        Err(_) => {
-            return Err(anyError::new(VersionMismatchError::new(
-                VERSION,
-                "Unavailable",
-                &plugin_env.plugin.path,
-                plugin_env.plugin.is_builtin(),
-            )))
-        },
-    };
-
-    let plugin_version = plugin_version_func
-        .call(&[])
-        .map_err(anyError::new)
-        .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-        .and_then(|string| Version::parse(&string).context("failed to parse plugin version"))
-        .with_context(err_context)?;
-    let zellij_version = Version::parse(VERSION)
-        .context("failed to parse zellij version")
-        .with_context(err_context)?;
-    if plugin_version != zellij_version {
-        return Err(anyError::new(VersionMismatchError::new(
-            VERSION,
-            &plugin_version.to_string(),
-            &plugin_env.plugin.path,
-            plugin_env.plugin.is_builtin(),
-        )));
-    }
-
-    Ok(())
+fn handle_plugin_loading_failure(
+    senders: &ThreadSenders,
+    plugin_id: PluginId,
+    loading_indication: &mut LoadingIndication,
+    error: impl Display,
+) {
+    let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
+    loading_indication.indicate_loading_error(error.to_string());
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
 }
 
 fn load_plugin_instance(instance: &mut Instance) -> Result<()> {
@@ -852,4 +855,57 @@ pub fn wasi_read_object<T: DeserializeOwned>(wasi_env: &WasiEnv) -> Result<T> {
     wasi_read_string(wasi_env)
         .and_then(|string| serde_json::from_str(&string).map_err(anyError::new))
         .with_context(|| format!("failed to deserialize object from WASI env '{wasi_env:?}'"))
+}
+
+pub fn apply_event_to_plugin(
+    plugin_id: u32,
+    client_id: ClientId,
+    instance: &Instance,
+    plugin_env: &PluginEnv,
+    event: &Event,
+    rows: usize,
+    columns: usize,
+    plugin_bytes: &mut Vec<(u32, ClientId, Vec<u8>)>,
+) -> Result<()> {
+    let err_context = || format!("Failed to apply event to plugin {plugin_id}");
+    let update = instance
+        .exports
+        .get_function("update")
+        .with_context(err_context)?;
+    wasi_write_object(&plugin_env.wasi_env, &event).with_context(err_context)?;
+    let update_return =
+        update
+            .call(&[])
+            .or_else::<anyError, _>(|e| match e.downcast::<serde_json::Error>() {
+                Ok(_) => panic!(
+                    "{}",
+                    anyError::new(VersionMismatchError::new(
+                        VERSION,
+                        "Unavailable",
+                        &plugin_env.plugin.path,
+                        plugin_env.plugin.is_builtin(),
+                    ))
+                ),
+                Err(e) => Err(e).with_context(err_context),
+            })?;
+    let should_render = match update_return.get(0) {
+        Some(Value::I32(n)) => *n == 1,
+        _ => false,
+    };
+
+    if rows > 0 && columns > 0 && should_render {
+        let rendered_bytes = instance
+            .exports
+            .get_function("render")
+            .map_err(anyError::new)
+            .and_then(|render| {
+                render
+                    .call(&[Value::I32(rows as i32), Value::I32(columns as i32)])
+                    .map_err(anyError::new)
+            })
+            .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
+            .with_context(err_context)?;
+        plugin_bytes.push((plugin_id, client_id, rendered_bytes.as_bytes().to_vec()));
+    }
+    Ok(())
 }

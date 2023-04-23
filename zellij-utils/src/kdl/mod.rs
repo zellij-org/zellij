@@ -68,6 +68,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
+                "Clear" => Ok(Action::ClearScreen),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -689,6 +690,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -1302,6 +1304,8 @@ impl Options {
         let default_shell =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
                 .map(|(string, _entry)| PathBuf::from(string));
+        let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
+            .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
         let auto_layout =
@@ -1356,6 +1360,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -1699,7 +1704,12 @@ impl UiConfig {
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
                     .unwrap_or(false);
-            let frame_config = FrameConfig { rounded_corners };
+            let hide_session_name =
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+            let frame_config = FrameConfig {
+                rounded_corners,
+                hide_session_name,
+            };
             ui_config.pane_frames = frame_config;
         }
         Ok(ui_config)

@@ -18,7 +18,7 @@ use crate::{
 };
 use stacked_panes::StackedPanes;
 use zellij_utils::{
-    data::{ModeInfo, ResizeStrategy, Style},
+    data::{Direction, ModeInfo, ResizeStrategy, Style},
     errors::prelude::*,
     input::{command::RunCommand, layout::SplitDirection},
     pane_size::{Offset, PaneGeom, Size, SizeInPixels, Viewport},
@@ -176,13 +176,14 @@ impl TiledPanes {
             *self.display_area.borrow(),
             *self.viewport.borrow(),
         );
-        pane_grid
+        let has_room_for_new_pane = pane_grid
             .find_room_for_new_pane(cursor_height_width_ratio)
-            .is_some()
+            .is_some();
+        has_room_for_new_pane || pane_grid.has_room_for_new_stacked_pane()
     }
     fn add_pane(&mut self, pane_id: PaneId, mut pane: Box<dyn Pane>, should_relayout: bool) {
         let cursor_height_width_ratio = self.cursor_height_width_ratio();
-        let pane_grid = TiledPaneGrid::new(
+        let mut pane_grid = TiledPaneGrid::new(
             &mut self.panes,
             &self.panes_to_hide,
             *self.display_area.borrow(),
@@ -190,18 +191,34 @@ impl TiledPanes {
         );
         let pane_id_and_split_direction =
             pane_grid.find_room_for_new_pane(cursor_height_width_ratio);
-        if let Some((pane_id_to_split, split_direction)) = pane_id_and_split_direction {
-            // this unwrap is safe because floating panes should not be visible if there are no floating panes
-            let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
-            let size_of_both_panes = pane_to_split.position_and_size();
-            if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes) {
-                pane_to_split.set_geom(first_geom);
-                pane.set_geom(second_geom);
-                self.panes.insert(pane_id, pane);
-                if should_relayout {
-                    self.relayout(!split_direction);
+        match pane_id_and_split_direction {
+            Some((pane_id_to_split, split_direction)) => {
+                // this unwrap is safe because floating panes should not be visible if there are no floating panes
+                let pane_to_split = self.panes.get_mut(&pane_id_to_split).unwrap();
+                let size_of_both_panes = pane_to_split.position_and_size();
+                if let Some((first_geom, second_geom)) = split(split_direction, &size_of_both_panes)
+                {
+                    pane_to_split.set_geom(first_geom);
+                    pane.set_geom(second_geom);
+                    self.panes.insert(pane_id, pane);
+                    if should_relayout {
+                        self.relayout(!split_direction);
+                    }
                 }
-            }
+            },
+            None => {
+                // we couldn't add the pane normally, let's see if there's room in one of the
+                // stacks...
+                match pane_grid.make_room_in_stack_for_pane() {
+                    Ok(new_pane_geom) => {
+                        pane.set_geom(new_pane_geom);
+                        self.panes.insert(pane_id, pane); // TODO: is set_geom the right one?
+                    },
+                    Err(e) => {
+                        log::error!("Failed to add pane to stack: {:?}", e);
+                    },
+                }
+            },
         }
     }
     pub fn fixed_pane_geoms(&self) -> Vec<Viewport> {
@@ -406,7 +423,7 @@ impl TiledPanes {
                 .unwrap_or(false)
             {
                 let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                    .focus_pane(&pane_id);
+                    .expand_pane(&pane_id);
             }
             self.active_panes
                 .insert(client_id, pane_id, &mut self.panes);
@@ -429,7 +446,7 @@ impl TiledPanes {
                     {
                         let _ =
                             StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                                .focus_pane(&pane_id);
+                                .expand_pane(&pane_id);
                     }
                     self.active_panes
                         .insert(client_id, *pane_id, &mut self.panes);
@@ -448,7 +465,7 @@ impl TiledPanes {
                                 &mut self.panes,
                                 &self.panes_to_hide,
                             )
-                            .focus_pane(&pane_id);
+                            .expand_pane(&pane_id);
                         }
                         self.active_panes
                             .insert(client_id, pane_id, &mut self.panes);
@@ -460,6 +477,33 @@ impl TiledPanes {
         self.set_force_render();
         self.reapply_pane_frames();
     }
+    pub fn expand_pane_in_stack(&mut self, pane_id: PaneId) -> Vec<PaneId> {
+        // returns all pane ids in stack
+        match StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
+            .expand_pane(&pane_id)
+        {
+            Ok(all_panes_in_stack) => {
+                let connected_clients: Vec<ClientId> =
+                    self.connected_clients.borrow().iter().copied().collect();
+                for client_id in connected_clients {
+                    if let Some(focused_pane_id_for_client) = self.active_panes.get(&client_id) {
+                        if all_panes_in_stack.contains(focused_pane_id_for_client) {
+                            self.active_panes
+                                .insert(client_id, pane_id, &mut self.panes);
+                            self.set_pane_active_at(pane_id);
+                        }
+                    }
+                }
+                self.set_force_render();
+                self.reapply_pane_frames();
+                all_panes_in_stack
+            },
+            Err(e) => {
+                log::error!("Failed to expand pane in stack: {:?}", e);
+                vec![]
+            },
+        }
+    }
     pub fn focus_pane(&mut self, pane_id: PaneId, client_id: ClientId) {
         if self
             .panes
@@ -468,7 +512,7 @@ impl TiledPanes {
             .unwrap_or(false)
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                .focus_pane(&pane_id);
+                .expand_pane(&pane_id);
             self.reapply_pane_frames();
         }
 
@@ -809,7 +853,7 @@ impl TiledPanes {
             .unwrap_or(false)
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                .focus_pane(&next_active_pane_id);
+                .expand_pane(&next_active_pane_id);
             self.reapply_pane_frames();
         }
 
@@ -841,7 +885,7 @@ impl TiledPanes {
             .unwrap_or(false)
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                .focus_pane(&next_active_pane_id);
+                .expand_pane(&next_active_pane_id);
             self.reapply_pane_frames();
         }
         for client_id in connected_clients {
@@ -861,6 +905,35 @@ impl TiledPanes {
         character_cell_size.map(|size_in_pixels| {
             (size_in_pixels.height as f64 / size_in_pixels.width as f64).round() as usize
         })
+    }
+    pub fn focus_pane_on_edge(&mut self, direction: Direction, client_id: ClientId) {
+        let pane_grid = TiledPaneGrid::new(
+            &mut self.panes,
+            &self.panes_to_hide,
+            *self.display_area.borrow(),
+            *self.viewport.borrow(),
+        );
+        let next_index = pane_grid.pane_id_on_edge(direction).unwrap();
+        // render previously active pane so that its frame does not remain actively
+        // colored
+        let previously_active_pane = self
+            .panes
+            .get_mut(self.active_panes.get(&client_id).unwrap())
+            .unwrap();
+
+        previously_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        previously_active_pane.render_full_viewport();
+
+        let next_active_pane = self.panes.get_mut(&next_index).unwrap();
+        next_active_pane.set_should_render(true);
+        // we render the full viewport to remove any ui elements that might have been
+        // there before (eg. another user's cursor)
+        next_active_pane.render_full_viewport();
+
+        self.focus_pane(next_index, client_id);
+        self.set_pane_active_at(next_index);
     }
     pub fn move_focus_left(&mut self, client_id: ClientId) -> bool {
         match self.get_active_pane_id(client_id) {
@@ -1120,7 +1193,7 @@ impl TiledPanes {
             .unwrap_or(false)
         {
             let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                .focus_pane(&new_position_id);
+                .expand_pane(&new_position_id);
             self.reapply_pane_frames();
         }
 
@@ -1361,6 +1434,10 @@ impl TiledPanes {
             .iter()
             .map(|(cid, pid)| (*cid, *pid))
             .collect();
+        let clients_need_to_be_moved = active_panes.iter().any(|(_c_id, p_id)| *p_id == pane_id);
+        if !clients_need_to_be_moved {
+            return;
+        }
 
         // find the most recently active pane
         let mut next_active_pane_candidates: Vec<(&PaneId, &Box<dyn Pane>)> = self
@@ -1383,9 +1460,7 @@ impl TiledPanes {
                     .map(|p| p.current_geom().is_stacked)
                     .unwrap_or(false)
                 {
-                    let _ = StackedPanes::new_from_btreemap(&mut self.panes, &self.panes_to_hide)
-                        .focus_pane(&next_active_pane_id);
-                    self.reapply_pane_frames();
+                    self.expand_pane_in_stack(next_active_pane_id);
                 }
                 for (client_id, active_pane_id) in active_panes {
                     if active_pane_id == pane_id {

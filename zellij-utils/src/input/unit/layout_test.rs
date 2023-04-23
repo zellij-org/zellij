@@ -1009,6 +1009,17 @@ fn combined_tab_and_pane_template_both_with_children() {
 }
 
 #[test]
+fn layout_with_pane_excluded_from_sync() {
+    let kdl_layout = r#"
+        layout {
+            pane exclude_from_sync=true
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn cannot_define_tab_template_name_with_space() {
     let kdl_layout = r#"
         layout {
@@ -1882,10 +1893,39 @@ fn can_define_stacked_children_for_pane_template() {
 }
 
 #[test]
+fn can_define_a_stack_with_an_expanded_pane() {
+    let kdl_layout = r#"
+        layout {
+           pane stacked=true {
+               pane
+               pane expanded=true
+               pane
+           }
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None).unwrap();
+    assert_snapshot!(format!("{:#?}", layout));
+}
+
+#[test]
 fn cannot_define_stacked_panes_for_bare_node() {
     let kdl_layout = r#"
         layout {
            pane stacked=true
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "error provided for tab name with space");
+}
+
+#[test]
+fn cannot_define_an_expanded_pane_outside_of_a_stack() {
+    let kdl_layout = r#"
+        layout {
+            pane {
+                pane
+                pane expanded=true
+            }
         }
     "#;
     let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);

@@ -2,7 +2,8 @@
 
 use super::command::RunCommandAction;
 use super::layout::{
-    FloatingPaneLayout, Layout, SwapFloatingLayout, SwapTiledLayout, TiledPaneLayout,
+    FloatingPaneLayout, Layout, RunPluginLocation, SwapFloatingLayout, SwapTiledLayout,
+    TiledPaneLayout,
 };
 use crate::cli::CliAction;
 use crate::data::InputMode;
@@ -15,6 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use std::path::PathBuf;
 use std::str::FromStr;
+use url::Url;
 
 use crate::position::Position;
 
@@ -119,6 +121,8 @@ pub enum Action {
     MoveFocusOrTab(Direction),
     MovePane(Option<Direction>),
     MovePaneBackwards,
+    /// Clear all buffers of a current screen
+    ClearScreen,
     /// Dumps the screen to a file
     DumpScreen(String, bool),
     /// Scroll up in focus pane.
@@ -225,6 +229,10 @@ pub enum Action {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    /// Open a new tiled (embedded, non-floating) plugin pane
+    NewTiledPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    NewFloatingPluginPane(RunPluginLocation, Option<String>), // String is an optional name
+    StartOrReloadPlugin(Url),
 }
 
 impl Action {
@@ -251,6 +259,7 @@ impl Action {
             CliAction::MoveFocusOrTab { direction } => Ok(vec![Action::MoveFocusOrTab(direction)]),
             CliAction::MovePane { direction } => Ok(vec![Action::MovePane(direction)]),
             CliAction::MovePaneBackwards => Ok(vec![Action::MovePaneBackwards]),
+            CliAction::Clear => Ok(vec![Action::ClearScreen]),
             CliAction::DumpScreen { path, full } => Ok(vec![Action::DumpScreen(
                 path.as_os_str().to_string_lossy().into(),
                 full,
@@ -270,13 +279,34 @@ impl Action {
             CliAction::NewPane {
                 direction,
                 command,
+                plugin,
                 cwd,
                 floating,
                 name,
                 close_on_exit,
                 start_suspended,
             } => {
-                if !command.is_empty() {
+                if let Some(plugin) = plugin {
+                    if floating {
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin loction {plugin}: {}", e)
+                        })?;
+                        Ok(vec![Action::NewFloatingPluginPane(plugin, name)])
+                    } else {
+                        let plugin = RunPluginLocation::parse(&plugin).map_err(|e| {
+                            format!("Failed to parse plugin location {plugin}: {}", e)
+                        })?;
+                        // it is intentional that a new tiled plugin pane cannot include a
+                        // direction
+                        // this is because the cli client opening a tiled plugin pane is a
+                        // different client than the one opening the pane, and this can potentially
+                        // create very confusing races if the client changes focus while the plugin
+                        // is being loaded
+                        // this is not the case with terminal panes for historical reasons of
+                        // backwards compatibility to a time before we had auto layouts
+                        Ok(vec![Action::NewTiledPluginPane(plugin, name)])
+                    }
+                } else if !command.is_empty() {
                     let mut command = command.clone();
                     let (command, args) = (PathBuf::from(command.remove(0)), command);
                     let current_dir = get_current_dir();
@@ -412,16 +442,8 @@ impl Action {
                     if tabs.len() > 1 {
                         return Err(format!("Tab layout cannot itself have tabs"));
                     } else if !tabs.is_empty() {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_tiled_layouts.clone())
-                        };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_floating_layouts.clone())
-                        };
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (tab_name, layout, floating_panes_layout) =
                             tabs.drain(..).next().unwrap();
                         let name = tab_name.or(name);
@@ -433,16 +455,8 @@ impl Action {
                             name,
                         )])
                     } else {
-                        let swap_tiled_layouts = if layout.swap_tiled_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_tiled_layouts.clone())
-                        };
-                        let swap_floating_layouts = if layout.swap_floating_layouts.is_empty() {
-                            None
-                        } else {
-                            Some(layout.swap_floating_layouts.clone())
-                        };
+                        let swap_tiled_layouts = Some(layout.swap_tiled_layouts.clone());
+                        let swap_floating_layouts = Some(layout.swap_floating_layouts.clone());
                         let (layout, floating_panes_layout) = layout.new_tab();
                         Ok(vec![Action::NewTab(
                             Some(layout),
@@ -459,6 +473,7 @@ impl Action {
             CliAction::PreviousSwapLayout => Ok(vec![Action::PreviousSwapLayout]),
             CliAction::NextSwapLayout => Ok(vec![Action::NextSwapLayout]),
             CliAction::QueryTabNames => Ok(vec![Action::QueryTabNames]),
+            CliAction::StartOrReloadPlugin { url } => Ok(vec![Action::StartOrReloadPlugin(url)]),
         }
     }
 }

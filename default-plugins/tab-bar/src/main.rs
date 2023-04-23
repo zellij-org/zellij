@@ -120,6 +120,7 @@ impl ZellijPlugin for State {
             cols.saturating_sub(1),
             self.mode_info.style.colors,
             self.mode_info.capabilities,
+            self.mode_info.style.hide_session_name,
         );
         let mut s = String::new();
         let mut len_cnt = 0;

@@ -298,6 +298,7 @@ impl InputHandler {
                     .send_to_server(ClientToServerMsg::Action(action, None));
             },
             Action::CloseFocus
+            | Action::ClearScreen
             | Action::NewPane(..)
             | Action::Run(_)
             | Action::ToggleFloatingPanes

@@ -8,6 +8,7 @@ Options {
     theme: None,
     default_mode: None,
     default_shell: None,
+    default_cwd: None,
     default_layout: None,
     layout_dir: None,
     theme_dir: None,
