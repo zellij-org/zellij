@@ -107,7 +107,7 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(
                 sh,
-                "{cargo} test --no-default-features --release -- --ignored --nocapture --test-threads 1"
+                "{cargo} test --no-default-features -- --ignored --nocapture --test-threads 1"
             )
             .args(args)
             .run()
