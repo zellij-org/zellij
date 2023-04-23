@@ -37,8 +37,8 @@ jobs:
     - name: Add musl target
       run: rustup target add x86_64-unknown-linux-musl
       #run: cargo install --debug cargo-make
-    # - name: Build asset
-    #   run: cargo xtask ci e2e --build
+    - name: Build asset
+      run: cargo xtask ci e2e --build
       # we copy this manually into the target folder instead of mounting it because
       # github actions creates the service first, and if it has a mount that is part
       # of your yet unchecked out code, you cannot checkout the code after the mount

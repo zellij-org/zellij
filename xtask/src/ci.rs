@@ -102,24 +102,12 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
     let err_context = "failed to run E2E tests";
 
     let _pd = sh.push_dir(crate::project_root());
-    e2e_build(sh).context(err_context)?;
-
-    // Build debug plugins for test binary
-    // build::build(
-    //     sh,
-    //     flags::Build {
-    //         release: false,
-    //         no_plugins: false,
-    //         plugins_only: true,
-    //     },
-    // )
-    // .context(err_context)?;
 
     crate::cargo()
         .and_then(|cargo| {
             cmd!(
                 sh,
-                "{cargo} test --no-default-features -- --ignored --nocapture --test-threads 1"
+                "{cargo} test --no-default-features --release -- --ignored --nocapture --test-threads 1"
             )
             .args(args)
             .run()
