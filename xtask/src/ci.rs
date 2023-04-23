@@ -90,7 +90,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(
                 sh,
-                "{cargo} build --verbose --release --target x86_64-unknown-linux-musl"
+                "{cargo} build --release --target x86_64-unknown-linux-musl"
             )
             .run()
             .map_err(anyhow::Error::new)
@@ -105,15 +105,15 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
     e2e_build(sh).context(err_context)?;
 
     // Build debug plugins for test binary
-    build::build(
-        sh,
-        flags::Build {
-            release: false,
-            no_plugins: false,
-            plugins_only: true,
-        },
-    )
-    .context(err_context)?;
+    // build::build(
+    //     sh,
+    //     flags::Build {
+    //         release: false,
+    //         no_plugins: false,
+    //         plugins_only: true,
+    //     },
+    // )
+    // .context(err_context)?;
 
     crate::cargo()
         .and_then(|cargo| {
