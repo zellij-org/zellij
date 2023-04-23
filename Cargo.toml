@@ -44,6 +44,13 @@ members = [
     ".",
 ]
 
+[profile.dev-opt]
+inherits = "dev"
+
+
+[profile.dev-opt.package."*"]
+opt-level = 3
+
 [profile.release]
 lto = true
 strip = true

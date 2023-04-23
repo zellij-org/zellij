@@ -95,6 +95,12 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
 
     let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
 
+    let profile = if flags.disable_deps_optimize {
+        "dev"
+    } else {
+        "dev-opt"
+    };
+
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
 
@@ -105,6 +111,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
                     .args(singlepass.iter().flatten())
+                    .args(["--profile", profile])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
                     .run()
@@ -124,6 +131,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(sh, "{cargo} run")
                 .args(singlepass.iter().flatten())
+                .args(["--profile", profile])
                 .args(["--"])
                 .args(&flags.args)
                 .run()
