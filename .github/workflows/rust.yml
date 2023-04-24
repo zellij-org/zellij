@@ -40,6 +40,9 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    env:
+      CARGO_LOG: "cargo::core::compiler::fingerprint=debug"
+
     steps:
       - uses: actions/checkout@v3
       - name: Setup toolchain
