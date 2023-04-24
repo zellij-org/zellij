@@ -43,8 +43,6 @@ jobs:
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-        with:
-          key: "test"
       - name: Test
         run: cargo xtask test
 
