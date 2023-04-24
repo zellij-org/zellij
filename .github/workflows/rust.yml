@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-    name: Build & Test
+    name: Build
 
     strategy:
       fail-fast: false
@@ -27,6 +27,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo xtask build
+
+  test:
+    name: Test
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo xtask test
 
