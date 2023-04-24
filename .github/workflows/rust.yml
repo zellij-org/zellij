@@ -25,6 +25,8 @@ jobs:
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: "test-key"
       - name: Build
         run: cargo xtask build
 
