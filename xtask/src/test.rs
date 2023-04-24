@@ -21,6 +21,11 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
     .context(err_context)?;
 
     for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+        // the workspace root only contains e2e tests, skip it
+        if *crate_name == "." {
+            continue;
+        }
+
         let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!("");
@@ -28,6 +33,7 @@ pub fn test(sh: &Shell, flags: flags::Test) -> anyhow::Result<()> {
         crate::status(&msg);
         println!("{}", msg);
 
+        // Override wasm32-wasi target for plugins only
         let cmd = if crate_name.contains("plugins") {
             cmd!(sh, "{cargo} test --target {host_triple} --")
         } else {
