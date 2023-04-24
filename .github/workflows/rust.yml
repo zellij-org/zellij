@@ -25,8 +25,6 @@ jobs:
       - name: Setup toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
-        with:
-          key: "test-key"
       - name: Build
         run: cargo xtask build
 
@@ -39,9 +37,6 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
-
-    env:
-      CARGO_LOG: "cargo::core::compiler::fingerprint=debug"
 
     steps:
       - uses: actions/checkout@v3
