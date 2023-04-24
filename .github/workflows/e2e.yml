@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
+  test-e2e:
     name: Build generic binary and run tests on it
     runs-on: ubuntu-latest
     environment: cachix
