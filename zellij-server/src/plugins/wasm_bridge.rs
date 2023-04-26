@@ -384,9 +384,9 @@ impl WasmBridge {
     pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
         // let mut plugin_bytes = vec![];
-        let mut plugin_map = self.plugin_map.lock().unwrap();
+        // let mut plugin_map = self.plugin_map.lock().unwrap();
         // for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
-        for ((plugin_id, client_id), (running_plugin, subscriptions)) in plugin_map.iter_mut() {
+        for ((plugin_id, client_id), (running_plugin, subscriptions)) in self.plugin_map.lock().unwrap().iter_mut() {
             if self
                 .cached_resizes_for_pending_plugins
                 .contains_key(&plugin_id)
@@ -448,11 +448,11 @@ impl WasmBridge {
     ) -> Result<()> {
         let err_context = || "failed to update plugin state".to_string();
 
-        let plugin_map = self.plugin_map.lock().unwrap();
+        // let plugin_map = self.plugin_map.lock().unwrap();
         // let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
             // for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
-            for (&(plugin_id, client_id), (running_plugin, subscriptions)) in &*plugin_map {
+            for (&(plugin_id, client_id), (running_plugin, subscriptions)) in &*self.plugin_map.lock().unwrap() {
                 if self
                     .cached_events_for_pending_plugins
                     .contains_key(&plugin_id)
@@ -533,15 +533,11 @@ impl WasmBridge {
             .retain(|c| c != &client_id);
 
         // remove client's plugins
-        let ids_in_plugin_map = {
-
-            let mut plugin_map = self.plugin_map.lock().unwrap();
-            let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
-            ids_in_plugin_map
-        };
+        let mut plugin_map = self.plugin_map.lock().unwrap();
+        let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
         for (p_id, c_id) in ids_in_plugin_map {
             if c_id == client_id {
-                drop(self.plugin_map.lock().unwrap().remove(&(p_id, c_id)));
+                drop(plugin_map.remove(&(p_id, c_id)));
             }
         }
     }
