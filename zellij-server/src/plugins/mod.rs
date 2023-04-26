@@ -91,7 +91,7 @@ pub(crate) fn plugin_thread_main(
         err_ctx.add_call(ContextType::Plugin((&event).into()));
         match event {
             PluginInstruction::Load(should_float, pane_title, run, tab_index, client_id, size) => {
-                match wasm_bridge.load_plugin(&run, tab_index, size, client_id) {
+                match wasm_bridge.load_plugin(&run, tab_index, size, Some(client_id)) {
                     Ok(plugin_id) => {
                         drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                             should_float,
@@ -128,7 +128,9 @@ pub(crate) fn plugin_thread_main(
                 Err(err) => match err.downcast_ref::<ZellijError>() {
                     Some(ZellijError::PluginDoesNotExist) => {
                         log::warn!("Plugin {} not found, starting it instead", run.location);
-                        match wasm_bridge.load_plugin(&run, tab_index, size, client_id) {
+                        // we intentionally do not provide the client_id here because it belongs to
+                        // the cli who spawned the command and is not an existing client_id
+                        match wasm_bridge.load_plugin(&run, tab_index, size, None) {
                             Ok(plugin_id) => {
                                 drop(bus.senders.send_to_screen(ScreenInstruction::AddPlugin(
                                     should_float,
@@ -184,7 +186,7 @@ pub(crate) fn plugin_thread_main(
                 for run_instruction in extracted_run_instructions {
                     if let Some(Run::Plugin(run)) = run_instruction {
                         let plugin_id =
-                            wasm_bridge.load_plugin(&run, tab_index, size, client_id)?;
+                            wasm_bridge.load_plugin(&run, tab_index, size, Some(client_id))?;
                         plugin_ids.entry(run.location).or_default().push(plugin_id);
                     }
                 }

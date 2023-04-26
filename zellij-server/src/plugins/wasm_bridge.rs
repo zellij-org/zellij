@@ -17,7 +17,10 @@ use wasmer::{
     WasmerEnv,
 };
 use wasmer_wasi::WasiEnv;
+use wasmer_wasi::{Pipe, WasiState};
 use zellij_utils::async_std::task::{self, JoinHandle};
+use zellij_utils::consts::{ZELLIJ_CACHE_DIR, ZELLIJ_TMP_DIR};
+use url::Url;
 
 use crate::{
     background_jobs::BackgroundJob,
@@ -51,7 +54,7 @@ pub struct PluginEnv {
     pub plugin: PluginConfig,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,
-    pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
+    // pub subscriptions: Arc<Mutex<HashSet<EventType>>>,
     pub tab_index: usize,
     pub client_id: ClientId,
     #[allow(dead_code)]
@@ -69,11 +72,58 @@ impl PluginEnv {
     }
 }
 
-pub type PluginMap = HashMap<(u32, ClientId), (Instance, PluginEnv, (usize, usize))>; // u32 =>
-                                                                                      // plugin_id,
-                                                                                      // (usize, usize)
-                                                                                      // => (rows,
-                                                                                      // columns)
+#[derive(Eq, PartialEq, Hash)]
+pub enum AtomicEvent {
+    Resize,
+}
+
+pub struct RunningPlugin {
+    pub instance: Instance,
+    pub plugin_env: PluginEnv,
+    pub rows: usize,
+    pub columns: usize,
+    next_event_ids: HashMap<AtomicEvent, usize>, // TODO: probably not usize
+    last_applied_event_ids: HashMap<AtomicEvent, usize>, // TODO: probably not usize
+}
+
+impl RunningPlugin {
+    pub fn new(instance: Instance, plugin_env: PluginEnv, rows: usize, columns: usize) -> Self {
+        RunningPlugin {
+            instance,
+            plugin_env,
+            rows,
+            columns,
+            next_event_ids: HashMap::new(),
+            last_applied_event_ids: HashMap::new(),
+        }
+    }
+    pub fn next_event_id(&mut self, atomic_event: AtomicEvent) -> usize { // TODO: probably not usize...
+        let current_event_id = *self.next_event_ids.get(&atomic_event).unwrap_or(&0);
+        if current_event_id < usize::MAX {
+            let next_event_id = current_event_id + 1;
+            self.next_event_ids.insert(atomic_event, next_event_id);
+            current_event_id
+        } else {
+            let current_event_id = 0;
+            let next_event_id = 1;
+            self.last_applied_event_ids.remove(&atomic_event);
+            self.next_event_ids.insert(atomic_event, next_event_id);
+            current_event_id
+        }
+    }
+    pub fn apply_event_id(&mut self, atomic_event: AtomicEvent, event_id: usize) -> bool {
+        if &event_id >= self.last_applied_event_ids.get(&atomic_event).unwrap_or(&0) {
+            self.last_applied_event_ids.insert(atomic_event, event_id);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+pub type Subscriptions = HashSet<EventType>;
+
+pub type PluginMap = HashMap<(PluginId, ClientId), (Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)>;
 
 pub struct WasmBridge {
     connected_clients: Arc<Mutex<Vec<ClientId>>>,
@@ -121,10 +171,15 @@ impl WasmBridge {
         run: &RunPlugin,
         tab_index: usize,
         size: Size,
-        client_id: ClientId,
+        client_id: Option<ClientId>,
     ) -> Result<u32> {
         // returns the plugin id
-        let err_context = move || format!("failed to load plugin for client {client_id}");
+        let err_context = move || format!("failed to load plugin");
+
+        let client_id = client_id.or_else(|| {
+            self.connected_clients.lock().unwrap().iter().next().copied()
+        }).with_context(|| "Plugins must have a client id, none was provided and none are connected")?;
+
         let plugin_id = self.next_plugin_id;
 
         let plugin = self
@@ -277,49 +332,61 @@ impl WasmBridge {
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
-        let err_context = || format!("failed to add plugins for client {client_id}");
-
-        self.connected_clients.lock().unwrap().push(client_id);
-
-        let mut seen = HashSet::new();
-        let mut new_plugins = HashMap::new();
-        let mut plugin_map = self.plugin_map.lock().unwrap();
-        for (&(plugin_id, _), (instance, plugin_env, (rows, columns))) in &*plugin_map {
-            if seen.contains(&plugin_id) {
-                continue;
+        let mut loading_indication = LoadingIndication::new("".into()); // TODO: we don't actually
+                                                                        // need this
+        match PluginLoader::add_client(
+            client_id,
+            self.plugin_dir.clone(),
+            self.plugin_cache.clone(),
+            self.senders.clone(),
+            self.store.clone(),
+            self.plugin_map.clone(),
+            self.connected_clients.clone(),
+            &mut loading_indication,
+        ) {
+            Ok(_) => {
+                let _ = self.senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+                Ok(())
             }
-            seen.insert(plugin_id);
-            let mut new_plugin_env = plugin_env.clone();
+            Err(e) => {
+                Err(e)
+            }
+        }
 
-            new_plugin_env.client_id = client_id;
-            new_plugins.insert(
-                plugin_id,
-                (instance.module().clone(), new_plugin_env, (*rows, *columns)),
-            );
-        }
-        for (plugin_id, (module, mut new_plugin_env, (rows, columns))) in new_plugins.drain() {
-            let wasi = new_plugin_env
-                .wasi_env
-                .import_object(&module)
-                .with_context(err_context)?;
-            let zellij = zellij_exports(&self.store, &new_plugin_env);
-            let mut instance =
-                Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
-            load_plugin_instance(&mut instance).with_context(err_context)?;
-            plugin_map.insert(
-                (plugin_id, client_id),
-                (instance, new_plugin_env, (rows, columns)),
-            );
-        }
-        Ok(())
+
+
+
+//         let err_context = || format!("failed to add plugins for client {client_id}");
+//
+//         self.connected_clients.lock().unwrap().push(client_id);
+//
+//         let mut seen = HashSet::new();
+//         let mut new_plugins = HashMap::new();
+//         let mut plugin_map = self.plugin_map.lock().unwrap();
+//         // for (&(plugin_id, _), (instance, plugin_env, (rows, columns))) in &*plugin_map {
+//         for (&(plugin_id, _), running_plugin) in &*plugin_map {
+//             if seen.contains(&plugin_id) {
+//                 continue;
+//             }
+//             seen.insert(plugin_id);
+//             let new_running_plugin = running_plugin.lock().unwrap().clone_for_new_client(&self.store, client_id)?;
+//             new_plugins.insert(plugin_id, new_running_plugin);
+//         }
+//         for (plugin_id, new_running_plugin) in new_plugins.drain() {
+//             plugin_map.insert(
+//                 (plugin_id, client_id),
+//                 Arc::new(Mutex::new(new_running_plugin)),
+//                 // (instance, new_plugin_env, (rows, columns)),
+//             );
+//         }
+//         Ok(())
     }
     pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
-        let err_context = || format!("failed to resize plugin {pid}");
-        let mut plugin_bytes = vec![];
+        let err_context = move || format!("failed to resize plugin {pid}");
+        // let mut plugin_bytes = vec![];
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
-            plugin_map.iter_mut()
-        {
+        // for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
+        for ((plugin_id, client_id), (running_plugin, subscriptions)) in plugin_map.iter_mut() {
             if self
                 .cached_resizes_for_pending_plugins
                 .contains_key(&plugin_id)
@@ -327,26 +394,44 @@ impl WasmBridge {
                 continue;
             }
             if *plugin_id == pid {
-                *current_rows = new_rows;
-                *current_columns = new_columns;
+                let event_id = running_plugin.lock().unwrap().next_event_id(AtomicEvent::Resize);
+                task::spawn({
+                    let senders = self.senders.clone();
+                    let running_plugin = running_plugin.clone();
+                    let plugin_id = *plugin_id;
+                    let client_id = *client_id;
+                    async move {
+                        let mut running_plugin = running_plugin.lock().unwrap();
+                        if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
+                            running_plugin.rows = new_rows;
+                            running_plugin.columns = new_columns;
+    //                         *current_rows = new_rows;
+    //                         *current_columns = new_columns;
 
-                // TODO: consolidate with above render function
-                let rendered_bytes = instance
-                    .exports
-                    .get_function("render")
-                    .map_err(anyError::new)
-                    .and_then(|render| {
-                        render
-                            .call(&[
-                                Value::I32(*current_rows as i32),
-                                Value::I32(*current_columns as i32),
-                            ])
-                            .map_err(anyError::new)
-                    })
-                    .and_then(|_| wasi_read_string(&plugin_env.wasi_env))
-                    .with_context(err_context)?;
+                            // TODO: handle_error
+                            let rendered_bytes = running_plugin.instance
+                                .exports
+                                .get_function("render")
+                                .map_err(anyError::new)
+                                .and_then(|render| {
+                                    render
+                                        .call(&[
+                                            Value::I32(running_plugin.rows as i32),
+                                            Value::I32(running_plugin.columns as i32),
+                                        ])
+                                        .map_err(anyError::new)
+                                })
+                                .and_then(|_| wasi_read_string(&running_plugin.plugin_env.wasi_env))
+                                .with_context(err_context).unwrap();
+                                // .with_context(err_context)?; // TODO: HANDLE ERROR!!!111oneoneone
 
-                plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
+                            let plugin_bytes = vec![(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())];
+                            senders
+                                .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes)).unwrap();
+                        }
+
+                    }
+                });
             }
         }
         for (plugin_id, mut current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
@@ -355,9 +440,6 @@ impl WasmBridge {
                 current_size.1 = new_columns;
             }
         }
-        let _ = self
-            .senders
-            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
     pub fn update_plugins(
@@ -367,20 +449,20 @@ impl WasmBridge {
         let err_context = || "failed to update plugin state".to_string();
 
         let plugin_map = self.plugin_map.lock().unwrap();
-        let mut plugin_bytes = vec![];
+        // let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
+            // for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
+            for (&(plugin_id, client_id), (running_plugin, subscriptions)) in &*plugin_map {
                 if self
                     .cached_events_for_pending_plugins
                     .contains_key(&plugin_id)
                 {
                     continue;
                 }
-                let subs = plugin_env
-                    .subscriptions
+                let subs = subscriptions
                     .lock()
-                    .to_anyhow()
-                    .with_context(err_context)?;
+                    .unwrap()
+                    .clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
@@ -390,16 +472,33 @@ impl WasmBridge {
                         || (cid.is_none() && pid == Some(plugin_id))
                         || (cid == Some(client_id) && pid == Some(plugin_id)))
                 {
-                    apply_event_to_plugin(
-                        plugin_id,
-                        client_id,
-                        &instance,
-                        &plugin_env,
-                        &event,
-                        *rows,
-                        *columns,
-                        &mut plugin_bytes,
-                    )?;
+                    task::spawn({
+//                         let plugin_dir = self.plugin_dir.clone();
+//                         let plugin_cache = self.plugin_cache.clone();
+                        let senders = self.senders.clone();
+//                         let store = self.store.clone();
+//                         let plugin_map = self.plugin_map.clone();
+//                         let connected_clients = self.connected_clients.clone();
+                        let running_plugin = running_plugin.clone();
+                        let event = event.clone();
+                        async move {
+                            let running_plugin = running_plugin.lock().unwrap();
+                            let mut plugin_bytes = vec![]; // TODO: better
+                            apply_event_to_plugin(
+                                plugin_id,
+                                client_id,
+                                &running_plugin.instance,
+                                &running_plugin.plugin_env,
+                                &event,
+                                running_plugin.rows,
+                                running_plugin.columns,
+                                &mut plugin_bytes,
+                            // )?; // TODO: HANDLE ERROR
+                            );
+                            let _ = senders
+                                .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                        }
+                    });
                 }
             }
             for (plugin_id, cached_events) in self.cached_events_for_pending_plugins.iter_mut() {
@@ -408,9 +507,6 @@ impl WasmBridge {
                 }
             }
         }
-        let _ = self
-            .senders
-            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
     pub fn apply_cached_events(&mut self, plugin_ids: Vec<u32>) -> Result<()> {
@@ -435,6 +531,19 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
+
+        // remove client's plugins
+        let ids_in_plugin_map = {
+
+            let mut plugin_map = self.plugin_map.lock().unwrap();
+            let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
+            ids_in_plugin_map
+        };
+        for (p_id, c_id) in ids_in_plugin_map {
+            if c_id == client_id {
+                drop(self.plugin_map.lock().unwrap().remove(&(p_id, c_id)));
+            }
+        }
     }
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
@@ -450,7 +559,7 @@ impl WasmBridge {
     fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
-            let mut plugin_map = self.plugin_map.lock().unwrap();
+            // let mut plugin_map = self.plugin_map.lock().unwrap();
             let all_connected_clients: Vec<ClientId> = self
                 .connected_clients
                 .lock()
@@ -459,35 +568,48 @@ impl WasmBridge {
                 .copied()
                 .collect();
             for client_id in &all_connected_clients {
-                let mut plugin_bytes = vec![];
-                if let Some((instance, plugin_env, (rows, columns))) =
-                    plugin_map.get_mut(&(plugin_id, *client_id))
+                // if let Some((instance, plugin_env, (rows, columns))) =
+                if let Some((running_plugin, subscriptions)) =
+                    self.plugin_map.lock().unwrap().get_mut(&(plugin_id, *client_id))
                 {
-                    let subs = plugin_env
-                        .subscriptions
+                    let subs = subscriptions
                         .lock()
-                        .to_anyhow()
-                        .with_context(err_context)?;
+                        .unwrap()
+                        .clone();
                     for event in events.clone() {
                         let event_type =
                             EventType::from_str(&event.to_string()).with_context(err_context)?;
                         if !subs.contains(&event_type) {
                             continue;
                         }
-                        apply_event_to_plugin(
-                            plugin_id,
-                            *client_id,
-                            &instance,
-                            &plugin_env,
-                            &event,
-                            *rows,
-                            *columns,
-                            &mut plugin_bytes,
-                        )?;
+                        task::spawn({
+//                             let plugin_dir = self.plugin_dir.clone();
+//                             let plugin_cache = self.plugin_cache.clone();
+                            let senders = self.senders.clone();
+//                             let store = self.store.clone();
+//                             let plugin_map = self.plugin_map.clone();
+//                             let connected_clients = self.connected_clients.clone();
+                            let running_plugin = running_plugin.clone();
+                            let client_id = *client_id;
+                            async move {
+                                let running_plugin = running_plugin.lock().unwrap();
+                                let mut plugin_bytes = vec![];
+                                apply_event_to_plugin(
+                                    plugin_id,
+                                    client_id,
+                                    &running_plugin.instance,
+                                    &running_plugin.plugin_env,
+                                    &event,
+                                    running_plugin.rows,
+                                    running_plugin.columns,
+                                    &mut plugin_bytes,
+                                // )?; TODO: HANDLE ERROR
+                                );
+                                let _ = senders
+                                    .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                            }
+                        });
                     }
-                    let _ = self
-                        .senders
-                        .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
                 }
             }
         }
@@ -513,8 +635,10 @@ impl WasmBridge {
             .unwrap()
             .iter()
             .filter(
-                |((_plugin_id, _client_id), (_instance, plugin_env, _size))| {
-                    &plugin_env.plugin.location == plugin_location
+                // |((_plugin_id, _client_id), (_instance, plugin_env, _size))| {
+                |((_plugin_id, _client_id), (running_plugin, _subscriptions))| {
+                    &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location // TODO:
+                                                                                                  // better
                 },
             )
             .map(|((plugin_id, _client_id), _)| *plugin_id)
@@ -530,8 +654,11 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .iter()
-            .find(|((p_id, _client_id), (_instance, _plugin_env, _size))| *p_id == plugin_id)
-            .map(|((_p_id, _client_id), (_instance, _plugin_env, size))| *size)
+            .find(|((p_id, _client_id), _running_plugin)| *p_id == plugin_id)
+            .map(|((_p_id, _client_id), (running_plugin, _subscriptions))| {
+                let running_plugin = running_plugin.lock().unwrap();
+                (running_plugin.rows, running_plugin.columns)
+            })
     }
     fn start_plugin_loading_indication(
         &self,
@@ -563,6 +690,7 @@ fn handle_plugin_loading_failure(
     loading_indication: &mut LoadingIndication,
     error: impl Display,
 ) {
+    log::error!("{}", error);
     let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
     loading_indication.indicate_loading_error(error.to_string());
     let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
@@ -583,13 +711,28 @@ fn load_plugin_instance(instance: &mut Instance) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObject {
+#[derive(WasmerEnv, Clone)]
+pub struct Env { // TODO: better name to differentiate from PluginEnv
+    pub plugin_env: PluginEnv,
+    pub subscriptions: Arc<Mutex<Subscriptions>>,
+}
+
+impl Env {
+    pub fn new(plugin_env: &PluginEnv, subscriptions: &Arc<Mutex<Subscriptions>>) -> Self {
+        Env {
+            plugin_env: plugin_env.clone(),
+            subscriptions: subscriptions.clone(),
+        }
+    }
+}
+
+pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv, subscriptions: &Arc<Mutex<Subscriptions>>) -> ImportObject {
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
                 "zellij" => {
                     $(stringify!($host_function) =>
-                        Function::new_native_with_env(store, plugin_env.clone(), $host_function),)+
+                        Function::new_native_with_env(store, Env::new(plugin_env, subscriptions), $host_function),)+
                 }
             }
         }
@@ -609,38 +752,39 @@ pub(crate) fn zellij_exports(store: &Store, plugin_env: &PluginEnv) -> ImportObj
     }
 }
 
-fn host_subscribe(plugin_env: &PluginEnv) {
-    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+fn host_subscribe(env: &Env) {
+    wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|new| {
-            plugin_env.subscriptions.lock().to_anyhow()?.extend(new);
+            env.subscriptions.lock().to_anyhow()?.extend(new);
             Ok(())
         })
-        .with_context(|| format!("failed to subscribe for plugin {}", plugin_env.name()))
+        .with_context(|| format!("failed to subscribe for plugin {}", env.plugin_env.name()))
         .fatal();
 }
 
-fn host_unsubscribe(plugin_env: &PluginEnv) {
-    wasi_read_object::<HashSet<EventType>>(&plugin_env.wasi_env)
+fn host_unsubscribe(env: &Env) {
+    wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|old| {
-            plugin_env
+                env
                 .subscriptions
                 .lock()
                 .to_anyhow()?
                 .retain(|k| !old.contains(k));
             Ok(())
         })
-        .with_context(|| format!("failed to unsubscribe for plugin {}", plugin_env.name()))
+        .with_context(|| format!("failed to unsubscribe for plugin {}", env.plugin_env.name()))
         .fatal();
 }
 
-fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
-    match plugin_env.plugin.run {
+fn host_set_selectable(env: &Env, selectable: i32) {
+    match env.plugin_env.plugin.run {
         PluginType::Pane(Some(tab_index)) => {
             let selectable = selectable != 0;
-            plugin_env
+            env
+                .plugin_env
                 .senders
                 .send_to_screen(ScreenInstruction::SetSelectable(
-                    PaneId::Plugin(plugin_env.plugin_id),
+                    PaneId::Plugin(env.plugin_env.plugin_id),
                     selectable,
                     tab_index,
                 ))
@@ -648,7 +792,7 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
                     format!(
                         "failed to set plugin {} selectable from plugin {}",
                         selectable,
-                        plugin_env.name()
+                        env.plugin_env.name()
                     )
                 })
                 .non_fatal();
@@ -656,76 +800,78 @@ fn host_set_selectable(plugin_env: &PluginEnv, selectable: i32) {
         _ => {
             debug!(
                 "{} - Calling method 'host_set_selectable' does nothing for headless plugins",
-                plugin_env.plugin.location
+                env.plugin_env.plugin.location
             )
         },
     }
 }
 
-fn host_get_plugin_ids(plugin_env: &PluginEnv) {
+fn host_get_plugin_ids(env: &Env) {
     let ids = PluginIds {
-        plugin_id: plugin_env.plugin_id,
+        plugin_id: env.plugin_env.plugin_id,
         zellij_pid: process::id(),
     };
-    wasi_write_object(&plugin_env.wasi_env, &ids)
+    wasi_write_object(&env.plugin_env.wasi_env, &ids)
         .with_context(|| {
             format!(
                 "failed to query plugin IDs from host for plugin {}",
-                plugin_env.name()
+                env.plugin_env.name()
             )
         })
         .non_fatal();
 }
 
-fn host_get_zellij_version(plugin_env: &PluginEnv) {
-    wasi_write_object(&plugin_env.wasi_env, VERSION)
+fn host_get_zellij_version(env: &Env) {
+    wasi_write_object(&env.plugin_env.wasi_env, VERSION)
         .with_context(|| {
             format!(
                 "failed to request zellij version from host for plugin {}",
-                plugin_env.name()
+                env.plugin_env.name()
             )
         })
         .non_fatal();
 }
 
-fn host_open_file(plugin_env: &PluginEnv) {
-    wasi_read_object::<PathBuf>(&plugin_env.wasi_env)
+fn host_open_file(env: &Env) {
+    wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            plugin_env
+            env
+                .plugin_env
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     Some(TerminalAction::OpenFile(path, None, None)),
                     None,
                     None,
-                    ClientOrTabIndex::TabIndex(plugin_env.tab_index),
+                    ClientOrTabIndex::TabIndex(env.plugin_env.tab_index),
                 ))
         })
         .with_context(|| {
             format!(
                 "failed to open file on host from plugin {}",
-                plugin_env.name()
+                env.plugin_env.name()
             )
         })
         .non_fatal();
 }
 
-fn host_switch_tab_to(plugin_env: &PluginEnv, tab_idx: u32) {
-    plugin_env
+fn host_switch_tab_to(env: &Env, tab_idx: u32) {
+    env
+        .plugin_env
         .senders
         .send_to_screen(ScreenInstruction::GoToTab(
             tab_idx,
-            Some(plugin_env.client_id),
+            Some(env.plugin_env.client_id),
         ))
         .with_context(|| {
             format!(
                 "failed to switch host to tab {tab_idx} from plugin {}",
-                plugin_env.name()
+                env.plugin_env.name()
             )
         })
         .non_fatal();
 }
 
-fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
+fn host_set_timeout(env: &Env, secs: f64) {
     // There is a fancy, high-performance way to do this with zero additional threads:
     // If the plugin thread keeps a BinaryHeap of timer structs, it can manage multiple and easily `.peek()` at the
     // next time to trigger in O(1) time. Once the wake-up time is known, the `wasm` thread can use `recv_timeout()`
@@ -735,10 +881,10 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     // timers as we'd like.
     //
     // But that's a lot of code, and this is a few lines:
-    let send_plugin_instructions = plugin_env.senders.to_plugin.clone();
-    let update_target = Some(plugin_env.plugin_id);
-    let client_id = plugin_env.client_id;
-    let plugin_name = plugin_env.name();
+    let send_plugin_instructions = env.plugin_env.senders.to_plugin.clone();
+    let update_target = Some(env.plugin_env.plugin_id);
+    let client_id = env.plugin_env.client_id;
+    let plugin_name = env.plugin_env.name();
     thread::spawn(move || {
         let start_time = Instant::now();
         thread::sleep(Duration::from_secs_f64(secs));
@@ -767,21 +913,21 @@ fn host_set_timeout(plugin_env: &PluginEnv, secs: f64) {
     });
 }
 
-fn host_exec_cmd(plugin_env: &PluginEnv) {
+fn host_exec_cmd(env: &Env) {
     let err_context = || {
         format!(
             "failed to execute command on host for plugin '{}'",
-            plugin_env.name()
+            env.plugin_env.name()
         )
     };
 
-    let mut cmdline: Vec<String> = wasi_read_object(&plugin_env.wasi_env)
+    let mut cmdline: Vec<String> = wasi_read_object(&env.plugin_env.wasi_env)
         .with_context(err_context)
         .fatal();
     let command = cmdline.remove(0);
 
     // Bail out if we're forbidden to run command
-    if !plugin_env.plugin._allow_exec_host_cmd {
+    if !env.plugin_env.plugin._allow_exec_host_cmd {
         warn!("This plugin isn't allow to run command in host side, skip running this command: '{cmd} {args}'.",
         	cmd = command, args = cmdline.join(" "));
         return;
@@ -800,19 +946,40 @@ fn host_exec_cmd(plugin_env: &PluginEnv) {
 // This is called when a panic occurs in a plugin. Since most panics will likely originate in the
 // code trying to deserialize an `Event` upon a plugin state update, we read some panic message,
 // formatted as string from the plugin.
-fn host_report_panic(plugin_env: &PluginEnv) {
-    let msg = wasi_read_string(&plugin_env.wasi_env)
-        .with_context(|| format!("failed to report panic for plugin '{}'", plugin_env.name()))
+fn host_report_panic(env: &Env) {
+    let msg = wasi_read_string(&env.plugin_env.wasi_env)
+        .with_context(|| format!("failed to report panic for plugin '{}'", env.plugin_env.name()))
         .fatal();
     panic!("{}", msg);
 }
 
 // Helper Functions ---------------------------------------------------------------------------------------------------
 
+// ORIGINAL:
+// pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
+//     let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
+//
+//     let mut buf = String::new();
+//     wasi_env
+//         .state()
+//         .fs
+//         .stdout_mut()
+//         .map_err(anyError::new)
+//         .and_then(|stdout| {
+//             stdout
+//                 .as_mut()
+//                 .ok_or(anyhow!("failed to get mutable reference to stdout"))
+//         })
+//         .and_then(|wasi_file| wasi_file.read_to_string(&mut buf).map_err(anyError::new))
+//         .with_context(err_context)?;
+//     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
+//     Ok(buf.replace("\n", "\n\r"))
+// }
+
 pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
     let err_context = || format!("failed to read string from WASI env '{wasi_env:?}'");
 
-    let mut buf = String::new();
+    let mut buf = vec![];
     wasi_env
         .state()
         .fs
@@ -823,8 +990,9 @@ pub fn wasi_read_string(wasi_env: &WasiEnv) -> Result<String> {
                 .as_mut()
                 .ok_or(anyhow!("failed to get mutable reference to stdout"))
         })
-        .and_then(|wasi_file| wasi_file.read_to_string(&mut buf).map_err(anyError::new))
+        .and_then(|wasi_file| wasi_file.read_to_end(&mut buf).map_err(anyError::new))
         .with_context(err_context)?;
+    let buf = String::from_utf8_lossy(&buf);
     // https://stackoverflow.com/questions/66450942/in-rust-is-there-a-way-to-make-literal-newlines-in-r-using-windows-c
     Ok(buf.replace("\n", "\n\r"))
 }
