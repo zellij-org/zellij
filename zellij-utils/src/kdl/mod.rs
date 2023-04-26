@@ -1758,4 +1758,18 @@ impl Themes {
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
         Ok(all_themes_in_file)
     }
+
+    pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
+        let mut themes = Themes::default();
+        for entry in std::fs::read_dir(path_to_theme_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(extension) = path.extension() {
+                if extension == "kdl" {
+                    themes = themes.merge(Themes::from_path(path)?);
+                }
+            }
+        }
+        Ok(themes)
+    }
 }
