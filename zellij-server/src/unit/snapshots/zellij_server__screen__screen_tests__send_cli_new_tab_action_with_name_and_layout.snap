@@ -5,6 +5,7 @@ expression: "format!(\"{:#?}\", new_tab_instruction)"
 ---
 NewTab(
     None,
+    None,
     Some(
         TiledPaneLayout {
             children_split_direction: Horizontal,
@@ -25,6 +26,7 @@ NewTab(
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 TiledPaneLayout {
                     children_split_direction: Horizontal,
@@ -41,6 +43,7 @@ NewTab(
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
                 TiledPaneLayout {
                     children_split_direction: Horizontal,
@@ -57,6 +60,7 @@ NewTab(
                     external_children_index: None,
                     children_are_stacked: false,
                     is_expanded_in_stack: false,
+                    exclude_from_sync: None,
                 },
             ],
             split_size: None,
@@ -66,6 +70,7 @@ NewTab(
             external_children_index: None,
             children_are_stacked: false,
             is_expanded_in_stack: false,
+            exclude_from_sync: None,
         },
     ),
     [],

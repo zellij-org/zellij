@@ -371,6 +371,9 @@ pub trait Pane {
     fn load_pane_name(&mut self);
     fn set_borderless(&mut self, borderless: bool);
     fn borderless(&self) -> bool;
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool);
+    fn exclude_from_sync(&self) -> bool;
+
     // TODO: this should probably be merged with the mouse_right_click
     fn handle_right_click(&mut self, _to: &Position, _client_id: ClientId) {}
     fn mouse_left_click(&self, _position: &Position, _is_held: bool) -> Option<String> {
@@ -440,6 +443,7 @@ pub trait Pane {
     fn invoked_with(&self) -> &Option<Run>;
     fn set_title(&mut self, title: String);
     fn update_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
+    fn start_loading_indication(&mut self, _loading_indication: LoadingIndication) {} // only relevant for plugins
     fn progress_animation_offset(&mut self) {} // only relevant for plugins
 }
 
@@ -1656,15 +1660,29 @@ impl Tab {
         let err_context = || format!("failed to write to pane with id {pane_id:?}");
 
         let mut should_update_ui = false;
+        let is_sync_panes_active = self.is_sync_panes_active();
+
+        let active_terminal = self
+            .floating_panes
+            .get_mut(&pane_id)
+            .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
+            .or_else(|| self.suppressed_panes.get_mut(&pane_id))
+            .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
+            .with_context(err_context)?;
+
+        // We always write for non-synced terminals.
+        // However if the terminal is part of a tab-sync, we need to
+        // check if the terminal should receive input or not (depending on its
+        // 'exclude_from_sync' configuration).
+        let should_not_write_to_terminal =
+            is_sync_panes_active && active_terminal.exclude_from_sync();
+
+        if should_not_write_to_terminal {
+            return Ok(should_update_ui);
+        }
+
         match pane_id {
             PaneId::Terminal(active_terminal_id) => {
-                let active_terminal = self
-                    .floating_panes
-                    .get_mut(&pane_id)
-                    .or_else(|| self.tiled_panes.get_pane_mut(pane_id))
-                    .or_else(|| self.suppressed_panes.get_mut(&pane_id))
-                    .ok_or_else(|| anyhow!(format!("failed to find pane with id {pane_id:?}")))
-                    .with_context(err_context)?;
                 match active_terminal.adjust_input_to_terminal(input_bytes) {
                     Some(AdjustedInput::WriteBytesToTerminal(adjusted_input)) => {
                         self.senders
@@ -3362,6 +3380,24 @@ impl Tab {
             })
         {
             plugin_pane.update_loading_indication(loading_indication);
+        }
+    }
+    pub fn start_plugin_loading_indication(
+        &mut self,
+        pid: u32,
+        loading_indication: LoadingIndication,
+    ) {
+        if let Some(plugin_pane) = self
+            .tiled_panes
+            .get_pane_mut(PaneId::Plugin(pid))
+            .or_else(|| self.floating_panes.get_pane_mut(PaneId::Plugin(pid)))
+            .or_else(|| {
+                self.suppressed_panes
+                    .values_mut()
+                    .find(|s_p| s_p.pid() == PaneId::Plugin(pid))
+            })
+        {
+            plugin_pane.start_loading_indication(loading_indication);
         }
     }
     pub fn progress_plugin_loading_offset(&mut self, pid: u32) {

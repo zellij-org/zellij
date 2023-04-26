@@ -1,10 +1,10 @@
 use super::PluginInstruction;
-use crate::plugins::start_plugin::start_plugin;
+use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
 use log::{debug, info, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
+    fmt::Display,
     path::PathBuf,
     process,
     str::FromStr,
@@ -33,81 +33,17 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
+    errors::ZellijError,
     input::{
         command::TerminalAction,
-        layout::RunPlugin,
+        layout::{RunPlugin, RunPluginLocation},
         plugins::{PluginConfig, PluginType, PluginsConfig},
     },
     pane_size::Size,
     serde,
 };
 
-/// Custom error for plugin version mismatch.
-///
-/// This is thrown when, during starting a plugin, it is detected that the plugin version doesn't
-/// match the zellij version. This is treated as a fatal error and leads to instantaneous
-/// termination.
-#[derive(Debug)]
-pub struct VersionMismatchError {
-    zellij_version: String,
-    plugin_version: String,
-    plugin_path: PathBuf,
-    // true for builtin plugins
-    builtin: bool,
-}
-
-impl std::error::Error for VersionMismatchError {}
-
-impl VersionMismatchError {
-    pub fn new(
-        zellij_version: &str,
-        plugin_version: &str,
-        plugin_path: &PathBuf,
-        builtin: bool,
-    ) -> Self {
-        VersionMismatchError {
-            zellij_version: zellij_version.to_owned(),
-            plugin_version: plugin_version.to_owned(),
-            plugin_path: plugin_path.to_owned(),
-            builtin,
-        }
-    }
-}
-
-impl fmt::Display for VersionMismatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let first_line = if self.builtin {
-            "It seems your version of zellij was built with outdated core plugins."
-        } else {
-            "If you're seeing this error a plugin version doesn't match the current
-zellij version."
-        };
-
-        write!(
-            f,
-            "{}
-Detected versions:
-
-- Plugin version: {}
-- Zellij version: {}
-- Offending plugin: {}
-
-If you're a user:
-    Please contact the distributor of your zellij version and report this error
-    to them.
-
-If you're a developer:
-    Please run zellij with updated plugins. The easiest way to achieve this
-    is to build zellij with `cargo xtask install`. Also refer to the docs:
-    https://github.com/zellij-org/zellij/blob/main/CONTRIBUTING.md#building
-",
-            first_line,
-            self.plugin_version.trim_end(),
-            self.zellij_version.trim_end(),
-            self.plugin_path.display()
-        )
-    }
-}
+type PluginId = u32;
 
 #[derive(WasmerEnv, Clone)]
 pub struct PluginEnv {
@@ -150,7 +86,8 @@ pub struct WasmBridge {
     next_plugin_id: u32,
     cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
     cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
-    loading_plugins: HashMap<u32, JoinHandle<()>>,               // plugin_id to join-handle
+    loading_plugins: HashMap<(u32, RunPlugin), JoinHandle<()>>,  // plugin_id to join-handle
+    pending_plugin_reloads: HashSet<RunPlugin>,
 }
 
 impl WasmBridge {
@@ -176,6 +113,7 @@ impl WasmBridge {
             cached_events_for_pending_plugins: HashMap::new(),
             cached_resizes_for_pending_plugins: HashMap::new(),
             loading_plugins: HashMap::new(),
+            pending_plugin_reloads: HashSet::new(),
         }
     }
     pub fn load_plugin(
@@ -196,12 +134,10 @@ impl WasmBridge {
             .with_context(err_context)?;
         let plugin_name = run.location.to_string();
 
-        self.next_plugin_id += 1;
-
         self.cached_events_for_pending_plugins
             .insert(plugin_id, vec![]);
         self.cached_resizes_for_pending_plugins
-            .insert(plugin_id, (0, 0));
+            .insert(plugin_id, (size.rows, size.cols));
 
         let load_plugin_task = task::spawn({
             let plugin_dir = self.plugin_dir.clone();
@@ -214,7 +150,7 @@ impl WasmBridge {
                 let _ =
                     senders.send_to_background_jobs(BackgroundJob::AnimatePluginLoading(plugin_id));
                 let mut loading_indication = LoadingIndication::new(plugin_name.clone());
-                match start_plugin(
+                match PluginLoader::start_plugin(
                     plugin_id,
                     client_id,
                     &plugin,
@@ -228,30 +164,20 @@ impl WasmBridge {
                     connected_clients.clone(),
                     &mut loading_indication,
                 ) {
-                    Ok(_) => {
-                        let _ = senders.send_to_background_jobs(
-                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
-                        );
-                        let _ =
-                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
-                    },
-                    Err(e) => {
-                        let _ = senders.send_to_background_jobs(
-                            BackgroundJob::StopPluginLoadingAnimation(plugin_id),
-                        );
-                        let _ =
-                            senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_id));
-                        loading_indication.indicate_loading_error(e.to_string());
-                        let _ =
-                            senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
-                                plugin_id,
-                                loading_indication.clone(),
-                            ));
-                    },
+                    Ok(_) => handle_plugin_successful_loading(&senders, plugin_id),
+                    Err(e) => handle_plugin_loading_failure(
+                        &senders,
+                        plugin_id,
+                        &mut loading_indication,
+                        e,
+                    ),
                 }
+                let _ =
+                    senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(vec![plugin_id]));
             }
         });
-        self.loading_plugins.insert(plugin_id, load_plugin_task);
+        self.loading_plugins
+            .insert((plugin_id, run.clone()), load_plugin_task);
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
@@ -265,6 +191,89 @@ impl WasmBridge {
                 drop(plugin_map.remove(&(plugin_id, client_id)));
             }
         }
+        Ok(())
+    }
+    pub fn reload_plugin(&mut self, run_plugin: &RunPlugin) -> Result<()> {
+        if self.plugin_is_currently_being_loaded(&run_plugin.location) {
+            self.pending_plugin_reloads.insert(run_plugin.clone());
+            return Ok(());
+        }
+
+        let plugin_ids = self.all_plugin_ids_for_plugin_location(&run_plugin.location)?;
+        for plugin_id in &plugin_ids {
+            let (rows, columns) = self.size_of_plugin_id(*plugin_id).unwrap_or((0, 0));
+            self.cached_events_for_pending_plugins
+                .insert(*plugin_id, vec![]);
+            self.cached_resizes_for_pending_plugins
+                .insert(*plugin_id, (rows, columns));
+        }
+
+        let first_plugin_id = *plugin_ids.get(0).unwrap(); // this is safe becaise the above
+                                                           // methods always returns at least 1 id
+        let mut loading_indication = LoadingIndication::new(run_plugin.location.to_string());
+        self.start_plugin_loading_indication(&plugin_ids, &loading_indication);
+        let load_plugin_task = task::spawn({
+            let plugin_dir = self.plugin_dir.clone();
+            let plugin_cache = self.plugin_cache.clone();
+            let senders = self.senders.clone();
+            let store = self.store.clone();
+            let plugin_map = self.plugin_map.clone();
+            let connected_clients = self.connected_clients.clone();
+            async move {
+                match PluginLoader::reload_plugin(
+                    first_plugin_id,
+                    plugin_dir.clone(),
+                    plugin_cache.clone(),
+                    senders.clone(),
+                    store.clone(),
+                    plugin_map.clone(),
+                    connected_clients.clone(),
+                    &mut loading_indication,
+                ) {
+                    Ok(_) => {
+                        handle_plugin_successful_loading(&senders, first_plugin_id);
+                        for plugin_id in &plugin_ids {
+                            if plugin_id == &first_plugin_id {
+                                // no need to reload the plugin we just reloaded
+                                continue;
+                            }
+                            let mut loading_indication = LoadingIndication::new("".into());
+                            match PluginLoader::reload_plugin_from_memory(
+                                *plugin_id,
+                                plugin_dir.clone(),
+                                plugin_cache.clone(),
+                                senders.clone(),
+                                store.clone(),
+                                plugin_map.clone(),
+                                connected_clients.clone(),
+                                &mut loading_indication,
+                            ) {
+                                Ok(_) => handle_plugin_successful_loading(&senders, *plugin_id),
+                                Err(e) => handle_plugin_loading_failure(
+                                    &senders,
+                                    *plugin_id,
+                                    &mut loading_indication,
+                                    e,
+                                ),
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        for plugin_id in &plugin_ids {
+                            handle_plugin_loading_failure(
+                                &senders,
+                                *plugin_id,
+                                &mut loading_indication,
+                                &e,
+                            );
+                        }
+                    },
+                }
+                let _ = senders.send_to_plugin(PluginInstruction::ApplyCachedEvents(plugin_ids));
+            }
+        });
+        self.loading_plugins
+            .insert((first_plugin_id, run_plugin.clone()), load_plugin_task);
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
@@ -311,6 +320,12 @@ impl WasmBridge {
         for ((plugin_id, client_id), (instance, plugin_env, (current_rows, current_columns))) in
             plugin_map.iter_mut()
         {
+            if self
+                .cached_resizes_for_pending_plugins
+                .contains_key(&plugin_id)
+            {
+                continue;
+            }
             if *plugin_id == pid {
                 *current_rows = new_rows;
                 *current_columns = new_columns;
@@ -334,12 +349,10 @@ impl WasmBridge {
                 plugin_bytes.push((*plugin_id, *client_id, rendered_bytes.as_bytes().to_vec()));
             }
         }
-        for (plugin_id, (current_rows, current_columns)) in
-            self.cached_resizes_for_pending_plugins.iter_mut()
-        {
+        for (plugin_id, mut current_size) in self.cached_resizes_for_pending_plugins.iter_mut() {
             if *plugin_id == pid {
-                *current_rows = new_rows;
-                *current_columns = new_columns;
+                current_size.0 = new_rows;
+                current_size.1 = new_columns;
             }
         }
         let _ = self
@@ -357,6 +370,12 @@ impl WasmBridge {
         let mut plugin_bytes = vec![];
         for (pid, cid, event) in updates.drain(..) {
             for (&(plugin_id, client_id), (instance, plugin_env, (rows, columns))) in &*plugin_map {
+                if self
+                    .cached_events_for_pending_plugins
+                    .contains_key(&plugin_id)
+                {
+                    continue;
+                }
                 let subs = plugin_env
                     .subscriptions
                     .lock()
@@ -394,8 +413,42 @@ impl WasmBridge {
             .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
         Ok(())
     }
-    pub fn apply_cached_events(&mut self, plugin_id: u32) -> Result<()> {
-        let err_context = || format!("Failed to apply cached events to plugin {plugin_id}");
+    pub fn apply_cached_events(&mut self, plugin_ids: Vec<u32>) -> Result<()> {
+        let mut applied_plugin_paths = HashSet::new();
+        for plugin_id in plugin_ids {
+            self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
+            if let Some(run_plugin) = self.run_plugin_of_plugin_id(plugin_id) {
+                applied_plugin_paths.insert(run_plugin.clone());
+            }
+            self.loading_plugins
+                .retain(|(p_id, _run_plugin), _| p_id != &plugin_id);
+        }
+        for run_plugin in applied_plugin_paths.drain() {
+            if self.pending_plugin_reloads.remove(&run_plugin) {
+                let _ = self.reload_plugin(&run_plugin);
+            }
+        }
+        Ok(())
+    }
+    pub fn remove_client(&mut self, client_id: ClientId) {
+        self.connected_clients
+            .lock()
+            .unwrap()
+            .retain(|c| c != &client_id);
+    }
+    pub fn cleanup(&mut self) {
+        for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
+            drop(loading_plugin_task.cancel());
+        }
+    }
+    fn run_plugin_of_plugin_id(&self, plugin_id: PluginId) -> Option<&RunPlugin> {
+        self.loading_plugins
+            .iter()
+            .find(|((p_id, _run_plugin), _)| p_id == &plugin_id)
+            .map(|((_p_id, run_plugin), _)| run_plugin)
+    }
+    fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
+        let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
             let mut plugin_map = self.plugin_map.lock().unwrap();
             let all_connected_clients: Vec<ClientId> = self
@@ -405,10 +458,10 @@ impl WasmBridge {
                 .iter()
                 .copied()
                 .collect();
-            for client_id in all_connected_clients {
+            for client_id in &all_connected_clients {
                 let mut plugin_bytes = vec![];
                 if let Some((instance, plugin_env, (rows, columns))) =
-                    plugin_map.get_mut(&(plugin_id, client_id))
+                    plugin_map.get_mut(&(plugin_id, *client_id))
                 {
                     let subs = plugin_env
                         .subscriptions
@@ -423,7 +476,7 @@ impl WasmBridge {
                         }
                         apply_event_to_plugin(
                             plugin_id,
-                            client_id,
+                            *client_id,
                             &instance,
                             &plugin_env,
                             &event,
@@ -441,20 +494,81 @@ impl WasmBridge {
         if let Some((rows, columns)) = self.cached_resizes_for_pending_plugins.remove(&plugin_id) {
             self.resize_plugin(plugin_id, columns, rows)?;
         }
-        self.loading_plugins.remove(&plugin_id);
         Ok(())
     }
-    pub fn remove_client(&mut self, client_id: ClientId) {
-        self.connected_clients
+    fn plugin_is_currently_being_loaded(&self, plugin_location: &RunPluginLocation) -> bool {
+        self.loading_plugins
+            .iter()
+            .find(|((_plugin_id, run_plugin), _)| &run_plugin.location == plugin_location)
+            .is_some()
+    }
+    fn all_plugin_ids_for_plugin_location(
+        &self,
+        plugin_location: &RunPluginLocation,
+    ) -> Result<Vec<PluginId>> {
+        let err_context = || format!("Failed to get plugin ids for location {plugin_location}");
+        let plugin_ids: Vec<PluginId> = self
+            .plugin_map
             .lock()
             .unwrap()
-            .retain(|c| c != &client_id);
+            .iter()
+            .filter(
+                |((_plugin_id, _client_id), (_instance, plugin_env, _size))| {
+                    &plugin_env.plugin.location == plugin_location
+                },
+            )
+            .map(|((plugin_id, _client_id), _)| *plugin_id)
+            .collect();
+        if plugin_ids.is_empty() {
+            return Err(ZellijError::PluginDoesNotExist).with_context(err_context);
+        }
+        Ok(plugin_ids)
     }
-    pub fn cleanup(&mut self) {
-        for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
-            drop(loading_plugin_task.cancel());
+    fn size_of_plugin_id(&self, plugin_id: PluginId) -> Option<(usize, usize)> {
+        // (rows/colums)
+        self.plugin_map
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|((p_id, _client_id), (_instance, _plugin_env, _size))| *p_id == plugin_id)
+            .map(|((_p_id, _client_id), (_instance, _plugin_env, size))| *size)
+    }
+    fn start_plugin_loading_indication(
+        &self,
+        plugin_ids: &[PluginId],
+        loading_indication: &LoadingIndication,
+    ) {
+        for plugin_id in plugin_ids {
+            let _ = self
+                .senders
+                .send_to_screen(ScreenInstruction::StartPluginLoadingIndication(
+                    *plugin_id,
+                    loading_indication.clone(),
+                ));
+            let _ = self
+                .senders
+                .send_to_background_jobs(BackgroundJob::AnimatePluginLoading(*plugin_id));
         }
     }
+}
+
+fn handle_plugin_successful_loading(senders: &ThreadSenders, plugin_id: PluginId) {
+    let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
+    let _ = senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+}
+
+fn handle_plugin_loading_failure(
+    senders: &ThreadSenders,
+    plugin_id: PluginId,
+    loading_indication: &mut LoadingIndication,
+    error: impl Display,
+) {
+    let _ = senders.send_to_background_jobs(BackgroundJob::StopPluginLoadingAnimation(plugin_id));
+    loading_indication.indicate_loading_error(error.to_string());
+    let _ = senders.send_to_screen(ScreenInstruction::UpdatePluginLoadingStage(
+        plugin_id,
+        loading_indication.clone(),
+    ));
 }
 
 fn load_plugin_instance(instance: &mut Instance) -> Result<()> {

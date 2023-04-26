@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::str;
 
@@ -190,6 +191,7 @@ pub enum ScreenInstruction {
     UpdatePaneName(Vec<u8>, ClientId),
     UndoRenamePane(ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -256,7 +258,9 @@ pub enum ScreenInstruction {
     NextSwapLayout(ClientId),
     QueryTabNames(ClientId),
     NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    // optional pane title
     NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
+    StartOrReloadPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
     // optional pane title
     AddPlugin(
         Option<bool>, // should_float
@@ -266,7 +270,9 @@ pub enum ScreenInstruction {
         u32,            // plugin id
     ),
     UpdatePluginLoadingStage(u32, LoadingIndication), // u32 - plugin_id
+    StartPluginLoadingIndication(u32, LoadingIndication), // u32 - plugin_id
     ProgressPluginLoadingOffset(u32),                 // u32 - plugin id
+    RequestStateUpdateForPlugins,
 }
 
 impl From<&ScreenInstruction> for ScreenContext {
@@ -413,12 +419,21 @@ impl From<&ScreenInstruction> for ScreenContext {
             ScreenInstruction::QueryTabNames(..) => ScreenContext::QueryTabNames,
             ScreenInstruction::NewTiledPluginPane(..) => ScreenContext::NewTiledPluginPane,
             ScreenInstruction::NewFloatingPluginPane(..) => ScreenContext::NewFloatingPluginPane,
+            ScreenInstruction::StartOrReloadPluginPane(..) => {
+                ScreenContext::StartOrReloadPluginPane
+            },
             ScreenInstruction::AddPlugin(..) => ScreenContext::AddPlugin,
             ScreenInstruction::UpdatePluginLoadingStage(..) => {
                 ScreenContext::UpdatePluginLoadingStage
             },
             ScreenInstruction::ProgressPluginLoadingOffset(..) => {
                 ScreenContext::ProgressPluginLoadingOffset
+            },
+            ScreenInstruction::StartPluginLoadingIndication(..) => {
+                ScreenContext::StartPluginLoadingIndication
+            },
+            ScreenInstruction::RequestStateUpdateForPlugins => {
+                ScreenContext::RequestStateUpdateForPlugins
             },
         }
     }
@@ -2097,6 +2112,7 @@ pub(crate) fn screen_thread_main(
                 screen.render()?;
             },
             ScreenInstruction::NewTab(
+                cwd,
                 default_shell,
                 layout,
                 floating_panes_layout,
@@ -2111,6 +2127,7 @@ pub(crate) fn screen_thread_main(
                     .bus
                     .senders
                     .send_to_plugin(PluginInstruction::NewTab(
+                        cwd,
                         default_shell,
                         layout,
                         floating_panes_layout,
@@ -2202,6 +2219,7 @@ pub(crate) fn screen_thread_main(
                                 .bus
                                 .senders
                                 .send_to_plugin(PluginInstruction::NewTab(
+                                    None,
                                     default_shell,
                                     None,
                                     vec![],
@@ -2510,6 +2528,30 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
+            ScreenInstruction::StartOrReloadPluginPane(
+                run_plugin_location,
+                pane_title,
+                client_id,
+            ) => {
+                let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
+                let size = Size::default();
+                let should_float = Some(false);
+                let run_plugin = RunPlugin {
+                    _allow_exec_host_cmd: false,
+                    location: run_plugin_location,
+                };
+                screen
+                    .bus
+                    .senders
+                    .send_to_plugin(PluginInstruction::Reload(
+                        should_float,
+                        pane_title,
+                        run_plugin,
+                        *tab_index,
+                        client_id,
+                        size,
+                    ))?;
+            },
             ScreenInstruction::AddPlugin(
                 should_float,
                 run_plugin_location,
@@ -2543,6 +2585,16 @@ pub(crate) fn screen_thread_main(
                 }
                 screen.render()?;
             },
+            ScreenInstruction::StartPluginLoadingIndication(pid, loading_indication) => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    if tab.has_plugin(pid) {
+                        tab.start_plugin_loading_indication(pid, loading_indication);
+                        break;
+                    }
+                }
+                screen.render()?;
+            },
             ScreenInstruction::ProgressPluginLoadingOffset(pid) => {
                 let all_tabs = screen.get_tabs_mut();
                 for tab in all_tabs.values_mut() {
@@ -2551,6 +2603,14 @@ pub(crate) fn screen_thread_main(
                         break;
                     }
                 }
+                screen.render()?;
+            },
+            ScreenInstruction::RequestStateUpdateForPlugins => {
+                let all_tabs = screen.get_tabs_mut();
+                for tab in all_tabs.values_mut() {
+                    tab.update_input_modes()?;
+                }
+                screen.update_tabs()?;
                 screen.render()?;
             },
         }

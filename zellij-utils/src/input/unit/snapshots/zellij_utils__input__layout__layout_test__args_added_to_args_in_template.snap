@@ -33,6 +33,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -58,6 +59,7 @@ Layout {
                         external_children_index: None,
                         children_are_stacked: false,
                         is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -67,6 +69,7 @@ Layout {
                 external_children_index: None,
                 children_are_stacked: false,
                 is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),

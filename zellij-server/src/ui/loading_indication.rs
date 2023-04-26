@@ -35,6 +35,9 @@ impl LoadingIndication {
             ..Default::default()
         }
     }
+    pub fn set_name(&mut self, plugin_name: String) {
+        self.plugin_name = plugin_name;
+    }
     pub fn with_colors(mut self, terminal_emulator_colors: Palette) -> Self {
         self.terminal_emulator_colors = Some(terminal_emulator_colors);
         self

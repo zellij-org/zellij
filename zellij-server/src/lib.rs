@@ -343,9 +343,11 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 let default_shell = config_options.default_shell.map(|shell| {
                     TerminalAction::RunCommand(RunCommand {
                         command: shell,
+                        cwd: config_options.default_cwd.clone(),
                         ..Default::default()
                     })
                 });
+                let cwd = config_options.default_cwd;
 
                 let spawn_tabs = |tab_layout, floating_panes_layout, tab_name, swap_layouts| {
                     session_data
@@ -355,6 +357,7 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                         .unwrap()
                         .senders
                         .send_to_screen(ScreenInstruction::NewTab(
+                            cwd.clone(),
                             default_shell.clone(),
                             tab_layout,
                             floating_panes_layout,
@@ -761,7 +764,7 @@ fn init_session(
                 Some(&to_screen),
                 Some(&to_pty),
                 Some(&to_plugin),
-                None,
+                Some(&to_server),
                 Some(&to_pty_writer),
                 Some(&to_background_jobs),
                 None,

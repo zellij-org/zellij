@@ -68,6 +68,7 @@ pub(crate) struct PluginPane {
     prev_pane_name: String,
     frame: HashMap<ClientId, PaneFrame>,
     borderless: bool,
+    exclude_from_sync: bool,
     pane_frame_color_override: Option<(PaletteColor, Option<String>)>,
     invoked_with: Option<Run>,
     loading_indication: LoadingIndication,
@@ -107,6 +108,7 @@ impl PluginPane {
             prev_pane_name: pane_name,
             terminal_emulator_colors,
             terminal_emulator_color_codes,
+            exclude_from_sync: false,
             link_handler,
             character_cell_size,
             sixel_image_store,
@@ -502,6 +504,12 @@ impl Pane for PluginPane {
     fn borderless(&self) -> bool {
         self.borderless
     }
+    fn set_exclude_from_sync(&mut self, exclude_from_sync: bool) {
+        self.exclude_from_sync = exclude_from_sync;
+    }
+    fn exclude_from_sync(&self) -> bool {
+        self.exclude_from_sync
+    }
     fn handle_right_click(&mut self, to: &Position, client_id: ClientId) {
         self.send_plugin_instructions
             .send(PluginInstruction::Update(vec![(
@@ -532,6 +540,12 @@ impl Pane for PluginPane {
         if self.loading_indication.ended {
             return;
         }
+        self.loading_indication.merge(loading_indication);
+        self.handle_plugin_bytes_for_all_clients(
+            self.loading_indication.to_string().as_bytes().to_vec(),
+        );
+    }
+    fn start_loading_indication(&mut self, loading_indication: LoadingIndication) {
         self.loading_indication.merge(loading_indication);
         self.handle_plugin_bytes_for_all_clients(
             self.loading_indication.to_string().as_bytes().to_vec(),

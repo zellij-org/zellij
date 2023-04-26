@@ -7,6 +7,7 @@ use crate::{
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use url::Url;
 
 #[derive(Parser, Default, Debug, Clone, Serialize, Deserialize)]
 #[clap(version, name = "zellij")]
@@ -373,4 +374,7 @@ pub enum CliAction {
     NextSwapLayout,
     /// Query all tab names
     QueryTabNames,
+    StartOrReloadPlugin {
+        url: Url,
+    },
 }
