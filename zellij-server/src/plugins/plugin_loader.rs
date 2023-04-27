@@ -1,4 +1,5 @@
-use crate::plugins::wasm_bridge::{wasi_read_string, zellij_exports, PluginEnv, Subscriptions, PluginMap, RunningPlugin};
+use crate::plugins::wasm_bridge::{wasi_read_string, zellij_exports};
+use crate::plugins::plugin_map::{PluginEnv, Subscriptions, PluginMap, RunningPlugin};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use semver::Version;

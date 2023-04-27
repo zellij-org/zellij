@@ -1,5 +1,6 @@
 mod plugin_loader;
 mod wasm_bridge;
+mod plugin_map;
 use log::info;
 use std::{collections::HashMap, fs, path::PathBuf};
 use wasmer::Store;
