@@ -510,7 +510,6 @@ impl WasmBridge {
     fn apply_cached_events_and_resizes_for_plugin(&mut self, plugin_id: PluginId) -> Result<()> {
         let err_context = || format!("Failed to apply cached events to plugin");
         if let Some(events) = self.cached_events_for_pending_plugins.remove(&plugin_id) {
-            // let mut plugin_map = self.plugin_map.lock().unwrap();
             let all_connected_clients: Vec<ClientId> = self
                 .connected_clients
                 .lock()
@@ -519,7 +518,6 @@ impl WasmBridge {
                 .copied()
                 .collect();
             for client_id in &all_connected_clients {
-                // if let Some((instance, plugin_env, (rows, columns))) =
                 if let Some((running_plugin, subscriptions)) =
                     self.plugin_map.lock().unwrap().get_mut(&(plugin_id, *client_id))
                 {
@@ -604,8 +602,8 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .iter()
-            .find(|((p_id, _client_id), _running_plugin)| *p_id == plugin_id)
-            .map(|((_p_id, _client_id), (running_plugin, _subscriptions))| {
+            .find(|((p_id, _client_id), _)| *p_id == plugin_id)
+            .map(|(_, (running_plugin, _subscriptions))| {
                 let running_plugin = running_plugin.lock().unwrap();
                 (running_plugin.rows, running_plugin.columns)
             })

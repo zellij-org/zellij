@@ -256,7 +256,7 @@ impl<'a> PluginLoader<'a> {
         loading_indication: &mut LoadingIndication,
     ) -> Result<()> {
         let mut new_plugins = HashSet::new();
-        for (&(plugin_id, _), _running_plugin) in &*plugin_map.lock().unwrap() {
+        for (&(plugin_id, _), _) in &*plugin_map.lock().unwrap() {
             new_plugins.insert((plugin_id, client_id));
         }
         for (plugin_id, existing_client_id) in new_plugins {
