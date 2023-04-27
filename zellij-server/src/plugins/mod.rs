@@ -37,7 +37,6 @@ pub enum PluginInstruction {
         Option<String>, // pane title
         RunPlugin,
         usize, // tab index
-        ClientId,
         Size,
     ),
     Resize(u32, usize, usize), // plugin_id, columns, rows
@@ -117,7 +116,6 @@ pub(crate) fn plugin_thread_main(
                 pane_title,
                 run,
                 tab_index,
-                client_id,
                 size,
             ) => match wasm_bridge.reload_plugin(&run) {
                 Ok(_) => {

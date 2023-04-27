@@ -260,7 +260,7 @@ pub enum ScreenInstruction {
     NewTiledPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
     // optional pane title
     NewFloatingPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is an
-    StartOrReloadPluginPane(RunPluginLocation, Option<String>, ClientId), // Option<String> is
+    StartOrReloadPluginPane(RunPluginLocation, Option<String>),
     // optional pane title
     AddPlugin(
         Option<bool>, // should_float
@@ -2531,7 +2531,6 @@ pub(crate) fn screen_thread_main(
             ScreenInstruction::StartOrReloadPluginPane(
                 run_plugin_location,
                 pane_title,
-                client_id,
             ) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
@@ -2548,7 +2547,6 @@ pub(crate) fn screen_thread_main(
                         pane_title,
                         run_plugin,
                         *tab_index,
-                        client_id,
                         size,
                     ))?;
             },

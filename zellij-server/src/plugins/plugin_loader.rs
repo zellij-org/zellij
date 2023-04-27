@@ -146,18 +146,6 @@ fn assert_plugin_version(instance: &Instance, plugin_env: &PluginEnv) -> Result<
     Ok(())
 }
 
-fn load_plugin_instance(instance: &mut Instance) -> Result<()> {
-    let err_context = || format!("failed to load plugin from instance {instance:#?}");
-
-    let load_function = instance
-        .exports
-        .get_function("_start")
-        .with_context(err_context)?;
-    // This eventually calls the `.load()` method
-    load_function.call(&[]).with_context(err_context)?;
-    Ok(())
-}
-
 pub struct PluginLoader<'a> {
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_path: PathBuf,
@@ -206,15 +194,11 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .load_module_from_memory()
             .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
-                plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions)?;
-                plugin_loader.clone_instance_for_other_clients(
-                    &instance,
-                    &plugin_env,
-                    &connected_clients,
-                    &plugin_map,
-                )
-            })
+            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
+            .and_then(|_| plugin_loader.clone_instance_for_other_clients(
+                &connected_clients,
+                &plugin_map,
+            ))
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -253,15 +237,11 @@ impl<'a> PluginLoader<'a> {
             .or_else(|_e| plugin_loader.load_module_from_hd_cache())
             .or_else(|_e| plugin_loader.compile_module())
             .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
-                plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions)?;
-                plugin_loader.clone_instance_for_other_clients(
-                    &instance,
-                    &plugin_env,
-                    &connected_clients.lock().unwrap(),
-                    &plugin_map,
-                )
-            })
+            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
+            .and_then(|_| plugin_loader.clone_instance_for_other_clients(
+                &connected_clients.lock().unwrap(),
+                &plugin_map,
+            ))
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -339,15 +319,8 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .compile_module()
             .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| {
-                plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions)?;
-                plugin_loader.clone_instance_for_other_clients(
-                    &instance,
-                    &plugin_env,
-                    &connected_clients,
-                    &plugin_map,
-                )
-            })
+            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
+            .and_then(|_| plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map))
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -396,8 +369,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        // let (_old_instance, old_user_env, (rows, cols)) = {
-        let (running_plugin, subscriptions) = {
+        let (running_plugin, _subscriptions) = {
             let mut plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .remove(&(plugin_id, client_id))
@@ -433,8 +405,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        // let (_old_instance, old_user_env, (rows, cols)) = {
-        let (running_plugin, subscriptions) = {
+        let (running_plugin, _subscriptions) = {
             let plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .iter()
@@ -658,8 +629,6 @@ impl<'a> PluginLoader<'a> {
     }
     pub fn clone_instance_for_other_clients(
         &mut self,
-        instance: &Instance,
-        plugin_env: &PluginEnv,
         connected_clients: &[ClientId],
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
@@ -672,10 +641,7 @@ impl<'a> PluginLoader<'a> {
             );
             // let mut plugin_map = self.plugin_map.lock().unwrap();
             for client_id in connected_clients {
-                // TODO: CONTINUE HERE (now): see why strider is garbled on first terminal window
-                // resize (sigwinch), and then experiment with the multople println's in one render
-                // (not clearing grid?)
-                let mut loading_indication = LoadingIndication::new("".into()); // TODO: we don't actually
+                let mut loading_indication = LoadingIndication::new("".into());
                 let mut plugin_loader_for_client = PluginLoader::new_from_different_client_id(
                     &self.plugin_cache.clone(),
                     &plugin_map,
@@ -692,16 +658,6 @@ impl<'a> PluginLoader<'a> {
                     .and_then(|(instance, plugin_env, subscriptions)| {
                         plugin_loader_for_client.load_plugin_instance(&instance, &plugin_env, plugin_map, &subscriptions)
                     })?
-
-//                 // TODO CONTINUE HERE (now): instead of doing this, use the same method as we did with add_client
-//                 let (instance, new_plugin_env) =
-//                     // TODO: use running_plugin.clone_for_new_client
-//                     clone_plugin_for_client(&plugin_env, *client_id, &instance, &self.store)?;
-//                 plugin_map.insert(
-//                     (self.plugin_id, *client_id),
-//                     Arc::new(Mutex::new(RunningPlugin::new(instance, new_plugin_env, self.size.rows, self.size.cols)))
-//                     // (instance, new_plugin_env, (self.size.rows, self.size.cols)),
-//                 );
             }
             display_loading_stage!(
                 indicate_cloning_plugin_for_other_clients_success,
