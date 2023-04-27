@@ -221,7 +221,6 @@ impl<'a> PluginLoader<'a> {
         let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
             &plugin_cache,
-            // &plugin_map,
             loading_indication,
             &senders,
             plugin_id,
@@ -261,11 +260,6 @@ impl<'a> PluginLoader<'a> {
             new_plugins.insert((plugin_id, client_id));
         }
         for (plugin_id, existing_client_id) in new_plugins {
-            // TODO: CONTINUE HERE - this is incorrect, we need to do the same thing here without
-            // removing the existing plugin as we do in the below constructor method, and also make
-            // sure when the plugin is loaded with a new instance and all, it will be with our
-            // client_id... maybe create a new similar method to
-            // new_from_existing_plugin_attributes?
             let mut plugin_loader = PluginLoader::new_from_different_client_id(
                 &plugin_cache,
                 &plugin_map,
@@ -327,7 +321,6 @@ impl<'a> PluginLoader<'a> {
     }
     pub fn new(
         plugin_cache: &Arc<Mutex<HashMap<PathBuf, Module>>>,
-        // plugin_map: &Arc<Mutex<PluginMap>>,
         loading_indication: &'a mut LoadingIndication,
         senders: &ThreadSenders,
         plugin_id: u32,
@@ -343,7 +336,6 @@ impl<'a> PluginLoader<'a> {
         let plugin_path = plugin.path.clone();
         Ok(PluginLoader {
             plugin_cache: plugin_cache.clone(),
-            // plugin_map: plugin_map.clone(),
             plugin_path,
             loading_indication,
             senders: senders.clone(),
@@ -382,7 +374,6 @@ impl<'a> PluginLoader<'a> {
         loading_indication.set_name(running_plugin.plugin_env.name());
         PluginLoader::new(
             plugin_cache,
-            // plugin_map,
             loading_indication,
             senders,
             plugin_id,
@@ -421,7 +412,6 @@ impl<'a> PluginLoader<'a> {
         loading_indication.set_name(running_plugin.plugin_env.name());
         PluginLoader::new(
             plugin_cache,
-            // plugin_map,
             loading_indication,
             senders,
             plugin_id,
@@ -554,7 +544,6 @@ impl<'a> PluginLoader<'a> {
             plugin: mut_plugin,
             senders: self.senders.clone(),
             wasi_env,
-            // subscriptions: Arc::new(Mutex::new(HashSet::new())),
             plugin_own_data_dir: self.plugin_own_data_dir.clone(),
             tab_index: self.tab_index,
         };
@@ -606,18 +595,12 @@ impl<'a> PluginLoader<'a> {
             self.senders,
             self.plugin_id
         );
-        // let mut plugin_map = plugin_map.lock().unwrap();
         plugin_map.lock().unwrap().insert(
             (self.plugin_id, self.client_id),
             (
                 Arc::new(Mutex::new(RunningPlugin::new(main_user_instance, main_user_env, self.size.rows, self.size.cols))),
                 subscriptions.clone(),
             ),
-//             (
-//                 main_user_instance,
-//                 main_user_env,
-//                 (self.size.rows, self.size.cols),
-//             ),
         );
         display_loading_stage!(
             indicate_writing_plugin_to_cache_success,
@@ -639,7 +622,6 @@ impl<'a> PluginLoader<'a> {
                 self.senders,
                 self.plugin_id
             );
-            // let mut plugin_map = self.plugin_map.lock().unwrap();
             for client_id in connected_clients {
                 let mut loading_indication = LoadingIndication::new("".into());
                 let mut plugin_loader_for_client = PluginLoader::new_from_different_client_id(
@@ -705,25 +687,3 @@ fn create_plugin_fs_entries(plugin_own_data_dir: &PathBuf) -> Result<()> {
         .with_context(err_context)?;
     Ok(())
 }
-
-// fn clone_plugin_for_client(
-//     plugin_env: &PluginEnv,
-//     client_id: ClientId,
-//     instance: &Instance,
-//     store: &Store,
-// ) -> Result<(Instance, PluginEnv)> {
-//     // TODO: can we remove this?
-//     let err_context = || format!("Failed to clone plugin for client {client_id}");
-//     let mut new_plugin_env = plugin_env.clone();
-//     new_plugin_env.client_id = client_id;
-//     let module = instance.module().clone();
-//     let wasi = new_plugin_env
-//         .wasi_env
-//         .import_object(&module)
-//         .with_context(err_context)?;
-//     let zellij = zellij_exports(store, &new_plugin_env);
-//     let mut instance =
-//         Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
-//     load_plugin_instance(&mut instance).with_context(err_context)?;
-//     Ok((instance, new_plugin_env))
-// }

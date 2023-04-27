@@ -332,8 +332,7 @@ impl WasmBridge {
         Ok(())
     }
     pub fn add_client(&mut self, client_id: ClientId) -> Result<()> {
-        let mut loading_indication = LoadingIndication::new("".into()); // TODO: we don't actually
-                                                                        // need this
+        let mut loading_indication = LoadingIndication::new("".into());
         match PluginLoader::add_client(
             client_id,
             self.plugin_dir.clone(),
@@ -496,15 +495,6 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .retain(|c| c != &client_id);
-
-        // remove client's plugins
-        let mut plugin_map = self.plugin_map.lock().unwrap();
-        let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
-        for (p_id, c_id) in ids_in_plugin_map {
-            if c_id == client_id {
-                drop(plugin_map.remove(&(p_id, c_id)));
-            }
-        }
     }
     pub fn cleanup(&mut self) {
         for (_plugin_id, loading_plugin_task) in self.loading_plugins.drain() {
@@ -596,8 +586,7 @@ impl WasmBridge {
             .unwrap()
             .iter()
             .filter(
-                // |((_plugin_id, _client_id), (_instance, plugin_env, _size))| {
-                |((_plugin_id, _client_id), (running_plugin, _subscriptions))| {
+                |(_, (running_plugin, _subscriptions))| {
                     &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location // TODO:
                                                                                                   // better
                 },
