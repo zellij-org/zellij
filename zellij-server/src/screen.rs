@@ -2528,10 +2528,7 @@ pub(crate) fn screen_thread_main(
                     size,
                 ))?;
             },
-            ScreenInstruction::StartOrReloadPluginPane(
-                run_plugin_location,
-                pane_title,
-            ) => {
+            ScreenInstruction::StartOrReloadPluginPane(run_plugin_location, pane_title) => {
                 let tab_index = screen.active_tab_indices.values().next().unwrap_or(&1);
                 let size = Size::default();
                 let should_float = Some(false);

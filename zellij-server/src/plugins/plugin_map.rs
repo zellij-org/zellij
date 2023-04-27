@@ -4,29 +4,20 @@ use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use wasmer::{
-    Instance
-};
+use wasmer::Instance;
 use wasmer_wasi::WasiEnv;
 
-use crate::{
-    thread_bus::ThreadSenders,
-    ClientId,
-};
+use crate::{thread_bus::ThreadSenders, ClientId};
 
-use zellij_utils::{
-    data::EventType,
-    input::{
-        plugins::PluginConfig,
-    },
-};
+use zellij_utils::{data::EventType, input::plugins::PluginConfig};
 
 // the idea here is to provide atomicity when adding/removing plugins from the map (eg. when a new
 // client connects) but to also allow updates/renders not to block each other
 // so when adding/removing from the map - everything is halted, that's life
 // but when cloning the internal RunningPlugin and Subscriptions atomics, we can call methods on
 // them without blocking other instances
-pub type PluginMap = HashMap<(PluginId, ClientId), (Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)>;
+pub type PluginMap =
+    HashMap<(PluginId, ClientId), (Arc<Mutex<RunningPlugin>>, Arc<Mutex<Subscriptions>>)>;
 pub type Subscriptions = HashSet<EventType>;
 
 #[derive(Clone)]
@@ -77,7 +68,8 @@ impl RunningPlugin {
             last_applied_event_ids: HashMap::new(),
         }
     }
-    pub fn next_event_id(&mut self, atomic_event: AtomicEvent) -> usize { // TODO: probably not usize...
+    pub fn next_event_id(&mut self, atomic_event: AtomicEvent) -> usize {
+        // TODO: probably not usize...
         let current_event_id = *self.next_event_ids.get(&atomic_event).unwrap_or(&0);
         if current_event_id < usize::MAX {
             let next_event_id = current_event_id + 1;

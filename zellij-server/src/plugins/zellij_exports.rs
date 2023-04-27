@@ -10,10 +10,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use wasmer::{
-    imports, Function, ImportObject, Store,
-    WasmerEnv,
-};
+use wasmer::{imports, Function, ImportObject, Store, WasmerEnv};
 use wasmer_wasi::WasiEnv;
 
 use crate::{
@@ -26,14 +23,15 @@ use zellij_utils::{
     consts::VERSION,
     data::{Event, EventType, PluginIds},
     errors::prelude::*,
-    input::{
-        command::TerminalAction,
-        plugins::PluginType,
-    },
+    input::{command::TerminalAction, plugins::PluginType},
     serde,
 };
 
-pub fn zellij_exports(store: &Store, plugin_env: &PluginEnv, subscriptions: &Arc<Mutex<Subscriptions>>) -> ImportObject {
+pub fn zellij_exports(
+    store: &Store,
+    plugin_env: &PluginEnv,
+    subscriptions: &Arc<Mutex<Subscriptions>>,
+) -> ImportObject {
     macro_rules! zellij_export {
         ($($host_function:ident),+ $(,)?) => {
             imports! {
@@ -87,8 +85,7 @@ fn host_subscribe(env: &ForeignFunctionEnv) {
 fn host_unsubscribe(env: &ForeignFunctionEnv) {
     wasi_read_object::<HashSet<EventType>>(&env.plugin_env.wasi_env)
         .and_then(|old| {
-                env
-                .subscriptions
+            env.subscriptions
                 .lock()
                 .to_anyhow()?
                 .retain(|k| !old.contains(k));
@@ -102,8 +99,7 @@ fn host_set_selectable(env: &ForeignFunctionEnv, selectable: i32) {
     match env.plugin_env.plugin.run {
         PluginType::Pane(Some(tab_index)) => {
             let selectable = selectable != 0;
-            env
-                .plugin_env
+            env.plugin_env
                 .senders
                 .send_to_screen(ScreenInstruction::SetSelectable(
                     PaneId::Plugin(env.plugin_env.plugin_id),
@@ -157,8 +153,7 @@ fn host_get_zellij_version(env: &ForeignFunctionEnv) {
 fn host_open_file(env: &ForeignFunctionEnv) {
     wasi_read_object::<PathBuf>(&env.plugin_env.wasi_env)
         .and_then(|path| {
-            env
-                .plugin_env
+            env.plugin_env
                 .senders
                 .send_to_pty(PtyInstruction::SpawnTerminal(
                     Some(TerminalAction::OpenFile(path, None, None)),
@@ -177,8 +172,7 @@ fn host_open_file(env: &ForeignFunctionEnv) {
 }
 
 fn host_switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
-    env
-        .plugin_env
+    env.plugin_env
         .senders
         .send_to_screen(ScreenInstruction::GoToTab(
             tab_idx,
@@ -270,7 +264,12 @@ fn host_exec_cmd(env: &ForeignFunctionEnv) {
 // formatted as string from the plugin.
 fn host_report_panic(env: &ForeignFunctionEnv) {
     let msg = wasi_read_string(&env.plugin_env.wasi_env)
-        .with_context(|| format!("failed to report panic for plugin '{}'", env.plugin_env.name()))
+        .with_context(|| {
+            format!(
+                "failed to report panic for plugin '{}'",
+                env.plugin_env.name()
+            )
+        })
         .fatal();
     panic!("{}", msg);
 }

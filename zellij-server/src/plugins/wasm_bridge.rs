@@ -1,7 +1,7 @@
 use super::PluginInstruction;
 use crate::plugins::plugin_loader::{PluginLoader, VersionMismatchError};
-use crate::plugins::plugin_map::{PluginMap, PluginEnv, AtomicEvent};
-use crate::plugins::zellij_exports::{wasi_write_object, wasi_read_string};
+use crate::plugins::plugin_map::{AtomicEvent, PluginEnv, PluginMap};
+use crate::plugins::zellij_exports::{wasi_read_string, wasi_write_object};
 use log::info;
 use std::{
     collections::{HashMap, HashSet},
@@ -10,17 +10,12 @@ use std::{
     str::FromStr,
     sync::{Arc, Mutex},
 };
-use wasmer::{
-    Instance, Module, Store, Value,
-};
+use wasmer::{Instance, Module, Store, Value};
 use zellij_utils::async_std::task::{self, JoinHandle};
 
 use crate::{
-    background_jobs::BackgroundJob,
-    screen::ScreenInstruction,
-    thread_bus::ThreadSenders,
-    ui::loading_indication::LoadingIndication,
-    ClientId,
+    background_jobs::BackgroundJob, screen::ScreenInstruction, thread_bus::ThreadSenders,
+    ui::loading_indication::LoadingIndication, ClientId,
 };
 
 use zellij_utils::{
@@ -88,9 +83,18 @@ impl WasmBridge {
         // returns the plugin id
         let err_context = move || format!("failed to load plugin");
 
-        let client_id = client_id.or_else(|| {
-            self.connected_clients.lock().unwrap().iter().next().copied()
-        }).with_context(|| "Plugins must have a client id, none was provided and none are connected")?;
+        let client_id = client_id
+            .or_else(|| {
+                self.connected_clients
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .next()
+                    .copied()
+            })
+            .with_context(|| {
+                "Plugins must have a client id, none was provided and none are connected"
+            })?;
 
         let plugin_id = self.next_plugin_id;
 
@@ -256,17 +260,19 @@ impl WasmBridge {
             &mut loading_indication,
         ) {
             Ok(_) => {
-                let _ = self.senders.send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
+                let _ = self
+                    .senders
+                    .send_to_screen(ScreenInstruction::RequestStateUpdateForPlugins);
                 Ok(())
-            }
-            Err(e) => {
-                Err(e)
-            }
+            },
+            Err(e) => Err(e),
         }
     }
     pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
-        for ((plugin_id, client_id), (running_plugin, _subscriptions)) in self.plugin_map.lock().unwrap().iter_mut() {
+        for ((plugin_id, client_id), (running_plugin, _subscriptions)) in
+            self.plugin_map.lock().unwrap().iter_mut()
+        {
             if self
                 .cached_resizes_for_pending_plugins
                 .contains_key(&plugin_id)
@@ -274,7 +280,10 @@ impl WasmBridge {
                 continue;
             }
             if *plugin_id == pid {
-                let event_id = running_plugin.lock().unwrap().next_event_id(AtomicEvent::Resize);
+                let event_id = running_plugin
+                    .lock()
+                    .unwrap()
+                    .next_event_id(AtomicEvent::Resize);
                 task::spawn({
                     let senders = self.senders.clone();
                     let running_plugin = running_plugin.clone();
@@ -285,7 +294,8 @@ impl WasmBridge {
                         if running_plugin.apply_event_id(AtomicEvent::Resize, event_id) {
                             running_plugin.rows = new_rows;
                             running_plugin.columns = new_columns;
-                            let rendered_bytes = running_plugin.instance
+                            let rendered_bytes = running_plugin
+                                .instance
                                 .exports
                                 .get_function("render")
                                 .map_err(anyError::new)
@@ -301,13 +311,19 @@ impl WasmBridge {
                                 .with_context(err_context);
                             match rendered_bytes {
                                 Ok(rendered_bytes) => {
-                                    let plugin_bytes = vec![(plugin_id, client_id, rendered_bytes.as_bytes().to_vec())];
+                                    let plugin_bytes = vec![(
+                                        plugin_id,
+                                        client_id,
+                                        rendered_bytes.as_bytes().to_vec(),
+                                    )];
                                     senders
-                                        .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes)).unwrap();
+                                        .send_to_screen(ScreenInstruction::PluginBytes(
+                                            plugin_bytes,
+                                        ))
+                                        .unwrap();
                                 },
-                                Err(e) => log::error!("{}", e)
+                                Err(e) => log::error!("{}", e),
                             }
-
                         }
                     }
                 });
@@ -328,17 +344,16 @@ impl WasmBridge {
         let err_context = || "failed to update plugin state".to_string();
 
         for (pid, cid, event) in updates.drain(..) {
-            for (&(plugin_id, client_id), (running_plugin, subscriptions)) in &*self.plugin_map.lock().unwrap() {
+            for (&(plugin_id, client_id), (running_plugin, subscriptions)) in
+                &*self.plugin_map.lock().unwrap()
+            {
                 if self
                     .cached_events_for_pending_plugins
                     .contains_key(&plugin_id)
                 {
                     continue;
                 }
-                let subs = subscriptions
-                    .lock()
-                    .unwrap()
-                    .clone();
+                let subs = subscriptions.lock().unwrap().clone();
                 // FIXME: This is very janky... Maybe I should write my own macro for Event -> EventType?
                 let event_type =
                     EventType::from_str(&event.to_string()).with_context(err_context)?;
@@ -366,12 +381,13 @@ impl WasmBridge {
                                 &mut plugin_bytes,
                             ) {
                                 Ok(()) => {
-                                    let _ = senders
-                                        .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                                    let _ = senders.send_to_screen(ScreenInstruction::PluginBytes(
+                                        plugin_bytes,
+                                    ));
                                 },
                                 Err(e) => {
                                     log::error!("{}", e);
-                                }
+                                },
                             }
                         }
                     });
@@ -430,13 +446,13 @@ impl WasmBridge {
                 .copied()
                 .collect();
             for client_id in &all_connected_clients {
-                if let Some((running_plugin, subscriptions)) =
-                    self.plugin_map.lock().unwrap().get_mut(&(plugin_id, *client_id))
+                if let Some((running_plugin, subscriptions)) = self
+                    .plugin_map
+                    .lock()
+                    .unwrap()
+                    .get_mut(&(plugin_id, *client_id))
                 {
-                    let subs = subscriptions
-                        .lock()
-                        .unwrap()
-                        .clone();
+                    let subs = subscriptions.lock().unwrap().clone();
                     for event in events.clone() {
                         let event_type =
                             EventType::from_str(&event.to_string()).with_context(err_context)?;
@@ -461,12 +477,13 @@ impl WasmBridge {
                                     &mut plugin_bytes,
                                 ) {
                                     Ok(()) => {
-                                        let _ = senders
-                                            .send_to_screen(ScreenInstruction::PluginBytes(plugin_bytes));
+                                        let _ = senders.send_to_screen(
+                                            ScreenInstruction::PluginBytes(plugin_bytes),
+                                        );
                                     },
                                     Err(e) => {
                                         log::error!("{}", e);
-                                    }
+                                    },
                                 }
                             }
                         });
@@ -495,12 +512,11 @@ impl WasmBridge {
             .lock()
             .unwrap()
             .iter()
-            .filter(
-                |(_, (running_plugin, _subscriptions))| {
-                    &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location // TODO:
-                                                                                                  // better
-                },
-            )
+            .filter(|(_, (running_plugin, _subscriptions))| {
+                &running_plugin.lock().unwrap().plugin_env.plugin.location == plugin_location
+                // TODO:
+                // better
+            })
             .map(|((plugin_id, _client_id), _)| *plugin_id)
             .collect();
         if plugin_ids.is_empty() {

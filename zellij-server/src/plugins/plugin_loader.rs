@@ -1,5 +1,5 @@
+use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
-use crate::plugins::plugin_map::{PluginEnv, Subscriptions, PluginMap, RunningPlugin};
 use highway::{HighwayHash, PortableHash};
 use log::info;
 use semver::Version;
@@ -194,12 +194,20 @@ impl<'a> PluginLoader<'a> {
         )?;
         plugin_loader
             .load_module_from_memory()
-            .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
-            .and_then(|_| plugin_loader.clone_instance_for_other_clients(
-                &connected_clients,
-                &plugin_map,
-            ))
+            .and_then(|module| {
+                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+            })
+            .and_then(|(instance, plugin_env, subscriptions)| {
+                plugin_loader.load_plugin_instance(
+                    &instance,
+                    &plugin_env,
+                    &plugin_map,
+                    &subscriptions,
+                )
+            })
+            .and_then(|_| {
+                plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
+            })
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -236,12 +244,23 @@ impl<'a> PluginLoader<'a> {
             .load_module_from_memory()
             .or_else(|_e| plugin_loader.load_module_from_hd_cache())
             .or_else(|_e| plugin_loader.compile_module())
-            .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
-            .and_then(|_| plugin_loader.clone_instance_for_other_clients(
-                &connected_clients.lock().unwrap(),
-                &plugin_map,
-            ))
+            .and_then(|module| {
+                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+            })
+            .and_then(|(instance, plugin_env, subscriptions)| {
+                plugin_loader.load_plugin_instance(
+                    &instance,
+                    &plugin_env,
+                    &plugin_map,
+                    &subscriptions,
+                )
+            })
+            .and_then(|_| {
+                plugin_loader.clone_instance_for_other_clients(
+                    &connected_clients.lock().unwrap(),
+                    &plugin_map,
+                )
+            })
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -273,9 +292,16 @@ impl<'a> PluginLoader<'a> {
             )?;
             plugin_loader
                 .load_module_from_memory()
-                .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
+                .and_then(|module| {
+                    plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+                })
                 .and_then(|(instance, plugin_env, subscriptions)| {
-                    plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions)
+                    plugin_loader.load_plugin_instance(
+                        &instance,
+                        &plugin_env,
+                        &plugin_map,
+                        &subscriptions,
+                    )
                 })?
         }
         connected_clients.lock().unwrap().push(client_id);
@@ -313,9 +339,20 @@ impl<'a> PluginLoader<'a> {
         )?;
         plugin_loader
             .compile_module()
-            .and_then(|module| plugin_loader.create_plugin_instance_environment_and_subscriptions(module))
-            .and_then(|(instance, plugin_env, subscriptions)| plugin_loader.load_plugin_instance(&instance, &plugin_env, &plugin_map, &subscriptions))
-            .and_then(|_| plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map))
+            .and_then(|module| {
+                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+            })
+            .and_then(|(instance, plugin_env, subscriptions)| {
+                plugin_loader.load_plugin_instance(
+                    &instance,
+                    &plugin_env,
+                    &plugin_map,
+                    &subscriptions,
+                )
+            })
+            .and_then(|_| {
+                plugin_loader.clone_instance_for_other_clients(&connected_clients, &plugin_map)
+            })
             .with_context(err_context)?;
         display_loading_stage!(end, loading_indication, senders, plugin_id);
         Ok(())
@@ -370,7 +407,10 @@ impl<'a> PluginLoader<'a> {
         };
         let running_plugin = running_plugin.lock().unwrap();
         let tab_index = running_plugin.plugin_env.tab_index;
-        let size = Size { rows: running_plugin.rows, cols: running_plugin.columns };
+        let size = Size {
+            rows: running_plugin.rows,
+            cols: running_plugin.columns,
+        };
         let plugin_config = running_plugin.plugin_env.plugin.clone();
         loading_indication.set_name(running_plugin.plugin_env.name());
         PluginLoader::new(
@@ -408,7 +448,10 @@ impl<'a> PluginLoader<'a> {
         };
         let running_plugin = running_plugin.lock().unwrap();
         let tab_index = running_plugin.plugin_env.tab_index;
-        let size = Size { rows: running_plugin.rows, cols: running_plugin.columns };
+        let size = Size {
+            rows: running_plugin.rows,
+            cols: running_plugin.columns,
+        };
         let plugin_config = running_plugin.plugin_env.plugin.clone();
         loading_indication.set_name(running_plugin.plugin_env.name());
         PluginLoader::new(
@@ -599,7 +642,12 @@ impl<'a> PluginLoader<'a> {
         plugin_map.lock().unwrap().insert(
             (self.plugin_id, self.client_id),
             (
-                Arc::new(Mutex::new(RunningPlugin::new(main_user_instance, main_user_env, self.size.rows, self.size.cols))),
+                Arc::new(Mutex::new(RunningPlugin::new(
+                    main_user_instance,
+                    main_user_env,
+                    self.size.rows,
+                    self.size.cols,
+                ))),
                 subscriptions.clone(),
             ),
         );
@@ -637,9 +685,17 @@ impl<'a> PluginLoader<'a> {
                 )?;
                 plugin_loader_for_client
                     .load_module_from_memory()
-                    .and_then(|module| plugin_loader_for_client.create_plugin_instance_environment_and_subscriptions(module))
+                    .and_then(|module| {
+                        plugin_loader_for_client
+                            .create_plugin_instance_environment_and_subscriptions(module)
+                    })
                     .and_then(|(instance, plugin_env, subscriptions)| {
-                        plugin_loader_for_client.load_plugin_instance(&instance, &plugin_env, plugin_map, &subscriptions)
+                        plugin_loader_for_client.load_plugin_instance(
+                            &instance,
+                            &plugin_env,
+                            plugin_map,
+                            &subscriptions,
+                        )
                     })?
             }
             display_loading_stage!(
