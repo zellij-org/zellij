@@ -699,7 +699,6 @@ pub(crate) fn route_action(
                 .send_to_screen(ScreenInstruction::StartOrReloadPluginPane(
                     run_plugin_location,
                     None,
-                    client_id,
                 ))
                 .with_context(err_context)?;
         },
