@@ -832,7 +832,7 @@ pub fn lock_mode() {
             break last_snapshot;
         }
     };
-    // let last_snapshot = account_for_races_in_snapshot(last_snapshot);
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
