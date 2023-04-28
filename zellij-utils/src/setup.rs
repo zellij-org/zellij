@@ -320,7 +320,7 @@ impl Setup {
             None => config.options.clone(),
         };
 
-        config.themes = config.themes.merge(get_default_themes());
+        config.themes = get_default_themes().merge(config.themes);
 
         let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
             get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
