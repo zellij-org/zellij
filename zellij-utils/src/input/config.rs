@@ -83,9 +83,6 @@ pub enum ConfigError {
     KdlDeserializationError(#[from] kdl::KdlError),
     #[error("KdlDeserialization error: {0}")]
     KdlError(KdlError), // TODO: consolidate these
-    // Io error
-    #[error("IoError: {0}")]
-    Io(#[from] io::Error),
     #[error("Config error: {0}")]
     Std(#[from] Box<dyn std::error::Error>),
     // Io error with path context
