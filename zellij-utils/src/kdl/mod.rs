@@ -10,8 +10,6 @@ use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use strum::IntoEnumIterator;
 
 use miette::NamedSource;
@@ -1746,9 +1744,8 @@ impl Themes {
 
     pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
         // String is the theme name
-        let mut file = File::open(path_to_theme_file.clone())?;
-        let mut kdl_config = String::new();
-        file.read_to_string(&mut kdl_config)?;
+        let kdl_config = std::fs::read_to_string(&path_to_theme_file)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
@@ -1761,8 +1758,10 @@ impl Themes {
 
     pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
         let mut themes = Themes::default();
-        for entry in std::fs::read_dir(path_to_theme_dir)? {
-            let entry = entry?;
+        for entry in std::fs::read_dir(&path_to_theme_dir)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?
+        {
+            let entry = entry.map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?;
             let path = entry.path();
             if let Some(extension) = path.extension() {
                 if extension == "kdl" {

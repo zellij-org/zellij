@@ -730,7 +730,9 @@ impl Layout {
         let swap_layout_and_path = Layout::swap_layout_and_path(&layout_path);
 
         let mut kdl_layout = String::new();
-        layout_file.read_to_string(&mut kdl_layout)?;
+        layout_file
+            .read_to_string(&mut kdl_layout)
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
         Ok((
             layout_path.as_os_str().to_string_lossy().into(),
             kdl_layout,
