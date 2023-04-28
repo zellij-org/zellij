@@ -324,6 +324,9 @@ impl Setup {
 
         let user_theme_dir = config_options.theme_dir.clone().or_else(|| {
             get_theme_dir(cli_args.config_dir.clone().or_else(find_default_config_dir))
+                // If theme dir is not explicitly specified in config_options,
+                // only try to use it if it exists.
+                .filter(|dir| dir.exists())
         });
         if let Some(user_theme_dir) = user_theme_dir {
             config.themes = config.themes.merge(Themes::from_dir(user_theme_dir)?);
