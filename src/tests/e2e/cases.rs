@@ -4,6 +4,7 @@ use ::insta::assert_snapshot;
 use zellij_utils::{pane_size::Size, position::Position};
 
 use rand::Rng;
+use regex::Regex;
 
 use std::fmt::Write;
 use std::path::Path;
@@ -74,6 +75,26 @@ pub fn sgr_mouse_report(position: Position, button: u8) -> Vec<u8> {
         .to_vec()
 }
 
+// what we do here is adjust snapshots for various race conditions that should hopefully be
+// temporary until we can fix them - when adding stuff here, please add a detailed comment
+// explaining the race condition and what needs to be done to solve it
+fn account_for_races_in_snapshot(snapshot: String) -> String {
+    // these replacements need to be done because plugins set themselves as "unselectable" at runtime
+    // when they are loaded - since they are loaded asynchronously, sometimes the "BASE" indication
+    // (which should only happen if there's more than one selectable pane) is rendered and
+    // sometimes it isn't - this removes it entirely
+    //
+    // to fix this, we should set plugins as unselectable in the layout (before they are loaded),
+    // once that happens, we should be able to remove this hack (and adjust the snapshots for the
+    // trailing spaces that we had to get rid of here)
+    let base_replace = Regex::new(r" BASE \s*\n").unwrap();
+    let eol_arrow_replace = Regex::new(r"\s*\n").unwrap();
+    let snapshot = base_replace.replace_all(&snapshot, "\n").to_string();
+    let snapshot = eol_arrow_replace.replace_all(&snapshot, "\n").to_string();
+
+    snapshot
+}
+
 // All the E2E tests are marked as "ignored" so that they can be run separately from the normal
 // tests
 
@@ -105,6 +126,8 @@ pub fn starts_with_one_terminal() {
             break last_snapshot;
         }
     };
+
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -152,6 +175,7 @@ pub fn split_terminals_vertically() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -195,6 +219,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -272,6 +297,7 @@ pub fn scrolling_inside_a_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -332,6 +358,7 @@ pub fn toggle_pane_fullscreen() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -396,6 +423,7 @@ pub fn open_new_tab() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -536,6 +564,7 @@ pub fn close_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -680,6 +709,7 @@ pub fn typing_exit_closes_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -742,6 +772,7 @@ pub fn resize_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -801,6 +832,7 @@ pub fn lock_mode() {
             break last_snapshot;
         }
     };
+    // let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -864,6 +896,7 @@ pub fn resize_terminal_window() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -949,6 +982,7 @@ pub fn detach_and_attach_session() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -984,6 +1018,7 @@ pub fn status_bar_loads_custom_keybindings() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1043,6 +1078,7 @@ fn focus_pane_with_mouse() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1118,6 +1154,7 @@ pub fn scrolling_inside_a_pane_with_mouse() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1164,6 +1201,7 @@ pub fn start_without_pane_frames() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1308,6 +1346,8 @@ pub fn mirrored_sessions() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1396,6 +1436,8 @@ pub fn multiple_users_in_same_pane_and_tab() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1486,6 +1528,8 @@ pub fn multiple_users_in_different_panes_and_same_tab() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1581,6 +1625,8 @@ pub fn multiple_users_in_different_tabs() {
             break (first_runner_snapshot, second_runner_snapshot);
         }
     };
+    let first_runner_snapshot = account_for_races_in_snapshot(first_runner_snapshot);
+    let second_runner_snapshot = account_for_races_in_snapshot(second_runner_snapshot);
     assert_snapshot!(first_runner_snapshot);
     assert_snapshot!(second_runner_snapshot);
 }
@@ -1637,6 +1683,7 @@ pub fn bracketed_paste() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1684,6 +1731,7 @@ pub fn toggle_floating_panes() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1731,6 +1779,7 @@ pub fn tmux_mode() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1829,6 +1878,7 @@ pub fn undo_rename_tab() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1878,6 +1928,7 @@ pub fn undo_rename_pane() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
 
@@ -1987,5 +2038,6 @@ pub fn send_command_through_the_cli() {
             break last_snapshot;
         }
     };
+    let last_snapshot = account_for_races_in_snapshot(last_snapshot);
     assert_snapshot!(last_snapshot);
 }
