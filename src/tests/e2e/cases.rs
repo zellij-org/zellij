@@ -1603,7 +1603,9 @@ pub fn bracketed_paste() {
             name: "Send pasted text followed by normal text",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.status_bar_appears()
+                    && remote_terminal.tab_bar_appears()
+                    && remote_terminal.cursor_position_is(3, 2)
                 {
                     remote_terminal.send_key(&BRACKETED_PASTE_START);
                     remote_terminal.send_key(&TAB_MODE);
