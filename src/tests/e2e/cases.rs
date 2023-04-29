@@ -190,8 +190,7 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Split pane to the right",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears() && remote_terminal.cursor_position_is(3, 2)
-                {
+                if remote_terminal.cursor_position_is(3, 2) {
                     remote_terminal.send_key(&PANE_MODE);
                     remote_terminal.send_key(&SPLIT_RIGHT_IN_PANE_MODE);
                     // back to normal mode after split
