@@ -1002,9 +1002,7 @@ pub fn status_bar_loads_custom_keybindings() {
             name: "Wait for app to load",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 1)
-                    && remote_terminal.snapshot_contains("$ █                   ││$")
-                    && remote_terminal.snapshot_contains("$                                                                                                                     ") {
+                if remote_terminal.cursor_position_is(3, 2) && remote_terminal.tip_appears() {
                     step_is_complete = true;
                 }
                 step_is_complete
