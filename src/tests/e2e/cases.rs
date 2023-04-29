@@ -204,7 +204,12 @@ pub fn cannot_split_terminals_vertically_when_active_terminal_is_too_small() {
             name: "Make sure only one pane appears",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2) {
+                if remote_terminal.cursor_position_is(3, 2)
+                //two empty lines at the bottom to make sure there is no plugin output
+                    && remote_terminal
+                        .current_snapshot()
+                        .ends_with("        \n        ")
+                {
                     // ... is the truncated tip line
                     step_is_complete = true;
                 }
