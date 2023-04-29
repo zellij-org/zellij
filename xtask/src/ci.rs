@@ -105,6 +105,7 @@ fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
 
     let _pd = sh.push_dir(crate::project_root());
 
+    // set --no-default-features so the test binary gets built with the plugins from assets/plugins that just got built
     crate::cargo()
         .and_then(|cargo| {
             cmd!(
