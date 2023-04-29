@@ -1315,7 +1315,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
@@ -1328,7 +1328,7 @@ pub fn mirrored_sessions() {
             name: "take snapshot after",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(3, 2)
+                if remote_terminal.cursor_position_is(63, 2)
                     && remote_terminal.snapshot_contains("┐┌")
                 {
                     // cursor is back in the first tab
