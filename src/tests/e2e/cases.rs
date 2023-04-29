@@ -1589,6 +1589,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
+                    && remote_terminal.snapshot_contains("Tab #1 [ ]")
                     && remote_terminal.snapshot_contains("Tab #2")
                     && remote_terminal.status_bar_appears()
                 {
@@ -1605,7 +1606,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("Tab #2 [ ]")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
