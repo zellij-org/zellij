@@ -10,6 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 * feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
 * feat: cli action to reload plugins at runtime for easier plugin development (https://github.com/zellij-org/zellij/pull/2372)
 * docs(architecture): update architecture docs (https://github.com/zellij-org/zellij/pull/2371)
+* feat(themes): add nightfox themes (https://github.com/zellij-org/zellij/pull/2384)
+* feat: provide default themes (https://github.com/zellij-org/zellij/pull/2307)
+* feat: update and render plugins asynchronously (https://github.com/zellij-org/zellij/pull/2410)
+* fix: support environment variables and shell expansions in layout cwds (https://github.com/zellij-org/zellij/pull/2291)
+* fix: add file paths to file not found errors (https://github.com/zellij-org/zellij/pull/2412)
 
 ## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)

@@ -2071,3 +2071,60 @@ fn run_plugin_location_parsing() {
     };
     assert_eq!(layout, expected_layout);
 }
+
+#[test]
+fn env_var_expansion() {
+    let raw_layout = r#"
+        layout {
+            // cwd tests + composition
+            cwd "$TEST_GLOBAL_CWD"
+            pane cwd="relative"  // -> /abs/path/relative
+            pane cwd="/another/abs"  // -> /another/abs
+            pane cwd="$TEST_LOCAL_CWD"  // -> /another/abs
+            pane cwd="$TEST_RELATIVE"  // -> /abs/path/relative
+            pane command="ls" cwd="$TEST_ABSOLUTE"  // -> /somewhere
+            pane edit="file.rs" cwd="$TEST_ABSOLUTE"  // -> /somewhere/file.rs
+            pane edit="file.rs" cwd="~/backup"  // -> /home/aram/backup/file.rs
+
+            // other paths
+            pane command="~/backup/executable"  // -> /home/aram/backup/executable
+            pane edit="~/backup/foo.txt"  // -> /home/aram/backup/foo.txt
+        }
+    "#;
+    let env_vars = [
+        ("TEST_GLOBAL_CWD", "/abs/path"),
+        ("TEST_LOCAL_CWD", "/another/abs"),
+        ("TEST_RELATIVE", "relative"),
+        ("TEST_ABSOLUTE", "/somewhere"),
+        ("HOME", "/home/aram"),
+    ];
+    let mut old_vars = Vec::new();
+    // set environment variables for test, keeping track of existing values.
+    for (key, value) in env_vars {
+        old_vars.push((key, std::env::var(key).ok()));
+        std::env::set_var(key, value);
+    }
+    let layout = Layout::from_kdl(raw_layout, "layout_file_name".into(), None, None);
+    // restore environment.
+    for (key, opt) in old_vars {
+        match opt {
+            Some(value) => std::env::set_var(key, &value),
+            None => std::env::remove_var(key),
+        }
+    }
+    let layout = layout.unwrap();
+    assert_snapshot!(format!("{layout:#?}"));
+}
+
+#[test]
+fn env_var_missing() {
+    std::env::remove_var("SOME_UNIQUE_VALUE");
+    let kdl_layout = r#"
+        layout {
+            cwd "$SOME_UNIQUE_VALUE"
+            pane cwd="relative"
+        }
+    "#;
+    let layout = Layout::from_kdl(kdl_layout, "layout_file_name".into(), None, None);
+    assert!(layout.is_err(), "invalid env var lookup should fail");
+}
