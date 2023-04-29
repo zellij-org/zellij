@@ -1716,7 +1716,9 @@ pub fn toggle_floating_panes() {
             name: "Wait for new pane to appear",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.cursor_position_is(33, 7) && remote_terminal.tip_appears() {
+                if remote_terminal.cursor_position_is(33, 7)
+                    && remote_terminal.snapshot_contains("FLOATING PANES VISIBLE")
+                {
                     // cursor is in the newly opened second pane
                     step_is_complete = true;
                 }
