@@ -101,6 +101,8 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
     let err_context = "failed to run E2E tests";
 
+    e2e_build(sh);
+
     let _pd = sh.push_dir(crate::project_root());
 
     crate::cargo()
