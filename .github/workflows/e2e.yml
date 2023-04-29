@@ -41,6 +41,8 @@ jobs:
       # we copy this manually into the target folder instead of mounting it because
       # github actions creates the service first, and if it has a mount that is part
       # of your yet unchecked out code, you cannot checkout the code after the mount
+    - name: Create target folder
+      run: mkdir -p ${{ github.workspace }}/target
     - name: Copy fixtures folder to target
       run: cp -r ${{ github.workspace }}/src/tests/fixtures ${{ github.workspace }}/target
     - name: Restart ssh container
