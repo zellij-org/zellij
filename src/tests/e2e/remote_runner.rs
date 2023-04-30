@@ -659,8 +659,8 @@ impl RemoteRunner {
         let instruction = step.instruction;
         loop {
             println!(
-                "running take snapshot after, retries left: {}",
-                retries_left
+                "taking snapshot: {}, retries left: {}",
+                step.name, retries_left
             );
             if retries_left == 0 {
                 self.test_timed_out = true;
@@ -683,6 +683,7 @@ impl RemoteRunner {
         }
     }
     pub fn run_all_steps(&mut self) {
+        println!();
         loop {
             self.run_next_step();
             if !self.steps_left() {
