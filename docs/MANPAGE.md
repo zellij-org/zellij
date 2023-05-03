@@ -1,3 +1,5 @@
+% ZELLIJ(1)
+
 NAME
 ====
 
@@ -44,6 +46,7 @@ but this can be changed by using the `default_layout: [LAYOUT_NAME]` configurati
 
 
 For example a file like this:
+
 ```
 ---
 direction: Vertical
@@ -64,6 +67,7 @@ parts:
 ```
 
 will tell Zellij to create this layout:
+
 ```
 ┌─────┬─────┐
 │     │     │
@@ -79,6 +83,7 @@ A layout file is a nested tree structure. Each node describes either a pane
 (leaf), or a space in which its parts (children) will be created.
 
 Each node has following fields:
+
 * __direction: <Horizontal / Vertical\>__ - node's children will be created by a
   split in given direction.
 * **split_size:** - this indicates either a percentage of the node's parent's
@@ -117,24 +122,30 @@ should be unbound:
 keybinds:
     unbind: true
 ```
+
 Will unbind every default binding.
 
 ```
 keybinds:
     unbind: [ Ctrl: 'p']
 ```
+
 Will unbind every default `^P` binding for each mode.
+
 ```
 keybinds:
     normal:
         - unbind: true
 ```
+
 Will unbind every default keybind for the `normal` mode.
+
 ```
 keybinds:
     normal:
         - unbind: [ Alt: 'n', Ctrl: 'g']
 ```
+
 Will unbind every default keybind for `n` and `^g` for the `normal` mode.
 
 ACTIONS
@@ -217,23 +228,32 @@ MODES
 * __session__ - allows detaching from a session.
 
 
-Theme
+THEME
 =====
+
 A color theme can be defined either in truecolor, 256 or hex color format.
+
 Truecolor:
+
 ```
 fg: [0, 0, 0]
 ```
+
 256:
+
 ```
 fg: 0
 ```
+
 Hex color:
+
 ```
 fg: "#000000"
 bg: "#000"
 ```
+
 The color theme can be specified in the following way:
+
 ```
 themes:
   default:
@@ -252,9 +272,11 @@ themes:
 
 If the theme is called `default`, then zellij will pick it on startup.
 To specify a different theme, run zellij with:
+
 ```
 zellij options --theme [NAME]
 ```
+
 or put the name in the configuration file with `theme: [NAME]`.
 
 PLUGINS
@@ -269,26 +291,30 @@ FILES
 =====
 
 Default user configuration directory location:
-* Linux: _$XDG_HOME/zellij /home/alice/.config/zellij_
-* macOS: _/Users/Alice/Library/Application Support/com.Zellij-Contributors.zellij_
+
+* Linux: _$XDG_HOME/zellij_ _/home/alice/.config/zellij_
+* macOS: _/Users/Alice/Library/Application_ _Support/com.Zellij-Contributors.zellij_
 
 Default user layout directory location:
+
 * Subdirectory called `layouts` inside of the configuration directory.
-* Linux: _$XDG_HOME/zellij/layouts /home/alice/.config/zellij/layouts
-* macOS: _/Users/Alice/Library/Application/layouts Support/com.Zellij-Contributors.zellij/layouts_
+* Linux: _$XDG_HOME/zellij/layouts_ _/home/alice/.config/zellij/layouts_
+* macOS: _/Users/Alice/Library/Application/layouts_ _Support/com.Zellij-Contributors.zellij/layouts_
 
 Default plugin directory location:
-* Linux: _$XDG_DATA_HOME/zellij/plugins /home/alice/.local/share/plugins
 
+* Linux: _$XDG_DATA_HOME/zellij/plugins_ _/home/alice/.local/share/plugins_
 
 ENVIRONMENT
 ===========
+
 ZELLIJ_CONFIG_FILE
+------------------
   Path of Zellij config to load.
+
 ZELLIJ_CONFIG_DIR
+-----------------
   Path of the Zellij config directory.
-
-
 
 NOTES
 =====
