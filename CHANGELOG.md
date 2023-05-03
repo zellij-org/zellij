@@ -5,8 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ## [Unreleased]
+* fix(plugin): respect hide session option on compact-bar (https://github.com/zellij-org/zellij/pull/2368)
+* feat: allow excluding tabs from tab sync in layouts (https://github.com/zellij-org/zellij/pull/2314)
+* feat: support default cwd (https://github.com/zellij-org/zellij/pull/2290)
+* feat: cli action to reload plugins at runtime for easier plugin development (https://github.com/zellij-org/zellij/pull/2372)
+* docs(architecture): update architecture docs (https://github.com/zellij-org/zellij/pull/2371)
+* feat(themes): add nightfox themes (https://github.com/zellij-org/zellij/pull/2384)
+* feat: provide default themes (https://github.com/zellij-org/zellij/pull/2307)
+* feat: update and render plugins asynchronously (https://github.com/zellij-org/zellij/pull/2410)
+* fix: support environment variables and shell expansions in layout cwds (https://github.com/zellij-org/zellij/pull/2291)
+* fix: add file paths to file not found errors (https://github.com/zellij-org/zellij/pull/2412)
+* fix: error loading non-existant themes directory (https://github.com/zellij-org/zellij/pull/2411)
+
+## [0.36.0] - 2023-04-13
 * fix: when moving pane focus off screen edge to the next tab, the pane on the screen edge is now focused (https://github.com/zellij-org/zellij/pull/2293)
 * fix: adding panes to lone stack (https://github.com/zellij-org/zellij/pull/2298)
+* fix: closing a stacked pane now properly moves to the previous swap layout if appropriate (https://github.com/zellij-org/zellij/pull/2312)
+* deps: update interprocess: fix crash and reduce memory usage by not leaking socket file descriptors on client attach (https://github.com/zellij-org/zellij/pull/2322)
+* feat: load plugins asynchronously (https://github.com/zellij-org/zellij/pull/2327)
+* feat: cli and bindable action to clear the current terminal's buffer and scrollback (https://github.com/zellij-org/zellij/pull/2239)
+* feat: add option to `hide_session_name` in tab-bar (https://github.com/zellij-org/zellij/pull/2301)
+* fix: do not use default swap layouts when opening a new tab with a custom layout (https://github.com/zellij-org/zellij/pull/2336)
+* fix: properly truncate panes with attributes when applying swap layouts (https://github.com/zellij-org/zellij/pull/2337)
+* fix: support spaces in scrollback_editor (https://github.com/zellij-org/zellij/pull/2339)
+* fix: tab focus race condition when applying layout (https://github.com/zellij-org/zellij/pull/2340)
+* feat: allow specifying an "expanded" pane in a stack when defining layouts (https://github.com/zellij-org/zellij/pull/2343)
+* fix: stacked pane focus glitches in layout (https://github.com/zellij-org/zellij/pull/2344)
+* fix: strider now no longer opens one pane per client when editing files (https://github.com/zellij-org/zellij/pull/2346)
+* fix: set sticky bit on socket files to avoid automatic cleanup (https://github.com/zellij-org/zellij/pull/2141)
+* fix: memory leak when attaching/detaching from sessions (https://github.com/zellij-org/zellij/pull/2328)
 
 ## [0.35.2] - 2023-03-10
 * fix: get "zellij attach --create" working again (https://github.com/zellij-org/zellij/pull/2247)

@@ -207,7 +207,7 @@ impl Run {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct RunPlugin {
     #[serde(default)]
     pub _allow_exec_host_cmd: bool,
@@ -394,6 +394,8 @@ pub struct TiledPaneLayout {
     pub focus: Option<bool>,
     pub external_children_index: Option<usize>,
     pub children_are_stacked: bool,
+    pub is_expanded_in_stack: bool,
+    pub exclude_from_sync: Option<bool>,
 }
 
 impl TiledPaneLayout {
@@ -569,6 +571,13 @@ impl TiledPaneLayout {
         // if max_panes is 1, it means there's only enough panes for this node,
         // if max_panes is 0, this is probably the root layout being called with 0 max panes
         if max_panes <= 1 {
+            while !self.children.is_empty() {
+                // this is a special case: we're truncating a pane that was previously a logical
+                // container but now should be an actual pane - so here we'd like to use its
+                // deepest "non-logical" child in order to get all its attributes (eg. borderless)
+                let first_child = self.children.remove(0);
+                drop(std::mem::replace(self, first_child));
+            }
             self.children.clear();
         } else if max_panes <= self.children.len() {
             self.children.truncate(max_panes);
@@ -721,7 +730,9 @@ impl Layout {
         let swap_layout_and_path = Layout::swap_layout_and_path(&layout_path);
 
         let mut kdl_layout = String::new();
-        layout_file.read_to_string(&mut kdl_layout)?;
+        layout_file
+            .read_to_string(&mut kdl_layout)
+            .map_err(|e| ConfigError::IoPath(e, layout_path.into()))?;
         Ok((
             layout_path.as_os_str().to_string_lossy().into(),
             kdl_layout,
@@ -858,12 +869,15 @@ fn split_space(
 ) -> Result<Vec<(TiledPaneLayout, PaneGeom)>, &'static str> {
     let mut pane_positions = Vec::new();
     let sizes: Vec<Option<SplitSize>> = if layout.children_are_stacked {
+        let index_of_expanded_pane = layout.children.iter().position(|p| p.is_expanded_in_stack);
         let mut sizes: Vec<Option<SplitSize>> = layout
             .children
             .iter()
             .map(|_part| Some(SplitSize::Fixed(1)))
             .collect();
-        if let Some(last_size) = sizes.last_mut() {
+        if let Some(index_of_expanded_pane) = index_of_expanded_pane {
+            *sizes.get_mut(index_of_expanded_pane).unwrap() = None;
+        } else if let Some(last_size) = sizes.last_mut() {
             *last_size = None;
         }
         sizes

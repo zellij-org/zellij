@@ -83,9 +83,6 @@ pub enum ConfigError {
     KdlDeserializationError(#[from] kdl::KdlError),
     #[error("KdlDeserialization error: {0}")]
     KdlError(KdlError), // TODO: consolidate these
-    // Io error
-    #[error("IoError: {0}")]
-    Io(#[from] io::Error),
     #[error("Config error: {0}")]
     Std(#[from] Box<dyn std::error::Error>),
     // Io error with path context
@@ -303,6 +300,7 @@ mod config_test {
             theme "my cool theme"
             default_mode "locked"
             default_shell "/path/to/my/shell"
+            default_cwd "/path"
             default_layout "/path/to/my/layout.kdl"
             layout_dir "/path/to/my/layout-dir"
             theme_dir "/path/to/my/theme-dir"
@@ -337,6 +335,11 @@ mod config_test {
         assert_eq!(
             config.options.default_shell,
             Some(PathBuf::from("/path/to/my/shell")),
+            "Option set in config"
+        );
+        assert_eq!(
+            config.options.default_cwd,
+            Some(PathBuf::from("/path")),
             "Option set in config"
         );
         assert_eq!(
@@ -639,6 +642,7 @@ mod config_test {
             ui {
                 pane_frames {
                     rounded_corners true
+                    hide_session_name true
                 }
             }
         "#;
@@ -646,6 +650,7 @@ mod config_test {
         let expected_ui_config = UiConfig {
             pane_frames: FrameConfig {
                 rounded_corners: true,
+                hide_session_name: true,
             },
         };
         assert_eq!(config.ui, expected_ui_config, "Ui config defined in config");

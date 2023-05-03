@@ -1,6 +1,6 @@
 ---
 source: zellij-utils/src/input/./unit/layout_test.rs
-assertion_line: 720
+assertion_line: 767
 expression: "format!(\"{:#?}\", layout)"
 ---
 Layout {
@@ -23,6 +23,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Vertical,
@@ -38,6 +40,8 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
+                                is_expanded_in_stack: false,
+                                exclude_from_sync: None,
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -49,6 +53,8 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
+                                is_expanded_in_stack: false,
+                                exclude_from_sync: None,
                             },
                         ],
                         split_size: None,
@@ -57,6 +63,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -68,6 +76,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -76,6 +86,8 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),
@@ -97,6 +109,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -112,6 +126,8 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
+                                is_expanded_in_stack: false,
+                                exclude_from_sync: None,
                             },
                             TiledPaneLayout {
                                 children_split_direction: Horizontal,
@@ -123,6 +139,8 @@ Layout {
                                 focus: None,
                                 external_children_index: None,
                                 children_are_stacked: false,
+                                is_expanded_in_stack: false,
+                                exclude_from_sync: None,
                             },
                         ],
                         split_size: None,
@@ -131,6 +149,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -142,6 +162,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -150,6 +172,8 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),
@@ -169,6 +193,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -180,6 +206,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -191,6 +219,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -199,6 +229,8 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),
@@ -220,6 +252,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -231,6 +265,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                     TiledPaneLayout {
                         children_split_direction: Horizontal,
@@ -242,6 +278,8 @@ Layout {
                         focus: None,
                         external_children_index: None,
                         children_are_stacked: false,
+                        is_expanded_in_stack: false,
+                        exclude_from_sync: None,
                     },
                 ],
                 split_size: None,
@@ -250,6 +288,8 @@ Layout {
                 focus: None,
                 external_children_index: None,
                 children_are_stacked: false,
+                is_expanded_in_stack: false,
+                exclude_from_sync: None,
             },
             [],
         ),

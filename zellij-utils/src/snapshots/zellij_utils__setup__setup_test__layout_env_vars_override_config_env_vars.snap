@@ -1,6 +1,5 @@
 ---
 source: zellij-utils/src/setup.rs
-assertion_line: 679
 expression: "format!(\"{:#?}\", config)"
 ---
 Config {
@@ -3526,6 +3525,7 @@ Config {
         theme: None,
         default_mode: None,
         default_shell: None,
+        default_cwd: None,
         default_layout: None,
         layout_dir: None,
         theme_dir: None,
@@ -3604,6 +3604,7 @@ Config {
     ui: UiConfig {
         pane_frames: FrameConfig {
             rounded_corners: false,
+            hide_session_name: false,
         },
     },
     env: {

@@ -1109,7 +1109,16 @@ impl Grid {
             Some((self.cursor.x, self.cursor.y))
         }
     }
-
+    /// Clears all buffers with text for a current screen
+    pub fn clear_screen(&mut self) {
+        if self.alternate_screen_state.is_some() {
+            log::warn!("Tried to clear pane with alternate_screen_state");
+            return;
+        }
+        self.reset_terminal_state();
+        self.mark_for_rerender();
+    }
+    /// Dumps all lines above terminal vieport and the viewport itself to a string
     pub fn dump_screen(&mut self, full: bool) -> String {
         let viewport: String = dump_screen!(self.viewport);
         if !full {
@@ -1245,7 +1254,7 @@ impl Grid {
             let new_row = Row::new(self.width).canonical();
             self.viewport.push(new_row);
         }
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.scroll_region.is_none() {
                 if self.alternate_screen_state.is_none() {
                     self.transfer_rows_to_lines_above(1);
@@ -1397,7 +1406,7 @@ impl Grid {
     }
     fn line_wrap(&mut self) {
         self.cursor.x = 0;
-        if self.cursor.y == self.height - 1 {
+        if self.cursor.y == self.height.saturating_sub(1) {
             if self.alternate_screen_state.is_none() {
                 self.transfer_rows_to_lines_above(1);
             } else {

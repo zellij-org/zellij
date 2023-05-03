@@ -10,8 +10,6 @@ use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::Read;
 use strum::IntoEnumIterator;
 
 use miette::NamedSource;
@@ -68,6 +66,7 @@ macro_rules! parse_kdl_action_arguments {
                 "ToggleMouseMode" => Ok(Action::ToggleMouseMode),
                 "PreviousSwapLayout" => Ok(Action::PreviousSwapLayout),
                 "NextSwapLayout" => Ok(Action::NextSwapLayout),
+                "Clear" => Ok(Action::ClearScreen),
                 _ => Err(ConfigError::new_kdl_error(
                     format!("Unsupported action: {:?}", $action_name),
                     $action_node.span().offset(),
@@ -689,6 +688,7 @@ impl TryFrom<(&KdlNode, &Options)> for Action {
             },
             "Detach" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Copy" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
+            "Clear" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Confirm" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Deny" => parse_kdl_action_arguments!(action_name, action_arguments, kdl_action),
             "Write" => parse_kdl_action_u8_arguments!(action_name, action_arguments, kdl_action),
@@ -1302,6 +1302,8 @@ impl Options {
         let default_shell =
             kdl_property_first_arg_as_string_or_error!(kdl_options, "default_shell")
                 .map(|(string, _entry)| PathBuf::from(string));
+        let default_cwd = kdl_property_first_arg_as_string_or_error!(kdl_options, "default_cwd")
+            .map(|(string, _entry)| PathBuf::from(string));
         let pane_frames =
             kdl_property_first_arg_as_bool_or_error!(kdl_options, "pane_frames").map(|(v, _)| v);
         let auto_layout =
@@ -1356,6 +1358,7 @@ impl Options {
             theme,
             default_mode,
             default_shell,
+            default_cwd,
             default_layout,
             layout_dir,
             theme_dir,
@@ -1699,7 +1702,12 @@ impl UiConfig {
             let rounded_corners =
                 kdl_children_property_first_arg_as_bool!(pane_frames, "rounded_corners")
                     .unwrap_or(false);
-            let frame_config = FrameConfig { rounded_corners };
+            let hide_session_name =
+                kdl_get_child_entry_bool_value!(pane_frames, "hide_session_name").unwrap_or(false);
+            let frame_config = FrameConfig {
+                rounded_corners,
+                hide_session_name,
+            };
             ui_config.pane_frames = frame_config;
         }
         Ok(ui_config)
@@ -1736,9 +1744,8 @@ impl Themes {
 
     pub fn from_path(path_to_theme_file: PathBuf) -> Result<Self, ConfigError> {
         // String is the theme name
-        let mut file = File::open(path_to_theme_file.clone())?;
-        let mut kdl_config = String::new();
-        file.read_to_string(&mut kdl_config)?;
+        let kdl_config = std::fs::read_to_string(&path_to_theme_file)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_file.into()))?;
         let kdl_config: KdlDocument = kdl_config.parse()?;
         let kdl_themes = kdl_config.get("themes").ok_or(ConfigError::new_kdl_error(
             "No theme node found in file".into(),
@@ -1747,5 +1754,21 @@ impl Themes {
         ))?;
         let all_themes_in_file = Themes::from_kdl(kdl_themes)?;
         Ok(all_themes_in_file)
+    }
+
+    pub fn from_dir(path_to_theme_dir: PathBuf) -> Result<Self, ConfigError> {
+        let mut themes = Themes::default();
+        for entry in std::fs::read_dir(&path_to_theme_dir)
+            .map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?
+        {
+            let entry = entry.map_err(|e| ConfigError::IoPath(e, path_to_theme_dir.clone()))?;
+            let path = entry.path();
+            if let Some(extension) = path.extension() {
+                if extension == "kdl" {
+                    themes = themes.merge(Themes::from_path(path)?);
+                }
+            }
+        }
+        Ok(themes)
     }
 }

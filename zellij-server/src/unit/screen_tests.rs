@@ -299,6 +299,7 @@ impl MockScreen {
         let tab_name = None;
         let tab_index = self.last_opened_tab_index.map(|l| l + 1).unwrap_or(0);
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
             default_shell,
             Some(pane_layout.clone()),
             vec![], // floating_panes_layout
@@ -329,6 +330,7 @@ impl MockScreen {
             pane_ids.push((i as u32, None));
         }
         let _ = self.to_screen.send(ScreenInstruction::NewTab(
+            None,
             default_shell,
             Some(tab_layout.clone()),
             vec![], // floating_panes_layout
@@ -1969,6 +1971,7 @@ pub fn send_cli_new_pane_action_with_default_parameters() {
     let cli_new_pane_action = CliAction::NewPane {
         direction: None,
         command: vec![],
+        plugin: None,
         cwd: None,
         floating: false,
         name: None,
@@ -2009,6 +2012,7 @@ pub fn send_cli_new_pane_action_with_split_direction() {
     let cli_new_pane_action = CliAction::NewPane {
         direction: Some(Direction::Right),
         command: vec![],
+        plugin: None,
         cwd: None,
         floating: false,
         name: None,
@@ -2049,6 +2053,7 @@ pub fn send_cli_new_pane_action_with_command_and_cwd() {
     let cli_new_pane_action = CliAction::NewPane {
         direction: Some(Direction::Right),
         command: vec!["htop".into()],
+        plugin: None,
         cwd: Some("/some/folder".into()),
         floating: false,
         name: None,

@@ -1,6 +1,6 @@
 [package]
 name = "zellij"
-version = "0.36.0"
+version = "0.37.0"
 authors = ["Aram Drevekenin <aram@poor.dev>"]
 edition = "2021"
 description = "A terminal workspace with batteries included"
@@ -17,9 +17,9 @@ anyhow = "1.0"
 thiserror = "1.0.30"
 names = { version = "0.13.0", default-features = false }
 miette = { version = "3.3.0", features = ["fancy"] }
-zellij-client = { path = "zellij-client/", version = "0.36.0" }
-zellij-server = { path = "zellij-server/", version = "0.36.0" }
-zellij-utils = { path = "zellij-utils/", version = "0.36.0" }
+zellij-client = { path = "zellij-client/", version = "0.37.0" }
+zellij-server = { path = "zellij-server/", version = "0.37.0" }
+zellij-utils = { path = "zellij-utils/", version = "0.37.0" }
 log = "0.4.17"
 dialoguer = "0.10.1"
 suggest = "0.4"
@@ -28,6 +28,7 @@ suggest = "0.4"
 insta = { version = "1.6.0", features = ["backtrace"] }
 ssh2 = "0.9.1"
 rand = "0.8.0"
+regex = "1.8.1"
 
 [workspace]
 members = [
@@ -74,3 +75,7 @@ default = [ "zellij-utils/plugins_from_target" ]
 disable_automatic_asset_installation = [ "zellij-utils/disable_automatic_asset_installation" ]
 unstable = [ "zellij-client/unstable", "zellij-utils/unstable" ]
 singlepass = [ "zellij-server/singlepass" ]
+
+# uncomment this when developing plugins in the Zellij UI to make plugin compilation faster
+# [profile.dev.package."*"]
+# opt-level = 3

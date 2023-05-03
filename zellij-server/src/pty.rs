@@ -48,6 +48,7 @@ pub enum PtyInstruction {
     UpdateActivePane(Option<PaneId>, ClientId),
     GoToTab(TabIndex, ClientId),
     NewTab(
+        Option<PathBuf>,
         Option<TerminalAction>,
         Option<TiledPaneLayout>,
         Vec<FloatingPaneLayout>,
@@ -336,6 +337,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     })?;
             },
             PtyInstruction::NewTab(
+                cwd,
                 terminal_action,
                 tab_layout,
                 floating_panes_layout,
@@ -351,6 +353,7 @@ pub(crate) fn pty_thread_main(mut pty: Pty, layout: Box<Layout>) -> Result<()> {
                     floating_panes_layout
                 };
                 pty.spawn_terminals_for_layout(
+                    cwd,
                     tab_layout.unwrap_or_else(|| layout.new_tab().0),
                     floating_panes_layout,
                     terminal_action.clone(),
@@ -591,6 +594,7 @@ impl Pty {
     }
     pub fn spawn_terminals_for_layout(
         &mut self,
+        cwd: Option<PathBuf>,
         layout: TiledPaneLayout,
         floating_panes_layout: Vec<FloatingPaneLayout>,
         default_shell: Option<TerminalAction>,
@@ -601,7 +605,7 @@ impl Pty {
         let err_context = || format!("failed to spawn terminals for layout for client {client_id}");
 
         let mut default_shell =
-            default_shell.unwrap_or_else(|| self.get_default_terminal(None, None));
+            default_shell.unwrap_or_else(|| self.get_default_terminal(cwd, None));
         self.fill_cwd(&mut default_shell, client_id);
         let extracted_run_instructions = layout.extract_run_instructions();
         let extracted_floating_run_instructions =

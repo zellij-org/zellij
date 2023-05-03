@@ -1,6 +1,6 @@
 [package]
 name = "zellij-utils"
-version = "0.36.0"
+version = "0.37.0"
 authors = ["Kunal Mohan <kunalmohan99@gmail.com>"]
 edition = "2021"
 description = "A utility library for Zellij client and server"
@@ -38,13 +38,14 @@ miette = { version = "3.3.0", features = ["fancy"] }
 regex = "1.5.5"
 tempfile = "3.2.0"
 kdl = { version = "4.5.0", features = ["span"] }
+shellexpand = "3.0.0"
 
 #[cfg(not(target_family = "wasm"))]
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 termwiz = "0.20.0"
 log4rs = "1.2.0"
 signal-hook = "0.3"
-interprocess = "1.1.1"
+interprocess = "1.2.1"
 async-std = { version = "1.3.0", features = ["unstable"] }
 
 [dev-dependencies]
