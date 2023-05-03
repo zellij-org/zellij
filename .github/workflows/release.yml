@@ -119,6 +119,55 @@ jobs:
           asset_name: zellij-${{matrix.target}}.sha256sum
           asset_content_type: text/plain
 
+  prepare-source-release:
+    runs-on: ubuntu-latest
+    needs: create-release
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup pandoc
+        uses: r-lib/actions/setup-pandoc@v2
+
+      - name: Render manpage
+        working-directory: ./docs
+        run: |
+          pandoc --standalone --from markdown --to man --output zellij.1 MANPAGE.md
+
+      - name: Remove git repo
+        run: |
+          rm -rf .git
+
+      - name: Tar source release
+        run: |
+          cd ..
+          tar cvzf zellij-src.tar.gz ${{ github.event.repository.name }}
+          mv zellij-src.tar.gz ${{ github.event.repository.name }}/
+
+      - name: Create source checksum
+        run: |
+          sha256sum zellij-src.tar.gz > zellij-src.tar.gz.sha256sum
+
+      - name: Upload source archive
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./zellij-src.tar.gz
+          asset_name: zellij-src.tar.gz
+          asset_content_type: application/octet-stream
+
+      - name: Upload source checksum
+        uses: actions/upload-release-asset@v1.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
+          asset_path: ./zellij-src.tar.gz.sha256sum
+          asset_name: zellij-src.tar.gz.sha256sum
+          asset_content_type: text/plain
+
   create-release:
     runs-on: ubuntu-latest
     outputs: 
