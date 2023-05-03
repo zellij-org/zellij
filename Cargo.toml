@@ -48,7 +48,6 @@ members = [
 [profile.dev-opt]
 inherits = "dev"
 
-
 [profile.dev-opt.package."*"]
 opt-level = 3
 
