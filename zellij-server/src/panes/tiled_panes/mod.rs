@@ -925,16 +925,31 @@ impl TiledPanes {
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
-                        .max_by_key(|(_, pane)| pane.x())
+                        .max_by_key(|(_, pane)| pane.x() + pane.cols())
                         .and_then(|(_, pane)| {
-                            let max_x = pane.x();
+                            let max_x_plus_col = pane.x() + pane.cols();
                             let candidates = self
                                 .panes
                                 .values()
-                                .filter(|pane| pane.x() == max_x && pane.selectable())
+                                .filter(|pane| {
+                                    pane.x() + pane.cols() == max_x_plus_col && pane.selectable()
+                                })
                                 .collect::<Vec<_>>();
 
-                            candidates
+                            let max_x = candidates
+                                .iter()
+                                .max_by_key(|pane| pane.x())
+                                .map(|pane| pane.x());
+
+                            let final_candidates = match max_x {
+                                Some(mx) => candidates
+                                    .into_iter()
+                                    .filter(|pane| pane.x() == mx)
+                                    .collect::<Vec<_>>(),
+                                None => Vec::new(),
+                            };
+
+                            final_candidates
                                 .iter()
                                 .min_by_key(|pane| {
                                     (pane.y() as isize
@@ -998,16 +1013,29 @@ impl TiledPanes {
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
-                        .min_by_key(|(_, pane)| pane.y())
+                        .min_by_key(|(_, pane)| pane.y() + pane.rows())
                         .and_then(|(_, pane)| {
-                            let min_y = pane.y();
+                            let min_y_plus_row = pane.y() + pane.rows();
                             let candidates = self
                                 .panes
                                 .values()
-                                .filter(|pane| pane.y() == min_y && pane.selectable())
+                                .filter(|pane| {
+                                    pane.y() + pane.rows() == min_y_plus_row && pane.selectable()
+                                })
                                 .collect::<Vec<_>>();
+                            let min_y = candidates
+                                .iter()
+                                .min_by_key(|pane| pane.y())
+                                .map(|pane| pane.y());
+                            let final_candidates = match min_y {
+                                Some(my) => candidates
+                                    .into_iter()
+                                    .filter(|pane| pane.y() == my)
+                                    .collect::<Vec<_>>(),
+                                None => Vec::new(),
+                            };
 
-                            candidates
+                            final_candidates
                                 .iter()
                                 .min_by_key(|pane| {
                                     (pane.x() as isize
@@ -1082,16 +1110,30 @@ impl TiledPanes {
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
-                        .max_by_key(|(_, pane)| pane.y())
+                        .max_by_key(|(_, pane)| pane.y() + pane.rows())
                         .and_then(|(_, pane)| {
-                            let max_y = pane.y();
+                            let max_y_plus_row = pane.y() + pane.rows();
                             let candidates = self
                                 .panes
                                 .values()
-                                .filter(|pane| pane.y() == max_y && pane.selectable())
+                                .filter(|pane| {
+                                    pane.y() + pane.rows() == max_y_plus_row && pane.selectable()
+                                })
                                 .collect::<Vec<_>>();
+                            let max_y = candidates
+                                .iter()
+                                .max_by_key(|pane| pane.y())
+                                .map(|pane| pane.y());
 
-                            candidates
+                            let final_candidates = match max_y {
+                                Some(max_y) => candidates
+                                    .iter()
+                                    .filter(|pane| pane.y() == max_y)
+                                    .collect::<Vec<_>>(),
+                                None => Vec::new(),
+                            };
+
+                            final_candidates
                                 .iter()
                                 .min_by_key(|pane| {
                                     (pane.x() as isize
@@ -1165,16 +1207,31 @@ impl TiledPanes {
                         .panes
                         .iter()
                         .filter(|(_, pane)| pane.selectable())
-                        .min_by_key(|(_, pane)| pane.x())
+                        .min_by_key(|(_, pane)| pane.x() + pane.cols())
                         .and_then(|(_, pane)| {
-                            let min_x = pane.x();
+                            let min_x_plus_cols = pane.x() + pane.cols();
                             let candidates = self
                                 .panes
                                 .values()
-                                .filter(|pane| pane.x() == min_x && pane.selectable())
+                                .filter(|pane| {
+                                    pane.x() + pane.cols() == min_x_plus_cols && pane.selectable()
+                                })
                                 .collect::<Vec<_>>();
 
-                            candidates
+                            let min_x = candidates
+                                .iter()
+                                .min_by_key(|pane| pane.x())
+                                .map(|pane| pane.x());
+
+                            let final_candidates = match min_x {
+                                Some(min_x) => candidates
+                                    .iter()
+                                    .filter(|pane| pane.x() == min_x)
+                                    .collect::<Vec<_>>(),
+                                None => Vec::new(),
+                            };
+
+                            final_candidates
                                 .iter()
                                 .min_by_key(|pane| {
                                     (pane.y() as isize
