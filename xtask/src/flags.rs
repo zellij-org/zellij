@@ -69,6 +69,8 @@ xflags::xflags! {
             optional --data-dir path: PathBuf
             /// Enable the singlepass compiler for WASM plugins
             optional --singlepass
+            /// Disable optimizing dependencies
+            optional --disable-deps-optimize
             /// Arguments to pass after `cargo run --`
             repeated args: OsString
         }
@@ -182,6 +184,7 @@ pub struct Run {
 
     pub data_dir: Option<PathBuf>,
     pub singlepass: bool,
+    pub disable_deps_optimize: bool,
 }
 
 #[derive(Debug)]

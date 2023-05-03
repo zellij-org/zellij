@@ -1,8 +1,8 @@
 //! Composite pipelines for the build system.
 //!
 //! Defines multiple "pipelines" that run specific individual steps in sequence.
-use crate::flags;
 use crate::{build, clippy, format, test};
+use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use xshell::{cmd, Shell};
 
@@ -95,6 +95,12 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
 
     let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
 
+    let profile = if flags.disable_deps_optimize {
+        "dev"
+    } else {
+        "dev-opt"
+    };
+
     if let Some(ref data_dir) = flags.data_dir {
         let data_dir = sh.current_dir().join(data_dir);
 
@@ -105,6 +111,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .arg("--no-default-features")
                     .args(["--features", "disable_automatic_asset_installation"])
                     .args(singlepass.iter().flatten())
+                    .args(["--profile", profile])
                     .args(["--", "--data-dir", &format!("{}", data_dir.display())])
                     .args(&flags.args)
                     .run()
@@ -124,6 +131,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(sh, "{cargo} run")
                 .args(singlepass.iter().flatten())
+                .args(["--profile", profile])
                 .args(["--"])
                 .args(&flags.args)
                 .run()
@@ -288,18 +296,18 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
         }
 
         // Publish all the crates
-        for member in crate::WORKSPACE_MEMBERS.iter() {
-            if member.contains("plugin") || member.contains("xtask") {
+        for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+            if crate_name.contains("plugin") || crate_name.contains("xtask") {
                 continue;
             }
 
-            let _pd = sh.push_dir(project_dir.join(member));
+            let _pd = sh.push_dir(project_dir.join(crate_name));
             loop {
-                let msg = format!(">> Publishing '{member}'");
+                let msg = format!(">> Publishing '{crate_name}'");
                 crate::status(&msg);
                 println!("{}", msg);
 
-                let more_args = match *member {
+                let more_args = match *crate_name {
                     // This is needed for zellij to pick up the plugins from the assets included in
                     // the released zellij-utils binary
                     "." => Some("--no-default-features"),
@@ -314,7 +322,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                 .context(err_context)
                 {
                     println!();
-                    println!("Publishing crate '{member}' failed with error:");
+                    println!("Publishing crate '{crate_name}' failed with error:");
                     println!("{:?}", err);
                     println!();
                     println!("Retry? [y/n]");
@@ -346,7 +354,7 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                     if retry {
                         continue;
                     } else {
-                        println!("Aborting publish for crate '{member}'");
+                        println!("Aborting publish for crate '{crate_name}'");
                         return Err::<(), _>(err);
                     }
                 } else {
