@@ -573,21 +573,21 @@ pub fn switch_to_tab_name() {
 
     assert_eq!(
         screen
-            .switch_active_tab_name("Tab #1".to_string(), 1)
+            .switch_active_tab_name("1".to_string(), 1)
             .expect("TEST"),
         false,
         "Active tab switched to tab by name"
     );
     assert_eq!(
         screen
-            .switch_active_tab_name("Tab #2".to_string(), 1)
+            .switch_active_tab_name("2".to_string(), 1)
             .expect("TEST"),
         true,
         "Active tab switched to tab by name"
     );
     assert_eq!(
         screen
-            .switch_active_tab_name("Tab #3".to_string(), 1)
+            .switch_active_tab_name("3".to_string(), 1)
             .expect("TEST"),
         true,
         "Active tab switched to tab by name"

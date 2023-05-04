@@ -407,7 +407,7 @@ pub fn open_new_tab() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("2")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
@@ -471,7 +471,7 @@ pub fn close_tab() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
-                        && remote_terminal.snapshot_contains("Tab #2")
+                        && remote_terminal.snapshot_contains("2")
                         && remote_terminal.status_bar_appears()
                     {
                         // cursor is in the newly opened second tab
@@ -487,8 +487,7 @@ pub fn close_tab() {
             name: "Wait for tab to close",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Tab #1")
-                    && !remote_terminal.snapshot_contains("Tab #2")
+                if remote_terminal.snapshot_contains("1") && !remote_terminal.snapshot_contains("2")
                 {
                     // cursor is in the first tab again
                     step_is_complete = true;
@@ -503,8 +502,8 @@ pub fn close_tab() {
             break last_snapshot;
         }
     };
-    assert!(last_snapshot.contains("Tab #1"));
-    assert!(!last_snapshot.contains("Tab #2"));
+    assert!(last_snapshot.contains('1'));
+    assert!(!last_snapshot.contains('2'));
 }
 
 #[test]
@@ -1270,7 +1269,7 @@ pub fn mirrored_sessions() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
-                        && remote_terminal.snapshot_contains("Tab #2")
+                        && remote_terminal.snapshot_contains("2")
                         && remote_terminal.status_bar_appears()
                     {
                         // cursor is in the newly opened second tab
@@ -1285,7 +1284,7 @@ pub fn mirrored_sessions() {
                     let mut step_is_complete = false;
                     if remote_terminal.cursor_position_is(3, 2)
                         && remote_terminal.tip_appears()
-                        && remote_terminal.snapshot_contains("Tab #2")
+                        && remote_terminal.snapshot_contains("2")
                     {
                         // cursor is in the newly opened second pane
                         remote_terminal.send_key("some text".as_bytes());
@@ -1592,7 +1591,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("2")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
@@ -1608,7 +1607,7 @@ pub fn multiple_users_in_different_tabs() {
                 let mut step_is_complete = false;
                 if remote_terminal.cursor_position_is(3, 2)
                     && remote_terminal.tip_appears()
-                    && remote_terminal.snapshot_contains("Tab #2")
+                    && remote_terminal.snapshot_contains("2")
                     && remote_terminal.status_bar_appears()
                 {
                     // cursor is in the newly opened second tab
@@ -1846,9 +1845,7 @@ pub fn undo_rename_tab() {
             name: "Undo tab name change",
             instruction: |mut remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.status_bar_appears()
-                    && remote_terminal.snapshot_contains("Tab #1")
-                {
+                if remote_terminal.status_bar_appears() && remote_terminal.snapshot_contains("1") {
                     remote_terminal.send_key(&TAB_MODE);
                     remote_terminal.send_key(&RENAME_TAB_MODE);
                     remote_terminal.send_key(&[97, 97]);
@@ -1864,7 +1861,7 @@ pub fn undo_rename_tab() {
             name: "Wait for tab name to apper on screen",
             instruction: |remote_terminal: RemoteTerminal| -> bool {
                 let mut step_is_complete = false;
-                if remote_terminal.snapshot_contains("Tab #1") {
+                if remote_terminal.snapshot_contains("1") {
                     step_is_complete = true
                 }
                 step_is_complete

@@ -3,7 +3,7 @@ source: src/tests/e2e/cases.rs
 assertion_line: 1619
 expression: first_runner_snapshot
 ---
- Zellij (multiple_users_in_different_tabs)  Tab #1  Tab #2 [ ]
+ Zellij (multiple_users_in_different_tabs)  1  2 [ ]
 ┌ Pane #1 ────────────────────────────────────────────┤ MY FOCUS ├─────────────────────────────────────────────────────┐
 │$ █                                                                                                                   │
 │                                                                                                                      │

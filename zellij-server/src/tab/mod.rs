@@ -500,7 +500,7 @@ impl Tab {
         swap_layouts: (Vec<SwapTiledLayout>, Vec<SwapFloatingLayout>),
     ) -> Self {
         let name = if name.is_empty() {
-            format!("Tab #{}", index + 1)
+            format!("{}", index + 1)
         } else {
             name
         };

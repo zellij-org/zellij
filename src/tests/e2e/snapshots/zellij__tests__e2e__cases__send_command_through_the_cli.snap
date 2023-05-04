@@ -3,7 +3,7 @@ source: src/tests/e2e/cases.rs
 assertion_line: 2031
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1 
+ Zellij (e2e-test)  1 
 ┌ Pane #1 ─────────────────────────────────────────────────┐┌ /usr/src/zellij/fixtures/append-echo-script.sh ──────────┐
 │$ /usr/src/zellij/x86_64-unknown-linux-musl/release/zellij││foo                                                       │
 │ run -s -- "/usr/src/zellij/fixtures/append-echo-script.sh││foo                                                       │

@@ -3,7 +3,7 @@ source: src/tests/e2e/cases.rs
 assertion_line: 1147
 expression: last_snapshot
 ---
- Zellij (e2e-test)  Tab #1 
+ Zellij (e2e-test)  1 
 ┌ Pane #1 ─────────────────────────────────────────────────┐┌ Pane #2 ─────────────────────────────────── SCROLL:  3/4 ┐
 │$                                                         ││line1                                                     │
 │                                                          ││line2                                                     │

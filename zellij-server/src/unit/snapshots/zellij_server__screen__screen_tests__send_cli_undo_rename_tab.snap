@@ -170,7 +170,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     [
                         TabInfo {
                             position: 0,
-                            name: "Tab #1",
+                            name: "1",
                             active: true,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -334,7 +334,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     [
                         TabInfo {
                             position: 0,
-                            name: "Tab #1",
+                            name: "1",
                             active: false,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -348,7 +348,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         },
                         TabInfo {
                             position: 1,
-                            name: "Tab #2",
+                            name: "2",
                             active: true,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -376,7 +376,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     [
                         TabInfo {
                             position: 0,
-                            name: "Tab #1",
+                            name: "1",
                             active: false,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -418,7 +418,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     [
                         TabInfo {
                             position: 0,
-                            name: "Tab #1",
+                            name: "1",
                             active: false,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -471,7 +471,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                     [
                         TabInfo {
                             position: 0,
-                            name: "Tab #1",
+                            name: "1",
                             active: false,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
@@ -485,7 +485,7 @@ expression: "format!(\"{:#?}\", * received_plugin_instructions.lock().unwrap())"
                         },
                         TabInfo {
                             position: 1,
-                            name: "Tab #2",
+                            name: "2",
                             active: true,
                             panes_to_hide: 0,
                             is_fullscreen_active: false,
