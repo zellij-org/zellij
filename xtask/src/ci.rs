@@ -90,7 +90,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
         .and_then(|cargo| {
             cmd!(
                 sh,
-                "{cargo} build --verbose --release --target x86_64-unknown-linux-musl"
+                "{cargo} build --release --target x86_64-unknown-linux-musl"
             )
             .run()
             .map_err(anyhow::Error::new)
@@ -101,26 +101,20 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
 fn e2e_test(sh: &Shell, args: Vec<OsString>) -> anyhow::Result<()> {
     let err_context = "failed to run E2E tests";
 
-    let _pd = sh.push_dir(crate::project_root());
     e2e_build(sh).context(err_context)?;
 
-    // Build debug plugins for test binary
-    build::build(
-        sh,
-        flags::Build {
-            release: false,
-            no_plugins: false,
-            plugins_only: true,
-        },
-    )
-    .context(err_context)?;
+    let _pd = sh.push_dir(crate::project_root());
 
+    // set --no-default-features so the test binary gets built with the plugins from assets/plugins that just got built
     crate::cargo()
         .and_then(|cargo| {
-            cmd!(sh, "{cargo} test -- --ignored --nocapture --test-threads 1")
-                .args(args)
-                .run()
-                .map_err(anyhow::Error::new)
+            cmd!(
+                sh,
+                "{cargo} test --no-default-features -- --ignored --nocapture --test-threads 1"
+            )
+            .args(args)
+            .run()
+            .map_err(anyhow::Error::new)
         })
         .context(err_context)
 }

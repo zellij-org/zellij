@@ -1,5 +1,5 @@
 //! Handle running `cargo fmt` on the sources.
-use crate::flags;
+use crate::{flags, WorkspaceMember};
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 use xshell::{cmd, Shell};
@@ -11,11 +11,11 @@ pub fn format(sh: &Shell, flags: flags::Format) -> anyhow::Result<()> {
         .and_then(|_| crate::cargo())
         .context("failed to run task 'format'")?;
 
-    for subcrate in crate::WORKSPACE_MEMBERS.iter() {
-        let _pd = sh.push_dir(Path::new(subcrate));
+    for WorkspaceMember { crate_name, .. } in crate::WORKSPACE_MEMBERS.iter() {
+        let _pd = sh.push_dir(Path::new(crate_name));
         // Tell the user where we are now
         println!();
-        let msg = format!(">> Formatting '{subcrate}'");
+        let msg = format!(">> Formatting '{crate_name}'");
         crate::status(&msg);
         println!("{}", msg);
 
@@ -24,7 +24,7 @@ pub fn format(sh: &Shell, flags: flags::Format) -> anyhow::Result<()> {
             cmd = cmd.arg("--check");
         }
         cmd.run()
-            .with_context(|| format!("Failed to format '{subcrate}'"))?;
+            .with_context(|| format!("Failed to format '{crate_name}'"))?;
     }
     Ok(())
 }

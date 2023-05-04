@@ -299,10 +299,14 @@ impl RemoteTerminal {
         x == self.cursor_x && y == self.cursor_y
     }
     pub fn tip_appears(&self) -> bool {
-        self.last_snapshot.lock().unwrap().contains("Tip:")
+        let snapshot = self.last_snapshot.lock().unwrap();
+        snapshot.contains("Tip:") || snapshot.contains("QuickNav:")
     }
     pub fn status_bar_appears(&self) -> bool {
         self.last_snapshot.lock().unwrap().contains("Ctrl +")
+    }
+    pub fn tab_bar_appears(&self) -> bool {
+        self.last_snapshot.lock().unwrap().contains("Tab #1")
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)
@@ -625,6 +629,10 @@ impl RemoteRunner {
     }
     pub fn run_next_step(&mut self) {
         if let Some(next_step) = self.steps.get(self.current_step_index) {
+            println!(
+                "running step: {}, retries left: {}",
+                next_step.name, self.retries_left
+            );
             let (cursor_x, cursor_y) = *self.cursor_coordinates.lock().unwrap();
             let remote_terminal = RemoteTerminal {
                 cursor_x,
@@ -650,6 +658,10 @@ impl RemoteRunner {
         let mut retries_left = RETRIES;
         let instruction = step.instruction;
         loop {
+            println!(
+                "taking snapshot: {}, retries left: {}",
+                step.name, retries_left
+            );
             if retries_left == 0 {
                 self.test_timed_out = true;
                 return self.last_snapshot.lock().unwrap().clone();
@@ -671,6 +683,7 @@ impl RemoteRunner {
         }
     }
     pub fn run_all_steps(&mut self) {
+        println!();
         loop {
             self.run_next_step();
             if !self.steps_left() {
