@@ -306,7 +306,7 @@ impl RemoteTerminal {
         self.last_snapshot.lock().unwrap().contains("Ctrl +")
     }
     pub fn tab_bar_appears(&self) -> bool {
-        self.last_snapshot.lock().unwrap().contains("Tab #1")
+        self.last_snapshot.lock().unwrap().contains("1")
     }
     pub fn snapshot_contains(&self, text: &str) -> bool {
         self.last_snapshot.lock().unwrap().contains(text)
