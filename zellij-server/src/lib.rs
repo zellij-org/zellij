@@ -278,7 +278,8 @@ pub fn start_server(mut os_input: Box<dyn ServerOsApi>, socket_path: PathBuf) {
                 // set the sticky bit to avoid the socket file being potentially cleaned up
                 // https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html states that for XDG_RUNTIME_DIR:
                 // "To ensure that your files are not removed, they should have their access time timestamp modified at least once every 6 hours of monotonic time or the 'sticky' bit should be set on the file. "
-                set_permissions(&socket_path, 0o1700).unwrap();
+                // It is not guaranteed that all platforms allow setting the sticky bit on sockets!
+                drop(set_permissions(&socket_path, 0o1700));
                 for stream in listener.incoming() {
                     match stream {
                         Ok(stream) => {
