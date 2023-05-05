@@ -365,6 +365,8 @@ pub enum PluginContext {
     RemoveClient,
     NewTab,
     ApplyCachedEvents,
+    PostMessageToPluginWorker,
+    PostMessageToPlugin,
 }
 
 /// Stack call representations corresponding to the different types of [`ClientInstruction`]s.

@@ -22,6 +22,8 @@ use zellij_utils::{
     pane_size::Size,
 };
 
+pub type PluginId = u32;
+
 #[derive(Clone, Debug)]
 pub enum PluginInstruction {
     Load(
@@ -53,6 +55,19 @@ pub enum PluginInstruction {
         ClientId,
     ),
     ApplyCachedEvents(Vec<u32>), // a list of plugin id
+    PostMessageToPluginWorker(
+        PluginId,
+        ClientId,
+        String, // worker name
+        String, // serialized message
+        String, // serialized payload
+    ),
+    PostMessageToPlugin(
+        PluginId,
+        ClientId,
+        String, // serialized message
+        String, // serialized payload
+    ),
     Exit,
 }
 
@@ -69,6 +84,8 @@ impl From<&PluginInstruction> for PluginContext {
             PluginInstruction::RemoveClient(_) => PluginContext::RemoveClient,
             PluginInstruction::NewTab(..) => PluginContext::NewTab,
             PluginInstruction::ApplyCachedEvents(..) => PluginContext::ApplyCachedEvents,
+            PluginInstruction::PostMessageToPluginWorker(..) => PluginContext::PostMessageToPluginWorker,
+            PluginInstruction::PostMessageToPlugin(..) => PluginContext::PostMessageToPlugin,
         }
     }
 }
@@ -198,6 +215,17 @@ pub(crate) fn plugin_thread_main(
             },
             PluginInstruction::ApplyCachedEvents(plugin_id) => {
                 wasm_bridge.apply_cached_events(plugin_id)?;
+            },
+            PluginInstruction::PostMessageToPluginWorker(plugin_id, client_id, worker_name, message, payload) => {
+                wasm_bridge.post_message_to_plugin_worker(plugin_id, client_id, worker_name, message, payload)?;
+            },
+            PluginInstruction::PostMessageToPlugin(plugin_id, client_id, message, payload) => {
+                let updates = vec![(
+                    Some(plugin_id),
+                    Some(client_id),
+                    Event::CustomMessage(message, payload)
+                )];
+                wasm_bridge.update_plugins(updates)?;
             },
             PluginInstruction::Exit => {
                 wasm_bridge.cleanup();

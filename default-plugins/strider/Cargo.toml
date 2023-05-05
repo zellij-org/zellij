@@ -10,3 +10,9 @@ license = "MIT"
 colored = "2.0.0"
 zellij-tile = { path = "../../zellij-tile" }
 pretty-bytes = "0.2.2"
+walkdir = "2.3.3"
+fuzzy-matcher = "0.3.7"
+serde = "*" # TODO: version number!
+serde_json = "*" # TODO: no!! from zellij-tile!
+unicode-width = "*" # TODO: version number!
+ansi_term = "*" # TODO: version number!

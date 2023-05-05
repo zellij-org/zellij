@@ -39,6 +39,11 @@ pub fn open_file(path: &Path) {
     unsafe { host_open_file() };
 }
 
+pub fn open_file_with_line(path: &Path, line: usize) {
+    object_to_stdout(&(path, line));
+    unsafe { host_open_file_with_line() };
+}
+
 pub fn switch_tab_to(tab_idx: u32) {
     unsafe { host_switch_tab_to(tab_idx) };
 }
@@ -74,6 +79,22 @@ pub fn object_to_stdout(object: &impl Serialize) {
     println!("{}", serde_json::to_string(object).unwrap());
 }
 
+#[doc(hidden)]
+pub fn post_message_to(worker_name: &str, message: String, payload: String) { // TODO: change name
+                                                                              // to
+                                                                              // post_message_to_worker?
+    println!("{}", serde_json::to_string(&(worker_name, message, payload)).unwrap()); // TODO:
+                                                                                     // better
+    unsafe { host_post_message_to() };
+}
+
+#[doc(hidden)]
+pub fn post_message_to_plugin(message: String, payload: String) {
+    println!("{}", serde_json::to_string(&(message, payload)).unwrap()); // TODO:
+                                                                                     // better
+    unsafe { host_post_message_to_plugin() };
+}
+
 #[link(wasm_import_module = "zellij")]
 extern "C" {
     fn host_subscribe();
@@ -82,8 +103,11 @@ extern "C" {
     fn host_get_plugin_ids();
     fn host_get_zellij_version();
     fn host_open_file();
+    fn host_open_file_with_line();
     fn host_switch_tab_to(tab_idx: u32);
     fn host_set_timeout(secs: f64);
     fn host_exec_cmd();
     fn host_report_panic();
+    fn host_post_message_to();
+    fn host_post_message_to_plugin();
 }

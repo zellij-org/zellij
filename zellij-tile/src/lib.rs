@@ -65,3 +65,34 @@ macro_rules! register_plugin {
         }
     };
 }
+
+// #[macro_export]
+// macro_rules! register_worker {
+//     ($t:ty, $name:ident) => {
+//         thread_local! {
+//             static $name: std::cell::RefCell<$t> = std::cell::RefCell::new(Default::default());
+//         }
+//
+//         fn ($name)_main() {
+//             // Register custom panic handler
+//             std::panic::set_hook(Box::new(|info| {
+//                 report_panic(info);
+//             }));
+//
+//             $name.with(|state| {
+//                 state.borrow_mut().load();
+//             });
+//         }
+//
+//         #[no_mangle]
+//         pub fn on_message() -> bool {
+//             let object = $crate::shim::object_from_stdin()
+//                 .context($crate::PLUGIN_MISMATCH)
+//                 .to_stdout()
+//                 .unwrap();
+//
+//             // TODO: handle event name plus payload
+//             $name.with(|state| state.borrow_mut().on_message(object))
+//         }
+//     }
+// }

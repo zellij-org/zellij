@@ -11,7 +11,8 @@ use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // 16kB log buffer
-const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
+// const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384;
+const ZELLIJ_MAX_PIPE_BUFFER_SIZE: usize = 16_384_000; // TODO: sort this out
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(crate = "self::serde")]
 pub struct LoggingPipe {

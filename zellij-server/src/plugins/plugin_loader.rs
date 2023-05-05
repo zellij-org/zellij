@@ -1,4 +1,4 @@
-use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, Subscriptions};
+use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use highway::{HighwayHash, PortableHash};
 use log::info;
@@ -11,7 +11,7 @@ use std::{
 };
 use url::Url;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store};
-use wasmer_wasi::{Pipe, WasiState};
+use wasmer_wasi::{Pipe, WasiState, WasiEnv};
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -198,6 +198,7 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
+                log::info!("load_plugin_instance reload_plugin_from_memory");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -227,7 +228,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: Arc<Mutex<Vec<ClientId>>>,
         loading_indication: &mut LoadingIndication,
     ) -> Result<()> {
-        let err_context = || format!("failed to start plugin {plugin:#?} for client {client_id}");
+        let err_context = || format!("failed to start plugin {plugin_id} for client {client_id}");
         let mut plugin_loader = PluginLoader::new(
             &plugin_cache,
             loading_indication,
@@ -248,6 +249,7 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
+                log::info!("load_plugin_instance start plugin");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -296,6 +298,7 @@ impl<'a> PluginLoader<'a> {
                     plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
                 })
                 .and_then(|(instance, plugin_env, subscriptions)| {
+                    log::info!("load_plugin_instance add_client");
                     plugin_loader.load_plugin_instance(
                         &instance,
                         &plugin_env,
@@ -343,6 +346,7 @@ impl<'a> PluginLoader<'a> {
                 plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
+                log::info!("load_plugin_instance reload plugin");
                 plugin_loader.load_plugin_instance(
                     &instance,
                     &plugin_env,
@@ -399,7 +403,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        let (running_plugin, _subscriptions) = {
+        let (running_plugin, _subscriptions, workers) = {
             let mut plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .remove(&(plugin_id, client_id))
@@ -437,7 +441,7 @@ impl<'a> PluginLoader<'a> {
         plugin_dir: &'a PathBuf,
     ) -> Result<Self> {
         let err_context = || "Failed to find existing plugin";
-        let (running_plugin, _subscriptions) = {
+        let (running_plugin, _subscriptions, workers) = {
             let plugin_map = plugin_map.lock().unwrap();
             plugin_map
                 .iter()
@@ -605,6 +609,64 @@ impl<'a> PluginLoader<'a> {
             .insert(cloned_plugin.path, module);
         Ok((instance, plugin_env, subscriptions))
     }
+    pub fn create_plugin_instance_and_wasi_env_for_worker(&mut self) -> Result<(Instance, PluginEnv)> {
+        // TODO: combine with above function
+        let err_context = || {
+            format!(
+                "Failed to create instance and plugin env for worker {}",
+                self.plugin_id
+            )
+        };
+        let module = self.plugin_cache
+            .lock()
+            .unwrap()
+            .get(&self.plugin.path)
+            .with_context(err_context)?
+            .clone();
+        let mut wasi_env = WasiState::new("Zellij")
+            .env("CLICOLOR_FORCE", "1")
+            .map_dir("/host", ".")
+            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
+            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+            .and_then(|wasi| {
+                wasi.stdin(Box::new(Pipe::new()))
+                    .stdout(Box::new(Pipe::new()))
+                    .stderr(Box::new(LoggingPipe::new(
+                        &self.plugin.location.to_string(),
+                        self.plugin_id,
+                    )))
+                    .finalize()
+            })
+            .with_context(err_context)?;
+        let wasi = wasi_env.import_object(&module).with_context(err_context)?;
+
+        let mut mut_plugin = self.plugin.clone();
+        mut_plugin.set_tab_index(self.tab_index);
+        let plugin_env = PluginEnv {
+            plugin_id: self.plugin_id,
+            client_id: self.client_id,
+            plugin: mut_plugin,
+            senders: self.senders.clone(),
+            wasi_env,
+            plugin_own_data_dir: self.plugin_own_data_dir.clone(),
+            tab_index: self.tab_index,
+        };
+
+        let subscriptions = Arc::new(Mutex::new(HashSet::new())); // TODO: maybe include the
+                                                                  // original subscriptions to
+                                                                  // avoid confusion?
+        let zellij = zellij_exports(&self.store, &plugin_env, &subscriptions);
+        let instance =
+            Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
+        // assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
+        // Only do an insert when everything went well!
+//        let cloned_plugin = self.plugin.clone();
+//         self.plugin_cache
+//             .lock()
+//             .unwrap()
+//             .insert(cloned_plugin.path, module);
+        Ok((instance, plugin_env))
+    }
     pub fn load_plugin_instance(
         &mut self,
         instance: &Instance,
@@ -612,6 +674,7 @@ impl<'a> PluginLoader<'a> {
         plugin_map: &Arc<Mutex<PluginMap>>,
         subscriptions: &Arc<Mutex<Subscriptions>>,
     ) -> Result<()> {
+        log::info!("load_plugin_instance");
         let err_context = || format!("failed to load plugin from instance {instance:#?}");
         let main_user_instance = instance.clone();
         let main_user_env = plugin_env.clone();
@@ -625,6 +688,18 @@ impl<'a> PluginLoader<'a> {
             .exports
             .get_function("_start")
             .with_context(err_context)?;
+        let mut workers = HashMap::new();
+        for (function_name, exported_function) in instance.exports.iter().functions() {
+            if function_name.ends_with("_worker") {
+                // TODO:
+                // 1. clone plugin config and pass it to constructor
+                // 2. get module somehow, create wasi_env instance and pass it to constructor
+                let plugin_config = self.plugin.clone();
+                let (instance, plugin_env) = self.create_plugin_instance_and_wasi_env_for_worker()?;
+                let worker = RunningWorker::new(instance, &function_name, plugin_config, plugin_env);
+                workers.insert(function_name.into(), Arc::new(Mutex::new(worker)));
+            }
+        }
         // This eventually calls the `.load()` method
         load_function.call(&[]).with_context(err_context)?;
         display_loading_stage!(
@@ -649,6 +724,7 @@ impl<'a> PluginLoader<'a> {
                     self.size.cols,
                 ))),
                 subscriptions.clone(),
+                workers,
             ),
         );
         display_loading_stage!(
@@ -664,6 +740,7 @@ impl<'a> PluginLoader<'a> {
         connected_clients: &[ClientId],
         plugin_map: &Arc<Mutex<PluginMap>>,
     ) -> Result<()> {
+        log::info!("own client id in clone_instance_for_other_clients: {:?}", self.client_id);
         if !connected_clients.is_empty() {
             display_loading_stage!(
                 indicate_cloning_plugin_for_other_clients,
@@ -672,6 +749,10 @@ impl<'a> PluginLoader<'a> {
                 self.plugin_id
             );
             for client_id in connected_clients {
+                if client_id == &self.client_id {
+                    // don't reload the plugin once more for ourselves
+                    continue;
+                }
                 let mut loading_indication = LoadingIndication::new("".into());
                 let mut plugin_loader_for_client = PluginLoader::new_from_different_client_id(
                     &self.plugin_cache.clone(),
@@ -690,6 +771,7 @@ impl<'a> PluginLoader<'a> {
                             .create_plugin_instance_environment_and_subscriptions(module)
                     })
                     .and_then(|(instance, plugin_env, subscriptions)| {
+                        log::info!("load_plugin_instance for other clients...");
                         plugin_loader_for_client.load_plugin_instance(
                             &instance,
                             &plugin_env,

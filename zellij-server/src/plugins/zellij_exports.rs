@@ -50,10 +50,13 @@ pub fn zellij_exports(
         host_get_plugin_ids,
         host_get_zellij_version,
         host_open_file,
+        host_open_file_with_line,
         host_switch_tab_to,
         host_set_timeout,
         host_exec_cmd,
         host_report_panic,
+        host_post_message_to,
+        host_post_message_to_plugin,
     }
 }
 
@@ -171,6 +174,27 @@ fn host_open_file(env: &ForeignFunctionEnv) {
         .non_fatal();
 }
 
+fn host_open_file_with_line(env: &ForeignFunctionEnv) {
+    wasi_read_object::<(PathBuf, usize)>(&env.plugin_env.wasi_env)
+        .and_then(|(path, line)| {
+            env.plugin_env
+                .senders
+                .send_to_pty(PtyInstruction::SpawnTerminal(
+                    Some(TerminalAction::OpenFile(path, Some(line), None)), // TODO: add cwd
+                    None,
+                    None,
+                    ClientOrTabIndex::TabIndex(env.plugin_env.tab_index),
+                ))
+        })
+        .with_context(|| {
+            format!(
+                "failed to open file on host from plugin {}",
+                env.plugin_env.name()
+            )
+        })
+        .non_fatal();
+}
+
 fn host_switch_tab_to(env: &ForeignFunctionEnv, tab_idx: u32) {
     env.plugin_env
         .senders
@@ -201,6 +225,7 @@ fn host_set_timeout(env: &ForeignFunctionEnv, secs: f64) {
     let update_target = Some(env.plugin_env.plugin_id);
     let client_id = env.plugin_env.client_id;
     let plugin_name = env.plugin_env.name();
+    // TODO: we should really use an async task for this
     thread::spawn(move || {
         let start_time = Instant::now();
         thread::sleep(Duration::from_secs_f64(secs));
@@ -255,6 +280,39 @@ fn host_exec_cmd(env: &ForeignFunctionEnv) {
         .spawn()
         .with_context(err_context)
         .non_fatal();
+}
+
+fn host_post_message_to(env: &ForeignFunctionEnv) {
+    wasi_read_object::<(String, String, String)>(&env.plugin_env.wasi_env)
+        .and_then(|(worker_name, message, payload)| {
+            env.plugin_env
+                .senders
+                .send_to_plugin(PluginInstruction::PostMessageToPluginWorker(
+                    env.plugin_env.plugin_id,
+                    env.plugin_env.client_id,
+                    worker_name,
+                    message,
+                    payload
+                ))
+        })
+        .with_context(|| format!("failed to post message to worker {}", env.plugin_env.name()))
+        .fatal();
+}
+
+fn host_post_message_to_plugin(env: &ForeignFunctionEnv) {
+    wasi_read_object::<(String, String)>(&env.plugin_env.wasi_env)
+        .and_then(|(message, payload)| {
+            env.plugin_env
+                .senders
+                .send_to_plugin(PluginInstruction::PostMessageToPlugin(
+                    env.plugin_env.plugin_id,
+                    env.plugin_env.client_id,
+                    message,
+                    payload
+                ))
+        })
+        .with_context(|| format!("failed to post message to plugin {}", env.plugin_env.name()))
+        .fatal();
 }
 
 // Custom panic handler for plugins.
