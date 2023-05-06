@@ -8,6 +8,7 @@ use crate::input::options::{Clipboard, OnForceClose, Options};
 use crate::input::plugins::{PluginConfig, PluginTag, PluginType, PluginsConfig};
 use crate::input::theme::{FrameConfig, Theme, Themes, UiConfig};
 use crate::setup::{find_default_config_dir, get_layout_dir};
+use crate::shared::detect_theme_hue;
 use kdl_layout_parser::KdlLayoutParser;
 use std::collections::HashMap;
 use strum::IntoEnumIterator;
@@ -1720,10 +1721,11 @@ impl Themes {
         for theme_config in kdl_children_nodes_or_error!(themes_from_kdl, "no themes found") {
             let theme_name = kdl_name!(theme_config);
             let theme_colors = kdl_children_or_error!(theme_config, "empty theme");
+            let bg = PaletteColor::try_from(("bg", theme_colors))?;
             let theme = Theme {
                 palette: Palette {
                     fg: PaletteColor::try_from(("fg", theme_colors))?,
-                    bg: PaletteColor::try_from(("bg", theme_colors))?,
+                    bg,
                     red: PaletteColor::try_from(("red", theme_colors))?,
                     green: PaletteColor::try_from(("green", theme_colors))?,
                     yellow: PaletteColor::try_from(("yellow", theme_colors))?,
@@ -1733,6 +1735,7 @@ impl Themes {
                     cyan: PaletteColor::try_from(("cyan", theme_colors))?,
                     black: PaletteColor::try_from(("black", theme_colors))?,
                     white: PaletteColor::try_from(("white", theme_colors))?,
+                    theme_hue: detect_theme_hue(bg),
                     ..Default::default()
                 },
             };
