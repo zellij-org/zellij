@@ -54,8 +54,7 @@ fn e2e_build(sh: &Shell) -> anyhow::Result<()> {
     .context(err_context)?;
 
     // Copy plugins to e2e data-dir
-    let plugin_dir = crate::asset_dir()
-        .join("plugins");
+    let plugin_dir = crate::asset_dir().join("plugins");
     let project_root = crate::project_root();
     let data_dir = project_root.join("target").join("e2e-data");
     let plugins: Vec<_> = std::fs::read_dir(plugin_dir)
