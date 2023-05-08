@@ -28,7 +28,7 @@ pub type Subscriptions = HashSet<EventType>;
 
 #[derive(Clone)]
 pub struct PluginEnv {
-    pub plugin_id: u32,
+    pub plugin_id: PluginId,
     pub plugin: PluginConfig,
     pub senders: ThreadSenders,
     pub wasi_env: WasiEnv,

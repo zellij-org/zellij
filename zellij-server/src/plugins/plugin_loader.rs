@@ -1,3 +1,4 @@
+use crate::plugins::PluginId;
 use crate::plugins::plugin_map::{PluginEnv, PluginMap, RunningPlugin, RunningWorker, Subscriptions};
 use crate::plugins::zellij_exports::{wasi_read_string, zellij_exports};
 use highway::{HighwayHash, PortableHash};
@@ -11,7 +12,7 @@ use std::{
 };
 use url::Url;
 use wasmer::{ChainableNamedResolver, Instance, Module, Store};
-use wasmer_wasi::{Pipe, WasiState, WasiEnv};
+use wasmer_wasi::{Pipe, WasiState};
 
 use crate::{
     logging_pipe::LoggingPipe, screen::ScreenInstruction, thread_bus::ThreadSenders,
@@ -152,7 +153,7 @@ pub struct PluginLoader<'a> {
     plugin_path: PathBuf,
     loading_indication: &'a mut LoadingIndication,
     senders: ThreadSenders,
-    plugin_id: u32,
+    plugin_id: PluginId,
     client_id: ClientId,
     store: Store,
     plugin: PluginConfig,
@@ -165,7 +166,7 @@ pub struct PluginLoader<'a> {
 
 impl<'a> PluginLoader<'a> {
     pub fn reload_plugin_from_memory(
-        plugin_id: u32,
+        plugin_id: PluginId,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
@@ -195,7 +196,7 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .load_module_from_memory()
             .and_then(|module| {
-                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+                plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
                 log::info!("load_plugin_instance reload_plugin_from_memory");
@@ -215,7 +216,7 @@ impl<'a> PluginLoader<'a> {
     }
 
     pub fn start_plugin(
-        plugin_id: u32,
+        plugin_id: PluginId,
         client_id: ClientId,
         plugin: &PluginConfig,
         tab_index: usize,
@@ -246,7 +247,7 @@ impl<'a> PluginLoader<'a> {
             .or_else(|_e| plugin_loader.load_module_from_hd_cache())
             .or_else(|_e| plugin_loader.compile_module())
             .and_then(|module| {
-                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+                plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
                 log::info!("load_plugin_instance start plugin");
@@ -295,7 +296,7 @@ impl<'a> PluginLoader<'a> {
             plugin_loader
                 .load_module_from_memory()
                 .and_then(|module| {
-                    plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+                    plugin_loader.create_plugin_environment(module)
                 })
                 .and_then(|(instance, plugin_env, subscriptions)| {
                     log::info!("load_plugin_instance add_client");
@@ -312,7 +313,7 @@ impl<'a> PluginLoader<'a> {
     }
 
     pub fn reload_plugin(
-        plugin_id: u32,
+        plugin_id: PluginId,
         plugin_dir: PathBuf,
         plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
         senders: ThreadSenders,
@@ -343,7 +344,7 @@ impl<'a> PluginLoader<'a> {
         plugin_loader
             .compile_module()
             .and_then(|module| {
-                plugin_loader.create_plugin_instance_environment_and_subscriptions(module)
+                plugin_loader.create_plugin_environment(module)
             })
             .and_then(|(instance, plugin_env, subscriptions)| {
                 log::info!("load_plugin_instance reload plugin");
@@ -365,7 +366,7 @@ impl<'a> PluginLoader<'a> {
         plugin_cache: &Arc<Mutex<HashMap<PathBuf, Module>>>,
         loading_indication: &'a mut LoadingIndication,
         senders: &ThreadSenders,
-        plugin_id: u32,
+        plugin_id: PluginId,
         client_id: ClientId,
         store: &Store,
         plugin: PluginConfig,
@@ -397,7 +398,7 @@ impl<'a> PluginLoader<'a> {
         plugin_map: &Arc<Mutex<PluginMap>>,
         loading_indication: &'a mut LoadingIndication,
         senders: &ThreadSenders,
-        plugin_id: u32,
+        plugin_id: PluginId,
         client_id: ClientId,
         store: &Store,
         plugin_dir: &'a PathBuf,
@@ -435,7 +436,7 @@ impl<'a> PluginLoader<'a> {
         plugin_map: &Arc<Mutex<PluginMap>>,
         loading_indication: &'a mut LoadingIndication,
         senders: &ThreadSenders,
-        plugin_id: u32,
+        plugin_id: PluginId,
         client_id: ClientId,
         store: &Store,
         plugin_dir: &'a PathBuf,
@@ -557,49 +558,12 @@ impl<'a> PluginLoader<'a> {
             .with_context(err_context)?;
         Ok(module)
     }
-    pub fn create_plugin_instance_environment_and_subscriptions(
+    pub fn create_plugin_environment(
         &mut self,
         module: Module,
     ) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
-        let err_context = || {
-            format!(
-                "Failed to create instance and plugin env for plugin {}",
-                self.plugin_id
-            )
-        };
-        let mut wasi_env = WasiState::new("Zellij")
-            .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", ".")
-            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
-            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
-            .and_then(|wasi| {
-                wasi.stdin(Box::new(Pipe::new()))
-                    .stdout(Box::new(Pipe::new()))
-                    .stderr(Box::new(LoggingPipe::new(
-                        &self.plugin.location.to_string(),
-                        self.plugin_id,
-                    )))
-                    .finalize()
-            })
-            .with_context(err_context)?;
-        let wasi = wasi_env.import_object(&module).with_context(err_context)?;
-
-        let mut mut_plugin = self.plugin.clone();
-        mut_plugin.set_tab_index(self.tab_index);
-        let plugin_env = PluginEnv {
-            plugin_id: self.plugin_id,
-            client_id: self.client_id,
-            plugin: mut_plugin,
-            senders: self.senders.clone(),
-            wasi_env,
-            plugin_own_data_dir: self.plugin_own_data_dir.clone(),
-            tab_index: self.tab_index,
-        };
-
-        let subscriptions = Arc::new(Mutex::new(HashSet::new()));
-        let zellij = zellij_exports(&self.store, &plugin_env, &subscriptions);
-        let instance =
-            Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
+        let err_context = || format!("Failed to create environment for plugin");
+        let (instance, plugin_env, subscriptions) = self.create_plugin_instance_env_and_subscriptions(&module)?;
         assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
         // Only do an insert when everything went well!
         let cloned_plugin = self.plugin.clone();
@@ -610,7 +574,6 @@ impl<'a> PluginLoader<'a> {
         Ok((instance, plugin_env, subscriptions))
     }
     pub fn create_plugin_instance_and_wasi_env_for_worker(&mut self) -> Result<(Instance, PluginEnv)> {
-        // TODO: combine with above function
         let err_context = || {
             format!(
                 "Failed to create instance and plugin env for worker {}",
@@ -623,48 +586,7 @@ impl<'a> PluginLoader<'a> {
             .get(&self.plugin.path)
             .with_context(err_context)?
             .clone();
-        let mut wasi_env = WasiState::new("Zellij")
-            .env("CLICOLOR_FORCE", "1")
-            .map_dir("/host", ".")
-            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
-            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
-            .and_then(|wasi| {
-                wasi.stdin(Box::new(Pipe::new()))
-                    .stdout(Box::new(Pipe::new()))
-                    .stderr(Box::new(LoggingPipe::new(
-                        &self.plugin.location.to_string(),
-                        self.plugin_id,
-                    )))
-                    .finalize()
-            })
-            .with_context(err_context)?;
-        let wasi = wasi_env.import_object(&module).with_context(err_context)?;
-
-        let mut mut_plugin = self.plugin.clone();
-        mut_plugin.set_tab_index(self.tab_index);
-        let plugin_env = PluginEnv {
-            plugin_id: self.plugin_id,
-            client_id: self.client_id,
-            plugin: mut_plugin,
-            senders: self.senders.clone(),
-            wasi_env,
-            plugin_own_data_dir: self.plugin_own_data_dir.clone(),
-            tab_index: self.tab_index,
-        };
-
-        let subscriptions = Arc::new(Mutex::new(HashSet::new())); // TODO: maybe include the
-                                                                  // original subscriptions to
-                                                                  // avoid confusion?
-        let zellij = zellij_exports(&self.store, &plugin_env, &subscriptions);
-        let instance =
-            Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
-        // assert_plugin_version(&instance, &plugin_env).with_context(err_context)?;
-        // Only do an insert when everything went well!
-//        let cloned_plugin = self.plugin.clone();
-//         self.plugin_cache
-//             .lock()
-//             .unwrap()
-//             .insert(cloned_plugin.path, module);
+        let (instance, plugin_env, _subscriptions) = self.create_plugin_instance_env_and_subscriptions(&module)?;
         Ok((instance, plugin_env))
     }
     pub fn load_plugin_instance(
@@ -768,7 +690,7 @@ impl<'a> PluginLoader<'a> {
                     .load_module_from_memory()
                     .and_then(|module| {
                         plugin_loader_for_client
-                            .create_plugin_instance_environment_and_subscriptions(module)
+                            .create_plugin_environment(module)
                     })
                     .and_then(|(instance, plugin_env, subscriptions)| {
                         log::info!("load_plugin_instance for other clients...");
@@ -811,6 +733,48 @@ impl<'a> PluginLoader<'a> {
                 Ok((wasm_bytes, cached_path))
             },
         }
+    }
+    fn create_plugin_instance_env_and_subscriptions(&self, module: &Module) -> Result<(Instance, PluginEnv, Arc<Mutex<Subscriptions>>)> {
+        let err_context = || {
+            format!(
+                "Failed to create instance, plugin env and subscriptions for plugin {}",
+                self.plugin_id
+            )
+        };
+        let mut wasi_env = WasiState::new("Zellij")
+            .env("CLICOLOR_FORCE", "1")
+            .map_dir("/host", ".")
+            .and_then(|wasi| wasi.map_dir("/data", &self.plugin_own_data_dir))
+            .and_then(|wasi| wasi.map_dir("/tmp", ZELLIJ_TMP_DIR.as_path()))
+            .and_then(|wasi| {
+                wasi.stdin(Box::new(Pipe::new()))
+                    .stdout(Box::new(Pipe::new()))
+                    .stderr(Box::new(LoggingPipe::new(
+                        &self.plugin.location.to_string(),
+                        self.plugin_id,
+                    )))
+                    .finalize()
+            })
+            .with_context(err_context)?;
+        let wasi = wasi_env.import_object(&module).with_context(err_context)?;
+
+        let mut mut_plugin = self.plugin.clone();
+        mut_plugin.set_tab_index(self.tab_index);
+        let plugin_env = PluginEnv {
+            plugin_id: self.plugin_id,
+            client_id: self.client_id,
+            plugin: mut_plugin,
+            senders: self.senders.clone(),
+            wasi_env,
+            plugin_own_data_dir: self.plugin_own_data_dir.clone(),
+            tab_index: self.tab_index,
+        };
+
+        let subscriptions = Arc::new(Mutex::new(HashSet::new()));
+        let zellij = zellij_exports(&self.store, &plugin_env, &subscriptions);
+        let instance =
+            Instance::new(&module, &zellij.chain_back(wasi)).with_context(err_context)?;
+        Ok((instance, plugin_env, subscriptions))
     }
 }
 

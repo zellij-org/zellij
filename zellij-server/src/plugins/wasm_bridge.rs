@@ -38,14 +38,14 @@ pub struct WasmBridge {
     plugin_dir: PathBuf,
     plugin_cache: Arc<Mutex<HashMap<PathBuf, Module>>>,
     plugin_map: Arc<Mutex<PluginMap>>,
-    next_plugin_id: u32,
-    cached_events_for_pending_plugins: HashMap<u32, Vec<Event>>, // u32 is the plugin id
-    cached_resizes_for_pending_plugins: HashMap<u32, (usize, usize)>, // (rows, columns)
+    next_plugin_id: PluginId,
+    cached_events_for_pending_plugins: HashMap<PluginId, Vec<Event>>,
+    cached_resizes_for_pending_plugins: HashMap<PluginId, (usize, usize)>, // (rows, columns)
     cached_worker_messages: HashMap<PluginId, Vec<(ClientId, String, String, String)>>, // Vec<clientid,
                                                                                         // worker_name,
                                                                                         // message,
                                                                                         // payload>
-    loading_plugins: HashMap<(u32, RunPlugin), JoinHandle<()>>,  // plugin_id to join-handle
+    loading_plugins: HashMap<(PluginId, RunPlugin), JoinHandle<()>>,  // plugin_id to join-handle
     pending_plugin_reloads: HashSet<RunPlugin>,
 }
 
@@ -82,8 +82,7 @@ impl WasmBridge {
         tab_index: usize,
         size: Size,
         client_id: Option<ClientId>,
-    ) -> Result<u32> {
-        log::info!("load_plugin, connected_clients: {:?}", self.connected_clients);
+    ) -> Result<PluginId> {
         // returns the plugin id
         let err_context = move || format!("failed to load plugin");
 
@@ -156,11 +155,11 @@ impl WasmBridge {
         self.next_plugin_id += 1;
         Ok(plugin_id)
     }
-    pub fn unload_plugin(&mut self, pid: u32) -> Result<()> {
+    pub fn unload_plugin(&mut self, pid: PluginId) -> Result<()> {
         info!("Bye from plugin {}", &pid);
         // TODO: remove plugin's own data directory
         let mut plugin_map = self.plugin_map.lock().unwrap();
-        let ids_in_plugin_map: Vec<(u32, ClientId)> = plugin_map.keys().copied().collect();
+        let ids_in_plugin_map: Vec<(PluginId, ClientId)> = plugin_map.keys().copied().collect();
         for (plugin_id, client_id) in ids_in_plugin_map {
             if pid == plugin_id {
                 drop(plugin_map.remove(&(plugin_id, client_id)));
@@ -272,7 +271,7 @@ impl WasmBridge {
             Err(e) => Err(e),
         }
     }
-    pub fn resize_plugin(&mut self, pid: u32, new_columns: usize, new_rows: usize) -> Result<()> {
+    pub fn resize_plugin(&mut self, pid: PluginId, new_columns: usize, new_rows: usize) -> Result<()> {
         let err_context = move || format!("failed to resize plugin {pid}");
         for ((plugin_id, client_id), (running_plugin, _subscriptions, workers)) in
             self.plugin_map.lock().unwrap().iter_mut()
@@ -405,7 +404,7 @@ impl WasmBridge {
         }
         Ok(())
     }
-    pub fn apply_cached_events(&mut self, plugin_ids: Vec<u32>) -> Result<()> {
+    pub fn apply_cached_events(&mut self, plugin_ids: Vec<PluginId>) -> Result<()> {
         let mut applied_plugin_paths = HashSet::new();
         for plugin_id in plugin_ids {
             self.apply_cached_events_and_resizes_for_plugin(plugin_id)?;
@@ -629,14 +628,14 @@ fn handle_plugin_loading_failure(
 }
 
 pub fn apply_event_to_plugin(
-    plugin_id: u32,
+    plugin_id: PluginId,
     client_id: ClientId,
     instance: &Instance,
     plugin_env: &PluginEnv,
     event: &Event,
     rows: usize,
     columns: usize,
-    plugin_bytes: &mut Vec<(u32, ClientId, Vec<u8>)>,
+    plugin_bytes: &mut Vec<(PluginId, ClientId, Vec<u8>)>,
 ) -> Result<()> {
     let err_context = || format!("Failed to apply event to plugin {plugin_id}");
     let update = instance

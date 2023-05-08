@@ -34,8 +34,8 @@ pub enum PluginInstruction {
         ClientId,
         Size,
     ),
-    Update(Vec<(Option<u32>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
-    Unload(u32),                                         // plugin_id
+    Update(Vec<(Option<PluginId>, Option<ClientId>, Event)>), // Focused plugin / broadcast, client_id, event data
+    Unload(PluginId),                                         // plugin_id
     Reload(
         Option<bool>,   // should float
         Option<String>, // pane title
@@ -43,7 +43,7 @@ pub enum PluginInstruction {
         usize, // tab index
         Size,
     ),
-    Resize(u32, usize, usize), // plugin_id, columns, rows
+    Resize(PluginId, usize, usize), // plugin_id, columns, rows
     AddClient(ClientId),
     RemoveClient(ClientId),
     NewTab(
@@ -54,7 +54,7 @@ pub enum PluginInstruction {
         usize, // tab_index
         ClientId,
     ),
-    ApplyCachedEvents(Vec<u32>), // a list of plugin id
+    ApplyCachedEvents(Vec<PluginId>),
     PostMessageToPluginWorker(
         PluginId,
         ClientId,
@@ -180,7 +180,7 @@ pub(crate) fn plugin_thread_main(
                 tab_index,
                 client_id,
             ) => {
-                let mut plugin_ids: HashMap<RunPluginLocation, Vec<u32>> = HashMap::new();
+                let mut plugin_ids: HashMap<RunPluginLocation, Vec<PluginId>> = HashMap::new();
                 let mut extracted_run_instructions = tab_layout
                     .clone()
                     .unwrap_or_else(|| layout.new_tab().0)
