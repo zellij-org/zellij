@@ -56,36 +56,49 @@ impl SearchResult {
         }
     }
     pub fn render(&self, max_width: usize, is_selected: bool) -> String {
+        let green_code = 154;
+        let orange_code = 166;
+        let bold_code = "\u{1b}[1m";
+        let green_foreground = format!("\u{1b}[38;5;{}m", green_code);
+        let orange_foreground = format!("\u{1b}[38;5;{}m", orange_code);
+        let reset_code = "\u{1b}[m";
+        let max_width = max_width.saturating_sub(3); // for the UI left line separator
         match self {
             SearchResult::File { path, indices, .. } =>  {
-                self.render_line_with_indices(path, indices, max_width, true, is_selected)
+                if is_selected {
+                    let line = self.render_line_with_indices(path, indices, max_width, None, Some(green_code), true);
+                    format!("{} | {}{}", green_foreground, reset_code, line)
+                } else {
+                    let line = self.render_line_with_indices(path, indices, max_width, None, None, true);
+                    format!(" | {}", line)
+                }
             }
             SearchResult::LineInFile { path, line, line_number, indices, .. } => {
-                let rendered_path = self.render_line_with_indices(path, &vec![], max_width, true, is_selected); // TODO:
-                                                                                        // better
-                let line_indication_text = format!("LINE {}", line_number); // TODO: also truncate
-                                                                           // this
-                let rendered_file_line = self.render_line_with_indices(line, indices, max_width.saturating_sub(line_indication_text.width()), false, is_selected);
-                format!("{}\n{} {}", rendered_path, line_indication_text, rendered_file_line)
+                if is_selected {
+                    let first_line = self.render_line_with_indices(path, &vec![], max_width, None, Some(green_code), true);
+                    let line_indication_text = format!("{}-> {}", bold_code, line_number);
+                    let line_indication = format!("{}{}{}", orange_foreground, line_indication_text, reset_code); // TODO: also truncate
+                    let second_line = self.render_line_with_indices(line, indices, max_width.saturating_sub(line_indication_text.width()), None, Some(orange_code), false);
+                    format!(" {}│{} {}\n {}│{} {} {}", green_foreground, reset_code, first_line, green_foreground, reset_code, line_indication, second_line)
+                } else {
+                    let first_line = self.render_line_with_indices(path, &vec![], max_width, None, None, true); // TODO:
+                    let line_indication_text = format!("{}-> {}", bold_code, line_number);
+                    let second_line = self.render_line_with_indices(line, indices, max_width.saturating_sub(line_indication_text.width()), None, None, false);
+                    format!(" │ {}\n │ {} {}", first_line, line_indication_text, second_line)
+                }
             }
         }
     }
-    fn render_line_with_indices(&self, line_to_render: &String, indices: &Vec<usize>, max_width: usize, is_file_name: bool, is_selected: bool) -> String {
+    fn render_line_with_indices(&self, line_to_render: &String, indices: &Vec<usize>, max_width: usize, background_color: Option<usize>, foreground_color: Option<usize>, is_bold: bool) -> String {
         // TODO: get these from Zellij
-        let (green_code, orange_code) = if is_selected {
-            ("\u{1b}[48;5;102;38;5;154;1m", "\u{1b}[48;5;102;38;5;166;1m" )
-        } else {
-            ("\u{1b}[38;5;154;1m", "\u{1b}[38;5;166;1m" )
-        };
-
-        let green_bold_background_code = "\u{1b}[48;5;154;38;5;0;1m";
-        let orange_bold_background_code = "\u{1b}[48;5;166;38;5;0;1m";
         let reset_code = "\u{1b}[m";
-        let (line_color, index_color) = if is_file_name {
-            (orange_code, orange_bold_background_code)
-        } else {
-            (green_code, green_bold_background_code)
-        };
+        let underline_code = "\u{1b}[4m";
+        let foreground_color = foreground_color.map(|c| format!("\u{1b}[38;5;{}m", c)).unwrap_or_else(|| format!(""));
+        let background_color = background_color.map(|c| format!("\u{1b}[48;5;{}m", c)).unwrap_or_else(|| format!(""));
+        let bold = if is_bold { "\u{1b}[1m" } else { "" };
+        let non_index_character_style = format!("{}{}{}", background_color, foreground_color, bold);
+        let index_character_style = format!("{}{}{}{}", background_color, foreground_color, bold, underline_code);
+
         let mut truncate_start_position = None;
         let mut truncate_end_position = None;
         if line_to_render.width() > max_width {
@@ -93,25 +106,33 @@ impl SearchResult {
             truncate_start_position = Some(length_of_each_half);
             truncate_end_position = Some(line_to_render.width().saturating_sub(length_of_each_half));
         }
-        let mut first_half = format!("{}{}", reset_code, line_color);
-        let mut second_half = format!("{}{}", reset_code, line_color);
+        let mut first_half = format!("{}", reset_code);
+        let mut second_half = format!("{}", reset_code);
         for (i, character) in line_to_render.chars().enumerate() {
             if (truncate_start_position.is_none() && truncate_end_position.is_none()) || Some(i) < truncate_start_position {
                 if indices.contains(&i) {
-                    first_half.push_str(&format!("{}{}{}{}", index_color, character, reset_code, line_color)); // TODO: less allocations
-                } else {
+                    first_half.push_str(&index_character_style);
                     first_half.push(character);
+                    first_half.push_str(reset_code);
+                } else {
+                    first_half.push_str(&non_index_character_style);
+                    first_half.push(character);
+                    first_half.push_str(reset_code);
                 }
             } else if Some(i) > truncate_end_position {
                 if indices.contains(&i) {
-                    second_half.push_str(&format!("{}{}{}{}", index_color, character, reset_code, line_color)); // TODO: less allocations
-                } else {
+                    second_half.push_str(&index_character_style);
                     second_half.push(character);
+                    second_half.push_str(reset_code);
+                } else {
+                    second_half.push_str(&non_index_character_style);
+                    second_half.push(character);
+                    second_half.push_str(reset_code);
                 }
             }
         }
         if let Some(_truncate_start_position) = truncate_start_position {
-            format!("{}[..]{}{}", first_half, second_half, reset_code)
+            format!("{}{}{}[..]{}{}{}", first_half, reset_code, foreground_color, reset_code, second_half, reset_code)
         } else {
             format!("{}{}", first_half, reset_code)
         }
@@ -158,14 +179,12 @@ impl SearchWorker {
         }
     }
     pub fn on_message(&mut self, message: String, payload: String) {
-        eprintln!("got message: {:?}, search_paths.len: {:?}", message, self.search_paths.len());
         match message.as_str() { // TODO: deserialize to type
             "scan_folder" => {
                 if let Err(e) = std::fs::remove_file("/data/search_data") {
                     eprintln!("Warning: failed to remove cache file: {:?}", e);
                 }
                 self.populate_search_paths();
-                eprintln!("search_paths length after populating in scan_folder: {:?}", self.search_paths.len());
                 post_message_to_plugin("done_scanning_folder".into(), "".into());
             }
             "search" => {
@@ -209,11 +228,8 @@ impl SearchWorker {
     fn populate_search_paths(&mut self) {
         // TODO: CONTINUE HERE - when we start, check to see if /data/search_data exists, if it is
         // deserialize it and place it in our own state, if not, do the below and then write to it
-        eprintln!("populate_search_paths");
         if let Ok(search_data) = std::fs::read("/data/search_data") { // TODO: add cwd to here
-            eprintln!("found search data");
             if let Ok(mut existing_state) = serde_json::from_str::<Self>(&String::from_utf8_lossy(&search_data)) {
-                eprintln!("successfully deserialized search data");
                 std::mem::swap(self, &mut existing_state);
                 return;
             }
@@ -271,20 +287,21 @@ impl State {
     pub fn render_search(&mut self, rows: usize, cols: usize) {
         if let Some(search_term) = self.search_term.as_ref() {
             let mut to_render = String::new();
-            to_render.push_str(&format!("\u{1b}[38;5;51;1mSEARCH:\u{1b}[m {}\n", search_term));
+            to_render.push_str(&format!(" \u{1b}[38;5;51;1mSEARCH:\u{1b}[m {}\n", search_term));
             let mut rows_left_to_render = rows.saturating_sub(3);
             if self.loading && self.search_results.is_empty() {
                 to_render.push_str(&self.render_loading());
             }
             for (i, result) in self.search_results.iter().enumerate().take(rows.saturating_sub(3)) {
                 let result_height = result.rendered_height();
-                if result_height > rows_left_to_render {
+                if result_height + 1 > rows_left_to_render {
                     break;
                 }
                 rows_left_to_render -= result_height;
+                rows_left_to_render -= 1; // space between
                 let is_selected = i == self.selected_search_result;
                 let rendered_result = result.render(cols, is_selected);
-                to_render.push_str(&format!("\n{}", rendered_result));
+                to_render.push_str(&format!("\n{}\n", rendered_result));
             }
             print!("{}", to_render);
         }

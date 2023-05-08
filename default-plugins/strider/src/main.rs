@@ -39,7 +39,6 @@ impl ZellijPlugin for State {
             EventType::CustomMessage,
             EventType::Timer,
         ]);
-        eprintln!("post_message_to search scan_folder");
         post_message_to("search", String::from("scan_folder"), String::new());
         set_timeout(0.5); // for displaying loading animation
     }
@@ -76,7 +75,6 @@ impl ZellijPlugin for State {
                         }
                     },
                     "done_scanning_folder" => {
-                        eprintln!("done_scanning_folder");
                         self.loading = false;
                         should_render = true;
                     },

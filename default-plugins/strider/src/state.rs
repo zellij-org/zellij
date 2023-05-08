@@ -38,13 +38,9 @@ impl State {
                 }
             },
             Key::Backspace => {
-                eprintln!("can has backspace");
                 if let Some(search_term) = self.search_term.as_mut() {
-                    eprintln!("search_term: {:?}", search_term);
                     search_term.pop();
-                    eprintln!("search_term after {:?}, len: {:?}", search_term, search_term.len());
                     if search_term.len() == 0 {
-                        eprintln!("is zero, resetting stuff");
                         self.search_term = None;
                         self.typing_search_term = false;
                     }
