@@ -90,10 +90,18 @@ pub fn install(sh: &Shell, flags: flags::Install) -> anyhow::Result<()> {
 }
 
 /// Run zellij debug build.
-pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
-    let err_context = || format!("failed to run pipeline 'run' with args {flags:?}");
+pub fn run(sh: &Shell, mut flags: flags::Run) -> anyhow::Result<()> {
+    let err_context =
+        |flags: &flags::Run| format!("failed to run pipeline 'run' with args {:?}", flags);
 
     let singlepass = flags.singlepass.then_some(["--features", "singlepass"]);
+    if flags.quick_run {
+        if flags.data_dir.is_some() {
+            eprintln!("cannot use '--data-dir' and '--quick-run' at the same time!");
+            std::process::exit(1);
+        }
+        flags.data_dir.replace(crate::asset_dir());
+    }
 
     let profile = if flags.disable_deps_optimize {
         "dev"
@@ -117,7 +125,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                     .run()
                     .map_err(anyhow::Error::new)
             })
-            .with_context(err_context)
+            .with_context(|| err_context(&flags))
     } else {
         build::build(
             sh,
@@ -137,7 +145,7 @@ pub fn run(sh: &Shell, flags: flags::Run) -> anyhow::Result<()> {
                 .run()
                 .map_err(anyhow::Error::new)
         })
-        .with_context(err_context)
+        .with_context(|| err_context(&flags))
     }
 }
 
@@ -357,10 +365,6 @@ pub fn publish(sh: &Shell, flags: flags::Publish) -> anyhow::Result<()> {
                         println!("Aborting publish for crate '{crate_name}'");
                         return Err::<(), _>(err);
                     }
-                } else {
-                    println!("Waiting for crates.io to catch up...");
-                    std::thread::sleep(std::time::Duration::from_secs(15));
-                    break;
                 }
             }
         }

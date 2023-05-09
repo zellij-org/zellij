@@ -82,6 +82,10 @@ fn project_root() -> PathBuf {
     .to_path_buf()
 }
 
+fn asset_dir() -> PathBuf {
+    crate::project_root().join("zellij-utils").join("assets")
+}
+
 pub fn cargo() -> anyhow::Result<PathBuf> {
     std::env::var_os("CARGO")
         .map_or_else(|| which::which("cargo"), |exe| Ok(PathBuf::from(exe)))

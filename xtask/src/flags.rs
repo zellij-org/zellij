@@ -65,6 +65,8 @@ xflags::xflags! {
 
         /// Run debug version of zellij
         cmd run {
+            /// Take plugins from asset folder, skip building plugins.
+            optional --quick-run
             /// Take plugins from here, skip building plugins. Passed to zellij verbatim
             optional --data-dir path: PathBuf
             /// Enable the singlepass compiler for WASM plugins
@@ -182,6 +184,7 @@ pub struct Install {
 pub struct Run {
     pub args: Vec<OsString>,
 
+    pub quick_run: bool,
     pub data_dir: Option<PathBuf>,
     pub singlepass: bool,
     pub disable_deps_optimize: bool,

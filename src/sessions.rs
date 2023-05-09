@@ -3,6 +3,7 @@ use std::time::SystemTime;
 use std::{fs, io, process};
 use suggest::Suggest;
 use zellij_utils::{
+    anyhow,
     consts::ZELLIJ_SOCK_DIR,
     envs,
     interprocess::local_socket::LocalSocketStream,
